@@ -84,6 +84,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["code sign the mac app with my apple developer certificate and notarize it", /^desktop#packing-and-signing/],
 		["use the app with pine running on my server over ssh", /^desktop#environments/],
 		["switch the window between the pine on my laptop and the one on a remote machine", /^desktop#environments/],
+		["open the terminal ui on the pine running on my server, from my laptop", /^(tui#the-pine-of-another-machine|operations#commands\/pine---ssh)/],
 		["voice input does not work on linux", /^tui#dictating-a-message/],
 		["how many tokens per second does my model make, and how fast does it process the prompt", /^tui#(how-fast-the-model-is|what-a-model-thinks)/],
 		["my owner wants an agent deleted together with its folder", /^(setup#(changing-and-removing-an-agent|the-main-agent-administers-pine|the-tools)|pine#if-you-are-an-agent-running-inside-pine)/],

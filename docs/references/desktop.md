@@ -188,7 +188,8 @@ The app can use the pine of another machine instead of the one on this computer:
 desktop at home, anything you reach with `ssh`. It uses one pine at a time. The foot of the side
 bar says which (`pine 0.23.0 · started here`, or `pine 0.23.0 · server`): a click on it lists
 This Mac and the machines you added, and Environments… leads to Settings > Environments, where
-machines are added and forgotten. The palette (`⌘K`) has "Use the pine on …" too.
+machines are added and forgotten. The palette (`⌘K`) has "Use the pine on …" too. In a terminal,
+`pine --ssh <host>` does the same for the terminal UI ([tui.md](tui.md#the-pine-of-another-machine)).
 
 | What | How |
 |---|---|

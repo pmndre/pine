@@ -93,7 +93,7 @@ src/
                     directly, another program through `pine service`
   remote.ts         the pine of another machine over SSH: the host checked to be no option, `pine service` run there,
                     a port of this computer forwarded to its loopback and nowhere else. Node's own modules only: the
-                    Pine app's main process carries it (Settings > Environments)
+                    Pine app's main process carries it (Settings > Environments); `pine --ssh` uses it for the terminal UI
   limiter.ts        model slots with priority
   catalogue.ts      how tools are declared to the model in the owner's conversations: families (one declared tool for a group, an
                     action for each tool, the call carried out by the tool itself), short declarations, arguments that are
@@ -103,7 +103,8 @@ src/
   models.ts         pi's model runtime on pine's home; fills a "$NAME" key in models.json from .env;
                     model servers of the owner's own: asking one what it serves, adding and removing it
   mcp-config.ts     add/remove/list MCP servers in the files; runs pi's `mcp` CLI for state and OAuth sign-in
-  tui/              terminal UI: app.ts (tabs, commands, rendering), client.ts (API + event stream), run.ts,
+  tui/              terminal UI: app.ts (tabs, commands, rendering), client.ts (API + event stream), run.ts
+                    (this home's daemon, or with `--ssh` another machine's through src/remote.ts),
                     code-pane.ts (the pane beside a conversation: changes, files, tool output),
                     undo.ts (what the conversation says after /undo and /redo),
                     theme.ts (colours, markdown, and the parts of an answer that are folded into a line: `Answer`), highlight.ts (code colours),

@@ -1222,6 +1222,11 @@ export interface TuiOptions {
 	chooseFolder?: () => Promise<string | undefined>;
 	/** The folder pine was started in, offered in the folder menu. Default: the process's. */
 	cwd?: string;
+	/**
+	 * The short name of another machine whose pine this UI shows (`pine --ssh`). Its folders are
+	 * paths there: they are passed on as typed, never looked up or picked on this computer.
+	 */
+	remote?: string;
 	/** MCP server administration that needs this machine: connection states and browser sign-in. */
 	mcp?: {
 		/** The configured servers. `states` also asks each one whether it connects, which takes a moment. */
@@ -1599,7 +1604,8 @@ export class PineTui {
 		if (tab.kind !== "chat") return;
 		let now: string | undefined;
 		try {
-			now = (await this.client.setFolder(tab.agent, tab.session, folder ? path.resolve(expandHome(folder)) : null)).folder;
+			// On another machine a path is that machine's, and its pine makes it whole (~ is the home there).
+			now = (await this.client.setFolder(tab.agent, tab.session, folder ? (this.opts.remote ? folder : path.resolve(expandHome(folder))) : null)).folder;
 		} catch (e) {
 			return void this.say(tab, c.red(`the folder was not changed: ${errText(e)}`));
 		}
@@ -1614,17 +1620,20 @@ export class PineTui {
 	private async pickFolder(): Promise<void> {
 		const t = this.active;
 		if (t.kind !== "chat") return;
+		const remote = this.opts.remote;
 		const here = path.resolve(this.opts.cwd ?? process.cwd());
 		const used = await this.client.folders(t.agent).catch(() => [] as Array<{ session: string; folder: string }>);
 		const items: SelectItem[] = [{ value: "none", label: "No folder", description: `${t.agent}'s own workspace` }];
 		if (t.folder) items.push({ value: t.folder, label: tilde(t.folder), description: "this conversation's folder" });
 		// A home folder holds pine's own files and is refused anyway, so it is not offered.
-		if (here !== t.folder && here !== os.homedir() && here !== "/") items.push({ value: here, label: tilde(here), description: "where pine was started" });
+		// Where pine was started is a folder of this computer, which another machine's pine does not have.
+		if (!remote && here !== t.folder && here !== os.homedir() && here !== "/") items.push({ value: here, label: tilde(here), description: "where pine was started" });
 		for (const u of used) if (!items.some((i) => i.value === u.folder) && items.length < 9) items.push({ value: u.folder, label: tilde(u.folder), description: `also open in ${u.session}` });
-		items.push({ value: "pick", label: "Pick a folder …", description: "choose one, or type /folder <path>" });
+		items.push({ value: "pick", label: "Pick a folder …", description: remote ? `type /folder <path on ${remote}>` : "choose one, or type /folder <path>" });
 		const chosen = await this.pick(`Folder for ${t.agent}·${t.session}`, items, t.folder ?? "none");
 		if (!chosen || chosen === (t.folder ?? "none")) return;
 		if (chosen !== "pick") return this.setFolder(t, chosen === "none" ? null : chosen);
+		if (remote) return this.flash(`type /folder <path on ${remote}>`, 6000);
 		const picked = await (this.opts.chooseFolder ?? chooseFolder)();
 		// The window of the chooser took the keyboard; the screen is drawn anew when it is back.
 		this.tui.requestRender(true);
@@ -1688,11 +1697,14 @@ export class PineTui {
 	 */
 	async openFolder(dir: string, worktree?: string | true): Promise<void> {
 		const agent = (this.agents.find((a) => a.main) ?? this.agents[0]).id;
-		let full = path.resolve(expandHome(dir));
-		try {
-			full = fs.realpathSync(full);
-		} catch {
-			return void this.say(this.active, c.red(`${dir} is not a folder`));
+		// A folder of another machine is that machine's to find: it is passed on as it was written.
+		let full = this.opts.remote ? dir.replace(/(.)\/+$/, "$1") : path.resolve(expandHome(dir));
+		if (!this.opts.remote) {
+			try {
+				full = fs.realpathSync(full);
+			} catch {
+				return void this.say(this.active, c.red(`${dir} is not a folder`));
+			}
 		}
 		const used = await this.client.folders(agent).catch(() => [] as Array<{ session: string; folder: string }>);
 		const have = used.find((u) => u.folder === full);
@@ -2126,7 +2138,7 @@ export class PineTui {
 		if (paste && this.active.kind === "chat") {
 			// One folder dropped on the terminal: that is the folder this conversation is to work in.
 			const folder = droppedFiles(paste[1], true);
-			if (folder?.length === 1) return void this.setFolder(this.active, folder[0]), true;
+			if (folder?.length === 1) return void (this.opts.remote ? this.flash(`that folder is on this computer; type /folder <path on ${this.opts.remote}>`, 6000) : this.setFolder(this.active, folder[0])), true;
 			const files = droppedFiles(paste[1]);
 			if (files) return files.forEach((f) => this.attachFile(f)), true;
 		}
@@ -2641,7 +2653,7 @@ export class PineTui {
 					if (!t) return;
 					const wanted = args.trim();
 					if (!wanted) return this.pickFolder();
-					return this.setFolder(t, /^(none|off|-)$/i.test(wanted) ? null : (droppedFiles(wanted, true)?.[0] ?? wanted));
+					return this.setFolder(t, /^(none|off|-)$/i.test(wanted) ? null : this.opts.remote ? wanted : (droppedFiles(wanted, true)?.[0] ?? wanted));
 				},
 			},
 			{

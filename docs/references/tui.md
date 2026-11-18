@@ -36,6 +36,32 @@ running it attaches to it; otherwise it starts one inside the same process, logs
 that folder. That, and the pane that shows git changes, files and tool output beside a
 conversation, are described in [coding.md](coding.md).
 
+## The pine of another machine
+
+```bash
+pine --ssh you@server
+```
+
+opens the same UI on the pine of another machine: a server, a desktop at home, anything you
+reach with `ssh`. Write the machine as you would after `ssh` (`server`, `user@server`, a name
+from `~/.ssh/config`); anything else, such as an option for ssh, is refused before ssh runs. No
+pine home is needed on this computer.
+
+It connects as the Pine app does (Settings > Environments, [desktop.md](desktop.md)): one ssh
+connection runs `pine service` there, which attaches to the pine that runs or starts one, and
+forwards a port of this computer to that pine's own loopback and nowhere else. Its control API
+stays closed to the network, and its token stays in this process. A pine the connection started
+there stops when you quit; one that was running goes on.
+
+| | |
+|---|---|
+| Needs | ssh that signs you in without a password (a key in `ssh-agent`, or Tailscale SSH), a machine ssh knows already (connect once with `ssh` and accept its key), and a pine with a home there (`pine init`; an older pine without `pine service`: `pine update` there) |
+| Folders | Paths on that machine. `pine --ssh you@server ~/projects/site` opens a tab on that folder there; `/folder <path>` takes a path there as written (`~` is the home there). Where pine was started, the system's folder chooser and a folder dropped on the terminal are this computer's, so they are not offered |
+| Files you attach | Read here and sent with the message, as always |
+| Dictation, links, pictures and sound | This computer's microphone, browser and player |
+| `/mcp` | That pine's servers. A browser sign-in happens on that machine: `ssh you@server pine mcp login <name>` |
+| Commands | `--ssh` is for the UI. Run a command there: `ssh you@server pine status` |
+
 ## Mouse
 
 Everything in the two bars reacts to a click.

@@ -5,6 +5,7 @@ import path from "node:path";
 import { after, test } from "node:test";
 import { PineTui, searchItems, urlAt } from "../src/tui/app.ts";
 import { Client } from "../src/tui/client.ts";
+import { remoteMcp } from "../src/tui/run.ts";
 import { harness, type Harness, MCP_STUB, mockMsg, notesOf, sleep, until } from "./support/harness.ts";
 import { FakeTerminal, KEY } from "./support/terminal.ts";
 import { sandboxAvailable } from "../src/security.ts";
@@ -1560,4 +1561,51 @@ test("tui: the agent's list of steps is shown and kept up to date, and the agent
 	await t.h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [list("pending", "pending", "pending")] }]), trust: "untrusted" });
 	assert.match(t.h.toolResults().at(-1)!, /Tool todo not found/);
 	await t.close();
+});
+
+test("tui: on another machine's pine (pine --ssh) a folder is a path there, passed on as written, and none of this computer's is offered", async (t) => {
+	const here = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-tui-here-")));
+	t.after(() => fs.rmSync(here, { recursive: true, force: true }));
+	const ui = await open({ agents: { main: {} } }, [110, 30], { remote: "far", cwd: here, chooseFolder: async () => assert.fail("the Finder of this computer is not asked") });
+	// What reaches the other pine: the path as it was written, for it to make whole (~ is its own home there).
+	const asked: Array<string | null> = [];
+	const setFolder = ui.app.client.setFolder;
+	ui.app.client.setFolder = (agent, session, folder) => (asked.push(folder), setFolder(agent, session, folder));
+	await ui.sees("main");
+	await ui.send("/folder ~/projects/site");
+	await until(() => asked.length === 1);
+	assert.deepEqual(asked, ["~/projects/site"]);
+
+	// The menu offers no folder of this computer (where pine was started), and Pick says to type the path.
+	await ui.send("/folder");
+	await ui.sees("Folder for main·main");
+	assert.ok(!ui.text().includes("where pine was started"), ui.text());
+	const rows = ui.app.screen();
+	const y = rows.findIndex((l) => l.includes("Pick a folder"));
+	ui.term.click(rows[y].indexOf("Pick a folder") + 1, y);
+	await ui.sees("type /folder <path on far>");
+
+	// A folder dropped on the terminal is one of this computer's: it is not handed on.
+	ui.term.paste(here);
+	await ui.sees("that folder is on this computer");
+	assert.equal(asked.length, 1);
+
+	// pine --ssh <host> <folder>: the folder is the other machine's, not looked for here.
+	await ui.app.openFolder("~/projects/site/");
+	await until(() => asked.length === 2);
+	assert.equal(asked[1], "~/projects/site");
+	await ui.close();
+});
+
+test("tui: the MCP servers of another machine's pine are listed from it, and a sign-in is sent there", async () => {
+	const h = await harness({ pine: { http: { port: 0 } }, agents: { main: {} } });
+	const client = new Client(`http://127.0.0.1:${h.pine.http!.port}`, h.pine.token);
+	await client.post("/mcp", { name: "tools", server: { url: "https://mcp.example.com/mcp" } });
+	const mcp = remoteMcp(client, "me@far");
+	const listed = await mcp.list(false);
+	assert.deepEqual(listed.map((s) => [s.name, s.target]), [["tools", "https://mcp.example.com/mcp"]]);
+	let said = "";
+	assert.equal(await mcp.login("tools", (text) => (said += text)), 1);
+	assert.match(said, /ssh me@far pine mcp login tools/);
+	await h.close();
 });

@@ -252,6 +252,7 @@ What you type in a shell. Every command is the `pine` program with a word after 
 |---|---|
 | `pine`, `pine tui` | The terminal UI; starts a daemon inside if none is running |
 | `pine .`, `pine <folder>` | The terminal UI with one more tab: a conversation of the main agent that works in that folder (the one from last time, if there is one). A first word that is a command stays a command. See [coding.md](coding.md) |
+| `pine --ssh <host> [folder]` | The terminal UI on the pine of another machine, over SSH; a folder is one there. See [tui.md](tui.md#the-pine-of-another-machine) |
 | `pine <folder> --worktree [name]` | The same with a new conversation in a worktree of that folder's git repository: a checkout of its own on a branch `pine/<name>`. See [coding.md](coding.md#a-worktree-for-a-conversation) |
 | `pine login <provider>`, `pine logout <provider>` | Sign in to a model provider. `--api-key` or `--oauth` force the kind of sign-in |
 | `pine model add <name> <address>`, `pine model list`, `pine model remove <name>` | Add a model server of your own by its address, list them, take one out. `--context <tokens>`, `--reasoning`, `--no-reasoning` for what the server does not say. See "With a model server of your own" |

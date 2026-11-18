@@ -18,6 +18,8 @@ Start here
   pine <folder> --worktree [name] a new conversation in a worktree of that folder's git repository: a
                                   checkout of its own on a branch pine/<name>, apart from other conversations
   pine tui                        chat with your agents; starts a daemon inside if none is running
+  pine --ssh <host> [folder]      the same on the pine of another machine, over SSH: <host> as you would write
+                                  it after ssh, signing in with a key. A folder is one on that machine
   pine login <provider>           sign in to a model provider (OpenCode, Claude, ChatGPT, ...)
   pine logout <provider>
   pine model add <name> <address> [--context tokens] [--reasoning | --no-reasoning]
@@ -378,6 +380,17 @@ function folderArgument(word: string | undefined, cwd = process.cwd()): string |
 async function main(): Promise<void> {
 	const { flags, rest } = parseArgs(process.argv.slice(2));
 	let cmd = rest.shift();
+	// "pine --ssh <host>": the terminal UI on another machine's pine. A folder after it is one there,
+	// so it is not looked for here, and this computer's pine home is not needed.
+	if (flags.ssh !== undefined && flags.ssh !== false) {
+		if (typeof flags.ssh !== "string") throw new Error("--ssh takes the machine, as you would write it after ssh: pine --ssh <host>");
+		const words = cmd === "tui" ? rest : cmd === undefined ? [] : [cmd, ...rest];
+		if (words.length > 1 || (words[0] !== undefined && COMMANDS.has(words[0]))) throw new Error(`--ssh opens the terminal UI on that machine's pine. A command is run there: ssh ${flags.ssh} pine ${words.join(" ")}`);
+		if (typeof flags.home === "string") throw new Error("--home names a pine home on this computer; the other machine's pine uses its own");
+		if (flags.worktree !== undefined && flags.worktree !== false && !words[0]) throw new Error("--worktree goes with a folder: pine --ssh <host> <folder> --worktree [name]");
+		const { runRemoteTui } = await import("./tui/run.ts");
+		return runRemoteTui(flags.ssh, { folder: words[0], worktree: typeof flags.worktree === "string" ? flags.worktree : flags.worktree === true ? true : undefined });
+	}
 	// "pine ." and "pine ~/dev/project" open the terminal UI with a tab on that folder.
 	let folder = folderArgument(cmd);
 	if (folder) cmd = "tui";

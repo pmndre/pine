@@ -298,6 +298,25 @@ test("pine <folder>: a first word that is a folder opens the UI there; a path th
 	assert.doesNotMatch(await pine("status"), /No pine home at .* yet\. Create one/, "a command keeps its meaning when a folder has its name");
 });
 
+test("pine --ssh: the terminal UI on another machine's pine; a host that is an ssh option, a command, or --home is refused first", async (t) => {
+	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-ssh-arg-")));
+	t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+	const pine = (...args: string[]) => run(process.execPath, [CLI, ...args], { cwd: dir, env: { ...process.env, PINE_HOME: path.join(dir, "no-home") } }).then((r) => r.stdout + r.stderr, (e) => String(e.stdout) + String(e.stderr));
+	assert.match(await pine("--ssh"), /--ssh takes the machine/);
+	assert.match(await pine("--ssh", "-oProxyCommand=touch pwned"), /is not a host for ssh/);
+	assert.equal(fs.existsSync(path.join(dir, "pwned")), false);
+	assert.match(await pine("--ssh", "me@far", "status"), /A command is run there: ssh me@far pine status/);
+	assert.match(await pine("--ssh", "me@far", "--home", dir), /--home names a pine home on this computer/);
+	assert.match(await pine("--ssh", "me@far", "--worktree"), /--worktree goes with a folder/);
+	// A folder after it is the other machine's: not looked for here, and no pine home here is needed.
+	// (Without a terminal the UI cannot open, which is how a test sees that it was the UI that was asked for.)
+	for (const args of [["--ssh", "me@far"], ["--ssh", "me@far", "~/projects/not-on-this-computer"], ["tui", "--ssh", "me@far"]]) {
+		const said = await pine(...args);
+		assert.match(said, /needs an interactive terminal/, args.join(" "));
+		assert.doesNotMatch(said, /No pine home|is not a folder/, args.join(" "));
+	}
+});
+
 test("pine service finds this home's daemon or starts one, says where it answers on one line of JSON, and a daemon it started ends with whoever started it", async (t) => {
 	const port = await freePort();
 	const h = await harness({ pine: { http: { port }, logLevel: "warn" }, agents: { main: {} }, start: false });
