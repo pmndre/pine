@@ -373,8 +373,9 @@ export const api = {
 	todos: (agent: string, session: string) => get<Todo[]>(`${a(agent)}/todos${s(session)}`),
 	history: (agent: string, session: string, limit = 40) => get<Task[]>(`/tasks${qs({ agent, session, limit })}`),
 	tasks: (agent?: string, limit = 50) => get<Task[]>(`/tasks${qs({ agent, limit })}`),
-	// `via`: the answer is read in this app, where a shell code block has a Run button; the agent is told so.
-	prompt: (agent: string, prompt: string, session: string, attachments?: Array<{ name: string; data: string }>, whenBusy: "steer" | "queue" = "steer", mentions?: string[]) => post<{ task: number; steered?: number }>(`${a(agent)}/prompt`, { prompt, session, wait: false, attachments, whenBusy, mentions, via: "app" }),
+	// `via`: the answer is read in this app, where a shell code block has a Run button; the agent is told so. The button runs it
+	// in a terminal of this computer, so an agent of another machine's pine is not told (`runs`: false): it has no terminal here.
+	prompt: (agent: string, prompt: string, session: string, attachments?: Array<{ name: string; data: string }>, whenBusy: "steer" | "queue" = "steer", mentions?: string[], runs = true) => post<{ task: number; steered?: number }>(`${a(agent)}/prompt`, { prompt, session, wait: false, attachments, whenBusy, mentions, ...(runs ? { via: "app" } : {}) }),
 	transcript: (task: number, full = false) => get<{ task: Task; entries: TranscriptEntry[] }>(`/tasks/${task}/transcript${full ? "?full=1" : ""}`),
 	cancel: (task: number) => post<{ cancelled: boolean }>(`/tasks/${task}/cancel`),
 	reset: (agent: string, session: string) => post<{ reset: boolean }>(`${a(agent)}/reset`, { session }),

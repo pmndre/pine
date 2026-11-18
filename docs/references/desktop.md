@@ -182,6 +182,54 @@ pine packed into the app; the `pine` of your shell.
 Closing the window does not quit the app on a Mac: it, and a daemon it started, stay until
 you quit (`⌘Q`). A daemon the app started that stops answering is started again.
 
+## Environments: the pine of another machine
+
+The app can use the pine of another machine instead of the one on this computer: a server, a
+desktop at home, anything you reach with `ssh`. It uses one pine at a time. The foot of the side
+bar says which (`pine 0.23.0 · started here`, or `pine 0.23.0 · server`): a click on it lists
+This Mac and the machines you added, and Environments… leads to Settings > Environments, where
+machines are added and forgotten. The palette (`⌘K`) has "Use the pine on …" too.
+
+| What | How |
+|---|---|
+| Add a machine | Settings > Environments: type the host as you would after `ssh` (`server`, `user@server`, a name from `~/.ssh/config`) and Add. Anything else (an option for ssh, spaces, `;`) is refused before ssh ever runs. It is connected to when you pick it |
+| Use another pine | Pick it at the foot of the side bar, or Use on its line in Settings > Environments. The window shows that pine's agents, conversations and settings, and the tabs that pine keeps. The app remembers which one it used, and uses it again at its next start |
+| Switch back | The pine you left goes on: switching stops nothing, so an agent at work there finishes its task. Going back to it is immediate. Approvals and notices of a pine you are not looking at wait until you switch to it |
+| One that is not reached | The first screen says why (ssh's own words, and what to do), with Try again and Use this Mac |
+| Forget a machine | Forget on its line (not the one in use). Its connection ends |
+| Quitting | Every connection ends. A pine the app started on another machine stops with it; one that was already running there goes on. This computer's pine follows Keep pine running, as before |
+
+What is chosen is kept in the app's `prefs.json`: `hosts`, the machines you added, and `use`,
+the one in use (none: this computer's).
+
+How it connects (`src/remote.ts`): one ssh connection to the machine runs `pine service` there,
+with the PATH of your login shell there (sh, bash, zsh, fish, csh or tcsh) and nvm's node when
+pine was installed with it. It attaches to the daemon that runs there or starts one, which that
+connection then holds, as the app holds the one it starts here. Through the same connection a
+port of this computer is forwarded to the daemon's port (`ssh -O forward` through its control
+socket, so there is one sign-in): ssh binds that port itself, and when somebody else took it,
+ssh says so at once and another is tried, so nothing is sent to a port that is not ssh's. The
+forward ends at the other machine's loopback and nowhere else: a service line that names
+another address is refused. So the control API there stays closed to the network, as it is
+here: it takes requests for `127.0.0.1` only, and its token stays in the app's main process. A
+connection that breaks is made again.
+
+| Needs | |
+|---|---|
+| A key, not a password | The app has no terminal to type a password in (`BatchMode=yes`): a key in `ssh-agent` (`ssh-add`), or an SSH service that signs you in by itself, such as Tailscale SSH |
+| A machine ssh knows | The app cannot answer ssh's question whether a new machine's key is the right one: connect to it once from a terminal (`ssh user@server`) and accept the key |
+| A pine with `pine service` | An older pine is not reached: update it there with `pine update` |
+| A pine home there | `pine init` on that machine first |
+
+What is this computer's stays this computer's. With another machine's pine:
+
+| | |
+|---|---|
+| Folders | A conversation's folder is a path on that machine: choosing one asks for the path instead of opening the Finder, and a folder dropped from the Finder is refused. Show in the Finder is not offered |
+| The terminal and Run | The terminal beside a conversation and the Run button of a command in an answer are shells of this computer: they are not offered, and that pine's agents are not told about them |
+| The browser | The Browser aside shows the browser on that machine; an address you type there (`localhost:3000`) is one of that machine |
+| Settings > App | About the app and this computer's pine (home folder, Keep pine running, the browser build). It says which machine's pine is in use |
+
 ## The window
 
 ```
@@ -498,6 +546,7 @@ of pine's: the app is your own hand, like a `pine` command.
 | Skills | Every skill with whom it is for. Read one, change it, add one for all agents or one agent, remove one. A skill that lies in a folder of yours that the configuration names is shown and not changed | `add_skill`, `remove_skill`; `pine skills` |
 | Events | **Sources**: what runs, who is subscribed, the last event; add one by type (the type's options as a form, what it will do said before it is added, a password or token typed into a field of its own), subscribe an agent or all agents, end a subscription, remove. **Schedules**: add (at set times, every so often, once), remove. **Routes**: add, remove | `add_source`, `subscribe`, `add_schedule`, `add_route`; `pine sources`, `pine subscribe`, `pine schedules` |
 | Instructions | The three files for all agents in pine's home: `AGENTS.md`, `TOOLS.md`, `USER.md` | Telling the main agent something that is for all agents |
+| Environments | This computer and the machines whose pine the app can use, over SSH: add one by its host, use one, forget one. See "Environments: the pine of another machine" | `ssh` to the machine and `pine` there |
 | App | The app's own settings (appearance, colours, notifications, whether there is a newer app and whether that is asked at the start), and the pine it talks to: started here or attached, restart, home folder, the `pine` command for a terminal, and whether the browser of the web tools is on this Mac, with Fetch it when it is not | `pine browser-install` |
 
 A secret you type on these pages (a model server's key, a source's token, a provider's API

@@ -208,7 +208,7 @@ export type Picker = { title: string; items: Array<{ value: string; label: strin
 export class Store extends Model {
 	service: ServiceState = { status: "starting" };
 	connected = false;
-	prefs: Prefs = { keepRunning: false, theme: "system", notify: true, updates: true, codeFollowsPalette: true };
+	prefs: Prefs = { keepRunning: false, hosts: [], theme: "system", notify: true, updates: true, codeFollowsPalette: true };
 	platform = "darwin";
 	focused = true;
 	versions = { app: "", electron: "" };
@@ -328,6 +328,8 @@ export class Store extends Model {
 			this.touch();
 		});
 		const first = await bridge.state();
+		// Whether the event stream is up: a page loaded anew is not told it by an event.
+		this.connected = first.connected === true;
 		this.prefs = first.prefs;
 		this.platform = first.platform;
 		this.focused = first.focused;
@@ -417,9 +419,57 @@ export class Store extends Model {
 
 	private async onService(s: ServiceState): Promise<void> {
 		const was = this.service.status;
+		// Another pine than before (another machine was picked): nothing of the last one is kept, not even what an agent of the same name was doing.
+		if (s.host !== this.service.host) this.forgetPine();
 		this.service = s;
 		this.touch();
 		if (s.status === "ready" && (was !== "ready" || !this.agents.length)) await this.load();
+	}
+
+	/** What the page knew of the pine it used, let go of when it uses another. */
+	private forgetPine(): void {
+		this.agents = [];
+		this.tabs = [];
+		this.active = undefined;
+		this.conversations = new Map();
+		this.taints = new Map();
+		this.sessionModes = new Map();
+		this.pins = new Set();
+		this.busy = new Map();
+		this.said = [];
+		this.titles = new Map();
+		this.saidAt = 0;
+		this.asking = undefined;
+		this.asked = new Set();
+		this.pendingFind = undefined;
+		this.settingsAgent = undefined;
+		this.browser = undefined;
+		this.browserAsk = false;
+		for (const t of this.timers) clearInterval(t);
+		this.timers = [];
+	}
+
+	/** The machine whose pine the app uses, by its short name; none when it is this computer's. */
+	get remote(): string | undefined {
+		const s = this.service;
+		return s.status === "ready" ? s.label : s.host;
+	}
+
+	/** Use the pine of a machine of the list, or with none this computer's: the window shows that pine's agents and its own tabs. */
+	async useMachine(host?: string): Promise<void> {
+		if (host === this.service.host && this.service.status === "ready") return;
+		await this.attempt(() => bridge.use(host));
+	}
+
+	/**
+	 * A folder for a conversation: chosen in the Finder for this computer's pine; for another
+	 * machine's, its path there is typed, since the Finder shows this computer's folders.
+	 */
+	async chooseFolder(title: string): Promise<string | undefined> {
+		const on = this.remote;
+		if (!on) return bridge.pickFolder(title);
+		const typed = await this.pick({ title: `${title} (on ${on})`, items: [], free: true, placeholder: `The folder's full path on ${on}, such as ~/projects/site` });
+		return typed?.trim() || undefined;
 	}
 
 	/** Everything that is asked once the daemon answers: the agents, the tabs of last time, what waits for an answer. */
@@ -430,7 +480,8 @@ export class Store extends Model {
 			return this.flash(errText(e), "bad");
 		}
 		for (const a of this.agents) learnHome(a.workspace);
-		void this.checkBrowser(true);
+		// The browser build is fetched onto this computer: another machine's pine is not asked about it here.
+		if (!this.remote) void this.checkBrowser(true);
 		for (const t of this.timers) clearInterval(t);
 		// The app shows an agent's browser itself, in its aside: the daemon is told so while the app runs, and the browser opens no window.
 		const embedded = () => void api.browserEmbedded().catch(() => {});
@@ -626,6 +677,8 @@ export class Store extends Model {
 	 * with `ask` that is put to the owner once for each version of pine, at the start.
 	 */
 	async checkBrowser(ask = false): Promise<void> {
+		// The build is fetched onto this computer, for this computer's pine.
+		if (this.remote) return void ((this.browser = undefined), this.touch());
 		const over = await api.overview().catch(() => undefined);
 		if (!over) return;
 		this.browser = over.browser;
@@ -934,7 +987,7 @@ export class Store extends Model {
 	/** A new conversation in a worktree: of the folder of the conversation in front, or of one the owner picks. */
 	async newInWorktree(): Promise<void> {
 		const front = this.active?.kind === "chat" ? this.active : undefined;
-		const dir = front?.folder && !front.worktree ? front.folder : await bridge.pickFolder("A new conversation in a worktree of which repository?");
+		const dir = front?.folder && !front.worktree ? front.folder : await this.chooseFolder("A new conversation in a worktree of which repository?");
 		if (dir) await this.openFolder(dir, front?.folder && !front.worktree ? front.agent : undefined, true);
 	}
 
@@ -1069,7 +1122,7 @@ export class Store extends Model {
 		try {
 			const busy = tab.busy;
 			const mentions = [...text.matchAll(/(?:^|\s)@([^\s@]+)/g)].map((m) => m[1]).filter((m) => tab.files.has(m.split("#")[0]));
-			const { task, steered } = await api.prompt(tab.agent, text, tab.session, files.length ? files.map((f) => ({ name: f.name, data: f.data })) : undefined, whenBusy, mentions.length ? mentions : undefined);
+			const { task, steered } = await api.prompt(tab.agent, text, tab.session, files.length ? files.map((f) => ({ name: f.name, data: f.data })) : undefined, whenBusy, mentions.length ? mentions : undefined, !this.remote);
 			tab.roots.add(task);
 			if (steered === undefined) (mine.task = task), mine.v++;
 			if (steered !== undefined) {
@@ -1159,11 +1212,11 @@ export class Store extends Model {
 		const used = await api.folders(tab.agent).catch(() => [] as Array<{ session: string; folder: string }>);
 		const items = [{ value: "none", label: "No folder", about: `${tab.agent}'s own workspace` }, ...(tab.folder ? [{ value: tab.folder, label: tilde(tab.folder), about: "this conversation's folder" }] : [])];
 		for (const u of used) if (!items.some((i) => i.value === u.folder) && items.length < 9) items.push({ value: u.folder, label: tilde(u.folder), about: `also open in ${u.session}` });
-		items.push({ value: "pick", label: "Choose a folder…", about: "any folder of yours" });
+		items.push({ value: "pick", label: "Choose a folder…", about: this.remote ? `any folder on ${this.remote}` : "any folder of yours" });
 		const chosen = await this.pick({ title: `Folder for ${tab.agent} · ${tab.session}`, items, current: tab.folder ?? "none" });
 		if (!chosen || chosen === (tab.folder ?? "none")) return;
 		if (chosen !== "pick") return this.setFolder(tab, chosen === "none" ? null : chosen);
-		const picked = await bridge.pickFolder(`Folder for ${tab.agent} · ${tab.session}`);
+		const picked = await this.chooseFolder(`Folder for ${tab.agent} · ${tab.session}`);
 		if (picked) await this.setFolder(tab, picked);
 	}
 
@@ -1477,6 +1530,8 @@ export class Store extends Model {
 	 * the answer is in, as it was shown (runnable.ts), and the terminal shown.
 	 */
 	runInTerminal(agent: string, session: string, code: string): void {
+		// The terminal is a shell of this computer: a conversation of another machine's pine works there, not here.
+		if (this.remote) return this.flash(`The terminal is a shell on this computer, and this conversation works on ${this.remote}.`, "warn", 8000);
 		const ok = runnable(code);
 		if (!ok.ok) return this.flash(ok.why, "warn", 8000);
 		const tab = this.tabs.find((t) => t.kind === "chat" && t.agent === agent && t.session === session) ?? (this.active?.kind === "chat" ? this.active : undefined);
@@ -1492,7 +1547,8 @@ export class Store extends Model {
 	async command(name: string): Promise<void> {
 		const tab = this.active;
 		const chat = tab?.kind === "chat" ? tab : undefined;
-		if (name.startsWith("folder:")) return this.openFolder(name.slice(7));
+		// A folder opened with the app from the Finder is this computer's.
+		if (name.startsWith("folder:")) return this.remote ? this.flash(`That folder is on this computer, and the app uses the pine on ${this.remote}. Use this Mac's pine to open it.`, "warn", 7000) : this.openFolder(name.slice(7));
 		if (name.startsWith("focus:")) return this.activate(this.tabs.find((t) => t.key === name.slice(6)));
 		if (name.startsWith("tab-")) return this.activate(this.tabs[Number(name.slice(4)) - 1]);
 		if (name.startsWith("code-")) {
@@ -1531,7 +1587,7 @@ export class Store extends Model {
 			case "new-worktree":
 				return this.newInWorktree();
 			case "open-folder": {
-				const dir = await bridge.pickFolder("Open a folder for a conversation");
+				const dir = await this.chooseFolder("Open a folder for a conversation");
 				return dir ? this.openFolder(dir) : undefined;
 			}
 			case "close":

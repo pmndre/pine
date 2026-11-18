@@ -3,6 +3,7 @@
 // does, and this calls its routes under /__pine/. What only the app can do (menus, notifications,
 // dictation, updates, the dock) does nothing here. In the app and in Storybook there is a
 // `window.pine` already, and in a build `__PINE_PREVIEW__` is false and none of this is kept.
+// The preview's pine is the one its server started: other machines are the app's only.
 import type { Bridge } from "../electron/preload.ts";
 import { cleanPalette } from "./theme.ts";
 
@@ -14,7 +15,7 @@ function standIn(): Bridge {
 	const on = (set: Set<Listener>) => (fn: Listener) => (set.add(fn), () => void set.delete(fn));
 	const never = () => () => undefined;
 	const tell = (set: Set<Listener>, ...args: unknown[]) => set.forEach((fn) => fn(...args));
-	let prefs: Record<string, unknown> = { keepRunning: false, theme: "system", notify: false, updates: false, codeFollowsPalette: true };
+	let prefs: Record<string, unknown> = { keepRunning: false, hosts: [], theme: "system", notify: false, updates: false, codeFollowsPalette: true };
 
 	const service = async () => {
 		const res = await fetch("/__pine/state");
@@ -57,6 +58,13 @@ function standIn(): Bridge {
 			const { codeFollowsPalette, ...rest } = change;
 			return (prefs = { ...prefs, ...rest, ...("palette" in change ? { palette: cleanPalette(change.palette) } : {}), ...(typeof codeFollowsPalette === "boolean" ? { codeFollowsPalette } : {}) });
 		},
+		use: async (host?: string) => {
+			if (host) throw new Error("Other machines are in the Pine app only.");
+		},
+		addHost: async () => {
+			throw new Error("Other machines are in the Pine app only.");
+		},
+		forgetHost: async () => ({ ...prefs }),
 		// No system dialog in a browser: a folder is named by its path.
 		pickFolder: async (title?: string) => window.prompt(`${title ?? "Choose a folder"}: its path`)?.trim() || undefined,
 		saveText: async (name: string, text: string) => {

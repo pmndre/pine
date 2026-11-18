@@ -1,7 +1,7 @@
 // The window: the list of agents and conversations at the side, the tabs along the top, one
 // conversation in the middle with its panel, and whatever lies over them for a moment (a list
 // to pick from, a question, the palette).
-import { ArrowUpIcon, AudioLinesIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, GlobeIcon, ListIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, Trash2Icon, XIcon } from "lucide-react";
+import { ArrowUpIcon, AudioLinesIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronsUpDownIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, GlobeIcon, ListIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useMediaQuery } from "usehooks-ts";
 import { Toggle } from "@/components/ui/toggle";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "cn";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { type AgentInfo, api, type Conversation as Conv } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { CODE_KEY, CodePanel } from "./CodePanel.tsx";
@@ -59,9 +60,12 @@ function Gate() {
 		if (code === 0) await bridge.retry();
 		else s.flash("pine init did not finish. What it said is shown above.", "bad");
 	};
+	const host = state.host;
 	const [title, about, actions]: [string, React.ReactNode, React.ReactNode] =
 		state.status === "starting"
-			? ["Starting pine", "Looking for a running pine, or starting one…", <Spinner key="s" />]
+			? host
+				? [`Connecting to ${host}`, "Reaching its pine over SSH, or starting one there…", <div key="s" className="flex items-center gap-2"><Spinner /><Button variant="outline" onClick={() => void s.useMachine()}>Use this Mac</Button></div>]
+				: ["Starting pine", "Looking for a running pine, or starting one…", <Spinner key="s" />]
 			: state.status === "error" && state.kind === "no-home"
 				? [
 						"Welcome to pine",
@@ -76,11 +80,12 @@ function Gate() {
 					]
 				: state.status === "error"
 					? [
-							state.kind === "no-node" ? "pine needs Node" : state.kind === "no-pine" ? "pine is not installed" : "pine did not start",
+							state.kind === "no-node" ? "pine needs Node" : state.kind === "no-pine" ? "pine is not installed" : state.kind === "ssh" ? `${host} is not reached over SSH` : host ? `pine on ${host} did not start` : "pine did not start",
 							state.message,
 							<div key="b" className="flex items-center gap-2">
 								<Button onClick={() => void bridge.retry()}>Try again</Button>
 								{state.kind === "no-node" ? <Button variant="outline" onClick={() => void bridge.open("https://nodejs.org")}>nodejs.org</Button> : null}
+								{host ? <Button variant="outline" onClick={() => void s.useMachine()}>Use this Mac</Button> : null}
 							</div>,
 						]
 					: ["Loading your agents…", "", <Spinner key="s" />];
@@ -214,7 +219,7 @@ function AgentGroup({ a }: { a: AgentInfo }) {
 	const working = s.isBusy(a.id) || tabs.some((t) => t.busy);
 	const unread = tabs.some((t) => t.unread);
 	const pickFolder = async () => {
-		const dir = await bridge.pickFolder(`A folder for a conversation with ${a.id}`);
+		const dir = await s.chooseFolder(`A folder for a conversation with ${a.id}`);
 		if (dir) await s.openFolder(dir, a.id);
 	};
 	const menu = async () => {
@@ -265,7 +270,6 @@ function AgentGroup({ a }: { a: AgentInfo }) {
 
 function Sidebar() {
 	const s = useModel(store);
-	const ready = s.service.status === "ready";
 	const front = s.active;
 	const newer = s.update?.status === "newer" ? s.update : undefined;
 	const { isMobile } = useSidebar();
@@ -307,14 +311,58 @@ function Sidebar() {
 					<SidebarMenuItem className="app-no-drag">
 						<SidebarMenuButton isActive={front?.kind === "settings"} onClick={() => s.openSettings()}><SettingsIcon /><span className="grow min-w-0 flex-1">Settings</span><Kbd>⌘,</Kbd></SidebarMenuButton>
 					</SidebarMenuItem>
+					<Machines />
 				</SidebarMenu>
-				<div data-slot="service-status" className="flex items-center gap-2 px-2 pt-1.5 pb-0.5 text-xs text-outline app-no-drag" title={s.service.status === "ready" ? `${s.service.home} · ${s.service.started ? "started by this app" : "a pine that was already running"}` : ""}>
-					{/* The dot stands in the place of the icons in the rows above it: its middle under theirs, and what is written beside it under their names. */}
-					<span className="grid size-4 flex-none place-items-center"><span className={cn(DOT, !ready ? "bg-warn" : s.connected ? "bg-primary" : "bg-destructive")} /></span>
-					<span className="truncate">{!ready ? "starting" : !s.connected ? "pine does not answer" : `pine${s.service.status === "ready" && s.service.version ? ` ${s.service.version}` : ""} · ${s.service.status === "ready" && s.service.started ? "started here" : "attached"}`}</span>
-				</div>
 			</SidebarFooter>
 		</SidebarRoot>
+	);
+}
+
+/**
+ * The pine the app uses, at the foot of the side bar, as large as the rows above it: its state and
+ * version, and on which machine it runs. A click lists the machines (this one, and those added in
+ * Settings > Environments) to use another, and leads to those settings.
+ */
+function Machines() {
+	const s = useModel(store);
+	const state = s.service;
+	const here = s.platform === "darwin" ? "This Mac" : "This computer";
+	const on = state.status === "ready" ? state.label : state.host;
+	const text =
+		state.status !== "ready"
+			? state.host
+				? state.status === "error"
+					? `${state.host} not reached`
+					: `connecting to ${state.host}`
+				: "starting"
+			: !s.connected
+				? "pine does not answer"
+				: `pine${state.version ? ` ${state.version}` : ""} · ${on ?? (state.started ? "started here" : "attached")}`;
+	const about = state.status === "ready" ? `${state.home} · ${state.host ? `over SSH (${state.host})` : state.started ? "started by this app" : "a pine that was already running"}` : "";
+	return (
+		<SidebarMenuItem className="app-no-drag">
+			<DropdownMenu>
+				<DropdownMenuTrigger render={<SidebarMenuButton data-slot="service-status" title={about} aria-label={`The pine the app uses: ${text}. Use another one`} />}>
+					{/* The dot stands in the place of the icons in the rows above it: its middle under theirs, and what is written beside it under their names. */}
+					<span className="grid size-4 flex-none place-items-center"><span className={cn(DOT, state.status === "error" ? "bg-destructive" : state.status !== "ready" ? "bg-warn" : s.connected ? "bg-primary" : "bg-destructive")} /></span>
+					<span className="min-w-0 flex-1 truncate">{text}</span>
+					<ChevronsUpDownIcon className="text-outline" />
+				</DropdownMenuTrigger>
+				<DropdownMenuContent side="top" className="min-w-56">
+					<DropdownMenuGroup>
+						<DropdownMenuLabel>Use the pine on</DropdownMenuLabel>
+						<DropdownMenuRadioGroup value={state.host ?? ""} onValueChange={(host: string) => void s.useMachine(host || undefined)}>
+							<DropdownMenuRadioItem value="" closeOnClick><LaptopIcon />{here}</DropdownMenuRadioItem>
+							{s.prefs.hosts.map((host) => (
+								<DropdownMenuRadioItem key={host} value={host} closeOnClick data-host={host}><ServerIcon /><span className="truncate">{host}</span></DropdownMenuRadioItem>
+							))}
+						</DropdownMenuRadioGroup>
+					</DropdownMenuGroup>
+					<DropdownMenuSeparator />
+					<DropdownMenuItem onClick={() => s.openSettings("environments")}><SettingsIcon />Environments…</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</SidebarMenuItem>
 	);
 }
 

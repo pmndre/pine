@@ -91,6 +91,9 @@ src/
                     functions as the tools, without the question (the token is the owner)
   service.ts        `ensureDaemon`: the daemon of a home, found or started in this process. The terminal UI uses it
                     directly, another program through `pine service`
+  remote.ts         the pine of another machine over SSH: the host checked to be no option, `pine service` run there,
+                    a port of this computer forwarded to its loopback and nowhere else. Node's own modules only: the
+                    Pine app's main process carries it (Settings > Environments)
   limiter.ts        model slots with priority
   catalogue.ts      how tools are declared to the model in the owner's conversations: families (one declared tool for a group, an
                     action for each tool, the call carried out by the tool itself), short declarations, arguments that are

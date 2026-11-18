@@ -215,11 +215,12 @@ function Summary({ children }: React.ComponentProps<"summary"> & ExtraProps) {
 
 const DefaultCode = defaultComponents.code as React.ComponentType<React.ComponentProps<"code"> & ExtraProps>;
 
-/** Code: Streamdown's own, and for a block of shell commands in a conversation, the same block with a Run button. */
+/** Code: Streamdown's own, and for a block of shell commands in a conversation, the same block with a Run button.
+ *  The button runs it in a terminal of this computer: where the app uses another machine's pine, there is none. */
 function Code(props: React.ComponentProps<"code"> & ExtraProps) {
 	const where = useContext(WhereContext);
 	const language = /(?:^|\s)language-(\S+)/.exec(props.className ?? "")?.[1]?.toLowerCase() ?? "";
-	if (!("data-block" in props) || !where?.session || !SHELLS.has(language)) return createElement(DefaultCode, props);
+	if (!("data-block" in props) || !where?.session || !SHELLS.has(language) || store.remote) return createElement(DefaultCode, props);
 	return <ShellBlock code={textOf(props.node).replace(/\n$/, "")} language={language} agent={where.agent} session={where.session} />;
 }
 

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { buildVoice, Listening, NOT_HERE } from "../../src/tui/voice.ts";
 import { type Command, install, look, remove, said } from "./command.ts";
 import { callDaemon, followEvents, mediaFromDaemon, pageCsp } from "./daemon.ts";
-import { connect, findPine, type Launch, loginEnv, pineRoot, runPine, type Service, ServiceError } from "./service.ts";
+import { connect, connectSsh, findPine, type Launch, loginEnv, pineRoot, readHosts, runPine, type Service, ServiceError, sshHost } from "./service.ts";
 import { Terminals } from "./terminal.ts";
 import { LATEST, lookForUpdate, type Update } from "./updates.ts";
 import { cleanPalette, DEFAULT_PALETTE, type Palette } from "../src/theme.ts";
@@ -48,6 +48,10 @@ interface Prefs {
 	home?: string;
 	/** A daemon this app started goes on when the app quits. */
 	keepRunning: boolean;
+	/** Other machines whose pine the app can use, each a host for ssh (Settings > Environments). */
+	hosts: string[];
+	/** The one of them the app uses; none: the pine of this computer. */
+	use?: string;
 	theme: "system" | "light" | "dark";
 	notify: boolean;
 	/** Whether GitHub is asked for a newer app when this one starts. */
@@ -62,7 +66,7 @@ interface Prefs {
 }
 
 const prefsFile = () => path.join(app.getPath("userData"), "prefs.json");
-let prefs: Prefs = { keepRunning: false, theme: "system", notify: true, updates: true, commandTried: false, codeFollowsPalette: true };
+let prefs: Prefs = { keepRunning: false, hosts: [], theme: "system", notify: true, updates: true, commandTried: false, codeFollowsPalette: true };
 
 function loadPrefs(): void {
 	try {
@@ -70,6 +74,8 @@ function loadPrefs(): void {
 		prefs = {
 			home: typeof raw.home === "string" && raw.home ? raw.home : undefined,
 			keepRunning: raw.keepRunning === true,
+			hosts: readHosts(raw.hosts),
+			use: undefined,
 			theme: raw.theme === "light" || raw.theme === "dark" ? raw.theme : "system",
 			notify: raw.notify !== false,
 			updates: raw.updates !== false,
@@ -78,6 +84,8 @@ function loadPrefs(): void {
 			codeFollowsPalette: raw.codeFollowsPalette !== false,
 			bounds: raw.bounds && Number(raw.bounds.width) > 300 && Number(raw.bounds.height) > 200 ? raw.bounds : undefined,
 		};
+		// Only a machine that is in the list: what else might be written there is not connected to.
+		if (typeof raw.use === "string" && prefs.hosts.includes(raw.use)) prefs.use = raw.use;
 	} catch {
 		// first start
 	}
@@ -111,13 +119,19 @@ function savePrefs(): void {
 
 // ---- the daemon --------------------------------------------------------------------------------
 
-type ServiceState = { status: "starting" } | { status: "ready"; mode: string; started: boolean; home: string; version?: string; from: string } | { status: "error"; kind: ServiceError["kind"]; message: string };
+// One pine at a time: this computer's, or another machine's over SSH (Settings > Environments). The
+// page knows only that there is one; which it is, it is told in the state (`host`, `label`).
+type ServiceState = { status: "starting"; host?: string } | { status: "ready"; mode: string; started: boolean; home: string; version?: string; from: string; host?: string; label?: string } | { status: "error"; kind: ServiceError["kind"]; message: string; host?: string };
 
 let win: BrowserWindow | undefined;
 let service: Service | undefined;
 let launch: Launch | undefined;
 let state: ServiceState = { status: "starting" };
 let stream: AbortController | undefined;
+/** Whether the event stream of the pine in use is up: told again to a page that was loaded anew, which knows nothing of it. */
+let connected = false;
+/** Counts up with each start, so that a start that was overtaken (another machine was picked meanwhile) lets go of what it found. */
+let round = 0;
 let quitting = false;
 let listening: Listening | undefined;
 
@@ -139,16 +153,62 @@ function setState(next: ServiceState): void {
 
 async function startService(): Promise<void> {
 	stream?.abort();
-	setState({ status: "starting" });
+	const mine = ++round;
+	const host = prefs.use;
+	service = undefined;
+	connected = false;
+	setState({ status: "starting", host });
 	try {
-		launch = await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
-		service = await connect(launch, { home: prefs.home ?? process.env.PINE_HOME, keep: prefs.keepRunning });
-		setState({ status: "ready", mode: service.mode, started: service.started, home: service.home, version: service.version, from: launch.from });
-		follow(service);
+		let s = held.get(host ?? "");
+		// One held from before answers still: it is used again at once. One that does not is let go of and made anew.
+		if (s && !(await answers(s))) {
+			held.delete(host ?? "");
+			void letGo(s);
+			s = undefined;
+		}
+		if (!s) {
+			const made = host ? await connectSsh(host, await loginEnv()) : await connect((launch = await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined)), { home: prefs.home ?? process.env.PINE_HOME, keep: prefs.keepRunning });
+			// Asked for twice (Try again while it connected): the one that came first is kept.
+			const first = held.get(host ?? "");
+			if (first) void letGo(made);
+			else held.set(host ?? "", made);
+			s = first ?? made;
+		}
+		// Another machine was picked while this one connected: it stays held, and the other is shown.
+		if (mine !== round) return;
+		service = s;
+		setState({ status: "ready", mode: s.mode, started: s.started, home: s.home, version: s.version, from: host ? `ssh ${host}` : (launch?.from ?? ""), host: s.host, label: s.label });
+		follow(s);
 	} catch (e) {
-		service = undefined;
-		setState({ status: "error", kind: e instanceof ServiceError ? e.kind : "failed", message: e instanceof Error ? e.message : String(e) });
+		if (mine !== round) return;
+		setState({ status: "error", kind: e instanceof ServiceError ? e.kind : "failed", message: e instanceof Error ? e.message : String(e), host });
 	}
+}
+
+/**
+ * The pines this app holds: this computer's ("") and each machine's it used, by host. Switching
+ * changes which one the window shows and lets go of none, so that an agent at work in one goes on
+ * while another is shown. They are let go of when the app quits.
+ */
+const held = new Map<string, Service>();
+
+/** Whether a pine still answers: one on another machine may have lost its connection meanwhile. */
+const answers = (s: Service) => fetch(`${s.base}/health`, { signal: AbortSignal.timeout(2500) }).then((r) => r.ok, () => false);
+
+/** Lets go of a pine: the SSH connection to another machine ends (and a pine it started there); one this app started here stops, unless it is to go on. */
+async function letGo(s: Service | undefined): Promise<void> {
+	if (s?.host || (s?.started && !prefs.keepRunning)) await s.stop();
+}
+
+/** The app shows another pine: this computer's (no host) or a machine's of the list. The tabs are that pine's own. */
+async function use(host: string | undefined): Promise<void> {
+	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list: add it in Settings > Environments.");
+	if (host === prefs.use && service) return;
+	prefs.use = host;
+	savePrefs();
+	// The terminals are in the folders of the other pine's conversations.
+	terminals.closeAll();
+	await startService();
 }
 
 /** The daemon's live events, handed to the page in small batches (`followEvents`). */
@@ -156,10 +216,16 @@ function follow(s: Service): void {
 	stream = new AbortController();
 	followEvents(s, stream.signal, {
 		batch: (events) => send("pine:events", events),
-		connection: (up) => send("pine:connection", up),
+		connection: (up) => {
+			connected = up;
+			send("pine:connection", up);
+		},
 		// A daemon this app started and that is gone will not come back by waiting: start it again.
+		// Nor does an SSH connection that broke: it is made again.
 		lost: (times) => {
-			if (times !== 5 || !s.started || quitting) return false;
+			if (times !== 5 || !(s.started || s.host) || quitting) return false;
+			if (held.get(s.host ?? "") === s) held.delete(s.host ?? "");
+			void letGo(s);
 			void startService();
 			return true;
 		},
@@ -430,7 +496,7 @@ function handle<T extends unknown[]>(channel: string, fn: (...args: T) => unknow
 function wire(): void {
 	// "updated" fires both when Settings sets themeSource and when the system's own appearance flips.
 	nativeTheme.on("updated", refreshBackground);
-	handle("pine:state", () => ({ state, home: prefs.home ?? process.env.PINE_HOME, prefs: { ...prefs, bounds: undefined }, platform: process.platform, focused: Boolean(win?.isFocused()), updates: Boolean(RELEASE_API), versions: { app: app.getVersion(), electron: process.versions.electron } }));
+	handle("pine:state", () => ({ state, connected: Boolean(service) && connected, home: prefs.home ?? process.env.PINE_HOME, prefs: { ...prefs, bounds: undefined }, platform: process.platform, focused: Boolean(win?.isFocused()), updates: Boolean(RELEASE_API), versions: { app: app.getVersion(), electron: process.versions.electron } }));
 	handle("pine:call", (method: string, url: string, body?: unknown) => callDaemon(service, method, url, body));
 	handle("pine:retry", () => startService());
 	handle("pine:update", (again?: boolean) => update(again === true));
@@ -438,6 +504,7 @@ function wire(): void {
 		// Only a daemon of this app's own is its to restart; another one is somebody's terminal.
 		if (!service?.started) throw new Error("this pine was started somewhere else (a terminal, a service). Restart it there.");
 		stream?.abort();
+		held.delete(service.host ?? "");
 		await service.stop();
 		await startService();
 	});
@@ -456,13 +523,44 @@ function wire(): void {
 		const env = await loginEnv();
 		return worded(action === "install" ? await install(RESOURCES, env) : action === "remove" ? await remove(RESOURCES, env) : look(RESOURCES, env));
 	});
+	handle("pine:use", (host?: string) => use(typeof host === "string" ? host : undefined));
+	// A machine is added by its name alone; it is connected to when it is picked.
+	handle("pine:hosts-add", (value: string) => {
+		const host = sshHost(String(value ?? ""))?.host;
+		if (!host) throw new Error("Write the machine as you would after ssh: host or user@host.");
+		if (!prefs.hosts.includes(host)) {
+			if (prefs.hosts.length >= 20) throw new Error("There are 20 machines in the list already: forget one first.");
+			prefs.hosts.push(host);
+			savePrefs();
+		}
+		return { ...prefs, bounds: undefined };
+	});
+	handle("pine:hosts-forget", (host: string) => {
+		if (host === prefs.use) throw new Error("The app uses this machine now. Use another one first.");
+		prefs.hosts = prefs.hosts.filter((h) => h !== host);
+		savePrefs();
+		// Its connection ends, and a pine it started there with it.
+		const s = held.get(String(host));
+		if (s) (held.delete(String(host)), void letGo(s));
+		return { ...prefs, bounds: undefined };
+	});
 	handle("pine:prefs", (change: Partial<Prefs>) => {
 		if (change.theme === "system" || change.theme === "light" || change.theme === "dark") nativeTheme.themeSource = prefs.theme = change.theme;
 		if (typeof change.notify === "boolean") prefs.notify = change.notify;
 		if (typeof change.updates === "boolean") prefs.updates = change.updates;
 		if (typeof change.keepRunning === "boolean") prefs.keepRunning = change.keepRunning;
 		if (typeof change.codeFollowsPalette === "boolean") prefs.codeFollowsPalette = change.codeFollowsPalette;
-		if ("home" in change) prefs.home = typeof change.home === "string" && change.home.trim() ? change.home.trim() : undefined;
+		if ("home" in change) {
+			const home = typeof change.home === "string" && change.home.trim() ? change.home.trim() : undefined;
+			// Another home is another pine: the one held for this computer is not used again (the page restarts or reconnects).
+			const old = held.get("");
+			if (home !== prefs.home && old) {
+				held.delete("");
+				// One that is not on screen is let go of here; the one on screen, by the restart that follows.
+				if (old !== service) void letGo(old);
+			}
+			prefs.home = home;
+		}
 		// Reset sends none: nothing is stored, and the page draws pine's default.
 		if ("palette" in change) prefs.palette = cleanPalette(change.palette);
 		// A change of theme reaches the window through nativeTheme's "updated" (see wire()).
@@ -608,12 +706,14 @@ else {
 		if (quitting) return;
 		savePrefs();
 		terminals.closeAll();
-		if (!service?.started || prefs.keepRunning) return;
-		// The daemon this app started ends with it, as the terminal UI's does: its agents are stopped
+		// The connections to other machines end with the app, and a pine one started there with it.
+		const going = [...held.values()].filter((s) => s.host || (s.started && !prefs.keepRunning));
+		if (!going.length) return;
+		// A daemon this app started ends with it, as the terminal UI's does: its agents are stopped
 		// and its database closed before the app is gone.
 		e.preventDefault();
 		quitting = true;
 		stream?.abort();
-		void service.stop().finally(() => app.quit());
+		void Promise.all(going.map((s) => s.stop())).finally(() => app.quit());
 	});
 }

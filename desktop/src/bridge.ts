@@ -10,11 +10,16 @@ declare global {
 	const __PINE_PREVIEW__: boolean;
 }
 
-export type ServiceState = { status: "starting" } | { status: "ready"; mode: string; started: boolean; home: string; version?: string; from: string } | { status: "error"; kind: "no-home" | "no-node" | "no-pine" | "failed"; message: string };
+/** The pine the app uses, and how it is. `host` and `label` name another machine reached over SSH; without them it is this computer's. */
+export type ServiceState = { status: "starting"; host?: string } | { status: "ready"; mode: string; started: boolean; home: string; version?: string; from: string; host?: string; label?: string } | { status: "error"; kind: "no-home" | "no-node" | "no-pine" | "ssh" | "failed"; message: string; host?: string };
 
 export interface Prefs {
 	home?: string;
 	keepRunning: boolean;
+	/** Other machines whose pine the app can use, each a host for ssh. */
+	hosts: string[];
+	/** The one the app uses; none: this computer's pine. */
+	use?: string;
 	theme: "system" | "light" | "dark";
 	notify: boolean;
 	updates: boolean;

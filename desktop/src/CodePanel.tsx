@@ -393,7 +393,7 @@ function FileView({ tab, file, close }: { tab: Tab; file: string; close: () => v
 				</AlertDialog>
 				<PathCrumbs path={file}>{dirty ? <span className="text-warn"> ●</span> : null}</PathCrumbs>
 				{disk.data?.truncated ? <Badge variant="outline">too large to edit</Badge> : null}
-				{root ? <Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => void bridge.reveal(`${root}/${file}`)} aria-label="Show in the Finder"><ExternalLinkIcon /></Button>} /><TooltipContent>Show in the Finder</TooltipContent></Tooltip> : null}
+				{root && !store.remote ? <Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => void bridge.reveal(`${root}/${file}`)} aria-label="Show in the Finder"><ExternalLinkIcon /></Button>} /><TooltipContent>Show in the Finder</TooltipContent></Tooltip> : null}
 				{kind || disk.data?.binary ? null : <Button variant={dirty ? "default" : "ghost"} size="xs" disabled={!dirty || saving} onClick={() => void save()}><SaveIcon data-icon="inline-start" />Save</Button>}
 			</div>
 			{changedOnDisk ? (
@@ -586,7 +586,8 @@ export function CodePanel({ tab }: { tab: Tab }) {
 								Running
 								{tab.programs.length ? <Badge variant="secondary">{tab.programs.length}</Badge> : null}
 							</TabsTrigger>
-							<TabsTrigger value="terminal">Terminal</TabsTrigger>
+							{/* A shell of this computer: a conversation of another machine's pine does not work here. */}
+							{store.remote ? null : <TabsTrigger value="terminal">Terminal</TabsTrigger>}
 						</TabsList>
 					</Tabs>
 					</div>
@@ -606,7 +607,7 @@ export function CodePanel({ tab }: { tab: Tab }) {
 			) : view === "output" ? (
 				<Output tab={tab} />
 			) : view === "terminal" ? (
-				<TerminalView tab={tab} />
+				store.remote ? <EmptyView icon={SquareTerminalIcon} title="No terminal here">The terminal is a shell on this computer, and this conversation works on {store.remote}. Open a terminal there with ssh.</EmptyView> : <TerminalView tab={tab} />
 			) : (
 				<Running tab={tab} />
 			)}

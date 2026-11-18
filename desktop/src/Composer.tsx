@@ -246,8 +246,12 @@ export function Composer({ tab }: { tab: Tab }) {
 			if (!file) continue;
 			// A folder is opened for the conversation, as with /folder.
 			if (entry.webkitGetAsEntry()?.isDirectory) {
-				const dir = bridge.pathOf(file);
-				if (dir) await store.setFolder(tab, dir);
+				// A folder from the Finder is one of this computer's, which another machine's pine does not have.
+				if (store.remote) store.flash(`That folder is on this computer, and ${tab.agent} works on ${store.remote}: choose a folder there instead.`, "warn", 7000);
+				else {
+					const dir = bridge.pathOf(file);
+					if (dir) await store.setFolder(tab, dir);
+				}
 			} else files.push(file);
 		}
 		if (files.length) await attach(tab, files);

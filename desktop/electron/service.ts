@@ -8,6 +8,7 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { connectRemote, RemoteError, sshHost } from "../../src/remote.ts";
 
 export interface Service {
 	base: string;
@@ -18,12 +19,16 @@ export interface Service {
 	started: boolean;
 	home: string;
 	version?: string;
+	/** The ssh host of another machine whose pine this is, reached through a port forward (src/remote.ts). None for this computer's. */
+	host?: string;
+	/** A short name for that machine. */
+	label?: string;
 	stop(): Promise<void>;
 }
 
 export class ServiceError extends Error {
-	/** "no-home": there is no pine home yet. "no-node", "no-pine": something to install. "failed": the daemon said why. */
-	kind: "no-home" | "no-node" | "no-pine" | "failed";
+	/** "no-home": there is no pine home yet. "no-node", "no-pine": something to install. "ssh": another machine is not reached. "failed": the daemon said why. */
+	kind: "no-home" | "no-node" | "no-pine" | "ssh" | "failed";
 	constructor(kind: ServiceError["kind"], message: string) {
 		super(message);
 		this.kind = kind;
@@ -220,3 +225,37 @@ export function connect(launch: Launch, opts: { home?: string; keep?: boolean } 
 		});
 	});
 }
+
+// ---- a pine on another machine ------------------------------------------------------------------
+
+/**
+ * The pine of another machine, over SSH (src/remote.ts). Its daemon answers on a port of this
+ * computer that ssh forwards; a daemon `pine service` started there ends with the connection.
+ * PINE_DESKTOP_SSH names a stand-in for ssh, for tests only.
+ */
+export async function connectSsh(host: string, env: NodeJS.ProcessEnv): Promise<Service> {
+	try {
+		const r = await connectRemote(host, { env, ssh: process.env.PINE_DESKTOP_SSH });
+		return { base: r.base, token: r.token, mode: `on ${r.label}`, started: r.started, home: `${r.label}:${r.home}`, version: r.version, host: r.host, label: r.label, stop: r.stop };
+	} catch (e) {
+		if (e instanceof RemoteError) throw new ServiceError(e.kind, e.message);
+		throw e;
+	}
+}
+
+/** The machines the owner added (Settings > Environments), as prefs.json keeps them: each a host for ssh, once. */
+export function readHosts(raw: unknown): string[] {
+	const out: string[] = [];
+	if (!Array.isArray(raw)) return out;
+	for (const value of raw) {
+		try {
+			const host = typeof value === "string" ? sshHost(value)?.host : undefined;
+			if (host && !out.includes(host)) out.push(host);
+		} catch {
+			// not a host for ssh: not kept
+		}
+	}
+	return out.slice(0, 20);
+}
+
+export { sshHost };

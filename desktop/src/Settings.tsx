@@ -1,7 +1,7 @@
 // Settings: everything about pine that is otherwise a command in a shell or a sentence to the
 // main agent. Each page asks the daemon what there is and tells it what to change; the daemon
 // checks every change as it checks the main agent's, and nothing here writes a file itself.
-import { AudioLinesIcon, BookIcon, CheckIcon, ChevronRightIcon, ChevronLeftIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PencilIcon, PlugIcon, PlusIcon, RotateCwIcon, SettingsIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { AudioLinesIcon, BookIcon, LaptopIcon, ServerIcon, CheckIcon, ChevronRightIcon, ChevronLeftIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PencilIcon, PlugIcon, PlusIcon, RotateCwIcon, SettingsIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +42,7 @@ const SECTIONS: Array<{ id: string; label: string; icon: LucideIcon }> = [
 	{ id: "skills", label: "Skills", icon: BookIcon },
 	{ id: "events", label: "Events", icon: ZapIcon },
 	{ id: "instructions", label: "Instructions", icon: PencilIcon },
+	{ id: "environments", label: "Environments", icon: ServerIcon },
 	{ id: "app", label: "App", icon: SettingsIcon },
 ];
 
@@ -174,7 +175,7 @@ function General() {
 								<ItemDescription className="line-clamp-none wrap-anywhere">{`Home: ${tilde(overview.data.home)} · main agent: ${overview.data.main} · ${overview.data.sandbox ? "sandbox available" : "no sandbox on this system"}`}</ItemDescription>
 							</ItemContent>
 							<ItemActions>
-								<Button variant="outline" size="xs" onClick={() => void bridge.reveal(overview.data!.log)}><ExternalLinkIcon data-icon="inline-start" />Show log</Button>
+								<Button variant="outline" size="xs" className={cn(store.remote && "hidden")} onClick={() => void bridge.reveal(overview.data!.log)}><ExternalLinkIcon data-icon="inline-start" />Show log</Button>
 							</ItemActions>
 						</Item>
 					</ItemGroup>
@@ -297,7 +298,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 		if (await store.removeAgent(id)) back();
 	};
 	const addFolder = async (kind: "read" | "write") => {
-		const dir = await bridge.pickFolder(kind === "write" ? `A folder ${id} may read and change` : `A folder ${id} may read`);
+		const dir = await store.chooseFolder(kind === "write" ? `A folder ${id} may read and change` : `A folder ${id} may read`);
 		if (dir) put(kind, [...((change[kind] as string[]) ?? []), dir]);
 	};
 	const others = store.agents.filter((a) => a.id !== id).map((a) => a.id);
@@ -474,7 +475,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 						<ItemDescription className="line-clamp-none font-mono wrap-anywhere">{`${tilde(d.workspace)} · ${plural(d.holdings.files, "file")}`}</ItemDescription>
 					</ItemContent>
 					<ItemActions>
-						<Button variant="outline" size="xs" onClick={() => void bridge.reveal(d.workspace)}><ExternalLinkIcon data-icon="inline-start" />Show</Button>
+						<Button variant="outline" size="xs" className={cn(store.remote && "hidden")} onClick={() => void bridge.reveal(d.workspace)}><ExternalLinkIcon data-icon="inline-start" />Show</Button>
 					</ItemActions>
 				</Item>
 			</ItemGroup>
@@ -1882,6 +1883,87 @@ export function Colours() {
 	);
 }
 
+// ---- environments: the pine of this computer, or of another machine ------------------------------------
+
+function Environments() {
+	const s = useModel(store);
+	const [host, setHost] = useState("");
+	const [error, setError] = useState<string>();
+	const field = useId();
+	const state = s.service;
+	const here = s.platform === "darwin" ? "This Mac" : "This computer";
+	const add = async () => {
+		setError(undefined);
+		try {
+			s.prefs = await bridge.addHost(host);
+			setHost("");
+			s.touch();
+		} catch (e) {
+			setError(errText(e));
+		}
+	};
+	const forget = async (h: string) => {
+		const prefs = await s.attempt(() => bridge.forgetHost(h));
+		if (prefs) (s.prefs = prefs), s.touch();
+	};
+	/** How the pine of a row is, when it is the one the app uses; nothing is asked of the others. */
+	const status = (h?: string) => {
+		if (state.host !== h) return null;
+		if (state.status === "starting") return <Badge variant="outline"><Spinner data-icon="inline-start" />connecting</Badge>;
+		if (state.status === "error") return <Badge variant="destructive">not reached</Badge>;
+		return <Badge variant={s.connected ? "default" : "outline"}>{s.connected ? "in use" : "not answering"}</Badge>;
+	};
+	const row = (h: string | undefined) => (
+		<Item key={h ?? ""} variant="outline" data-environment={h ?? "local"}>
+			<ItemMedia variant="icon">{h ? <ServerIcon /> : <LaptopIcon />}</ItemMedia>
+			<ItemContent className="min-w-0">
+				<ItemTitle className="name">
+					<span className={cn(h && "font-mono")}>{h ?? here}</span>
+					{status(h)}
+				</ItemTitle>
+				<ItemDescription className="line-clamp-none wrap-anywhere">
+					{state.host === h && state.status === "error" ? state.message : h ? `The pine on ${h}, over SSH.` : "The pine on this computer: the one that runs, or one this app starts."}
+				</ItemDescription>
+			</ItemContent>
+			<ItemActions>
+				{state.host === h && state.status === "error" ? <Button variant="outline" size="xs" onClick={() => void bridge.retry()}>Try again</Button> : null}
+				{state.host === h ? null : <Button variant="outline" size="xs" onClick={() => void s.useMachine(h)}>Use</Button>}
+				{h && state.host !== h ? <Button variant="ghost" size="xs" onClick={() => void forget(h)}>Forget</Button> : null}
+			</ItemActions>
+		</Item>
+	);
+	return (
+		<Page title="Environments" lead="The pine this app uses: the one on this computer, or one on another machine that you reach with ssh. One at a time: the foot of the side bar switches between them.">
+			<ItemGroup>
+				{row(undefined)}
+				{s.prefs.hosts.map(row)}
+			</ItemGroup>
+			<FieldSet>
+				<FieldLegend>Add a machine</FieldLegend>
+				<FieldGroup>
+					<Field>
+						<FieldLabel htmlFor={`${field}-host`}>Host</FieldLabel>
+						<div className="flex items-center gap-2">
+							<Input id={`${field}-host`} className="font-mono" placeholder="you@server" value={host} onChange={(e) => setHost(e.target.value)} onKeyDown={(e) => e.key === "Enter" && host.trim() && void add()} />
+							<Button variant="outline" disabled={!host.trim()} onClick={() => void add()}><PlusIcon data-icon="inline-start" />Add</Button>
+						</div>
+						<FieldDescription>As you would write it after ssh: host, user@host, or a name from ~/.ssh/config. It is connected to when you pick it.</FieldDescription>
+					</Field>
+					{error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{error}</AlertDescription></Alert> : null}
+				</FieldGroup>
+			</FieldSet>
+			<Alert>
+				<InfoIcon />
+				<AlertDescription>
+					<p>The machine needs pine with a home (pine init there), and ssh that signs you in without a password: a key in ssh-agent, or Tailscale SSH. A machine ssh has not met yet is accepted once from a terminal, with ssh and its name.</p>
+					<p>Its pine stays closed to the network: the app runs pine service there over ssh and forwards a port of this computer to it. Switching shows the other pine and stops none: an agent at work in one goes on. A pine the app started there stops when the app quits; one that was running already goes on.</p>
+					<p>With another machine's pine, a conversation's folder is a path on that machine, and the terminal and the Run button of a command, which are this computer's, are not offered.</p>
+				</AlertDescription>
+			</Alert>
+		</Page>
+	);
+}
+
 function AppPage() {
 	const s = useModel(store);
 	const set = async (change: Record<string, unknown>) => {
@@ -1961,7 +2043,7 @@ function AppPage() {
 								{service ? `pine ${service.version ?? ""}` : "pine"}
 								<Badge variant={s.connected ? "default" : "outline"}>{s.connected ? "connected" : "not connected"}</Badge>
 							</FieldTitle>
-							<FieldDescription>{service ? (service.started ? `Started by this app (${service.mode}), from ${service.from}. It stops when the app quits unless the switch below is on.` : "Attached to a pine that was already running. It goes on when this app quits.") : "Not running."}</FieldDescription>
+							<FieldDescription>{service?.host ? `The pine on ${service.host}, over SSH (Settings › Environments). ${service.started ? "This app started it there; it stops when the app quits." : "It was already running there, and goes on when this app quits."}` : service ? (service.started ? `Started by this app (${service.mode}), from ${service.from}. It stops when the app quits unless the switch below is on.` : "Attached to a pine that was already running. It goes on when this app quits.") : "Not running."}</FieldDescription>
 						</FieldContent>
 						{service?.started ? (
 							<div className="flex items-center gap-1.5">
@@ -2015,13 +2097,13 @@ function AppPage() {
 						<FieldContent>
 							<FieldTitle>Home folder</FieldTitle>
 							<FieldDescription>
-								<span className="block font-mono">{tilde(service?.home ?? s.prefs.home ?? "~/.pine")}</span>
-								Where pine keeps its agents and settings. Another one is another pine. Changing it restarts a pine this app started.
+								<span className="block font-mono">{tilde((service?.host ? undefined : service?.home) ?? s.prefs.home ?? "~/.pine")}</span>
+								Where this computer's pine keeps its agents and settings. Another one is another pine. Changing it restarts a pine this app started.
 							</FieldDescription>
 						</FieldContent>
 						<div className="flex items-center gap-1.5">
-							{s.prefs.home ? <Button variant="outline" size="xs" onClick={() => void set({ home: "" }).then(() => bridge.retry())}>Use ~/.pine</Button> : null}
-							<Button variant="outline" size="xs" onClick={() => void bridge.pickFolder("A pine home folder").then((dir: string | undefined) => dir && set({ home: dir }).then(() => (service?.started ? bridge.restart() : bridge.retry())))}><FolderIcon data-icon="inline-start" />Choose…</Button>
+							{s.prefs.home ? <Button variant="outline" size="xs" onClick={() => void set({ home: "" }).then(() => !s.remote && bridge.retry())}>Use ~/.pine</Button> : null}
+							<Button variant="outline" size="xs" onClick={() => void bridge.pickFolder("A pine home folder").then((dir: string | undefined) => dir && set({ home: dir }).then(() => (s.remote ? undefined : service?.started ? bridge.restart() : bridge.retry())))}><FolderIcon data-icon="inline-start" />Choose…</Button>
 						</div>
 					</Field>
 				</FieldGroup>
@@ -2061,7 +2143,7 @@ export function Settings() {
 					</SidebarRoot>
 				</SidebarProvider>
 				<ScrollArea className="flex min-h-0 min-w-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade" key={s.section}>
-					{s.section === "agents" ? <Agents /> : s.section === "models" ? <Models /> : s.section === "mcp" ? <Mcp /> : s.section === "skills" ? <Skills /> : s.section === "events" ? <EventsPage /> : s.section === "instructions" ? <Instructions /> : s.section === "app" ? <AppPage /> : <General />}
+					{s.section === "agents" ? <Agents /> : s.section === "models" ? <Models /> : s.section === "mcp" ? <Mcp /> : s.section === "skills" ? <Skills /> : s.section === "events" ? <EventsPage /> : s.section === "instructions" ? <Instructions /> : s.section === "environments" ? <Environments /> : s.section === "app" ? <AppPage /> : <General />}
 				</ScrollArea>
 			</div>
 		</div>

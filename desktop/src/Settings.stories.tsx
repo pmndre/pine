@@ -78,6 +78,17 @@ export const Agents: Story = { args: { section: "agents" } };
 /** MCP servers in each scope and state, with Sign in and Remove, above the form that adds one. */
 export const McpServers: Story = { args: { section: "mcp" } };
 
+/** This computer and two machines added over SSH, the app on one of them: in use there, Use and Forget on the others. */
+export const Environments: Story = {
+	args: { section: "environments" },
+	render: (args) => {
+		store.prefs = { ...store.prefs, hosts: ["me@build-box", "studio"], use: "me@build-box" };
+		store.service = { status: "ready", mode: "on build-box", started: false, home: "build-box:~/.pine", version: "0.23.0", from: "ssh me@build-box", host: "me@build-box", label: "build-box" };
+		store.connected = true;
+		return <Tab {...args} />;
+	},
+};
+
 // The app's preferences as the main process keeps them: what is set is answered back, as `pine:prefs` does.
 window.pine.prefs = async (change) => ({ ...store.prefs, ...change });
 

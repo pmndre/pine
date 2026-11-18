@@ -20,6 +20,11 @@ const bridge = {
 	/** Fetch the browser build this pine drives (`pine browser-install`); what it prints comes as init lines. */
 	browserInstall: () => ipcRenderer.invoke("pine:browser"),
 	prefs: (change: Record<string, unknown>) => ipcRenderer.invoke("pine:prefs", change),
+	/** Use the pine of a machine of the list (a host for ssh), or with none this computer's. */
+	use: (host?: string) => ipcRenderer.invoke("pine:use", host),
+	/** Add a machine to the list, or take one out; what comes back is the prefs as they are now. */
+	addHost: (host: string) => ipcRenderer.invoke("pine:hosts-add", host),
+	forgetHost: (host: string) => ipcRenderer.invoke("pine:hosts-forget", host),
 	pickFolder: (title?: string) => ipcRenderer.invoke("pine:pick-folder", title),
 	saveText: (name: string, text: string) => ipcRenderer.invoke("pine:save-text", name, text),
 	open: (url: string) => ipcRenderer.invoke("pine:open", url),
