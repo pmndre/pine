@@ -100,3 +100,66 @@ test("summon: the subscribe tool takes trigger words, and unsubscribing leaves t
 	assert.equal(eventTasks(h).length, 1, "nothing is summoned any more");
 	await h.close();
 });
+
+const hookOf = (h: Harness) => (text: string) => fetch(`http://127.0.0.1:${h.pine.http!.port}/hook/phone`, { method: "POST", body: text });
+const phone = (extra: Record<string, unknown> = {}) => ({ http: { port: 0 }, sources: { phone: { type: "webhook", open: true } }, ...extra });
+const doneSummons = (h: Harness, n: number) => until(() => eventTasks(h).filter((t: any) => t.status === "done").length === n, 6000, `${n} summons`);
+
+test("summon: with summon.autoForward off (the default), #name never moves a summon", async () => {
+	const h = await harness({ pine: phone(), agents: { main: { agent: { subscribe: { phone: { summon: ["/pine"] } } } } } });
+	await h.pine.agents.run({ agent: "main", session: "todo", prompt: "my todo list", trust: "owner" });
+	await hookOf(h)("/pine #todo add milk");
+	await doneSummons(h, 1);
+	const task = eventTasks(h)[0];
+	assert.match(task.session, /^summon-/, "the summon keeps a conversation of its own");
+	assert.match(task.prompt, /Your owner's request: #todo add milk/, "the name stays in the request");
+	assert.equal(h.pine.agents.conversations("main").find((c) => c.session === "todo")?.outside, undefined, "the named conversation is left alone");
+	await h.close();
+});
+
+test("summon: with summon.autoForward on, an existing #name receives the summon and is marked; a missing one does not", async () => {
+	const h = await harness({ pine: phone({ summon: { autoForward: true } }), agents: { main: { agent: { subscribe: { phone: { summon: ["/pine"] } } } }, kevin: {} } });
+	await h.pine.agents.run({ agent: "kevin", session: "todo", prompt: "my todo list", trust: "owner" });
+	await hookOf(h)("a thread\n/pine kevin #todo add milk");
+	await doneSummons(h, 1);
+	const task = eventTasks(h)[0];
+	assert.equal(task.agent, "kevin");
+	assert.equal(task.session, "todo");
+	assert.equal(task.meta.trust, "owner");
+	assert.match(task.prompt, /Your owner's request: add milk/, "the name is taken out of the request");
+	assert.match(h.pine.agents.conversations("kevin").find((c) => c.session === "todo")?.outside ?? "", /an event from the source "phone"/);
+
+	await hookOf(h)("/pine kevin #nothere add milk");
+	await doneSummons(h, 2);
+	const second = eventTasks(h).find((t: any) => t.id !== task.id)!;
+	assert.match(second.session, /^summon-/, "a name that is no conversation keeps a new one");
+	assert.match(second.prompt, /Your owner's request: #nothere add milk/);
+	await h.close();
+});
+
+test("summon: the owner continues a summon in another conversation through the control API, with its mark", async () => {
+	const h = await harness({ pine: phone(), agents: { main: { agent: { subscribe: { phone: { summon: ["/pine"] } } } } } });
+	await h.pine.agents.run({ agent: "main", session: "work", prompt: "ongoing work", trust: "owner" });
+	await hookOf(h)("a thread about prices\n/pine summarise this");
+	await doneSummons(h, 1);
+	const summon = eventTasks(h)[0];
+	const token = fs.readFileSync(path.join(h.home, "data", "http-token"), "utf8").trim();
+	const api = (body: unknown, auth = true) => fetch(`http://127.0.0.1:${h.pine.http!.port}/agents/main/continue`, { method: "POST", headers: { "content-type": "application/json", ...(auth ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+
+	assert.equal((await api({ session: summon.session, to: "work" }, false)).status, 401, "only the owner's token");
+	assert.equal((await api({ session: "work", to: "main" })).status, 409, "only a summon is continued elsewhere");
+	assert.equal((await api({ session: summon.session, to: "nothere" })).status, 409, "only into a conversation there is");
+
+	const res = await api({ session: summon.session, to: "work" });
+	assert.equal(res.status, 200);
+	const moved = ((await res.json()) as any).task;
+	await until(() => h.pine.tasks.get(moved)?.status === "done", 6000, "the continued summon");
+	const task = h.pine.tasks.get(moved)!;
+	assert.equal(task.session, "work");
+	assert.equal(task.meta.trust, "owner");
+	assert.match(task.meta.tainted ?? "", /an event from the source "phone"/);
+	assert.match(task.prompt, /Your owner's request: summarise this/);
+	assert.match(task.prompt, /a thread about prices/, "the summon's context comes with it");
+	assert.match(h.pine.agents.conversations("main").find((c) => c.session === "work")?.outside ?? "", /an event from the source "phone"/);
+	await h.close();
+});

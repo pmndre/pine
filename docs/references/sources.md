@@ -241,13 +241,27 @@ What you write after the trigger is read as `<trigger> [agent] [#conversation] <
 | `/pine brainstorm this idea` | the main agent, with the request "brainstorm this idea" |
 | `/pine kevin summarise this thread` | the agent kevin, with "summarise this thread" |
 | `/pine kev summarise this` | `kev` is no agent: the main agent, with "kev summarise this", so a typo does not lose it |
-| `/pine #todo add milk` | the main agent, with "#todo add milk": for now the name stays in the request |
+| `/pine #todo add milk` | the main agent, with "#todo add milk", in a conversation of its own; with `summon.autoForward` on and a conversation `todo` of the main agent, in that conversation, with "add milk" |
+| `/pine kevin #todo add milk` | the same for kevin and kevin's conversation `todo` |
 | `nice thread. /pine what do you make of it?` | the main agent, with "what do you make of it?"; what comes before the trigger is in the event |
 | `I like /pineapple` | nothing: a trigger is a word of its own |
 
 - **Where it runs:** each summon in a new conversation of its own, `summon-<event id>`, listed
   with the agent's other conversations. Two summons are two conversations. The agent's main
   conversation is left alone.
+- **Into a conversation you name:** with the setting `summon.autoForward` on (off by default:
+  `set_setting`, or the Pine app's settings), a summon that names `#conversation` after the
+  trigger (and the agent) runs in that conversation of the agent instead, when it has one by that
+  name. The name is taken out of the request, and that conversation is marked as having read
+  outside content from then on, as any conversation that reads an event. A name that is no
+  conversation of that agent, or the setting off, keeps the summon in its own conversation with
+  the name left in the request. Only a name you wrote moves a summon: never one the agent or the
+  thread suggests.
+- **Moving it by hand:** "Continue in…" on a summon in the Pine app's side bar (a right click)
+  hands the summon's request and the event it came with on to another conversation of the same
+  agent that you pick, as a message of yours, and marks that conversation as having read outside
+  content. It is yours alone: the control API (`POST /agents/<id>/continue` with `session`, the
+  summon's conversation, and `to`), and no agent has a tool for it.
 - **As whom:** your request is your words, and the run has your trust, with the tools that
   agent has with you. The rest of the event (the thread around the trigger, who wrote what) is
   outside content: it comes below the request, framed as data, and the conversation is marked

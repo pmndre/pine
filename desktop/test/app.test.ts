@@ -2067,6 +2067,40 @@ test("a summon is listed under Summons and opens no tab; done or asking, it rais
 	}
 });
 
+test("Continue in… on a summon hands it on to a conversation the owner picks, which opens marked as having read outside content", async () => {
+	const { port } = daemonOf(home);
+	await api("POST", "/sources", { name: "phone", type: "webhook", description: "my phone's shortcut", options: { open: true } });
+	await api("POST", "/agents/scout/subscribe", { source: "phone", summon: ["/pine"] });
+	// The menu is the system's, which the driver cannot click in: what it would show is noted, and the test picks "Continue in…".
+	await app.evaluate(({ ipcMain }: any) => {
+		const g = globalThis as any;
+		g.summonMenus = [];
+		ipcMain.removeHandler("pine:context-menu");
+		ipcMain.handle("pine:context-menu", (_e: unknown, items: Array<{ id: string; label: string; separator?: boolean }>) => (g.summonMenus.push(items.filter((i) => !i.separator).map((i) => i.label)), "continue"));
+	});
+	try {
+		await api("POST", "/agents/main/prompt", { session: "okapi-notes", prompt: "notes about okapis" });
+		await sees("[role=listbox][aria-label='Conversations with main'] [role=option] >> text=okapi-notes");
+		assert.equal((await fetch(`http://127.0.0.1:${port}/hook/phone`, { method: "POST", body: "a thread about zebras\n/pine compare the okapi prices" })).status, 202);
+		const row = page.locator("[role=listbox][aria-label=Summons] [data-slot=sidebar-menu-item]", { hasText: "compare the okapi prices" });
+		await sees("[role=listbox][aria-label=Summons] [role=option] >> text=compare the okapi prices");
+		// Its first turn is done before it is handed on: the line knows it has something to hand on.
+		await waitFor(async () => (await api("GET", "/agents/main/sessions")).data.filter((c: any) => /^summon-/.test(c.session)).every((c: any) => c.tasks > 0 && !c.working), "the summon to be answered");
+		await row.click({ button: "right" });
+		await waitFor(async () => (await app.evaluate(() => (globalThis as any).summonMenus.length)) > 0, "the summon's menu");
+		assert.ok((await app.evaluate(() => (globalThis as any).summonMenus.at(-1))).includes("Continue in…"));
+		await sees("[data-slot=command-item] >> text=okapi-notes");
+		assert.equal(await page.locator("[data-slot=command-item]", { hasText: "compare the okapi prices" }).count(), 0, "a summon is not offered as a place to continue in");
+		await page.click("[data-slot=command-item]:has-text('okapi-notes')");
+		await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=okapi-notes");
+		await sees("[data-slot=markdown] >> text=Your owner moved a summon here");
+		await waitFor(async () => /an event from the source "phone"/.test((await api("GET", "/agents/main/sessions")).data.find((c: any) => c.session === "okapi-notes")?.outside ?? ""), "the conversation to be marked");
+		await page.click("[data-slot=tab][data-active] button[aria-label='Close this tab']");
+	} finally {
+		await api("POST", "/sources/remove", { name: "phone" }).catch(() => {});
+	}
+});
+
 /** Wait until something is true, or say what was waited for. */
 async function waitFor(check: () => Promise<boolean>, what: string, timeout = 20_000): Promise<void> {
 	const end = Date.now() + timeout;

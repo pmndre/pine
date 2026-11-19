@@ -127,6 +127,7 @@ function ConversationRow({ agent, c, depth = 0, summon = false }: { agent: strin
 	const menu = async () => {
 		const picked = await bridge.contextMenu([
 			{ id: "open", label: "Open" },
+			...(isSummon(c.session) && c.tasks ? [{ id: "continue", label: "Continue in…" }] : []),
 			...(c.tasks ? [{ id: "branch", label: "Branch" }] : []),
 			...(c.tasks && c.folder ? [{ id: "branch-worktree", label: "Branch into a Worktree" }] : []),
 			...(c.worktree ? [{ id: "worktree", label: "Worktree…" }] : []),
@@ -135,6 +136,7 @@ function ConversationRow({ agent, c, depth = 0, summon = false }: { agent: strin
 			main ? { id: "reset", label: "Start over…" } : { id: "remove", label: "Remove…" },
 		]);
 		if (picked === "open") await s.openTab(agent, c.session);
+		if (picked === "continue") await s.continueSummon(agent, c.session);
 		if (picked === "branch" || picked === "branch-worktree") await s.branch(agent, c.session, undefined, picked === "branch-worktree");
 		if (picked === "worktree") {
 			await s.openTab(agent, c.session);

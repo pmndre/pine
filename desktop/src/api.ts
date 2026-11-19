@@ -354,6 +354,8 @@ export const api = {
 	removeSession: (agent: string, session: string) => post<{ removed: boolean; unsubscribed: string[]; sources: string[]; servers: string[] }>(`${a(agent)}/remove`, { session }),
 	renameSession: (agent: string, session: string, to: string) => post<{ session: string }>(`${a(agent)}/rename`, { session, to }),
 	pinSession: (agent: string, session: string, pinned: boolean) => post<{ pinned: boolean }>(`${a(agent)}/pin`, { session, pinned }),
+	/** Hand a summon's request and the event it came with on to another conversation of the same agent. */
+	continueSummon: (agent: string, session: string, to: string) => post<{ task: number; session: string }>(`${a(agent)}/continue`, { session, to }),
 	closeSession: (agent: string, session: string) => post<{ unsubscribed: string[] }>(`${a(agent)}/close`, { session }),
 	folder: (agent: string, session: string) => get<{ folder?: string; workspace: string }>(`${a(agent)}/folder${s(session)}`),
 	folders: (agent: string) => get<Array<{ session: string; folder: string }>>(`${a(agent)}/folders`),

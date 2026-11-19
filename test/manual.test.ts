@@ -137,6 +137,8 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["tell me when my boss writes in slack", /^source-types#slack/],
 		["how do I call pine from my phone by writing /pine and a request", /^sources#summoning-pine-from-somewhere-else/],
 		["ping an agent by name from a message so that it takes the request", /^sources#summoning-pine-from-somewhere-else/],
+		["move a summon into one of my ongoing conversations", /^(sources#summoning-pine-from-somewhere-else|desktop#)/],
+		["can /pine #todo go straight into my todo conversation", /^(sources#summoning-pine-from-somewhere-else|configuration#)/],
 		["how do I call you from twitter?", /^source-types#x\b/],
 		["can I summon an agent from a DM on X with a tweet-like message", /^source-types#x\b/],
 		["what does it cost to read my twitter DMs", /^source-types#x\b/],
