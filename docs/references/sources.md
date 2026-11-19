@@ -54,7 +54,7 @@ scans", or `pine unsubscribe main scans`.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `type` | | One of the built-in types, each described in [source-types.md](source-types.md): `folder`, `mqtt`, `webhook`, `ftp`, `telegram`, `http`, `command`, `feed`, `calendar`, `stream`, `mail`, `slack`, `matrix`, `discord`, `smtp`, `syslog`, `onvif`, `modbus`, `serial`, `presence`, `system`. Or a type of your own registered under `sourceTypes` (see "A source type of your own"). Or `use` instead: the path of a module, for a one-off. |
+| `type` | | One of the built-in types, each described in [source-types.md](source-types.md): `folder`, `mqtt`, `webhook`, `ftp`, `telegram`, `http`, `command`, `feed`, `calendar`, `stream`, `mail`, `slack`, `matrix`, `discord`, `smtp`, `syslog`, `onvif`, `modbus`, `serial`, `presence`, `system`, `x`. Or a type of your own registered under `sourceTypes` (see "A source type of your own"). Or `use` instead: the path of a module, for a one-off. |
 | `description` | | What it reports. Agents choose what to subscribe to by this line, so write it for them. |
 | `agents` | all | In `pine.json` only: the agents that may subscribe, e.g. `["house"]`. |
 | `trust` | `"untrusted"` | Who its events speak for. See "Trust" below. |
@@ -268,7 +268,9 @@ What you write after the trigger is read as `<trigger> [agent] [#conversation] <
   reading it is put to you first, as after any web page ("Trust").
 - **Who can summon:** whoever can make the source report a text with the trigger. Pine does not
   check who wrote it: a source that carries other people's words (a chat, a channel) lets them
-  summon too. Use it on a source only you write to, such as a `webhook` with a secret.
+  summon too. Use it on a source only you write to, such as a `webhook` with a secret, or the
+  `x` type, which reports only what your own X account writes in its direct messages
+  ([source-types.md](source-types.md), "x").
 - **The text:** the trigger is looked for in the event's `text`, or for a `webhook` in the
   `text` of the body (or the body itself when it is not JSON).
 - One agent holds the subscription, normally the main agent; it starts whichever agent a summon

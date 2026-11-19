@@ -56,7 +56,7 @@ src/
   skills.ts         skills by tool call: where one lies says whom it is for (all agents, an agent, a conversation)
   source-types.ts   what a source type module declares: summary, options schema, plan()
   sources/          the built-in source types (`SOURCE_TYPES` in config.ts). That look: http, command, feed, calendar,
-                    modbus, presence. That are told: folder, mqtt, webhook, ftp, telegram, stream, mail, slack, matrix,
+                    modbus, presence, x. That are told: folder, mqtt, webhook, ftp, telegram, stream, mail, slack, matrix,
                     discord, smtp, syslog, serial, onvif, system (system.swift is its macOS helper: it repeats what
                     the system says and decides nothing), and command with `follow`
   watching.ts       what the types that look share: fetching an address, picking a value (a field, a pattern, a
@@ -399,7 +399,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    always marks the conversation (`isTaintSource`): it is other people's words. It is
    registered only in the owner's own conversations, never for a run started from outside,
    and never for a sub-agent. A new type that can be read keeps all three.
-   A type that reads what people write (mail, slack, matrix, discord) is a watcher: never
+   A type that reads what people write (mail, slack, matrix, discord, x) is a watcher: never
    `talks`, never `toOwner`, never `owner` in its plan. A sender line can be forged, and a
    channel reaches other people. What it sends goes only where the owner listed (`sendTo`).
    A new type is a program inside the daemon: `add_source_type` is the main agent's, refuses in

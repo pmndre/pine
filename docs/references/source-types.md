@@ -30,6 +30,7 @@ nothing: no event, nothing stored, no model woken.
 | `onvif` | told | what a network camera detects | motion, a person, a vehicle, tampering, a doorbell button |
 | `serial` | told | lines from a serial port | an Arduino, a smart meter's P1 port, a GPS receiver |
 | `system` | told | what this computer does | sleep, wake, lock, power, network, disks, apps |
+| `x` | looks | a summon you write in an X (Twitter) direct message | calling pine from a DM thread on X |
 | `command` with `follow` | told | each line a command prints while it runs | logs, `docker events`, `kubectl -w`, any broker or database with a client |
 | `http` | looks | a change of a page or of one value in it | a price, a version, a status, a device's state page, an API |
 | `feed` | looks | new entries of an RSS, Atom or JSON feed | releases, blogs, videos, podcasts, papers, status pages |
@@ -84,6 +85,7 @@ than its interval, so that sources set to the same interval do not all fire toge
 | Discord | `discord` | A bot. |
 | Matrix (Element) | `matrix` | An access token of an account. |
 | Telegram | `telegram` | A bot, paired with your account. |
+| X (Twitter): calling pine from a direct message | `x` | An X app of your own; you sign in once, pine reads your DMs and posts nothing. |
 | Gmail, iCloud, Fastmail, your own mail server | `mail` | IMAP with an app password. |
 | Outlook.com, Hotmail, Microsoft 365 | `mail` | `"signIn": "microsoft"`: you sign in at Microsoft in your browser, pine holds no password. |
 | Google Calendar, iCloud, Outlook, Nextcloud | `calendar` | The calendar's iCal address. |
@@ -1911,6 +1913,81 @@ mark the source as your own.
 
 On Linux and Windows a `system` source cannot be set up. What a command can tell there
 (`upower`, `nmcli monitor`, `udevadm monitor`) the `command` type reports.
+
+### x
+
+Your own X (Twitter) account, for summoning pine from it: when you write a trigger word in an
+X direct message, `@pineabernier kevin summarise this` in a DM thread with somebody, the source
+reports it with the last messages of that DM conversation, and a summon subscription starts the
+agent you named ([sources.md](sources.md), "Summoning pine from somewhere else"). It reads and
+posts nothing: the agent answers in pine, never on X.
+
+> When I write /pine in an X DM, have the agent I name take it, with the conversation.
+
+```json
+"x": { "type": "x", "clientId": "Y2xpZW50LWlkLWZyb20teA", "account": "abernier", "triggers": ["/pine", "@pineabernier"], "description": "my summons from X direct messages" }
+```
+
+and on the main agent: `"subscribe": { "x": { "summon": ["/pine", "@pineabernier"] } }`.
+
+| Option | Default | |
+|---|---|---|
+| `clientId` | | The OAuth 2.0 Client ID of your X app (see below). It is not a secret. |
+| `clientSecret` | | Its Client Secret, only for an app of the type "Web App" (a confidential client). Kept in `.env`. Leave it out for a "Native App". |
+| `account` | | Your X handle, without `@`. A sign-in to any other account is refused. |
+| `callback` | `"http://localhost/pine"` | The Callback URI you set in the X app. Nothing has to answer there. |
+| `triggers` | `["/pine"]` | The words that make one of your DMs a summon. A word of its own, capitals do not matter. |
+| `every` | `"2m"` | How often to look at your DMs; at least `"1m"`, since X allows 15 looks in 15 minutes. |
+| `perMinute` | `5` | At most this many summons a minute. What comes on top is dropped, and the next event says how many in `dropped`. |
+| `thread` | `10` | How many earlier messages of the DM conversation come with a summon, at most 50. |
+
+Event `summon`: `{ via, text, id, conversation, at?, link, thread, dropped? }`.
+
+| Field | |
+|---|---|
+| `via` | `"dm"`: it was written in a direct message. |
+| `text` | What you wrote, trigger included. |
+| `id`, `conversation` | The DM event's id and the DM conversation's id at X. |
+| `link` | The DM conversation on x.com. |
+| `thread` | The messages before it in that conversation, oldest first: `{ from, text, at }`, with `from` the sender's `@handle`. Outside content. |
+
+**Only you can summon.** A DM is reported only when X says its sender is the account that
+signed in, and it carries a trigger. What the other side of a DM writes is never reported on
+its own, whatever it says, trigger or not; it comes along only as the `thread` of a summon of
+yours, as outside content. A DM of yours without a trigger is not reported either. `pine check`
+names every `x` source and the account it reports.
+
+**What it looks at.** The first look is the starting point: DMs written before the source was
+set up are not reported. A look that finds nothing new does nothing. When X refuses a look (too
+many, HTTP 429) or is unwell (HTTP 5xx), the pause before the next one grows, and the source's
+status says so in pine's words. X's encrypted chats (XChat) may not be readable through X's API:
+if your DMs are there, DM summons do not arrive.
+
+**Setting it up on X.** Once, at [developer.x.com](https://developer.x.com):
+
+1. Sign in with your X account and create a project and an app in it (pay-per-use access).
+2. Under the app's "User authentication settings": OAuth 2.0 on, app permissions "Read" and
+   "Direct Messages", type "Native App" (or "Web App", then the Client Secret goes into
+   `clientSecret`), Callback URI `http://localhost/pine` (or what you put into `callback`),
+   any web site address.
+3. Copy the OAuth 2.0 Client ID from "Keys and tokens" into `clientId`.
+
+**Signing in.** When the source starts, pine asks you: open the address it shows (it is on
+x.com), sign in as `account` and allow pine to read. X then sends your browser to the Callback
+URI, which shows an error page since nothing answers there: copy the whole address from the
+browser's address bar (it holds `code=` and `state=`) and paste it into pine's question. pine
+checks that it came from that very sign-in (`state`), and keeps what X gives it in the source's
+own storage in pine's home: no agent sees it, and it goes nowhere but X's own hosts. It is
+renewed by itself; when X no longer takes it (you signed out, revoked the app, or months went
+by unused), pine asks again. A "no" is not asked again until the source is restarted. Removing
+the source forgets the sign-in. pine asks X only for `tweet.read users.read dm.read
+offline.access`: nothing that posts, sends or changes anything.
+
+**Cost.** X's API is paid per use, charged to the account of your X app: about $0.01 for each
+DM event read. Each look asks for the last 10 DM events, and a summon also for its thread (up
+to `thread` + 10 events of that conversation), so `every` is what the cost follows: at the
+default of two minutes, looking costs up to about $3 an hour when X counts every event again;
+look less often for less. More than 10 DMs between two looks: the oldest of them are not seen.
 
 ## What there is no type for
 

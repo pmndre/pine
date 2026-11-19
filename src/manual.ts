@@ -63,6 +63,7 @@ const SYNONYMS: string[][] = [
 	["syslog", "rsyslog", "journal", "siem"],
 	["matrix", "element", "homeserver", "synapse"],
 	["discord", "guild", "gateway"],
+	["x", "twitter", "tweet", "tweets", "dm", "dms", "xchat"],
 	["mention", "ping", "highlight"],
 	["modbus", "inverter", "solar", "photovoltaic", "pv", "heatpump", "wallbox", "sunspec", "register"],
 	["serial", "uart", "comport", "rs232", "arduino", "esp32", "microcontroller", "dsmr", "nmea"],
