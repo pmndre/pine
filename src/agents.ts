@@ -784,6 +784,10 @@ export class AgentManager {
 		task.meta.root = o.parent?.meta.root ?? o.parent?.id ?? task.id;
 		if (ephemeral) task.session = `_t${task.id}`;
 		this.tasks.update(task.id, { session: task.session, meta: task.meta });
+		// At once, before a run slot is free, so that a viewer ties what woke the agent to the work it caused.
+		// The same ids as `started`; no prompt.
+		const ids = { task: task.id, agent: agent.id, session: task.session, root: task.meta.root, parent: task.parent, depth: task.depth };
+		this.bus.publish(`agent/${agent.id}/queued`, { ...ids, kind: task.kind, label: task.meta.label }, { persist: false, source: `agent:${agent.id}`, cause: this.causeOf(task) });
 		this.enqueue(task);
 		return task;
 	}

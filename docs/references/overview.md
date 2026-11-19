@@ -98,6 +98,7 @@ Topics pine itself uses:
 
 | Topic | Published when |
 |---|---|
+| `agent/<id>/queued` | A task was created, before a run slot is free: the same ids as `started` (`task`, `agent`, `session`, `root`, `parent`, `depth`, `kind`, `label`) and the event that caused it, no prompt. Not for a message steered into running work (live only, not stored) |
 | `agent/<id>/started`, `agent/<id>/done`, `agent/<id>/failed` | A task starts or ends |
 | `agent/<id>/tool` | A tool call starts or ends (live only, not stored) |
 | `agent/<id>/todos` | The agent changed its list of steps (`items`, each with `text` and `status`; live only) |

@@ -236,6 +236,33 @@ test("a message for a busy session can be queued or steered into the running tas
 	await h.close();
 });
 
+test("a task shows as queued the moment it is created, before a run slot is free, and steering queues nothing", async () => {
+	const h = await harness({ pine: { limits: { maxConcurrentRuns: 1 } }, agents: { main: {} } });
+	const seen: Array<{ topic: string; payload: any; cause?: number }> = [];
+	h.pine.bus.subscribe(["agent/main/queued", "agent/main/started"], (e) => void seen.push({ topic: e.topic, payload: e.payload, cause: e.cause }));
+	const first = h.pine.agents.submit({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: "sleep 0.3; echo slept" } }] }, { text: "first done" }]), ...owner });
+	await until(() => h.pine.agents.status().running.length === 1);
+	await sleep(80);
+
+	const steered = h.pine.agents.submit({ agent: "main", prompt: "STEERED-IN", whenBusy: "steer", ...owner });
+	const event = h.pine.bus.publish("source/door/opened", { text: "someone at the door" }, { source: "test" });
+	const second = h.pine.agents.submit({ agent: "main", session: "other", prompt: "SECOND", event, label: "door" });
+	await h.pine.bus.drain();
+	const queued = seen.find((e) => e.topic === "agent/main/queued" && e.payload.task === second.id);
+	assert.ok(queued, "the second task is queued at once, while the slot is taken");
+	assert.ok(!seen.some((e) => e.topic === "agent/main/started" && e.payload.task === second.id), "it has not started yet");
+	assert.deepEqual(JSON.parse(JSON.stringify(queued.payload)), { task: second.id, agent: "main", session: "other~u", root: second.id, depth: 0, kind: "event", label: "door" });
+	assert.equal(queued.cause, event.id, "the event that caused it");
+	assert.ok(!seen.some((e) => e.topic === "agent/main/queued" && e.payload.task === steered.id), "a steered message is no work of its own");
+
+	await Promise.all([first, second].map((t) => h.pine.agents.wait(t.id)));
+	await h.pine.bus.drain();
+	const order = seen.filter((e) => e.payload.task === second.id).map((e) => e.topic);
+	assert.deepEqual(order, ["agent/main/queued", "agent/main/started"]);
+	assert.equal(h.pine.bus.query({ topic: "agent/main/queued" }).length, 0, "not kept in the event log");
+	await h.close();
+});
+
 test("a cancelled or timed-out task stops its shell command", async () => {
 	const h = await harness({ agents: { main: { agent: { taskTimeoutSec: 0.25 } } } });
 	const marker = path.join(h.workspace("main"), "still-running");
