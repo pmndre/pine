@@ -117,6 +117,7 @@ asked you for it (`pine model add`, `add_model_server`); `models.json` names it 
 | `security.bypassWhenTainted` | `false` | Keep bypass mode in force in a session that has read outside content. Off, bypass is paused in such a session, and the agent works as in `auto` mode. |
 | `summon.autoForward` | `false` | A summon that names `#conversation` (`/pine #todo add milk`) runs in that conversation of the agent, when there is one, instead of a conversation of its own, and that conversation is marked as having read outside content. Off: every summon gets its own, and you move it with "Continue in…" in the Pine app. See "Summoning pine from somewhere else" in [sources.md](sources.md). |
 | `security.askAccess` | `true` | pine asks you itself when a call of an agent in the sandbox (`safe` or `manual` mode) needs a file or folder outside it, or the network: before a file tool or a shell command that names it, and on macOS after a command the sandbox refused something. `false`: you are only asked when the agent calls `request_access`. See "When a call needs something outside" in [security.md](security.md). |
+| `ui.theme` | `pmndre` | The theme of the Pine app: a VS Code colour theme in the `themes` folder of the home, by its file name without `.json` (`dracula` for `themes/dracula.json`). Chosen in Settings > App. See "Themes" in [desktop.md](desktop.md). |
 | `http` | on, loopback, port 7463 | Control API and webhooks. `false` turns it off (the CLI's client commands then do not work). |
 | `http.host`, `http.port` | `127.0.0.1`, `7463` | Where the control API listens. Anything but loopback is reported by `pine check`. |
 | `http.token` | generated | Bearer token of the control API. When unset, pine generates one into `data/http-token`. |
@@ -161,6 +162,7 @@ Every key is optional; `{}` is a valid agent.
 | Key | Default | Meaning |
 |---|---|---|
 | `description` | empty | One line other agents see when they choose whom to delegate to. Write it for them. |
+| `color` | none | The agent's own colour in the Pine app, written `#rrggbb` (kept in lower case): its avatar is drawn in it, and while its conversation is in front the window's accent is that colour instead of the theme's (unless "The agent in front colours the window" is off in Settings > App). Display only; the terminal UI does not use it. Set it on the agent's page in the app, with `pine agent update <id> --color #e0805a` (`--color none` takes it away), or ask the main agent ("make scout blue"): `color` of `create_agent` and `update_agent`, which you confirm. Anything that is not `#rrggbb` is a configuration problem. |
 | `workspace` | `agents/<id>/workspace` | The agent's working folder. `AGENTS.md`, `SOUL.md`, `TOOLS.md` and `MEMORY.md` at its top are the agent's instructions and are loaded into its prompt. Must exist when you set it. |
 | `context` | `[]` | Further instruction files to load into the system prompt. |
 | `model`, `thinking` | from `defaults` | Per-agent model and thinking level. |

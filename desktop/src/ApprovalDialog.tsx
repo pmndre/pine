@@ -57,7 +57,7 @@ export function ApprovalDialog({ req }: { req: Approval }) {
 				<div className="flex flex-col gap-3 px-4 select-text">
 					<div className="flex items-center gap-2 text-muted-foreground">
 						<span>{req.agent}</span>
-						{req.task ? <span className="text-outline">task #{req.task}</span> : null}
+						{req.task ? <span className="text-faint">task #{req.task}</span> : null}
 						<Badge variant="secondary" className="font-mono">{req.tool}</Badge>
 					</div>
 					<Printed sm text={req.summary} />
@@ -71,7 +71,7 @@ export function ApprovalDialog({ req }: { req: Approval }) {
 						const [name, about] = labelParts(f.label ?? f.name);
 						return (
 							<Field key={f.name}>
-								<FieldLabel htmlFor={`ap-${f.name}`}>{name}{fields.length > 1 ? <span className="text-outline"> · {i + 1} of {fields.length}</span> : null}</FieldLabel>
+								<FieldLabel htmlFor={`ap-${f.name}`}>{name}{fields.length > 1 ? <span className="text-faint"> · {i + 1} of {fields.length}</span> : null}</FieldLabel>
 								{about ? <FieldDescription>{about}</FieldDescription> : null}
 								<Input id={`ap-${f.name}`} ref={i === 0 ? first : undefined} className="font-mono" type={f.secret !== false ? "password" : "text"} autoComplete="off" spellCheck={false} value={values[f.name] ?? ""} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })} onKeyDown={(e) => e.key === "Enter" && allow()} />
 							</Field>

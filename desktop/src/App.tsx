@@ -27,13 +27,14 @@ import { Settings } from "./Settings.tsx";
 import { ApprovalDialog } from "./ApprovalDialog.tsx";
 import { Palette } from "./Palette.tsx";
 import { PickDialog } from "./PickDialog.tsx";
+import { PublishDialog } from "./PublishDialog.tsx";
 import { QuestionDialog } from "./QuestionDialog.tsx";
 import { ago, isSummon, until } from "./text.ts";
 import { Listbox, ListboxItem } from "@ui-sdk/react/listbox";
 import { LISTBOX, onPick } from "./lists.tsx";
 import { Logo } from "@/components/logo";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AgentAvatar } from "@/components/agent-avatar";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Kbd } from "@/components/ui/kbd";
 import { Sidebar as SidebarRoot, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupAction, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuAction, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -166,7 +167,7 @@ function ConversationRow({ agent, c, depth = 0, summon = false }: { agent: strin
 		// The row is the stock menu button drawn as the list's option, so the list keeps its one tab stop and its arrows.
 		<SidebarMenuItem role="none" className="app-no-drag" onContextMenu={(e) => (e.preventDefault(), void menu())}>
 			<SidebarMenuButton isActive={on} onClick={() => setOpenMobile(false)} className={cn(!summon && INDENT[Math.min(depth, INDENT.length - 1)], c.tasks && "pr-16 group-has-data-[sidebar=menu-action]/menu-item:pr-16")} render={<ListboxItem value={summon ? `${agent}:${c.session}` : c.session} label={`${summon ? `${agent} · ` : ""}${s.titleOf(agent, c.session)}`} title={`${agent} · ${c.session} · ${kept}${c.branch ? ` · a branch of ${c.branch.from}` : ""}${c.worktree ? ` · in the worktree ${c.worktree.branch} of ${c.worktree.repo}` : c.folder ? ` · works in ${c.folder}` : ""}`} />}>
-				<span className="grid size-4 flex-none place-items-center">{waits ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Spinner aria-label="Working" className="size-3" /> : tab?.unread ? <Badge className="size-2 p-0" /> : main || c.pinned ? <StarIcon className="text-outline" /> : depth || c.worktree ? <GitBranchIcon className="text-outline" /> : c.folder ? <FolderIcon className="text-outline" /> : <MessageSquareIcon className="text-outline" />}</span>
+				<span className="grid size-4 flex-none place-items-center">{waits ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Spinner aria-label="Working" className="size-3" /> : tab?.unread ? <Badge className="size-2 p-0" /> : main || c.pinned ? <StarIcon className="text-faint" /> : depth || c.worktree ? <GitBranchIcon className="text-faint" /> : c.folder ? <FolderIcon className="text-faint" /> : <MessageSquareIcon className="text-faint" />}</span>
 				<span className="min-w-0 flex-1">{summon ? <><b className="font-medium">{agent}</b> · </> : null}{s.titleOf(agent, c.session)}</span>
 			</SidebarMenuButton>
 			{/* The badge is drawn over the button, so the button keeps the room for the time (stock pr-8 fits an action alone; the same selector as stock, so it takes the place of its pr-8). */}
@@ -250,15 +251,13 @@ function AgentGroup({ a }: { a: AgentInfo }) {
 				<SidebarMenuItem className="app-no-drag" title={`${a.id}: ${a.description || "no description"}\n${a.model} · ${a.mode}`} onContextMenu={(e) => (e.preventDefault(), void menu())}>
 					{/* What folds the group is the agent's line but its buttons. Under the pointer the line makes room for all three. */}
 					<CollapsibleTrigger render={<SidebarMenuButton className="group-hover/menu-item:pr-20" />}>
-						{folded ? <ChevronRightIcon className="text-outline" /> : <ChevronDownIcon className="text-outline" />}
-						<Avatar size="sm">
-							<AvatarFallback>{a.id.slice(0, 1).toUpperCase()}</AvatarFallback>
-						</Avatar>
+						{folded ? <ChevronRightIcon className="text-faint" /> : <ChevronDownIcon className="text-faint" />}
+						<AgentAvatar agent={a} size="sm" />
 						{/* An agent's name and, beside it on the same line, what it is for. The name is whole; what it is for takes the room that is left
 						    and is cut off where that ends. With the pointer on the line, what was cut off slides through to its end and back. */}
 						<span data-slot="agent-label" className="flex min-w-0 flex-1 items-baseline gap-2 font-semibold text-foreground">
 							<span className="min-w-0 flex-initial truncate">{a.id}</span>
-							<span className="@container min-w-0 flex-1 truncate text-xs font-normal text-outline group-hover/menu-item:text-clip"><span className="group-hover/menu-item:inline-block group-hover/menu-item:animate-slide-end motion-reduce:animate-none">{a.description || a.model}</span></span>
+							<span className="@container min-w-0 flex-1 truncate text-xs font-normal text-faint group-hover/menu-item:text-clip"><span className="group-hover/menu-item:inline-block group-hover/menu-item:animate-slide-end motion-reduce:animate-none">{a.description || a.model}</span></span>
 						</span>
 						{waits ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Spinner aria-label="Working" className="size-3" /> : unread && folded ? <Badge className="size-2 p-0" /> : null}
 					</CollapsibleTrigger>
@@ -384,7 +383,7 @@ function Machines() {
 					{/* The dot stands in the place of the icons in the rows above it: its middle under theirs, and what is written beside it under their names. */}
 					<span className="grid size-4 flex-none place-items-center"><span className={cn(DOT, state.status === "error" ? "bg-destructive" : state.status !== "ready" ? "bg-warn" : s.connected ? "bg-primary" : "bg-destructive")} /></span>
 					<span className="min-w-0 flex-1 truncate">{text}</span>
-					<ChevronsUpDownIcon className="text-outline" />
+					<ChevronsUpDownIcon className="text-faint" />
 				</DropdownMenuTrigger>
 				<DropdownMenuContent side="top" className="min-w-56">
 					<DropdownMenuGroup>
@@ -435,7 +434,7 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 			title={tab.kind === "chat" ? `${tab.agent} · ${tab.session}${tab.folder ? ` · ${tab.folder}` : ""}` : tab.kind === "task" ? `task #${tab.task}` : tab.kind}
 		>
 			<span className="grid min-w-3.5 flex-none place-items-center">
-				{tab.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : tab.busy ? <Spinner aria-label="Working" className="size-3" /> : tab.unread ? <Badge className="size-2 p-0" /> : tab.kind === "events" ? <AudioLinesIcon size={12} /> : tab.kind === "settings" ? <SettingsIcon size={12} /> : tab.kind === "task" ? <ListIcon size={12} /> : <Avatar size="sm"><AvatarFallback>{tab.agent.slice(0, 1).toUpperCase()}</AvatarFallback></Avatar>}
+				{tab.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : tab.busy ? <Spinner aria-label="Working" className="size-3" /> : tab.unread ? <Badge className="size-2 p-0" /> : tab.kind === "events" ? <AudioLinesIcon size={12} /> : tab.kind === "settings" ? <SettingsIcon size={12} /> : tab.kind === "task" ? <ListIcon size={12} /> : <AgentAvatar agent={{ id: tab.agent, color: s.agent(tab.agent)?.color }} size="sm" />}
 			</span>
 			<span data-slot="tab-name" className="truncate">
 				{tab.kind === "events" ? "Events" : tab.kind === "settings" ? "Settings" : tab.kind === "task" ? <><b className="font-medium">{tab.agent}</b> #{tab.task}</> : tab.session === "main" ? <b className="font-medium">{tab.agent}</b> : <><b className="font-medium">{tab.agent}</b> · {s.titleOf(tab.agent, tab.session)}</>}
@@ -573,7 +572,7 @@ function UpdateAsk() {
 				</DialogHeader>
 				<div className="select-text">
 					<p className="text-muted-foreground">This is Pine {u.mine}. The new app is a disk image on the release's page on GitHub: download it, quit Pine and put the new app in place of this one. Your pine home, with your agents, conversations and settings, stays as it is.</p>
-					<p className="mt-2.5 cursor-auto font-mono text-xs text-outline select-text">{u.url}</p>
+					<p className="mt-2.5 cursor-auto font-mono text-xs text-faint select-text">{u.url}</p>
 				</div>
 				<DialogFooter>
 					<Button variant="outline" onClick={close}>Not now</Button>
@@ -649,7 +648,7 @@ export function App() {
 	const chat = tab?.kind === "chat";
 	// The window itself: what shows between and around the panels. On a Mac the system's material lies behind it.
 	return (
-		<div className={cn("flex h-full", s.platform === "darwin" ? "bg-sidebar" : "bg-surface-container-low dark:bg-surface")}>
+		<div className={cn("flex h-full", s.platform === "darwin" ? "bg-sidebar" : "bg-sunk")}>
 			{!ready ? (
 				<Gate />
 			) : (
@@ -688,6 +687,7 @@ export function App() {
 			{s.browserAsk ? <BrowserAsk /> : null}
 			{s.updateAsk ? <UpdateAsk /> : null}
 			{s.picker ? <PickDialog key={s.picker.title} p={s.picker} /> : null}
+			{s.publishing ? <PublishDialog /> : null}
 			{s.palette ? <Palette /> : null}
 			<Asking />
 			{help ? <Help close={() => setHelp(false)} /> : null}

@@ -213,11 +213,11 @@ export const COMMANDS: Command[] = [
 		},
 	},
 	{
-		name: "emit", title: "Publish an event", about: "Publish an event as yourself", hint: "<topic> [json]",
+		name: "emit", title: "Publish an event", about: "Publish an event as yourself: a form, or at once with a topic and JSON", hint: "[topic] [json]",
 		run: async (args) => {
 			const at = args.trim().indexOf(" ");
 			const topic = at < 0 ? args.trim() : args.trim().slice(0, at);
-			if (!topic) return store.flash("Name the topic: /emit <topic> [json]");
+			if (!topic) return store.setPublishing(true);
 			let payload: unknown = null;
 			if (at >= 0) {
 				try {
@@ -226,8 +226,7 @@ export const COMMANDS: Command[] = [
 					return store.flash("The payload is not JSON.", "bad");
 				}
 			}
-			const done = await store.attempt(() => api.emit(topic, payload));
-			if (done) store.flash(`Published event #${done.id} on ${topic}.`);
+			await store.publish(topic, payload);
 		},
 	},
 	{ name: "copy", title: "Copy last answer", about: "Copy the agent's last answer, as it wrote it (Markdown)", keys: "⇧⌘C", chat: true, run: menu("copy") },

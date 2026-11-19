@@ -45,10 +45,13 @@ const SYNONYMS: string[][] = [
 	["approve", "approval", "permission", "confirm", "consent", "ask", "allow", "deny", "dialog", "prompt", "question"],
 	["sandbox", "isolation", "confine", "restrict", "jail", "permission", "access"],
 	["conversation", "session", "tab", "chat", "thread"],
+	["theme", "colour", "color", "colorscheme", "appearance", "skin"],
 	["branch", "fork", "split", "offshoot", "copy", "duplicate", "clone", "sidetrack", "tangent"],
 	["worktree", "worktrees", "checkout", "isolated", "collide", "clash", "interfere", "overwrite", "simultaneously"],
 	["interface", "ui", "gui", "frontend", "dashboard", "widget", "panel"],
 	["click", "press", "tap", "button", "pressed", "clicked"],
+	// Not "theme": its stem is "them", a word of every other question.
+	["colour", "color", "palette", "accent", "tint", "hue"],
 	["preview", "beta", "prerelease", "nightly", "canary", "unreleased"],
 	["notarise", "notarize", "notarization", "gatekeeper", "codesign"],
 	["rss", "atom", "podcast", "blog", "newsletter", "release", "changelog", "syndication"],

@@ -23,6 +23,7 @@ import { allSkills, checkSkill, deleteSkill, skillDir, skillsBeside, writeSkill 
 import type { SourceHost } from "./sources.ts";
 import { localTime, type Scheduler } from "./timers.ts";
 import { errText, type Logger, parseDuration } from "./util.ts";
+import { listThemes, themeInForce } from "./themes.ts";
 import { MAX_EDIT, writeText } from "./workspace-view.ts";
 
 /** A request that is refused, with the status it is answered with and what a client needs besides the sentence. */
@@ -281,12 +282,17 @@ export class OwnerApi {
 			const file = (name: string) => textOf(path.join(a.workspace, name));
 			const files = { instructions: file("AGENTS.md"), soul: file("SOUL.md"), tooling: file("TOOLS.md"), memory: file("MEMORY.md"), rules: textOf(path.join(a.dir, "AGENTS.md")) };
 			return {
-				id: a.id, main: a.id === mainAgentId(cfg), description: a.description, workspace: a.workspace, dir: a.dir,
+				id: a.id, main: a.id === mainAgentId(cfg), description: a.description, ...(a.color ? { color: a.color } : {}), workspace: a.workspace, dir: a.dir,
 				...(a.model ? { model: a.model } : {}), defaultModel: cfg.defaults.model, thinking: a.thinking, mode: a.mode,
 				tools: a.tools ?? AGENT_TOOLS, allTools: AGENT_TOOLS, delegates: a.delegates, network: a.sandbox.network === true, read: a.sandbox.read, write: a.sandbox.write,
 				holdings: { ...this.manager.holdings(a.id), routes: cfg.routes.filter((r) => r.agent === a.id).map((r) => r.name) },
 				files: Object.fromEntries(Object.entries(files).filter(([, text]) => text !== undefined)),
 			};
+		}
+		// The themes of the owner's UIs, each as the colours it gives (src/theme-colors.ts), and the one in force.
+		if (at === "themes") {
+			const themes = listThemes(cfg.home);
+			return { theme: themeInForce(cfg.home, cfg.ui.theme, themes).id, chosen: cfg.ui.theme ?? null, themes };
 		}
 		if (at === "shared") return SHARED_FILES.map((name) => ({ name, about: SHARED_ABOUT[name] ?? "", text: textOf(path.join(cfg.home, name)) ?? "" }));
 		if (at === "skills") return allSkills(cfg).map((s) => ({ ...s, instructions: skillBody(s.dir) }));
@@ -333,6 +339,7 @@ export class OwnerApi {
 			const checked = checkSetting(cfg, key, body.value, SETTINGS[key]?.kind === "model" ? await manager.availableModels() : []);
 			applySetting(cfg, checked);
 			if (checked.setting.live) await manager.refreshSessions();
+			manager.settingChanged(checked.key);
 			this.log.info(`setting ${checked.key} set to ${checked.text} through the control API`);
 			return { key: checked.key, now: checked.setting.live ? checked.setting.now(cfg) : checked.text, live: checked.setting.live };
 		}

@@ -242,6 +242,8 @@ export interface AgentConfig {
 	/** pi agent dir of this agent: AGENTS.md, skills/, extensions/, settings.json, sessions/. */
 	dir: string;
 	description: string;
+	/** Its own colour in the Pine app (`#rrggbb`, lower case): the seed of its avatar's scheme. Display only. */
+	color?: string;
 	workspace: string;
 	model?: string;
 	thinking: string;
@@ -356,6 +358,8 @@ export interface PineConfig {
 		 */
 		autoForward: boolean;
 	};
+	/** How pine's UIs look: `theme` names a file in <home>/themes (src/themes.ts). Not set: pmndre. */
+	ui: { theme?: string };
 	/** Values that must never leave the daemon in events or messages. */
 	secrets: string[];
 	mcp: Record<string, McpServerConfig>;
@@ -424,6 +428,9 @@ const noPlugins = (list: unknown, where: string, problems: string[]): void => {
 	if (Array.isArray(list) && list.length) problems.push(`${where}: plugins are gone. Telegram, MQTT and watched folders are event sources now, which an agent sets up when you ask it to ("watch telegram", "watch ~/Scans"); see docs/references/sources.md. Take the "plugins" entry out`);
 };
 
+/** An agent's colour as agent.json keeps it: `#rrggbb`, in any case. */
+export const isColor = (v: unknown): v is string => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
+
 const strings = (v: unknown, fallback: string[]): string[] => (Array.isArray(v) ? v.map(String) : fallback);
 const paths = (v: unknown, base: string): string[] => strings(v, []).map((p) => resolvePath(p, base));
 
@@ -440,10 +447,13 @@ function loadAgent(id: string, dir: string, raw: any, cfg: PineConfig, problems:
 	const chosen: Mode | undefined = raw.mode ?? cfg.defaults.mode;
 	const sub = raw.subagents === false ? { enabled: false } : raw.subagents === true || raw.subagents === undefined ? {} : raw.subagents;
 	const state = raw.state ?? {};
+	if (raw.color !== undefined && !isColor(raw.color)) problems.push(`${where}: color must be written #rrggbb, for example #e0805a (got ${JSON.stringify(raw.color)})`);
 	return {
 		id,
 		dir,
 		description: raw.description ?? "",
+		// Always a key, also without a colour: a change that takes it away is taken over with Object.assign.
+		color: isColor(raw.color) ? raw.color.toLowerCase() : undefined,
 		workspace,
 		model: raw.model,
 		thinking: raw.thinking ?? cfg.defaults.thinking,
@@ -621,6 +631,7 @@ export function loadConfig(home = defaultHome()): PineConfig {
 			askAccess: raw.security?.askAccess !== false,
 		},
 		summon: { autoForward: raw.summon?.autoForward === true },
+		ui: { theme: typeof raw.ui?.theme === "string" && raw.ui.theme ? raw.ui.theme : undefined },
 		secrets: Object.values(fileEnv).filter((v) => v.length >= 8),
 		mcp: raw.mcp ?? {},
 		sources: loadSources(raw.sources, home, "pine.json: sources", problems, Object.keys(sourceTypes)),
@@ -637,6 +648,7 @@ export function loadConfig(home = defaultHome()): PineConfig {
 	for (const key of ["review", "reviewer", "reviewTimeout", "rules"]) {
 		if (raw.security?.[key] !== undefined) problems.push(`pine.json: security.${key} is gone: pine has no reviewer any more. In auto and safe mode you are asked about critical actions, and after outside content about what is sent out. Take the entry out${key === "reviewer" ? ' (the model that judges goals is "defaults.judge" now)' : ""}`);
 	}
+	if (raw.ui?.theme !== undefined && !(typeof raw.ui.theme === "string" && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(raw.ui.theme))) problems.push('pine.json: ui.theme names a theme by its file in the themes folder, without .json, for example "pmndre"');
 	if (d.judge !== undefined && !/^[^/\s]+\/\S+$/.test(String(d.judge))) problems.push("pine.json: defaults.judge names a model as provider/model-id");
 	if (cfg.http) {
 		for (const [name, h] of Object.entries<any>(raw.http?.hooks ?? {})) {

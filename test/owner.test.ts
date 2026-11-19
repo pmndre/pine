@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { browserPlaces } from "../src/browser-build.ts";
+import { loadConfig } from "../src/config.ts";
 import { Logins } from "../src/owner.ts";
 import { sandboxAvailable } from "../src/security.ts";
 import { putInto } from "../src/workspace-view.ts";
@@ -528,4 +529,52 @@ test("the owner's editor writes a file of a conversation's folder, and a link pl
 	assert.deepEqual({ length: all.text.length, truncated: all.truncated }, { length: long.length, truncated: false });
 	assert.equal((await a.get("/agents/main/view/file?path=long.txt&max=999999999")).body.text.length, long.length, "never more than an editor's limit");
 	await h.close();
+});
+
+test("the owner gives an agent a colour of its own: kept in its agent.json, read back by the control API, taken away with none", async () => {
+	const h = await harness({ pine: { http: { port: 0 } }, agents: { main: {}, books: { agent: { description: "Keeps the books" } } } });
+	const a = api(h);
+	const file = path.join(h.home, "agents", "books", "agent.json");
+	const listed = async (id: string) => ((await a.get("/agents")).body as any[]).find((x) => x.id === id);
+	assert.ok(!("color" in (await listed("books"))), "an agent without a colour has none in the list");
+	assert.ok(!("color" in (await a.get("/agents/books/detail")).body), "nor in its detail");
+
+	// Any case is taken, and kept in lower case.
+	const set = await a.post("/agents/books/update", { color: "#E0805A" });
+	assert.equal(set.status, 200);
+	assert.deepEqual(set.body.lines, ["color: #e0805a"]);
+	assert.equal(json(file).color, "#e0805a");
+	assert.equal((await listed("books")).color, "#e0805a");
+	assert.equal((await a.get("/agents/books/detail")).body.color, "#e0805a");
+
+	// What is not #rrggbb is refused, and nothing is written.
+	for (const bad of ["coral", "#e08", "e0805a", "#e0805g"]) {
+		const r = await a.post("/agents/books/update", { color: bad });
+		assert.equal(r.status, 400, bad);
+		assert.match(r.body.error, /a colour is written #rrggbb/, bad);
+	}
+	assert.equal(json(file).color, "#e0805a");
+
+	// None takes it away: the key is gone, and the agent is as it was.
+	for (const none of ["none", ""]) {
+		await a.post("/agents/books/update", { color: "#336699" });
+		const r = await a.post("/agents/books/update", { color: none });
+		assert.deepEqual(r.body.lines, ["color: none"], JSON.stringify(none));
+		assert.ok(!("color" in json(file)));
+		assert.ok(!("color" in (await listed("books"))));
+	}
+	assert.match((await a.post("/agents/books/update", {})).body.error, /nothing to change: give at least one of .*color/);
+
+	// A new agent can be made with one; a bad one makes nothing.
+	assert.equal((await a.post("/agents", { id: "scout", description: "Scouts", instructions: "You are SCOUT.", color: "#3366CC" })).status, 200);
+	assert.equal(json(path.join(h.home, "agents", "scout", "agent.json")).color, "#3366cc");
+	assert.equal((await listed("scout")).color, "#3366cc");
+	assert.match((await a.post("/agents", { id: "ghost", description: "Ghost", instructions: "You are GHOST.", color: "coral" })).body.error, /a colour is written #rrggbb/);
+	assert.ok(!fs.existsSync(path.join(h.home, "agents", "ghost")));
+	await h.close();
+
+	// A colour written by hand that is not one is a problem of that agent's file.
+	const bad = await harness({ agents: { main: {}, books: { agent: { description: "Keeps the books", color: "coral" } } }, start: false } as any);
+	assert.throws(() => loadConfig(bad.home), /agents\/books\/agent\.json: color must be written #rrggbb, for example #e0805a \(got "coral"\)/);
+	await bad.close();
 });

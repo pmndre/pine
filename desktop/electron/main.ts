@@ -1,7 +1,6 @@
 // The app's main process. It owns three things the page must not: the daemon's token, the
 // operating system (windows, menus, dialogs, notifications), and the child that is the daemon
 // when this app had to start one. The page gets a narrow bridge (preload.ts) and nothing else.
-import { builder } from "material-theme-builder";
 import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, nativeTheme, Notification, protocol, session, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
@@ -12,7 +11,7 @@ import { callDaemon, followEvents, mediaFromDaemon, pageCsp } from "./daemon.ts"
 import { connect, connectSsh, findPine, type Launch, loginEnv, pineRoot, readHosts, runPine, type Service, ServiceError, sshHost } from "./service.ts";
 import { Terminals } from "./terminal.ts";
 import { LATEST, lookForUpdate, type Update } from "./updates.ts";
-import { cleanPalette, DEFAULT_PALETTE, type Palette } from "../src/theme.ts";
+import { cleanLook, type Look } from "../src/theme.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(HERE, "..");
@@ -52,21 +51,23 @@ interface Prefs {
 	hosts: string[];
 	/** The one of them the app uses; none: the pine of this computer. */
 	use?: string;
-	theme: "system" | "light" | "dark";
 	notify: boolean;
 	/** Whether GitHub is asked for a newer app when this one starts. */
 	updates: boolean;
 	/** `pine` for a terminal was looked after once (see firstCommand): a link the owner removed stays removed. */
 	commandTried: boolean;
-	/** The palette the page's colours are generated from, made safe by cleanPalette. None: pine's default. */
-	palette?: Palette;
-	/** Code in dark draws with roles of the palette (on, the default) or keeps poimandres' own colours (off). */
-	codeFollowsPalette: boolean;
+	/**
+	 * The theme the page was last drawn in, as pine resolved it and cleanLook made it safe: the window
+	 * opens in it, and its frame (light or dark) and background follow it. None: pmndre.
+	 */
+	look?: Look;
+	/** While a coloured agent's conversation is in front, the window's accent is its colour. */
+	agentAccent: boolean;
 	bounds?: { x?: number; y?: number; width: number; height: number };
 }
 
 const prefsFile = () => path.join(app.getPath("userData"), "prefs.json");
-let prefs: Prefs = { keepRunning: false, hosts: [], theme: "system", notify: true, updates: true, commandTried: false, codeFollowsPalette: true };
+let prefs: Prefs = { keepRunning: false, hosts: [], notify: true, updates: true, commandTried: false, agentAccent: true };
 
 function loadPrefs(): void {
 	try {
@@ -76,12 +77,12 @@ function loadPrefs(): void {
 			keepRunning: raw.keepRunning === true,
 			hosts: readHosts(raw.hosts),
 			use: undefined,
-			theme: raw.theme === "light" || raw.theme === "dark" ? raw.theme : "system",
 			notify: raw.notify !== false,
 			updates: raw.updates !== false,
 			commandTried: raw.commandTried === true,
-			palette: cleanPalette(raw.palette),
-			codeFollowsPalette: raw.codeFollowsPalette !== false,
+			look: cleanLook(raw.look),
+			// Off when the owner turned it off, or unticked the primary when the window took role families from the agent.
+			agentAccent: raw.agentAccent === false ? false : raw.agentAccent === true || !(Array.isArray(raw.agentFamilies) && !raw.agentFamilies.includes("primary")),
 			bounds: raw.bounds && Number(raw.bounds.width) > 300 && Number(raw.bounds.height) > 200 ? raw.bounds : undefined,
 		};
 		// Only a machine that is in the list: what else might be written there is not connected to.
@@ -89,21 +90,19 @@ function loadPrefs(): void {
 	} catch {
 		// first start
 	}
-	nativeTheme.themeSource = prefs.theme;
+	nativeTheme.themeSource = prefs.look?.kind ?? "dark";
 }
 
 /**
- * What the window shows before the page draws: the surface of the owner's palette in the current
- * appearance (material-theme-builder's root entry, no React). On a Mac the window is transparent,
- * behind its vibrancy.
+ * What the window shows before the page draws: the page colour of the theme it was last drawn in
+ * (pmndre's before there was one). On a Mac the window is transparent, behind its vibrancy.
  */
 function windowBackground(): string {
 	if (isMac) return "#00000000";
-	const palette = prefs.palette ?? DEFAULT_PALETTE;
-	return builder(palette.source, palette).toJson().schemes[nativeTheme.shouldUseDarkColors ? "dark" : "light"].surface;
+	return (prefs.look?.colors.bg ?? "#1b1e28").slice(0, 7);
 }
 
-/** Repaints the window's background for the current palette and appearance; a no-op before the window exists. */
+/** Repaints the window's background for the current theme; a no-op before the window exists. */
 function refreshBackground(): void {
 	if (win && !win.isDestroyed()) win.setBackgroundColor(windowBackground());
 }
@@ -494,8 +493,6 @@ function handle<T extends unknown[]>(channel: string, fn: (...args: T) => unknow
 }
 
 function wire(): void {
-	// "updated" fires both when Settings sets themeSource and when the system's own appearance flips.
-	nativeTheme.on("updated", refreshBackground);
 	handle("pine:state", () => ({ state, connected: Boolean(service) && connected, home: prefs.home ?? process.env.PINE_HOME, prefs: { ...prefs, bounds: undefined }, platform: process.platform, focused: Boolean(win?.isFocused()), updates: Boolean(RELEASE_API), versions: { app: app.getVersion(), electron: process.versions.electron } }));
 	handle("pine:call", (method: string, url: string, body?: unknown) => callDaemon(service, method, url, body));
 	handle("pine:retry", () => startService());
@@ -545,11 +542,9 @@ function wire(): void {
 		return { ...prefs, bounds: undefined };
 	});
 	handle("pine:prefs", (change: Partial<Prefs>) => {
-		if (change.theme === "system" || change.theme === "light" || change.theme === "dark") nativeTheme.themeSource = prefs.theme = change.theme;
 		if (typeof change.notify === "boolean") prefs.notify = change.notify;
 		if (typeof change.updates === "boolean") prefs.updates = change.updates;
 		if (typeof change.keepRunning === "boolean") prefs.keepRunning = change.keepRunning;
-		if (typeof change.codeFollowsPalette === "boolean") prefs.codeFollowsPalette = change.codeFollowsPalette;
 		if ("home" in change) {
 			const home = typeof change.home === "string" && change.home.trim() ? change.home.trim() : undefined;
 			// Another home is another pine: the one held for this computer is not used again (the page restarts or reconnects).
@@ -561,10 +556,13 @@ function wire(): void {
 			}
 			prefs.home = home;
 		}
-		// Reset sends none: nothing is stored, and the page draws pine's default.
-		if ("palette" in change) prefs.palette = cleanPalette(change.palette);
-		// A change of theme reaches the window through nativeTheme's "updated" (see wire()).
-		if ("palette" in change) refreshBackground();
+		// The theme the page draws now: the window's frame (light or dark, the Mac's materials) and background follow it.
+		if ("look" in change) {
+			prefs.look = cleanLook(change.look);
+			nativeTheme.themeSource = prefs.look?.kind ?? "dark";
+			refreshBackground();
+		}
+		if (typeof change.agentAccent === "boolean") prefs.agentAccent = change.agentAccent;
 		savePrefs();
 		return { ...prefs, bounds: undefined };
 	});

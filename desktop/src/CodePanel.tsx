@@ -84,12 +84,12 @@ const look = EditorView.theme({
 	"&": { height: "100%", minWidth: "0", flex: "1", backgroundColor: "var(--background)", color: "var(--code-text)" },
 	"&.cm-focused": { outline: "none" },
 	".cm-scroller": { fontFamily: "var(--mono)", fontSize: "var(--text-xs)", lineHeight: "var(--leading-relaxed)" },
-	".cm-gutters": { borderRight: "1px solid var(--md-sys-color-surface-container-high)", backgroundColor: "var(--background)", color: "var(--code-gutter)" },
+	".cm-gutters": { borderRight: "1px solid var(--line-soft)", backgroundColor: "var(--background)", color: "var(--code-gutter)" },
 	".cm-activeLine": { backgroundColor: "var(--code-active-line)" },
 	".cm-activeLineGutter": { backgroundColor: "var(--code-active-line)", color: "var(--code-gutter-active)" },
-	".cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { background: "color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent)" },
+	".cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { background: "var(--select)" },
 	".cm-cursor": { borderLeftColor: "var(--code-cursor)" },
-	".cm-panels": { borderColor: "var(--border)", backgroundColor: "light-dark(var(--md-sys-color-surface-container), var(--md-sys-color-surface-container-high))", color: "var(--foreground)" },
+	".cm-panels": { borderColor: "var(--border)", backgroundColor: "var(--raised)", color: "var(--foreground)" },
 	".cm-textfield, .cm-button": { borderRadius: "calc(var(--radius) * 0.8)", borderColor: "var(--border)", backgroundColor: "var(--card)", backgroundImage: "none", fontFamily: "var(--font)", fontSize: "var(--text-xs)", color: "var(--foreground)" },
 	".cm-searchMatch": { backgroundColor: "var(--code-match)", outline: "1px solid var(--code-match-line)" },
 });
@@ -98,9 +98,9 @@ const look = EditorView.theme({
 // ScrollArea that fades where it is cut (scroll-fade sits on its viewport, the element that
 // scrolls), a flex column so that its viewport shrinks to it, and a sideways bar where a diff can
 // be wider than the panel. Inside, a flex column at least its height, for an Empty centred with `m-auto`.
-export const SUB = "flex min-h-9 flex-none items-center gap-1.5 border-b border-surface-container-high px-2.5 py-1.5 text-xs text-muted-foreground";
+export const SUB = "flex min-h-9 flex-none items-center gap-1.5 border-b border-line-soft px-2.5 py-1.5 text-xs text-muted-foreground";
 const PICTURE = "block max-h-80 max-w-full rounded-lg border sm:max-w-md";
-const STATUS: Record<string, string> = { M: "text-warn", A: "text-primary", "?": "text-primary", D: "text-destructive", R: "text-info" };
+const STATUS: Record<string, string> = { M: "text-warn", A: "text-add", "?": "text-add", D: "text-del", R: "text-info" };
 
 function language(file: string): Extension {
 	const ext = file.slice(file.lastIndexOf(".") + 1).toLowerCase();
@@ -216,9 +216,9 @@ function ChangeRow({ c }: { c: Change }) {
 		<ListboxItem value={c.path} label={c.path.slice(at + 1)} className={rowClass()} title={c.path}>
 			<span className={`w-3.5 flex-none text-center font-mono font-semibold ${STATUS[c.status] ?? ""}`}>{c.status === "?" ? "U" : c.status}</span>
 			<span className="truncate">{c.path.slice(at + 1)}</span>
-			<span className="min-w-0 flex-1 truncate text-outline">{at > 0 ? c.path.slice(0, at) : ""}</span>
-			{c.added ? <span className="font-mono text-primary">+{c.added}</span> : null}
-			{c.removed ? <span className="font-mono text-destructive">−{c.removed}</span> : null}
+			<span className="min-w-0 flex-1 truncate text-faint">{at > 0 ? c.path.slice(0, at) : ""}</span>
+			{c.added ? <span className="font-mono text-add">+{c.added}</span> : null}
+			{c.removed ? <span className="font-mono text-del">−{c.removed}</span> : null}
 		</ListboxItem>
 	);
 }
@@ -313,7 +313,7 @@ function Dir({ tab, dir, depth, tick, onLoad }: { tab: Tab; dir: string; depth: 
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [read.loading, read.data, read.error]);
 	const failed = state.failed.get(dir);
-	if (failed && dir) return <p className="py-2.5 pr-3 text-xs wrap-anywhere text-outline select-text" style={{ paddingLeft: `calc(var(--spacing) * ${2.5 + depth * 3.5})` }}>{failed}</p>;
+	if (failed && dir) return <p className="py-2.5 pr-3 text-xs wrap-anywhere text-faint select-text" style={{ paddingLeft: `calc(var(--spacing) * ${2.5 + depth * 3.5})` }}>{failed}</p>;
 	const entries = state.dirs.get(dir);
 	if (!entries) return null;
 	return (
@@ -324,10 +324,10 @@ function Dir({ tab, dir, depth, tick, onLoad }: { tab: Tab; dir: string; depth: 
 				return (
 					<TreeItem key={full} value={full} label={e.name} branch={e.dir} className={TREE_ITEM}>
 						<TreeItemLabel className={rowClass(state.file === full)} style={{ paddingLeft: `calc(var(--spacing) * ${2.5 + depth * 3.5})` }}>
-							{e.dir ? (open ? <ChevronDownIcon className="size-3 text-outline" /> : <ChevronRightIcon className="size-3 text-outline" />) : <span className="w-3 flex-none" />}
-							{e.dir ? <FolderIcon className="size-3.5 text-outline" /> : <FileIcon className="size-3.5 text-outline" />}
+							{e.dir ? (open ? <ChevronDownIcon className="size-3 text-faint" /> : <ChevronRightIcon className="size-3 text-faint" />) : <span className="w-3 flex-none" />}
+							{e.dir ? <FolderIcon className="size-3.5 text-faint" /> : <FileIcon className="size-3.5 text-faint" />}
 							<span className="min-w-0 flex-1 truncate">{e.name}</span>
-							{!e.dir ? <span className="text-outline">{size(e.size)}</span> : null}
+							{!e.dir ? <span className="text-faint">{size(e.size)}</span> : null}
 						</TreeItemLabel>
 						{e.dir ? <TreeGroup>{open ? <Dir tab={tab} dir={full} depth={depth + 1} tick={tick} onLoad={onLoad} /> : null}</TreeGroup> : null}
 					</TreeItem>
@@ -446,7 +446,7 @@ function Files({ tab, file, setFile }: { tab: Tab; file?: string; setFile: (file
 			</div>
 			<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">
 				{query.trim() ? (
-					found.data?.length ? <Listbox aria-label="Files that fit" className="outline-none" {...LISTBOX} onValueChange={onPick(setFile)}>{found.data.map((f) => <ListboxItem key={f} value={f} label={f} className={rowClass()}><FileIcon className="size-3.5 text-outline" /><span className="truncate">{f}</span></ListboxItem>)}</Listbox> : found.loading ? <Spinner className="m-auto" /> : <EmptyView icon={SearchIcon} title="No file fits" />
+					found.data?.length ? <Listbox aria-label="Files that fit" className="outline-none" {...LISTBOX} onValueChange={onPick(setFile)}>{found.data.map((f) => <ListboxItem key={f} value={f} label={f} className={rowClass()}><FileIcon className="size-3.5 text-faint" /><span className="truncate">{f}</span></ListboxItem>)}</Listbox> : found.loading ? <Spinner className="m-auto" /> : <EmptyView icon={SearchIcon} title="No file fits" />
 				) : (
 					<FileTree tab={tab} pick={setFile} tick={tick} />
 				)}
@@ -476,7 +476,7 @@ function Output({ tab }: { tab: Tab }) {
 				<div className={SUB}>
 					<Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => setOpen(undefined)} aria-label="Back to the list"><ChevronLeftIcon /></Button>} /><TooltipContent>Back to the list</TooltipContent></Tooltip>
 					<span className="font-mono">{shown.entry.tool}</span>
-					<span className="min-w-0 flex-1 truncate font-mono text-outline">{shown.entry.subject}</span>
+					<span className="min-w-0 flex-1 truncate font-mono text-faint">{shown.entry.subject}</span>
 				</div>
 				<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">
 					<Printed text={shown.entry.result || "(it printed nothing)"} failed={shown.entry.ok === false} className="m-2" />
@@ -491,8 +491,8 @@ function Output({ tab }: { tab: Tab }) {
 				<ListboxItem key={`${c.task}:${c.n}`} value={`${c.task}:${c.n}`} label={`${c.entry.tool} ${c.entry.subject ?? ""}`} className={rowClass()}>
 					{c.entry.ok === false ? <XIcon className="size-3.5 flex-none text-destructive" /> : c.entry.ok ? <CheckIcon className="size-3.5 flex-none text-primary" /> : <Spinner aria-label="Working" className="size-3.5" />}
 					<span className="font-mono">{c.entry.tool}</span>
-					<span className="min-w-0 flex-1 truncate font-mono text-outline">{c.entry.subject ? oneLine(c.entry.subject) : ""}</span>
-					{c.entry.ms !== undefined ? <span className="text-outline">{took(c.entry.ms)}</span> : null}
+					<span className="min-w-0 flex-1 truncate font-mono text-faint">{c.entry.subject ? oneLine(c.entry.subject) : ""}</span>
+					{c.entry.ms !== undefined ? <span className="text-faint">{took(c.entry.ms)}</span> : null}
 				</ListboxItem>
 			))}
 				</Listbox>
@@ -506,7 +506,7 @@ function Running({ tab }: { tab: Tab }) {
 	return (
 		<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">
 			{tab.programs.map((p) => (
-				<div className="flex flex-col gap-1 border-b border-surface-container-high p-2" key={p.id}>
+				<div className="flex flex-col gap-1 border-b border-line-soft p-2" key={p.id}>
 					<Item size="sm">
 						<ItemMedia>
 							<span className="size-2 rounded-full bg-primary" />
@@ -597,7 +597,7 @@ export function CodePanel({ tab }: { tab: Tab }) {
 				</>
 			}
 		>
-			{steps ? <ScrollArea className="flex max-h-48 min-h-0 flex-none flex-col border-b border-surface-container-high *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="px-3 py-2.5"><Steps items={steps} /></div></ScrollArea> : null}
+			{steps ? <ScrollArea className="flex max-h-48 min-h-0 flex-none flex-col border-b border-line-soft *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="px-3 py-2.5"><Steps items={steps} /></div></ScrollArea> : null}
 			{view === "agent" ? (
 				<AgentView tab={tab} />
 			) : view === "changes" || view === "turn" ? (

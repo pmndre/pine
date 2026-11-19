@@ -1,170 +1,115 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-/* shadcn's tokens, pointed at the M3 roles that <Mtb> writes into the page (main.tsx). */
-@import "material-theme-builder/shadcn.css";
-/* The M3 roles as utilities (bg-surface-container-low, text-outline, text-warn, bg-on-surface/8...), for what shadcn has no
-   token for. Where a name is also shadcn's (primary, background, secondary...), shadcn's in the @theme inline below wins. */
-@plugin "material-theme-builder/tailwind" {
-	custom-colors: warn, info, plan;
-}
 
 /* Streamdown draws answers with utilities of its own, which Tailwind finds only where it is told to look. */
 @source "../node_modules/streamdown/dist/*.js";
 @source "../node_modules/@streamdown/code/dist/*.js";
 
-/* Dark is a class on the root element, which theme.ts keeps in step with the system's appearance. */
+/* Dark is a class on the root element: theme.ts sets it for a dark theme. */
 @custom-variant dark (&:is(.dark *));
 
-/* Every colour is a role of the Material 3 scheme that <Mtb> generates from the palette in theme.ts (`--md-sys-color-*`:
-   light on :root, dark on .dark, both on the root element). Components use shadcn's tokens, which point at roles (below),
-   and the plugin's M3 utilities for the rest; tints and state layers are a role with Tailwind's opacity modifier. */
+/* pine's colours. Every one is a role that a theme sets (src/theme-colors.ts in pine resolves a VS Code colour
+   theme into them; theme.ts sets them on the root element, with `.dark` for a dark theme). What is here is the
+   default theme, pmndre (github.com/drcmda/poimandres-theme), for the moment before a theme is set, and for a
+   page that has none (Storybook). shadcn's tokens below only point at these names, so one place holds each colour. */
 :root {
-	color-scheme: light;
+	color-scheme: dark;
 	/* The density of the whole page: every rem size (text, spacing, shadcn's components) follows this one. */
 	font-size: 15px;
 	--font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
 	--mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-	--radius: 0.625rem;
-	--shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 28px rgba(0, 0, 0, 0.1);
-	--shadow-l: 0 2px 6px rgba(0, 0, 0, 0.08), 0 24px 64px rgba(0, 0, 0, 0.22);
-}
-
-/* The --p-* values are the poimandres theme (github.com/drcmda/poimandres-theme), for code in dark only (below). */
-.dark {
-	color-scheme: dark;
-	--p-bg: #1b1e28;
-	--p-fg: #a6accd;
-	--p-bright: #e4f0fb;
-	--p-comment: #767c9d;
-	--p-mint: #5de4c7;
-	--p-teal: #5fb3a1;
-	--p-blue: #add7ff;
-	--p-sky: #89ddff;
-	--p-steel: #91b4d5;
-	--p-slate: #7390aa;
-	--p-yellow: #fffac2;
-	--p-pink: #d0679d;
-	--p-focus: #303340;
-	--p-select: rgba(113, 124, 180, 0.3);
-
+	--bg: #1b1e28;
+	--surface: #1e212c;
+	--raised: #232633;
+	--sunk: #171922;
+	--composer: #1e212c;
+	--side: #13151de0;
+	--hover: #a6accd12;
+	--press: #a6accd1f;
+	--line: #2b2e3c;
+	--line-soft: #242734;
+	--text: #e4f0fb;
+	--text-muted: #a6accd;
+	--faint: #767c9d;
+	--brand: #5de4c7;
+	--brand-soft: #5de4c71f;
+	--on-accent: #171922;
+	--warn: #fffac2;
+	--warn-soft: #fffac21a;
+	--bad: #d0679d;
+	--bad-soft: #d0679d26;
+	--info: #add7ff;
+	--plan: #89ddff;
+	--add: #5de4c7;
+	--add-bg: #5de4c71a;
+	--del: #d0679d;
+	--del-bg: #d0679d24;
+	--select: #717cb44d;
+	--scrim: #0a0b118c;
+	/* The colours of code: the code editor's (CodePanel.tsx: its CodeMirror theme and highlight style read only these) and
+	   the answers' (markdown.tsx: the highlighter's theme reads them too). */
+	--code-text: #a6accd;
+	--code-gutter: #767c9d8c;
+	--code-gutter-active: #a6accd;
+	--code-active-line: #717cb413;
+	--code-cursor: #a6accd;
+	--code-match: #add7ff40;
+	--code-match-line: #add7ff80;
+	--code-comment: #767c9db3;
+	--code-meta: #a6accd;
+	--code-meta-style: normal;
+	--code-keyword: #a6accd;
+	--code-definition: #91b4d5;
+	--code-control: #5de4c7bf;
+	--code-modifier: #5de4c7;
+	--code-string: #5de4c7;
+	--code-regexp: #5fb3a1;
+	--code-literal: #5de4c7;
+	--code-null: #d0679d;
+	--code-name: #e4f0fb;
+	--code-attribute: #91b4d5;
+	--code-attribute-style: italic;
+	--code-call: #e4f0fbcc;
+	--code-function: #add7ff;
+	--code-type: #a6accdbf;
+	--code-namespace: #91b4d5;
+	--code-tag: #5de4c7;
+	--code-heading: #5de4c7;
+	--code-emphasis: #7390aa;
+	--code-link: #add7ff;
+	--code-inserted: #add7ff;
+	--code-deleted: #d0679d;
+	--code-punctuation: #a6accd;
+	--code-operator: #91b4d5;
+	/* The terminal beside a conversation (Terminal.tsx): its sixteen colours. */
+	--term-0: #1b1e28;
+	--term-1: #d0679d;
+	--term-2: #5de4c7;
+	--term-3: #fffac2;
+	--term-4: #89ddff;
+	--term-5: #f087bd;
+	--term-6: #89ddff;
+	--term-7: #ffffff;
+	--term-8: #a6accd;
+	--term-9: #d0679d;
+	--term-10: #5de4c7;
+	--term-11: #fffac2;
+	--term-12: #add7ff;
+	--term-13: #f087bd;
+	--term-14: #add7ff;
+	--term-15: #ffffff;
 	--shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.4);
 	--shadow-l: 0 2px 6px rgba(0, 0, 0, 0.4), 0 24px 64px rgba(0, 0, 0, 0.6);
-}
-
-/* The colours of code: the code editor's (CodePanel.tsx: its CodeMirror theme and highlight style read only these) and
-   the answers' (markdown.tsx: the highlighter's theme reads them too). Light points at M3 roles. Dark points at roles
-   too while code follows the palette (the default), with the plain text a step below the names and a few more kinds
-   apart than light, as poimandres does; with that preference off (`data-code="poimandres"` on the root element,
-   main.tsx), dark is poimandres, token by token as the theme has them. `currentColor` is the colour of the text around. */
-:root {
-	--code-text: var(--md-sys-color-on-surface);
-	--code-gutter: var(--md-sys-color-outline);
-	--code-gutter-active: var(--md-sys-color-outline);
-	--code-active-line: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
-	--code-cursor: var(--md-sys-color-primary);
-	--code-match: color-mix(in srgb, var(--md-sys-color-warn) 12%, transparent);
-	--code-match-line: color-mix(in oklab, var(--md-sys-color-warn) 50%, transparent);
-	--code-comment: var(--md-sys-color-outline);
-	--code-meta: var(--md-sys-color-outline);
-	--code-meta-style: italic;
-	--code-keyword: var(--md-sys-color-plan);
-	--code-definition: var(--md-sys-color-plan);
-	--code-control: var(--md-sys-color-plan);
-	--code-modifier: var(--md-sys-color-plan);
-	--code-string: var(--md-sys-color-primary);
-	--code-regexp: var(--md-sys-color-primary);
-	--code-literal: var(--md-sys-color-warn);
-	--code-null: var(--md-sys-color-warn);
-	--code-name: var(--md-sys-color-on-surface);
-	--code-attribute: var(--md-sys-color-on-surface);
-	--code-attribute-style: normal;
-	--code-call: var(--md-sys-color-info);
-	--code-function: var(--md-sys-color-info);
-	--code-type: var(--md-sys-color-info);
-	--code-namespace: var(--md-sys-color-info);
-	--code-tag: var(--md-sys-color-info);
-	--code-heading: currentColor;
-	--code-emphasis: currentColor;
-	--code-link: currentColor;
-	--code-inserted: var(--md-sys-color-primary);
-	--code-deleted: var(--md-sys-color-error);
-	--code-punctuation: var(--md-sys-color-outline);
-	--code-operator: var(--md-sys-color-outline);
 	/* How tall a dialog's body grows before it scrolls: shadcn's own value for a scrollable dialog. */
 	--dialog-scroll: 50vh;
 }
 
-.dark {
-	--code-text: var(--md-sys-color-on-surface-variant);
-	--code-gutter: var(--md-sys-color-outline);
-	--code-gutter-active: var(--md-sys-color-on-surface-variant);
-	--code-active-line: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
-	--code-cursor: var(--md-sys-color-primary);
-	--code-match: color-mix(in srgb, var(--md-sys-color-warn) 20%, transparent);
-	--code-match-line: color-mix(in oklab, var(--md-sys-color-warn) 50%, transparent);
-	--code-comment: var(--md-sys-color-outline);
-	--code-meta: var(--md-sys-color-outline);
-	--code-meta-style: italic;
-	--code-keyword: var(--md-sys-color-plan);
-	--code-definition: var(--md-sys-color-plan);
-	--code-control: var(--md-sys-color-plan);
-	--code-modifier: var(--md-sys-color-plan);
-	--code-string: var(--md-sys-color-primary);
-	--code-regexp: var(--md-sys-color-tertiary);
-	--code-literal: var(--md-sys-color-warn);
-	--code-null: var(--md-sys-color-error);
-	--code-name: var(--md-sys-color-on-surface);
-	--code-attribute: var(--md-sys-color-tertiary);
-	--code-attribute-style: italic;
-	--code-call: var(--md-sys-color-on-surface);
-	--code-function: var(--md-sys-color-info);
-	--code-type: var(--md-sys-color-info);
-	--code-namespace: var(--md-sys-color-tertiary);
-	--code-tag: var(--md-sys-color-info);
-	--code-heading: var(--md-sys-color-primary);
-	--code-emphasis: currentColor;
-	--code-link: var(--md-sys-color-info);
-	--code-inserted: var(--md-sys-color-primary);
-	--code-deleted: var(--md-sys-color-error);
-	--code-punctuation: var(--md-sys-color-on-surface-variant);
-	--code-operator: var(--md-sys-color-outline);
-}
-
-.dark[data-code="poimandres"] {
-	--code-text: var(--p-fg);
-	--code-gutter: color-mix(in oklab, var(--p-comment) 55%, transparent);
-	--code-gutter-active: var(--p-fg);
-	--code-active-line: color-mix(in oklab, var(--p-select) 25%, transparent);
-	--code-cursor: var(--p-fg);
-	--code-match: color-mix(in oklab, var(--p-blue) 25%, transparent);
-	--code-match-line: color-mix(in oklab, var(--p-blue) 50%, transparent);
-	--code-comment: color-mix(in oklab, var(--p-comment) 70%, transparent);
-	--code-meta: var(--p-fg);
-	--code-meta-style: normal;
-	--code-keyword: var(--p-fg);
-	--code-definition: var(--p-steel);
-	--code-control: color-mix(in oklab, var(--p-mint) 75%, transparent);
-	--code-modifier: var(--p-mint);
-	--code-string: var(--p-mint);
-	--code-regexp: var(--p-teal);
-	--code-literal: var(--p-mint);
-	--code-null: var(--p-pink);
-	--code-name: var(--p-bright);
-	--code-attribute: var(--p-steel);
-	--code-attribute-style: italic;
-	--code-call: color-mix(in oklab, var(--p-bright) 80%, transparent);
-	--code-function: var(--p-blue);
-	--code-type: color-mix(in oklab, var(--p-fg) 75%, transparent);
-	--code-namespace: var(--p-steel);
-	--code-tag: var(--p-mint);
-	--code-heading: var(--p-mint);
-	--code-emphasis: var(--p-slate);
-	--code-link: var(--p-blue);
-	--code-inserted: var(--p-blue);
-	--code-deleted: var(--p-pink);
-	--code-punctuation: var(--p-fg);
-	--code-operator: var(--p-steel);
+/* A light theme: the system's controls in light, and shadows that suit a bright page. */
+:root:not(.dark) {
+	color-scheme: light;
+	--shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 28px rgba(0, 0, 0, 0.1);
+	--shadow-l: 0 2px 6px rgba(0, 0, 0, 0.08), 0 24px 64px rgba(0, 0, 0, 0.22);
 }
 
 /* The editor's theme (CodePanel.tsx) reads these from script, where Tailwind cannot see them, and Tailwind
@@ -183,8 +128,8 @@
 	--spacing-window-buttons: max(env(titlebar-area-x, 0px), calc(var(--spacing) * 2));
 }
 
-/* shadcn's tokens as utilities, set by shadcn.css (M3 roles) and by pine's mapping after the utilities below. The font is
-   the system's, as it always was. */
+/* shadcn's tokens, set from pine's own colours (above). They only point at pine's names, so one place holds each
+   colour. The font is the system's, as it always was. */
 @theme inline {
 	--font-sans: var(--font);
 	--font-mono: var(--mono);
@@ -220,6 +165,25 @@
 	--color-card: var(--card);
 	--color-foreground: var(--foreground);
 	--color-background: var(--background);
+	/* pine's own colours that shadcn has no name for, as utilities (text-warn, bg-bad-soft...). */
+	--color-warn: var(--warn);
+	--color-warn-soft: var(--warn-soft);
+	--color-bad-soft: var(--bad-soft);
+	--color-info: var(--info);
+	--color-plan: var(--plan);
+	--color-faint: var(--faint);
+	--color-brand-soft: var(--brand-soft);
+	--color-line-soft: var(--line-soft);
+	--color-raised: var(--raised);
+	--color-sunk: var(--sunk);
+	--color-hover: var(--hover);
+	--color-press: var(--press);
+	--color-scrim: var(--scrim);
+	--color-composer: var(--composer);
+	--color-add: var(--add);
+	--color-add-bg: var(--add-bg);
+	--color-del: var(--del);
+	--color-del-bg: var(--del-bg);
 	--radius-sm: calc(var(--radius) * 0.6);
 	--radius-md: calc(var(--radius) * 0.8);
 	--radius-lg: var(--radius);
@@ -251,82 +215,41 @@
 	-webkit-app-region: no-drag;
 }
 
-/* pine's own reading of the bridge between shadcn's tokens and M3's roles, on top of material-theme-builder's (shadcn.css),
-   with its doubled selectors so that it wins. Each token gets the role closest to how the app looked before M3: this is
-   pine's choice, not the package's mapping. */
-:root:root,
-.dark.dark {
-	/* Menus and popovers sit just above the page, not on the highest step. */
-	--popover: var(--md-sys-color-surface-container-low);
-	/* A secondary button is a neutral step up, not the tinted secondary container. */
-	--secondary: var(--md-sys-color-surface-container-high);
-	--secondary-foreground: var(--md-sys-color-on-surface);
-	/* What is muted (a code block, a skeleton) is the middle container, not the highest. */
-	--muted: var(--md-sys-color-surface-container);
-	/* The line is the highest container rather than outline-variant, which is too dark for a hairline; inputs share it. */
-	--border: var(--md-sys-color-surface-container-highest);
-	--sidebar-border: var(--md-sys-color-surface-container-highest);
-	--input: var(--md-sys-color-surface-container-highest);
-	/* Charts use pine's own hues: the primary, the custom colours, then the error. */
-	--chart-1: var(--md-sys-color-primary);
-	--chart-2: var(--md-sys-color-info);
-	--chart-3: var(--md-sys-color-plan);
-	--chart-4: var(--md-sys-color-warn);
-	--chart-5: var(--md-sys-color-error);
-	/* What has the keyboard is said in grey, never in the primary: the primary is for what is on or at work. */
-	--ring: var(--md-sys-color-outline);
-	--sidebar-ring: var(--md-sys-color-outline);
-	/* The side bar is translucent, for the Mac's window material behind it (main.ts sets the vibrancy). */
-	--sidebar: color-mix(in srgb, var(--md-sys-color-surface-container-low) 86%, transparent);
-	/* Hover and press are M3's state layers: the colour of the text over whatever surface is below, at 8% and 12%. */
-	--accent: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
-	--accent-foreground: var(--md-sys-color-on-surface);
-	--sidebar-accent: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
-	--sidebar-accent-foreground: var(--md-sys-color-on-surface);
+:root {
+	--background: var(--bg);
+	--foreground: var(--text);
+	--card: var(--surface);
+	--card-foreground: var(--text);
+	--popover: var(--surface);
+	--popover-foreground: var(--text);
+	--primary: var(--brand);
+	--primary-foreground: var(--on-accent);
+	--secondary: var(--raised);
+	--secondary-foreground: var(--text);
+	--muted: var(--sunk);
+	--muted-foreground: var(--text-muted);
+	--accent: var(--hover);
+	--accent-foreground: var(--text);
+	--destructive: var(--bad);
+	--border: var(--line);
+	--input: var(--line);
+	/* What has the keyboard is said in gray, never in the green: the green is for what is on or at work. */
+	--ring: var(--faint);
+	--chart-1: var(--brand);
+	--chart-2: var(--info);
+	--chart-3: var(--plan);
+	--chart-4: var(--warn);
+	--chart-5: var(--bad);
+	--radius: 0.625rem;
 	/* The side bar's rows are muted until the pointer is on one; the one in front stays pressed. */
-	--sidebar-foreground: var(--md-sys-color-on-surface-variant);
-}
-/* In dark the side bar lets a little less of the window material through. */
-.dark.dark {
-	--sidebar: color-mix(in srgb, var(--md-sys-color-surface-container-low) 88%, transparent);
-}
-
-/* Light's own surface ramp, on top of the scheme material-theme-builder generates (dark is left as it is).
-   tonalSpot at contrast 0 gives light a near-white band the width of a few RGB points, cool-violet and flat:
-   the shell, the cards and the inputs read as one grey, hairlines vanish, and the mint shows nowhere. These
-   roles are pine's own for light only (`:root:not(.dark)` wins over the package's `:root`, never matches `.dark`):
-   a clean, faintly teal-cool neutral with room between its steps, so a card lifts off the shell and a border is
-   seen; a muted text that keeps its hierarchy; and a primary a shade fresher than the generated deep teal while
-   it stays AA on white. Everything the chrome paints with (the surface ramp, on-surface, outline, primary) is
-   here as a set, so nothing is half the new look and half the old. The on-colours still pair: the surfaces stay
-   light and the text stays dark. warn, info, plan, error and the rest are the package's, and read fine on these. */
-:root:not(.dark) {
-	--md-sys-color-surface-container-lowest: #ffffff;
-	--md-sys-color-surface-bright: #ffffff;
-	/* The cards: the conversation, the input, a dialog. Bright and clean, a breath of cool. */
-	--md-sys-color-surface: #f7fafb;
-	/* The shell the cards lie on (the outer window, the side bar): a clear step deeper, so the cards lift. */
-	--md-sys-color-surface-container-low: #eceff2;
-	/* What is muted: a code block, a skeleton, the middle container. */
-	--md-sys-color-surface-container: #e4e9ed;
-	/* Secondary buttons, and the soft section line (`border-surface-container-high`). */
-	--md-sys-color-surface-container-high: #d8e0e5;
-	/* The hairline: inputs and the standard border. Soft but no longer invisible. */
-	--md-sys-color-surface-container-highest: #ccd6dc;
-	--md-sys-color-surface-dim: #d6dce1;
-	/* Text: a strong near-black with a trace of cool, a muted slate below it, and a faint grey that still reads. */
-	--md-sys-color-on-surface: #10171a;
-	--md-sys-color-on-surface-variant: #44545a;
-	--md-sys-color-outline: #647077;
-	--md-sys-color-outline-variant: #b2bfc5;
-	/* The accent: a fresher mint-teal than the generated deep one, and still AA on white where it is text. */
-	--md-sys-color-primary: #0b7d68;
-	--md-sys-color-on-primary: #ffffff;
-	--md-sys-color-primary-container: #a6f0dc;
-	--md-sys-color-on-primary-container: #00261f;
-	/* Overlays feel a touch more lifted off this brighter ground than the generated near-flat shadow. */
-	--shadow: 0 1px 2px rgba(16, 24, 28, 0.06), 0 8px 28px rgba(16, 24, 28, 0.14);
-	--shadow-l: 0 2px 6px rgba(16, 24, 28, 0.1), 0 24px 64px rgba(16, 24, 28, 0.26);
+	--sidebar: var(--side);
+	--sidebar-foreground: var(--text-muted);
+	--sidebar-primary: var(--brand);
+	--sidebar-primary-foreground: var(--on-accent);
+	--sidebar-accent: var(--press);
+	--sidebar-accent-foreground: var(--text);
+	--sidebar-border: var(--line);
+	--sidebar-ring: var(--faint);
 }
 
 @layer base {
@@ -349,27 +272,27 @@
 		@apply bg-background;
 	}
 	::selection {
-		background: color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent);
+		background: var(--select);
 	}
 	::-webkit-scrollbar {
 		@apply size-2.5;
 	}
 	::-webkit-scrollbar-thumb {
-		@apply rounded-full border-2 border-solid border-transparent bg-on-surface/12 bg-clip-content;
+		@apply rounded-full border-2 border-solid border-transparent bg-press bg-clip-content;
 	}
 	::-webkit-scrollbar-thumb:hover {
-		@apply bg-outline;
+		@apply bg-faint;
 	}
 	svg.lucide {
 		@apply shrink-0;
 	}
 	/* What find in a conversation matches (the CSS Highlight API: no element to put a class on). */
 	::highlight(pine-find) {
-		background-color: color-mix(in srgb, var(--md-sys-color-warn) 32%, transparent);
+		background-color: color-mix(in srgb, var(--warn) 32%, transparent);
 	}
 	::highlight(pine-find-at) {
-		background-color: var(--md-sys-color-warn);
-		color: var(--md-sys-color-on-warn);
+		background-color: var(--warn);
+		color: var(--background);
 	}
 }
 

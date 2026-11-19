@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { checkColor } from "./admin.ts";
 import { type AgentConfig, loadConfig, PINE_ROOT, type PineConfig, WORKSPACE_FILES } from "./config.ts";
 import { errText } from "./util.ts";
 
@@ -14,6 +15,8 @@ export interface NewAgent {
 	instructions: string;
 	model?: string;
 	tools?: string[];
+	/** Its colour in the Pine app, `#rrggbb`; left out or "none" for no colour. */
+	color?: string;
 }
 
 /**
@@ -23,7 +26,7 @@ export interface NewAgent {
  * taken away again. Nothing but these few lines goes into its agent.json.
  */
 /** What is wrong with a proposed agent, as an error; nothing is written. Returns the cleaned-up values. */
-export function checkNewAgent(cfg: PineConfig, spec: NewAgent): { description: string; tools: string[] } {
+export function checkNewAgent(cfg: PineConfig, spec: NewAgent): { description: string; tools: string[]; color?: string } {
 	if (!/^[a-z][a-z0-9_-]{1,30}$/.test(spec.id)) throw new Error(`"${spec.id}" is not a usable agent id: lowercase letters, digits, - and _, starting with a letter, at least two characters`);
 	if (cfg.agents[spec.id]) throw new Error(`an agent called ${spec.id} exists already`);
 	const description = spec.description.replace(/\s+/g, " ").trim();
@@ -33,15 +36,16 @@ export function checkNewAgent(cfg: PineConfig, spec: NewAgent): { description: s
 	const unknown = tools.filter((t) => !AGENT_TOOLS.includes(t));
 	if (unknown.length) throw new Error(`unknown tool${unknown.length === 1 ? "" : "s"} ${unknown.join(", ")}. An agent can have: ${AGENT_TOOLS.join(", ")}`);
 	if (fs.existsSync(path.join(cfg.home, "agents", spec.id))) throw new Error(`the folder agents/${spec.id} exists already`);
-	return { description, tools };
+	const color = spec.color === undefined ? undefined : checkColor(spec.color);
+	return { description, tools, color };
 }
 
 export function createAgent(cfg: PineConfig, spec: NewAgent): AgentConfig {
-	const { description, tools } = checkNewAgent(cfg, spec);
+	const { description, tools, color } = checkNewAgent(cfg, spec);
 	const dir = path.join(cfg.home, "agents", spec.id);
 	fs.mkdirSync(path.join(dir, "workspace"), { recursive: true, mode: 0o700 });
 	try {
-		fs.writeFileSync(path.join(dir, "agent.json"), `${JSON.stringify({ description, ...(spec.model ? { model: spec.model } : {}), tools }, null, 2)}\n`, { mode: 0o600 });
+		fs.writeFileSync(path.join(dir, "agent.json"), `${JSON.stringify({ description, ...(color ? { color } : {}), ...(spec.model ? { model: spec.model } : {}), tools }, null, 2)}\n`, { mode: 0o600 });
 		fs.writeFileSync(path.join(dir, "workspace", "AGENTS.md"), `${spec.instructions.trim()}\n`, { mode: 0o600 });
 		// The rest starts as the stubs a new home has.
 		for (const name of WORKSPACE_FILES.slice(1)) {

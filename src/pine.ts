@@ -12,6 +12,7 @@ import { SourceHost } from "./sources.ts";
 import { Approvals, audit, Redactor } from "./security.ts";
 import { Bus, Kv, openDb, State, TaskStore } from "./store.ts";
 import { Scheduler } from "./timers.ts";
+import { seedThemes, themesDir } from "./themes.ts";
 import { createLogger, errText, type Logger } from "./util.ts";
 
 export interface Pine {
@@ -79,6 +80,12 @@ export async function startPine(opts: { home?: string; config?: PineConfig; log?
 		if (fs.existsSync(file) || !fs.existsSync(start)) continue;
 		fs.copyFileSync(start, file);
 		fs.chmodSync(file, 0o600);
+	}
+	// A home from before there were themes (or one made by hand) gets pine's own set, once.
+	try {
+		seedThemes(cfg.home);
+	} catch (e) {
+		log.warn(`could not put pine's themes into ${themesDir(cfg.home)}: ${errText(e)}`);
 	}
 	installModelTimeouts(cfg);
 

@@ -97,6 +97,11 @@ test("pine agent list, add, update and remove: in the files when no daemon runs,
 	// Changing an agent in the files: only what is given changes, the rest stays.
 	assert.match(await pine("agent", "update", "books", "--description", "Does the books now", "--tools", "read,bash,grep"), /^Updated the agent books \(it is there when pine is started\):\n  description: Does the books now\n  built-in tools: read, grep -> read, bash, grep$/);
 	assert.deepEqual(json(file("agents", "books", "agent.json")), { description: "Does the books now", tools: ["read", "bash", "grep"] });
+	assert.match(await pine("agent", "update", "books", "--color", "#E0805A"), /^Updated the agent books \(it is there when pine is started\):\n  color: #e0805a$/);
+	assert.equal(json(file("agents", "books", "agent.json")).color, "#e0805a");
+	assert.match(await fails("agent", "update", "books", "--color", "coral"), /a colour is written #rrggbb/);
+	assert.match(await pine("agent", "update", "books", "--color", "none"), /color: none$/);
+	assert.ok(!("color" in json(file("agents", "books", "agent.json"))));
 	assert.match(await fails("agent", "update", "ghost", "--description", "x"), /there is no agent "ghost"/);
 	assert.match(await fails("agent", "update", "books"), /nothing to change/);
 	// A model change is the one thing the files cannot check: it waits for a running daemon.

@@ -1,5 +1,6 @@
 // The control API, typed. Every call goes through the main process, which holds the token.
 import { bridge, MEDIA_BASE } from "./bridge.ts";
+import type { ThemeEntry } from "./theme.ts";
 
 export class ApiError extends Error {
 	status: number;
@@ -84,6 +85,8 @@ export interface AgentInfo {
 	id: string;
 	main: boolean;
 	description: string;
+	/** Its own colour (`#rrggbb`), where it has one: the source of its avatar's scheme. */
+	color?: string;
 	workspace: string;
 	model: string;
 	mode: Mode;
@@ -223,7 +226,7 @@ export interface Setting {
 	/** A few words that name it. (A pine older than the app has none: the key stands in.) */
 	title?: string;
 	about: string;
-	kind: "model" | "boolean" | "duration" | { one: string[] } | { from: number; to: number };
+	kind: "model" | "theme" | "boolean" | "duration" | { one: string[] } | { from: number; to: number };
 	now: string;
 	live: boolean;
 }
@@ -232,6 +235,7 @@ export interface AgentDetail {
 	id: string;
 	main: boolean;
 	description: string;
+	color?: string;
 	workspace: string;
 	dir: string;
 	model?: string;
@@ -440,6 +444,8 @@ export const api = {
 	overview: () => get<Overview>("/overview"),
 	settings: () => get<Setting[]>("/settings"),
 	setSetting: (key: string, value: unknown) => post<{ key: string; now: string; live: boolean }>("/settings", { key, value }),
+	// The themes of pine's home, as colours (theme.ts), and the one in force. A pine older than themes has none: an empty list.
+	themes: () => get<{ theme: string; chosen: string | null; themes: ThemeEntry[] }>("/themes"),
 	agentDetail: (agent: string) => get<AgentDetail>(`${a(agent)}/detail`),
 	createAgent: (body: { id: string; description: string; instructions: string; model?: string; tools?: string[] }) => post<{ id: string; workspace: string }>("/agents", body),
 	updateAgent: (agent: string, change: Record<string, unknown>) => post<{ lines: string[]; warnings: string[] }>(`${a(agent)}/update`, change),

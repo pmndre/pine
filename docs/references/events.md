@@ -41,7 +41,14 @@ pine events --topic "source/#" --limit 50
 
 A route is an entry in `routes` in `pine.json`. You can write it there yourself, or ask the main
 agent: it lists, adds and removes routes with `routes`, `add_route` and `remove_route`
-([setup.md](setup.md), "Routes"), checked and without a restart.
+([setup.md](setup.md), "Routes"), checked and without a restart. In the Pine app, Settings >
+Events > Routes adds one with a form that says it as When (the topic, an optional `when`, a
+throttle or debounce) and Then (one of `agent`, `set`, `publish`, or `call` with `publish`).
+
+Most setups need no route. An agent that reacts to what a source reports is subscribed to it
+([sources.md](sources.md)), and work at a time is a schedule (below). A route is for the rules in
+between: noting a value in shared state, passing an event on, or a cheap model call before an
+agent is woken.
 
 ```json
 {

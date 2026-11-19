@@ -488,7 +488,7 @@ export function Composer({ tab }: { tab: Tab }) {
 				</InputGroup>
 			</form>
 			<input ref={picker} type="file" multiple hidden onChange={(e) => (void attach(tab, [...(e.target.files ?? [])]), (e.target.value = ""))} />
-			{tab.folder && !tab.items.length ? <div className="px-1 pt-1.5 text-outline text-xs">{tab.agent}'s tools start in {tilde(tab.folder)} and may read and change what is in it.</div> : null}
+			{tab.folder && !tab.items.length ? <div className="px-1 pt-1.5 text-faint text-xs">{tab.agent}'s tools start in {tilde(tab.folder)} and may read and change what is in it.</div> : null}
 		</>
 	);
 }

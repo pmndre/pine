@@ -5,7 +5,7 @@
 // `window.pine` already, and in a build `__PINE_PREVIEW__` is false and none of this is kept.
 // The preview's pine is the one its server started: other machines are the app's only.
 import type { Bridge } from "../electron/preload.ts";
-import { cleanPalette } from "./theme.ts";
+import { cleanLook } from "./theme.ts";
 
 if (import.meta.env.DEV && __PINE_PREVIEW__ && !window.pine) window.pine = standIn();
 
@@ -15,7 +15,7 @@ function standIn(): Bridge {
 	const on = (set: Set<Listener>) => (fn: Listener) => (set.add(fn), () => void set.delete(fn));
 	const never = () => () => undefined;
 	const tell = (set: Set<Listener>, ...args: unknown[]) => set.forEach((fn) => fn(...args));
-	let prefs: Record<string, unknown> = { keepRunning: false, hosts: [], theme: "system", notify: false, updates: false, codeFollowsPalette: true };
+	let prefs: Record<string, unknown> = { keepRunning: false, hosts: [], notify: false, updates: false, agentAccent: true };
 
 	const service = async () => {
 		const res = await fetch("/__pine/state");
@@ -53,11 +53,8 @@ function standIn(): Bridge {
 		},
 		init: async () => 1,
 		browserInstall: async () => 1,
-		// Kept in memory while the page is open; a palette made safe as the app's main process makes it (none: the default).
-		prefs: async (change: Record<string, unknown>) => {
-			const { codeFollowsPalette, ...rest } = change;
-			return (prefs = { ...prefs, ...rest, ...("palette" in change ? { palette: cleanPalette(change.palette) } : {}), ...(typeof codeFollowsPalette === "boolean" ? { codeFollowsPalette } : {}) });
-		},
+		// Kept in memory while the page is open; a theme made safe as the app's main process makes it.
+		prefs: async (change: Record<string, unknown>) => (prefs = { ...prefs, ...change, ...("look" in change ? { look: cleanLook(change.look) } : {}) }),
 		use: async (host?: string) => {
 			if (host) throw new Error("Other machines are in the Pine app only.");
 		},

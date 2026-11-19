@@ -28,17 +28,23 @@ function resolved(css: string, fallback: string): string {
 	return `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
 }
 
-/** The terminal's colours from the page's tokens: light and dark differ in index.css and nowhere else. */
+const ANSI = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"] as const;
+
+/** The terminal's colours: the theme's (`--term-*`, set with the rest of the theme in theme.ts). */
 function theme(): ITheme {
 	const style = getComputedStyle(document.documentElement);
 	const token = (name: string, fallback: string) => resolved(style.getPropertyValue(name), fallback);
-	// The selection is the page's own (index.css, `::selection`): the palette's primary at 28%.
-	const primary = token("--md-sys-color-primary", "rgb(91, 108, 181)");
+	const colours: Record<string, string> = {};
+	ANSI.forEach((name, i) => {
+		colours[name] = token(`--term-${i}`, "#808080");
+		colours[`bright${name[0].toUpperCase()}${name.slice(1)}`] = token(`--term-${i + 8}`, colours[name]);
+	});
 	return {
-		background: token("--background", "#ffffff"),
-		foreground: token("--foreground", "#1b1e28"),
-		cursor: token("--code-cursor", "#1b1e28"),
-		selectionBackground: primary.replace(/,\s*[\d.]+\)$/, ", 0.28)"),
+		...colours,
+		background: token("--term-bg", token("--background", "#1b1e28")),
+		foreground: token("--term-fg", token("--foreground", "#e4f0fb")),
+		cursor: token("--term-cursor", token("--code-cursor", "#e4f0fb")),
+		selectionBackground: token("--term-select", "rgba(113, 124, 180, 0.3)"),
 	};
 }
 
@@ -74,13 +80,10 @@ export function TerminalView({ tab }: { tab: Tab }) {
 			}
 		});
 		resize.observe(host.current!);
-		const dark = matchMedia("(prefers-color-scheme: dark)");
 		const recolour = () => (xterm.options.theme = theme());
-		dark.addEventListener("change", recolour);
-		// A new palette (Settings > App > Colours) changes the root's variables or the styles that set them.
+		// A new theme (Settings > App) sets the root element's variables (its style attribute).
 		const restyled = new MutationObserver(recolour);
 		restyled.observe(document.documentElement, { attributes: true });
-		restyled.observe(document.head, { childList: true, subtree: true, characterData: true });
 		bridge
 			.termOpen(id, tab.folder ?? tab.workspace, xterm.cols, xterm.rows)
 			.then((r) => {
@@ -106,7 +109,6 @@ export function TerminalView({ tab }: { tab: Tab }) {
 			stopData();
 			stopExit();
 			resize.disconnect();
-			dark.removeEventListener("change", recolour);
 			restyled.disconnect();
 			xterm.dispose();
 			term.current = undefined;

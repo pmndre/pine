@@ -1,6 +1,6 @@
 // What the page has of the world outside itself: the bridge the preload script exposes.
 import type { Bridge } from "../electron/preload.ts";
-import type { Palette } from "./theme.ts";
+import type { Look } from "./theme.ts";
 
 declare global {
 	interface Window {
@@ -20,13 +20,12 @@ export interface Prefs {
 	hosts: string[];
 	/** The one the app uses; none: this computer's pine. */
 	use?: string;
-	theme: "system" | "light" | "dark";
 	notify: boolean;
 	updates: boolean;
-	/** The palette the colours are generated from (theme.ts), or none: pine's default. */
-	palette?: Palette;
-	/** Code in dark draws with roles of the palette (on) or keeps poimandres' own colours (off). */
-	codeFollowsPalette: boolean;
+	/** The theme the window was last drawn in (theme.ts), so that it opens in it; none: pmndre. */
+	look?: Look;
+	/** While a coloured agent's conversation is in front, the window's accent is its colour (on unless false). */
+	agentAccent: boolean;
 }
 
 export type { Update } from "../electron/updates.ts";

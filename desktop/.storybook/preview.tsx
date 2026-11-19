@@ -1,9 +1,9 @@
 import type { Decorator, Preview } from "@storybook/react-vite";
-import { Mtb } from "material-theme-builder/react";
 import { useLayoutEffect } from "react";
 import "../src/index.css";
-import { DEFAULT_PALETTE, followAppearance } from "../src/theme.ts";
+import { applyLook } from "../src/theme.ts";
 import { allModes, viewports } from "./modes.ts";
+import { THEMES } from "./themes.ts";
 
 // No preload script here: the bridge is a stand-in whose every call does nothing (a listener it
 // is given is never called), so that a piece which listens to the app (the Composer) can be drawn.
@@ -11,36 +11,26 @@ import { allModes, viewports } from "./modes.ts";
 // as Settings.stories.tsx does): what is set on it is used, everything else still does nothing.
 window.pine ??= new Proxy({} as Record<PropertyKey, unknown>, { get: (own, key) => own[key] ?? (() => () => {}) }) as unknown as typeof window.pine;
 
-// The page is dark when its root element has the `.dark` class. The toolbar's theme stands for
-// the app's Appearance setting, and theme.ts decides from it as it does in the app.
+// The page is drawn in one of pine's themes, as the app is (theme.ts): the toolbar picks it.
 const withTheme: Decorator = (Story, context) => {
-	const theme = context.globals.theme ?? "system";
-	useLayoutEffect(() => followAppearance(() => theme, () => () => {}), [theme]);
-	// The colours are the M3 scheme of pine's palette, as in the app (main.tsx).
-	return (
-		<Mtb {...DEFAULT_PALETTE}>
-			<Story />
-		</Mtb>
-	);
+	const id = context.globals.theme ?? "pmndre";
+	useLayoutEffect(() => applyLook(THEMES.find((t) => t.id === id)), [id]);
+	return <Story />;
 };
 
 const preview: Preview = {
 	globalTypes: {
 		theme: {
-			description: "Light or dark, as the system would choose it",
+			description: "One of pine's themes, as Settings > App picks it",
 			toolbar: {
 				title: "Theme",
 				icon: "mirror",
-				items: [
-					{ value: "system", title: "System" },
-					{ value: "light", title: "Light" },
-					{ value: "dark", title: "Dark" },
-				],
+				items: THEMES.map((t) => ({ value: t.id, title: `${t.name} (${t.kind})` })),
 				dynamicTitle: true,
 			},
 		},
 	},
-	initialGlobals: { theme: "light" },
+	initialGlobals: { theme: "pmndre" },
 	decorators: [withTheme],
 	parameters: {
 		layout: "centered",

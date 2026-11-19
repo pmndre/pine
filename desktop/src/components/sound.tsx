@@ -170,7 +170,7 @@ export function Sound({ src, name, id, bytes, auto, className }: { src: string; 
 			<span className="flex min-w-0 items-center gap-1.5 text-muted-foreground" title={failed ? "There is no such file, or it is of a kind that is not played here." : undefined}>
 				<MusicIcon className="size-3.5 shrink-0" aria-hidden />
 				<span className="truncate">{name}</span>
-				{time ? <span data-slot="sound-time" className="shrink-0 text-outline tabular-nums">{time}</span> : null}
+				{time ? <span data-slot="sound-time" className="shrink-0 text-faint tabular-nums">{time}</span> : null}
 			</span>
 		</span>
 	);

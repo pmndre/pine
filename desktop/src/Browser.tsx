@@ -172,7 +172,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 	return (
 		<div data-slot="browser" className="flex min-h-0 flex-1 flex-col overflow-hidden">
 			{open && state.tabs.length ? (
-				<div className="flex flex-none items-center gap-0.5 border-b border-surface-container-high px-2 pt-1">
+				<div className="flex flex-none items-center gap-0.5 border-b border-line-soft px-2 pt-1">
 					{/* The row scrolls sideways only. The padding is the room for the line under the tab in front, which stock draws
 					    below the list: without it the row is taller than its room, and a vertical bar shows with nothing to scroll. */}
 					<ScrollArea className="flex min-h-0 min-w-0 flex-initial flex-col *:data-[slot=scroll-area-viewport]:scroll-fade-x">
@@ -198,7 +198,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 					</Tooltip>
 				</div>
 			) : null}
-			<div className="flex flex-none items-center gap-0.5 border-b border-surface-container-high px-2 py-1.5">
+			<div className="flex flex-none items-center gap-0.5 border-b border-line-soft px-2 py-1.5">
 				<ButtonGroup>
 					<Tooltip>
 						<TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Back" disabled={!open} onClick={() => act({ do: "back" })} />}><ChevronLeftIcon /></TooltipTrigger>
@@ -233,7 +233,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 				</InputGroup>
 			</div>
 			{open ? (
-				<ScrollArea ref={room} className="flex min-h-0 flex-1 flex-col bg-on-surface/12 *:data-[slot=scroll-area-viewport]:scroll-fade">
+				<ScrollArea ref={room} className="flex min-h-0 flex-1 flex-col bg-press *:data-[slot=scroll-area-viewport]:scroll-fade">
 					{/* The page keeps its shape: as wide as the panel, and scrolled down to when it is taller than the room. */}
 					<canvas
 						ref={canvas}
@@ -307,7 +307,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 					) : null}
 				</Empty>
 			)}
-			{open ? <div className="flex flex-none items-center gap-1.5 border-t border-surface-container-high px-2.5 py-1 text-xs text-outline"><ShieldIcon size={11} /><span className="truncate">The agent's browser, behind pine's guard. What you do here, the agent sees when it next looks.</span></div> : null}
+			{open ? <div className="flex flex-none items-center gap-1.5 border-t border-line-soft px-2.5 py-1 text-xs text-faint"><ShieldIcon size={11} /><span className="truncate">The agent's browser, behind pine's guard. What you do here, the agent sees when it next looks.</span></div> : null}
 		</div>
 	);
 }

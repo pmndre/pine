@@ -6,7 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet, FieldTitle } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSeparator, FieldSet, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Sidebar as SidebarRoot, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider } from "@/components/ui/sidebar";
@@ -16,23 +16,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "cn";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
-import { type AgentDetail, api, type LoginState, type Setting, type SourceType } from "./api.ts";
+import { type AgentDetail, api, type LoginState, type Route, type Setting, type SourceType } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { Editor } from "./CodePanel.tsx";
 import { store, useModel } from "./model.ts";
 import { ago, errText, MODES, plural, REASONING, short, tilde } from "./text.ts";
 import type { DialogRootActions } from "@base-ui/react/dialog";
-import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyView } from "@/components/empty-view";
 import { useLoad } from "./use-load.ts";
 import { Textarea } from "@/components/ui/textarea";
-import { Slider } from "@/components/ui/slider";
-import { DEFAULT_PALETTE, type Palette, SCHEMES } from "./theme.ts";
+import { AGENT_COLOURS, type Look, type ThemeEntry } from "./theme.ts";
+import { AgentAvatar } from "@/components/agent-avatar";
 
 const SECTIONS: Array<{ id: string; label: string; icon: LucideIcon }> = [
 	{ id: "general", label: "General", icon: SlidersHorizontalIcon },
@@ -259,6 +259,51 @@ function FileTabs<K extends string>({ files, value, onChange, children }: { file
 	);
 }
 
+/** A colour to pick, with its hex beside it. */
+function ColourInput({ id, name, value, onChange }: { id: string; name: string; value: string; onChange: (hex: string) => void }) {
+	return (
+		<div className="flex items-center gap-1.5">
+			<span className="font-mono text-xs text-muted-foreground">{value}</span>
+			<Input id={id} name={name} type="color" className="w-10 p-0.5" value={value} onChange={(e) => onChange(e.target.value)} />
+		</div>
+	);
+}
+
+/**
+ * An agent's own colour: None (the theme's accent), one of the presets, or any other under "Other…".
+ * Each preset is shown as the agent's avatar would be drawn in it. "none" is how a change takes it away.
+ */
+function AgentColour({ id, value, onChange }: { id: string; value?: string; onChange: (color: string) => void }) {
+	const [other, setOther] = useState(false);
+	const field = useId();
+	const color = value && value !== "none" ? value : undefined;
+	const preset = AGENT_COLOURS.some((c) => c.hex === color);
+	const choice = other ? "other" : !color ? "none" : preset ? color : "other";
+	const pick = (next: string | undefined) => {
+		if (!next) return;
+		setOther(next === "other");
+		// Other only opens the input: the colour changes when the owner sets one there.
+		if (next !== "other") onChange(next);
+	};
+	return (
+		<Field className="col-span-full" data-setting="agent-colour">
+			<FieldLabel id={`${field}-label`}>Colour</FieldLabel>
+			<ToggleGroup aria-labelledby={`${field}-label`} variant="outline" size="sm" className="flex-wrap" value={[choice]} onValueChange={(v) => pick(v[0])}>
+				<ToggleGroupItem value="none">None</ToggleGroupItem>
+				{AGENT_COLOURS.map((c) => (
+					<ToggleGroupItem key={c.hex} value={c.hex} aria-label={c.name} title={c.name}>
+						<AgentAvatar agent={{ id, color: c.hex }} size="sm" />
+					</ToggleGroupItem>
+				))}
+				<ToggleGroupItem value="other">Other…</ToggleGroupItem>
+			</ToggleGroup>
+			{/* Without a colour the input shows a neutral grey, which is no change until the owner sets one. */}
+			{choice === "other" ? <ColourInput id={`${field}-other`} name="color" value={color ?? "#808080"} onChange={onChange} /> : null}
+			<FieldDescription>Its avatar is drawn in it, in the side bar, on its tabs and in its panel, and while its conversation is in front the window's accent is this colour (unless that is turned off in Settings &gt; App). None keeps the theme's own.</FieldDescription>
+		</Field>
+	);
+}
+
 function AgentPage({ id, back }: { id: string; back: () => void }) {
 	const detail = useLoad(() => api.agentDetail(id), [id]);
 	const models = useLoad(() => api.models());
@@ -328,6 +373,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 					<Input id={`${field}-description`} value={now("description")} onChange={(e) => put("description", e.target.value)} />
 					<FieldDescription>One line. Other agents read it when they decide whom to hand work to.</FieldDescription>
 				</Field>
+				<AgentColour id={d.id} value={now("color")} onChange={(color) => put("color", color)} />
 				<Field>
 					<FieldLabel htmlFor={`${field}-model`}>Model</FieldLabel>
 					<Select items={modelItems} value={(change.model as string) ?? d.model ?? ""} onValueChange={(v) => put("model", v || "default")}>
@@ -1453,43 +1499,162 @@ function Sources() {
 	);
 }
 
-const WHEN: Record<"cron" | "every" | "at" | "in", { label: string; name: string; hint: string }> = {
-	cron: { label: "At set times", name: "Times", hint: "minute hour day month weekday, for example 0 7 * * 1-5 (weekdays at seven)" },
-	every: { label: "Every", name: "Interval", hint: "an interval, for example 30m or 6h" },
-	at: { label: "Once, at", name: "Moment", hint: "a moment, for example 2026-12-24T17:00" },
-	in: { label: "Once, in", name: "From now", hint: "from now, for example 20m" },
+const WHEN: Record<"cron" | "every" | "at" | "in", { label: string; name: string; hint: string; example: string }> = {
+	cron: { label: "At set times", name: "Times", example: "0 7 * * 1-5", hint: "minute hour day month weekday: 0 7 * * 1-5 is weekdays at seven, 30 18 * * * every evening at half past six" },
+	every: { label: "Every", name: "Interval", example: "6h", hint: "An interval of at least a minute: 30m, 6h, 1d" },
+	at: { label: "Once, at", name: "Moment", example: "2026-12-24 17:00", hint: "A local time, once" },
+	in: { label: "Once, in", name: "From now", example: "20m", hint: "Once, after this long: 20m, 2h" },
 };
 
-function Schedules() {
-	const list = useLoad(() => api.schedules());
-	const [f, setF] = useState({ name: "", kind: "cron" as keyof typeof WHEN, when: "", task: "", agent: "" });
+// A time in milliseconds as pine.json writes it: 5m, 30s, 2h.
+const span = (ms: number) => (ms % 3_600_000 === 0 ? `${ms / 3_600_000}h` : ms % 60_000 === 0 ? `${ms / 60_000}m` : ms % 1000 === 0 ? `${ms / 1000}s` : `${ms}ms`);
+
+const conversationOf = (session: string | undefined) => (!session || session === "main" ? "in its main conversation" : session === "new" ? "in a new conversation" : `in the conversation ${session}`);
+
+/** A route in the words of the form that makes one: when what arrives, then what happens. */
+function routeSaid(r: Route): { when: string; then: string } {
+	const when = [
+		r.on.join(" or "),
+		r.when ? `only if ${JSON.stringify(r.when)}` : "",
+		r.throttleMs ? `at most one per ${span(r.throttleMs)}` : "",
+		r.debounceMs ? `the last of a burst, once ${span(r.debounceMs)} passed without another` : "",
+	].filter(Boolean).join(", ");
+	const then = [
+		r.set ? `set ${Object.entries(r.set).map(([k, v]) => `${k} to ${JSON.stringify(v)}`).join(" and ")}` : "",
+		r.call ? `ask ${r.call.model ?? "the default model"} once: “${short(r.call.prompt, 80)}”` : "",
+		r.publish ? (r.call && r.publish.payload === undefined ? `publish the answer as ${r.publish.topic}` : `publish ${r.publish.topic}${r.publish.payload !== undefined ? ` with ${short(JSON.stringify(r.publish.payload), 60)}` : ""}`) : "",
+		r.agent ? `wake ${r.agent} ${conversationOf(r.session)}${r.prompt ? `: “${short(r.prompt, 100)}”` : ", with the event"}` : "",
+	].filter(Boolean).join(", then ");
+	return { when, then };
+}
+
+// What a route does when its event arrives: one of four, and the form shows the fields of that one only.
+// `takes` is what of the form goes to POST /routes for it (checkRoute in src/admin.ts).
+const ROUTE_DOES = {
+	wake: { label: "Wake an agent", about: "The agent gets the event as a task, in the conversation you name.", takes: ["agent", "session", "prompt"] },
+	set: { label: "Set shared state", about: "A value is written where agents and other routes read it (state.<key>). No agent is woken.", takes: ["set"] },
+	publish: { label: "Publish an event", about: "Another event goes out, for another route, an agent subscribed to it, or a source that sends (out/source/<name>).", takes: ["publish_topic", "publish_payload"] },
+	ask: { label: "Ask a model", about: "One model call, without tools or history. Its answer goes out as an event of your own, the answer in payload.text.", takes: ["call_prompt", "call_system", "call_model", "publish_topic"] },
+} as const;
+
+// How often a route fires: every event, one and then a pause (throttle), or the last of a burst (debounce).
+const ROUTE_PACE = {
+	every: { label: "Every event", time: "", about: "" },
+	throttle: { label: "At most one per", time: "At most one per", about: "After one event, the next ones are ignored for this long. For an alarm that repeats." },
+	debounce: { label: "The last of a burst", time: "Once quiet for", about: "Waits until no event has come for this long, then handles the last one. For a camera that uploads five pictures." },
+} as const;
+
+/** The form for a new schedule, in a dialog: When (set times, an interval, or once), Then (whom it wakes, with what task), a name. */
+export function NewSchedule({ made }: { made: () => void }) {
 	const s = useModel(store);
+	const [f, setF] = useState({ name: "", kind: "cron" as keyof typeof WHEN, when: "", task: "", agent: "" });
+	const [busy, setBusy] = useState(false);
 	const field = useId();
-	const forItems = whom(s.agents);
+	const forItems = [{ value: "", label: "Every agent, each in its main conversation" }, ...s.agents.map((a) => ({ value: a.id, label: `${a.id}, in its main conversation` }))];
 	const add = async () => {
+		setBusy(true);
 		const done = await store.attempt(() => api.addSchedule({ name: f.name.trim(), task: f.task.trim(), [f.kind]: f.when.trim(), agent: f.agent || undefined } as any));
+		setBusy(false);
 		if (!done) return;
 		store.flash(`Scheduled ${done.name}: ${done.when}.`, "good");
-		setF({ ...f, name: "", when: "", task: "" });
-		list.reload();
+		made();
 	};
 	return (
 		<>
-			<p className="text-muted-foreground">What happens because of the time. A schedule wakes an agent with a task, in your name.</p>
+			<DialogHeader>
+				<DialogTitle>A new schedule</DialogTitle>
+				<DialogDescription>When it is time, then an agent is woken with a task, in your name.</DialogDescription>
+			</DialogHeader>
+			<ScrollArea className="-mx-4 flex max-h-(--dialog-scroll) min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
+				<FieldGroup className="px-4">
+					<FieldSet>
+						<FieldLegend>When</FieldLegend>
+						<FieldGroup>
+							<Field>
+								<FieldLabel htmlFor={`${field}-kind`}>It is time</FieldLabel>
+								<ToggleGroup id={`${field}-kind`} aria-label="It is time" variant="outline" className="flex-wrap" value={[f.kind]} onValueChange={one((kind) => setF({ ...f, kind: kind as keyof typeof WHEN, when: "" }))}>
+									{Object.entries(WHEN).map(([value, w]) => (
+										<ToggleGroupItem key={value} value={value}>{w.label}</ToggleGroupItem>
+									))}
+								</ToggleGroup>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor={`${field}-when`}>{WHEN[f.kind].name}</FieldLabel>
+								<Input id={`${field}-when`} className="font-mono" placeholder={WHEN[f.kind].example} value={f.when} onChange={(e) => setF({ ...f, when: e.target.value })} />
+								<FieldDescription>{WHEN[f.kind].hint}</FieldDescription>
+							</Field>
+						</FieldGroup>
+					</FieldSet>
+					<FieldSeparator />
+					<FieldSet>
+						<FieldLegend>Then</FieldLegend>
+						<FieldGroup>
+							<Field>
+								<FieldLabel htmlFor={`${field}-for`}>Wake</FieldLabel>
+								<Select items={forItems} value={f.agent} onValueChange={(agent) => setF({ ...f, agent: agent ?? "" })}>
+									<SelectTrigger id={`${field}-for`}>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectGroup>
+											{forItems.map((o) => (
+												<SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+											))}
+										</SelectGroup>
+									</SelectContent>
+								</Select>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor={`${field}-task`}>With the task</FieldLabel>
+								<Textarea id={`${field}-task`} className="min-h-14 max-h-44" placeholder="Look at my calendar for today and tell me what is coming." value={f.task} onChange={(e) => setF({ ...f, task: e.target.value })} />
+								<FieldDescription>Written so that it is enough on its own: the agent reads it with nothing else.</FieldDescription>
+							</Field>
+						</FieldGroup>
+					</FieldSet>
+					<FieldSeparator />
+					<Field>
+						<FieldLabel htmlFor={`${field}-name`}>Name</FieldLabel>
+						<Input id={`${field}-name`} className="font-mono" placeholder="morning" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value.toLowerCase() })} />
+						<FieldDescription>For the list and the log: lowercase letters, digits, - and _.</FieldDescription>
+					</Field>
+				</FieldGroup>
+			</ScrollArea>
+			<DialogFooter>
+				<DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+				<Button disabled={busy || !f.name.trim() || !f.when.trim() || !f.task.trim()} onClick={() => void add()}>Add schedule</Button>
+			</DialogFooter>
+		</>
+	);
+}
+
+// Whom a schedule wakes, in the words of the form that makes one.
+const wakes = (scope: string, session?: string) => (scope === "global" ? "every agent, each in its main conversation" : `${scope} ${conversationOf(session)}`);
+
+/** Settings › Events › Schedules: what a schedule is, each one as When and Then, and New schedule. */
+export function Schedules() {
+	const list = useLoad(() => api.schedules());
+	const adding = useRef<DialogRootActions>(null);
+	return (
+		<>
+			<div className="flex items-center gap-2">
+				<p className="grow text-muted-foreground">What happens because of the time: at set times, every so often, or once. A schedule wakes an agent with a task, in your name. You can also just ask an agent (“every morning at seven …”, “remind me at five”).</p>
+				<Dialog actionsRef={adding}>
+					<DialogTrigger render={<Button />}><PlusIcon data-icon="inline-start" />New schedule</DialogTrigger>
+					<DialogContent showCloseButton={false} className="sm:max-w-2xl"><NewSchedule made={() => (adding.current?.close(), list.reload())} /></DialogContent>
+				</Dialog>
+			</div>
 			<ItemGroup>
 				{list.data ? (
 					list.data.length ? (
 						list.data.map((x) => (
 							<Item key={`${x.scope}:${x.name}`} variant="outline">
-								<ItemMedia variant="icon"><ClockIcon /></ItemMedia>
 								<ItemContent className="min-w-0">
 									<ItemTitle>
 										{x.name}
-										<Badge variant="secondary">{scopeText(x.scope, x.session)}</Badge>
-										<Badge variant="secondary">{x.when}</Badge>
-										{x.next ? <Badge>next {new Date(x.next).toLocaleString("sv-SE").slice(0, 16)}</Badge> : null}
+										{x.next ? <Badge variant="secondary">next {new Date(x.next).toLocaleString("sv-SE").slice(0, 16)}</Badge> : null}
 									</ItemTitle>
-									<ItemDescription className="line-clamp-none wrap-anywhere">{x.task ?? `publishes ${x.topic}`}</ItemDescription>
+									<ItemDescription className="line-clamp-none wrap-anywhere"><span className="font-medium text-foreground">When</span> {x.when}</ItemDescription>
+									<ItemDescription className="line-clamp-none wrap-anywhere"><span className="font-medium text-foreground">Then</span> {x.task ? `wake ${wakes(x.scope, x.session)}: “${short(x.task, 160)}”` : `publish ${x.topic}`}</ItemDescription>
 								</ItemContent>
 								<ItemActions>
 									<AlertDialog>
@@ -1511,7 +1676,7 @@ function Schedules() {
 							</Item>
 						))
 					) : (
-						<EmptyView icon={ClockIcon} title="Nothing is scheduled">An agent schedules something when you ask it to (“every morning at seven …”, “remind me at five”).</EmptyView>
+						<EmptyView icon={ClockIcon} title="Nothing is scheduled">An agent schedules something when you ask it to, or add one here.</EmptyView>
 					)
 				) : list.error ? (
 					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
@@ -1519,113 +1684,233 @@ function Schedules() {
 					<Spinner className="m-auto" />
 				)}
 			</ItemGroup>
-			<FieldSet>
-				<FieldLegend>Add a schedule</FieldLegend>
-				<FieldGroup className={FORM_GRID}>
-					<Field>
-						<FieldLabel htmlFor={`${field}-name`}>Name</FieldLabel>
-						<Input id={`${field}-name`} className="font-mono" placeholder="morning" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value.toLowerCase() })} />
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={`${field}-for`}>For</FieldLabel>
-						<Select items={forItems} value={f.agent} onValueChange={(agent) => setF({ ...f, agent: agent ?? "" })}>
-							<SelectTrigger id={`${field}-for`}>
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectGroup>
-									{forItems.map((o) => (
-										<SelectItem key={o.value} value={o.value}>
-											{o.label}
-										</SelectItem>
-									))}
-								</SelectGroup>
-							</SelectContent>
-						</Select>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={`${field}-kind`}>When</FieldLabel>
-						<ToggleGroup id={`${field}-kind`} aria-label="When" variant="outline" className="flex-wrap" value={[f.kind]} onValueChange={one((kind) => setF({ ...f, kind: kind as keyof typeof WHEN, when: "" }))}>
-							{Object.entries(WHEN).map(([value, w]) => (
-								<ToggleGroupItem key={value} value={value}>
-									{w.label}
-								</ToggleGroupItem>
-							))}
-						</ToggleGroup>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={`${field}-when`}>{WHEN[f.kind].name}</FieldLabel>
-						<Input id={`${field}-when`} className="font-mono" value={f.when} onChange={(e) => setF({ ...f, when: e.target.value })} />
-						<FieldDescription>{WHEN[f.kind].hint}</FieldDescription>
-					</Field>
-					<Field className="col-span-full">
-						<FieldLabel htmlFor={`${field}-task`}>Task</FieldLabel>
-						<Textarea id={`${field}-task`} className="min-h-14 max-h-44" value={f.task} onChange={(e) => setF({ ...f, task: e.target.value })} />
-						<FieldDescription>What the agent is to do when it is time, written so that it is enough on its own.</FieldDescription>
-					</Field>
-				</FieldGroup>
-				<Field orientation="horizontal" className="justify-end">
-					<Button disabled={!f.name.trim() || !f.when.trim() || !f.task.trim()} onClick={() => void add()}>Add schedule</Button>
-				</Field>
-			</FieldSet>
 		</>
 	);
 }
 
-function Routes() {
-	const list = useLoad(() => api.routes());
+/** The form for a new route, in a dialog: When (topic, condition, pace), Then (one of four actions), a name. */
+export function NewRoute({ made, does: first = "wake" }: { made: () => void; does?: keyof typeof ROUTE_DOES }) {
 	const s = useModel(store);
-	const empty = { name: "", on: "", when: "", agent: "", prompt: "", session: "", throttle: "", set: "", publish_topic: "", publish_payload: "" };
-	const [f, setF] = useState(empty);
+	const models = useLoad(() => api.models());
+	const [f, setF] = useState({ name: "", on: "", when: "", pace: "every" as keyof typeof ROUTE_PACE, time: "", does: first, agent: "", session: "", prompt: "", set: "", publish_topic: "", publish_payload: "", call_prompt: "", call_system: "", call_model: "" });
+	const [busy, setBusy] = useState(false);
 	const field = useId();
-	const agentItems = [{ value: "", label: "nobody" }, ...s.agents.map((a) => ({ value: a.id, label: a.id }))];
+	const agentItems = s.agents.map((a) => ({ value: a.id, label: a.id }));
+	const modelItems = [{ value: "", label: "The default model" }, ...(models.data ?? []).map((m) => ({ value: m, label: m }))];
+	const does = ROUTE_DOES[f.does];
+	const pace = ROUTE_PACE[f.pace];
+	const ready = f.name.trim() && f.on.trim() && (f.pace === "every" || f.time.trim()) && { wake: f.agent, set: f.set.trim(), publish: f.publish_topic.trim(), ask: f.call_prompt.trim() && f.publish_topic.trim() }[f.does];
 	const add = async () => {
-		const body = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.trim() || undefined]));
-		const done = await store.attempt(() => api.addRoute(body));
+		// Only the chosen action's fields are sent: one typed under another action and left there would add a second action.
+		const body: Record<string, string> = { name: f.name, on: f.on, when: f.when, ...(f.pace === "every" ? {} : { [f.pace]: f.time }) };
+		for (const key of does.takes) body[key] = f[key];
+		setBusy(true);
+		const done = await store.attempt(() => api.addRoute(Object.fromEntries(Object.entries(body).map(([k, v]) => [k, v.trim() || undefined]))));
+		setBusy(false);
 		if (!done) return;
 		store.flash(`Added the route ${done.name}: ${done.lines.join("; ")}.${done.wider ? ` Note: ${done.wider}` : ""}`, done.wider ? "warn" : "good", 8000);
-		setF(empty);
-		list.reload();
+		made();
 	};
-	const does = (r: NonNullable<typeof list.data>[number]) => [r.set ? `sets ${JSON.stringify(r.set)}` : "", r.call ? `asks a model: ${short(r.call.prompt, 80)}` : "", r.publish ? `publishes ${r.publish.topic}` : "", r.agent ? `wakes ${r.agent}${r.session ? ` (${r.session})` : ""}${r.prompt ? ` with: ${short(r.prompt, 100)}` : ""}` : ""].filter(Boolean).join("; ");
 	return (
 		<>
-			<p className="text-muted-foreground">Rules that turn an event into something: wake an agent, write shared state, publish another event. A subscription is the simple case and needs no route.</p>
+			<DialogHeader>
+				<DialogTitle>A new route</DialogTitle>
+				<DialogDescription>When an event arrives, then one thing happens.</DialogDescription>
+			</DialogHeader>
+			<ScrollArea className="-mx-4 flex max-h-(--dialog-scroll) min-w-0 wrap-break-word min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
+				<FieldGroup className="px-4">
+					<FieldSet>
+						<FieldLegend>When</FieldLegend>
+						<FieldGroup>
+							<Field>
+								<FieldLabel htmlFor={`${field}-on`}>An event arrives on</FieldLabel>
+								<Input id={`${field}-on`} className="font-mono" placeholder="source/door/message" value={f.on} onChange={(e) => setF({ ...f, on: e.target.value })} />
+								<FieldDescription>Its topic, as the event log shows it. Several: commas between. + is one part (cam/+/motion), # all below (source/door/#).</FieldDescription>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor={`${field}-when`}>Only if</FieldLabel>
+								<Input id={`${field}-when`} className="font-mono" placeholder={'{"payload.value.open": true}'} value={f.when} onChange={(e) => setF({ ...f, when: e.target.value })} />
+								<FieldDescription>{'Optional, as JSON: a value, or a condition such as {"payload.value.temperature": {"gt": 30}}.'}</FieldDescription>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor={`${field}-pace`}>How often</FieldLabel>
+								<ToggleGroup id={`${field}-pace`} aria-label="How often" variant="outline" className="flex-wrap" value={[f.pace]} onValueChange={one((p) => setF({ ...f, pace: p as keyof typeof ROUTE_PACE }))}>
+									{Object.entries(ROUTE_PACE).map(([value, p]) => (
+										<ToggleGroupItem key={value} value={value}>{p.label}</ToggleGroupItem>
+									))}
+								</ToggleGroup>
+							</Field>
+							{f.pace === "every" ? null : (
+								<Field>
+									<FieldLabel htmlFor={`${field}-time`}>{pace.time}</FieldLabel>
+									<Input id={`${field}-time`} className="font-mono" placeholder="5m" value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} />
+									<FieldDescription>{pace.about}</FieldDescription>
+								</Field>
+							)}
+						</FieldGroup>
+					</FieldSet>
+					<FieldSeparator />
+					<FieldSet>
+						<FieldLegend>Then</FieldLegend>
+						<FieldGroup>
+							<Field>
+								<FieldLabel htmlFor={`${field}-does`}>What happens</FieldLabel>
+								<ToggleGroup id={`${field}-does`} aria-label="What happens" variant="outline" className="flex-wrap" value={[f.does]} onValueChange={one((d) => setF({ ...f, does: d as keyof typeof ROUTE_DOES }))}>
+									{Object.entries(ROUTE_DOES).map(([value, d]) => (
+										<ToggleGroupItem key={value} value={value}>{d.label}</ToggleGroupItem>
+									))}
+								</ToggleGroup>
+								<FieldDescription>{does.about}</FieldDescription>
+							</Field>
+							{f.does === "wake" ? (
+								<>
+									<Field>
+										<FieldLabel htmlFor={`${field}-agent`}>Agent</FieldLabel>
+										<Select items={agentItems} value={f.agent || null} onValueChange={(agent) => setF({ ...f, agent: agent ?? "" })}>
+											<SelectTrigger id={`${field}-agent`}>
+												<SelectValue placeholder="Choose an agent…" />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectGroup>
+													{agentItems.map((o) => (
+														<SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+													))}
+												</SelectGroup>
+											</SelectContent>
+										</Select>
+									</Field>
+									<Field>
+										<FieldLabel htmlFor={`${field}-session`}>In the conversation</FieldLabel>
+										<Input id={`${field}-session`} className="font-mono" placeholder="main" value={f.session} onChange={(e) => setF({ ...f, session: e.target.value })} />
+										<FieldDescription>Empty: its main one. “new”: a fresh one for every event. Or a name of your own.</FieldDescription>
+									</Field>
+									<Field>
+										<FieldLabel htmlFor={`${field}-prompt`}>Telling it</FieldLabel>
+										<Textarea id={`${field}-prompt`} className="min-h-14 max-h-44" placeholder="The front door opened at {{time}}." value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} />
+										<FieldDescription>{"Optional: without it the agent gets the event itself. {{payload.field}} stands for a value of the event, {{time}} for when it came."}</FieldDescription>
+									</Field>
+								</>
+							) : f.does === "set" ? (
+								<Field>
+									<FieldLabel htmlFor={`${field}-set`}>Shared state</FieldLabel>
+									<Input id={`${field}-set`} className="font-mono" placeholder={'{"house/mode": "{{payload.value}}"}'} value={f.set} onChange={(e) => setF({ ...f, set: e.target.value })} />
+									<FieldDescription>{"As JSON: each key and what it is set to. {{payload.field}} stands for a value of the event; null deletes the key."}</FieldDescription>
+								</Field>
+							) : f.does === "publish" ? (
+								<>
+									<Field>
+										<FieldLabel htmlFor={`${field}-topic`}>Topic</FieldLabel>
+										<Input id={`${field}-topic`} className="font-mono" placeholder="house/door" value={f.publish_topic} onChange={(e) => setF({ ...f, publish_topic: e.target.value })} />
+										<FieldDescription>A topic of your own. out/source/&lt;name&gt; sends through that source.</FieldDescription>
+									</Field>
+									<Field>
+										<FieldLabel htmlFor={`${field}-payload`}>Payload</FieldLabel>
+										<Input id={`${field}-payload`} className="font-mono" placeholder={'{"open": "{{payload.value.open}}"}'} value={f.publish_payload} onChange={(e) => setF({ ...f, publish_payload: e.target.value })} />
+										<FieldDescription>Optional, JSON or text. Without it the event's own payload is passed on.</FieldDescription>
+									</Field>
+								</>
+							) : (
+								<>
+									<Field>
+										<FieldLabel htmlFor={`${field}-call`}>Asking it</FieldLabel>
+										<Textarea id={`${field}-call`} className="min-h-14 max-h-44" placeholder="Is this message urgent? Answer YES or NO. {{payload.text}}" value={f.call_prompt} onChange={(e) => setF({ ...f, call_prompt: e.target.value })} />
+										<FieldDescription>{"{{payload.field}} stands for a value of the event. A picture of the event goes with it if the model takes pictures."}</FieldDescription>
+									</Field>
+									<Field>
+										<FieldLabel htmlFor={`${field}-system`}>Instructions</FieldLabel>
+										<Input id={`${field}-system`} placeholder="Answer in one line." value={f.call_system} onChange={(e) => setF({ ...f, call_system: e.target.value })} />
+										<FieldDescription>Optional: the system prompt of the call.</FieldDescription>
+									</Field>
+									<Field>
+										<FieldLabel htmlFor={`${field}-model`}>Model</FieldLabel>
+										<Select items={modelItems} value={f.call_model} onValueChange={(m) => setF({ ...f, call_model: m ?? "" })}>
+											<SelectTrigger id={`${field}-model`}>
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectGroup>
+													{modelItems.map((o) => (
+														<SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+													))}
+												</SelectGroup>
+											</SelectContent>
+										</Select>
+									</Field>
+									<Field>
+										<FieldLabel htmlFor={`${field}-answer`}>Publish the answer as</FieldLabel>
+										<Input id={`${field}-answer`} className="font-mono" placeholder="mail/urgent" value={f.publish_topic} onChange={(e) => setF({ ...f, publish_topic: e.target.value })} />
+										<FieldDescription>A topic of your own. A second route on it can wake an agent, with “Only if” on the answer: {'{"payload.text": {"regex": "^YES"}}'}.</FieldDescription>
+									</Field>
+								</>
+							)}
+						</FieldGroup>
+					</FieldSet>
+					<FieldSeparator />
+					<Field>
+						<FieldLabel htmlFor={`${field}-name`}>Name</FieldLabel>
+						<Input id={`${field}-name`} className="font-mono" placeholder="front-door" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value.toLowerCase() })} />
+						<FieldDescription>For the list and the log: lowercase letters, digits, - and _.</FieldDescription>
+					</Field>
+				</FieldGroup>
+			</ScrollArea>
+			<DialogFooter>
+				<DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+				<Button disabled={busy || !ready} onClick={() => void add()}>Add route</Button>
+			</DialogFooter>
+		</>
+	);
+}
+
+/** Settings › Events › Routes: when a route is needed at all, each route as When and Then, and New route. */
+export function Routes() {
+	const list = useLoad(() => api.routes());
+	const adding = useRef<DialogRootActions>(null);
+	return (
+		<>
+			<div className="flex items-center gap-2">
+				<p className="grow text-muted-foreground">Most things need no route: an agent that reacts to a source is subscribed to it, and what happens at a time is a schedule. A route is a rule for the rest: when an event arrives, then one thing happens, often without waking an agent.</p>
+				<Dialog actionsRef={adding}>
+					<DialogTrigger render={<Button />}><PlusIcon data-icon="inline-start" />New route</DialogTrigger>
+					<DialogContent showCloseButton={false} className="sm:max-w-2xl"><NewRoute made={() => (adding.current?.close(), list.reload())} /></DialogContent>
+				</Dialog>
+			</div>
 			<ItemGroup>
 				{list.data ? (
 					list.data.length ? (
-						list.data.map((r) => (
-							<Item key={r.name} variant="outline">
-								<ItemContent className="min-w-0">
-									<ItemTitle>
-										{r.name}
-										<Badge variant="secondary" className="font-mono">on {r.on.join(", ")}</Badge>
-										{r.when ? <Badge variant="secondary" className="font-mono">when {short(JSON.stringify(r.when), 60)}</Badge> : null}
-										{r.trust === "owner" ? <Badge variant="outline">counts as your words</Badge> : null}
-									</ItemTitle>
-									<ItemDescription className="line-clamp-none wrap-anywhere">{does(r)}</ItemDescription>
-								</ItemContent>
-								<ItemActions>
-									<AlertDialog>
-										<Tooltip>
-											<TooltipTrigger render={<AlertDialogTrigger render={<Button variant="ghost" size="icon-xs" />} aria-label="Remove this route"><Trash2Icon /></AlertDialogTrigger>} />
-											<TooltipContent>Remove this route</TooltipContent>
-										</Tooltip>
-										<AlertDialogContent>
-											<AlertDialogHeader>
-												<AlertDialogTitle>Remove the route {r.name}?</AlertDialogTitle>
-											</AlertDialogHeader>
-											<AlertDialogFooter>
-												<AlertDialogCancel>Cancel</AlertDialogCancel>
-												<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.removeRoute(r.name)).then((x) => x && list.reload())}>Remove</AlertDialogCancel>
-											</AlertDialogFooter>
-										</AlertDialogContent>
-									</AlertDialog>
-								</ItemActions>
-							</Item>
-						))
+						list.data.map((r) => {
+							const said = routeSaid(r);
+							return (
+								<Item key={r.name} variant="outline">
+									<ItemContent className="min-w-0">
+										<ItemTitle>
+											{r.name}
+											{r.trust === "owner" ? <Badge variant="outline">counts as your words</Badge> : null}
+										</ItemTitle>
+										<ItemDescription className="line-clamp-none wrap-anywhere"><span className="font-medium text-foreground">When</span> {said.when}</ItemDescription>
+										<ItemDescription className="line-clamp-none wrap-anywhere"><span className="font-medium text-foreground">Then</span> {said.then}</ItemDescription>
+									</ItemContent>
+									<ItemActions>
+										<AlertDialog>
+											<Tooltip>
+												<TooltipTrigger render={<AlertDialogTrigger render={<Button variant="ghost" size="icon-xs" />} aria-label="Remove this route"><Trash2Icon /></AlertDialogTrigger>} />
+												<TooltipContent>Remove this route</TooltipContent>
+											</Tooltip>
+											<AlertDialogContent>
+												<AlertDialogHeader>
+													<AlertDialogTitle>Remove the route {r.name}?</AlertDialogTitle>
+												</AlertDialogHeader>
+												<AlertDialogFooter>
+													<AlertDialogCancel>Cancel</AlertDialogCancel>
+													<AlertDialogCancel variant="destructive" onClick={() => void store.attempt(() => api.removeRoute(r.name)).then((x) => x && list.reload())}>Remove</AlertDialogCancel>
+												</AlertDialogFooter>
+											</AlertDialogContent>
+										</AlertDialog>
+									</ItemActions>
+								</Item>
+							);
+						})
 					) : (
-						<p className="text-muted-foreground">No routes.</p>
+						<EmptyView icon={GitBranchIcon} title="No routes">Nothing needs one to begin with. A route is for glue: noting a value in shared state, passing an event on, a quick model look before an agent is woken.</EmptyView>
 					)
 				) : list.error ? (
 					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
@@ -1633,70 +1918,6 @@ function Routes() {
 					<Spinner className="m-auto" />
 				)}
 			</ItemGroup>
-			<FieldSet>
-				<FieldLegend>Add a route</FieldLegend>
-				<FieldGroup className={FORM_GRID}>
-					<Field>
-						<FieldLabel htmlFor={`${field}-name`}>Name</FieldLabel>
-						<Input id={`${field}-name`} className="font-mono" placeholder="door" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value.toLowerCase() })} />
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={`${field}-on`}>On</FieldLabel>
-						<Input id={`${field}-on`} className="font-mono" placeholder="source/house/message" value={f.on} onChange={(e) => setF({ ...f, on: e.target.value })} />
-						<FieldDescription>Topic patterns, separated by commas.</FieldDescription>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={`${field}-when`}>Only when</FieldLabel>
-						<Input id={`${field}-when`} className="font-mono" placeholder={'{"payload.open": true}'} value={f.when} onChange={(e) => setF({ ...f, when: e.target.value })} />
-						<FieldDescription>Optional, as JSON.</FieldDescription>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={`${field}-throttle`}>At most one per</FieldLabel>
-						<Input id={`${field}-throttle`} className="font-mono" value={f.throttle} onChange={(e) => setF({ ...f, throttle: e.target.value })} />
-						<FieldDescription>Optional, a time such as 5m.</FieldDescription>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={`${field}-agent`}>Wake the agent</FieldLabel>
-						<Select items={agentItems} value={f.agent} onValueChange={(agent) => setF({ ...f, agent: agent ?? "" })}>
-							<SelectTrigger id={`${field}-agent`}>
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectGroup>
-									{agentItems.map((o) => (
-										<SelectItem key={o.value} value={o.value}>
-											{o.label}
-										</SelectItem>
-									))}
-								</SelectGroup>
-							</SelectContent>
-						</Select>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={`${field}-session`}>In the conversation</FieldLabel>
-						<Input id={`${field}-session`} className="font-mono" disabled={!f.agent} value={f.session} onChange={(e) => setF({ ...f, session: e.target.value })} />
-						<FieldDescription>Empty: its main one. “new”: a fresh one for every event.</FieldDescription>
-					</Field>
-					<Field className="col-span-full">
-						<FieldLabel htmlFor={`${field}-prompt`}>With</FieldLabel>
-						<Input id={`${field}-prompt`} disabled={!f.agent} value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} />
-						<FieldDescription>What it is told. {"{{payload.field}}"} stands for a value of the event.</FieldDescription>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={`${field}-set`}>Set shared state</FieldLabel>
-						<Input id={`${field}-set`} className="font-mono" placeholder={'{"house/mode": "{{payload.value}}"}'} value={f.set} onChange={(e) => setF({ ...f, set: e.target.value })} />
-						<FieldDescription>Optional, as JSON.</FieldDescription>
-					</Field>
-					<Field>
-						<FieldLabel htmlFor={`${field}-publish`}>Publish the event</FieldLabel>
-						<Input id={`${field}-publish`} className="font-mono" value={f.publish_topic} onChange={(e) => setF({ ...f, publish_topic: e.target.value })} />
-						<FieldDescription>Optional: a topic of your own.</FieldDescription>
-					</Field>
-				</FieldGroup>
-				<Field orientation="horizontal" className="justify-end">
-					<Button disabled={!f.name.trim() || !f.on.trim()} onClick={() => void add()}>Add route</Button>
-				</Field>
-			</FieldSet>
 		</>
 	);
 }
@@ -1760,126 +1981,90 @@ function Instructions() {
 
 // ---- the app itself ----------------------------------------------------------------------------------------
 
-/** The custom colours' names: every palette has exactly those of pine's (cleanPalette). */
-type CustomName = (typeof DEFAULT_PALETTE.customColors)[number]["name"];
-const CUSTOM_LABELS: Record<CustomName, { title: string; about: string }> = {
-	warn: { title: "Warning colour", about: "Warnings and approvals, modified or unsaved files, literals in code." },
-	info: { title: "Info colour", about: "Renamed files, and function and type names in code." },
-	plan: { title: "Keyword colour", about: "Keywords in code (if, const, class)." },
-};
-const schemeItems = Object.entries(SCHEMES).map(([value, label]) => ({ value, label }));
-
-/** A colour to pick, with its hex beside it. */
-function ColourInput({ id, name, value, onChange }: { id: string; name: string; value: string; onChange: (hex: string) => void }) {
+/** Whether the window's accent is the colour of the agent in front: an app preference (`agentAccent`, on unless false). */
+export function AgentAccent() {
+	const s = useModel(store);
+	const id = useId();
+	const set = async (agentAccent: boolean) => {
+		s.prefs = await bridge.prefs({ agentAccent });
+		s.touch();
+	};
 	return (
-		<div className="flex items-center gap-1.5">
-			<span className="font-mono text-xs text-muted-foreground">{value}</span>
-			<Input id={id} name={name} type="color" className="w-10 p-0.5" value={value} onChange={(e) => onChange(e.target.value)} />
-		</div>
+		<Field orientation="horizontal" data-setting="agent-accent">
+			<FieldContent>
+				<FieldLabel htmlFor={id}>The agent in front colours the window</FieldLabel>
+				<FieldDescription>While the conversation of an agent with a colour of its own is in front, the window's accent is that colour instead of the theme's. An agent gets a colour on its page under Agents.</FieldDescription>
+			</FieldContent>
+			<div className="flex items-center gap-1.5">
+				<Switch id={id} checked={s.prefs.agentAccent !== false} onCheckedChange={(on) => void set(on)} />
+			</div>
+		</Field>
+	);
+}
+
+/** A theme's look in a few colours: the page, the text, the accent and three kinds of code. */
+function Swatch({ colors }: { colors: Record<string, string> }) {
+	const dots = [colors.brand, colors["code-keyword"], colors["code-string"], colors["code-function"]];
+	return (
+		<span aria-hidden className="inline-flex flex-none items-center gap-0.5 rounded-sm border px-1 py-0.5" style={{ backgroundColor: colors.bg }}>
+			<span className="text-[0.625rem] font-semibold leading-none" style={{ color: colors.text }}>Aa</span>
+			{dots.map((c, i) => <span key={i} className="size-1.5 rounded-full" style={{ backgroundColor: c }} />)}
+		</span>
 	);
 }
 
 /**
- * The palette the window's colours are generated from (theme.ts): an app preference like Appearance,
- * kept by the app's main process. Every change redraws the window at once; Reset stores none.
+ * The theme of the window: a VS Code colour theme from the themes folder of pine's home, chosen as
+ * pine's setting `ui.theme`. The colours are pine's (theme.ts): the page draws nothing a file says
+ * but colours. A file pine cannot read is named with what is wrong with it.
  */
-export function Colours() {
+export function ThemePicker() {
 	const s = useModel(store);
-	const palette = s.prefs.palette ?? DEFAULT_PALETTE;
-	const set = async (change: Partial<Palette> | undefined) => {
-		s.prefs = await bridge.prefs({ palette: change ? { ...palette, ...change } : undefined });
-		s.touch();
-	};
-	const followCode = async (codeFollowsPalette: boolean) => {
-		s.prefs = await bridge.prefs({ codeFollowsPalette });
-		s.touch();
-	};
-	const field = useId();
+	const id = useId();
+	const usable = s.themes.filter((t): t is Look => !("problem" in t));
+	const broken = s.themes.filter((t): t is Extract<ThemeEntry, { problem: string }> => "problem" in t);
+	const items = usable.map((t) => ({ value: t.id, label: t.name }));
+	const folder = s.service.status === "ready" ? `${tilde(s.service.home)}/themes` : "the themes folder of pine's home";
 	return (
-		<FieldSet data-setting="colours">
-			<FieldLegend>Colours</FieldLegend>
-			<FieldDescription>Every colour of the window is a role of one Material 3 scheme, made from these.</FieldDescription>
-			<FieldGroup>
-				<Field orientation="horizontal">
-					<FieldContent>
-						<FieldLabel htmlFor={`${field}-source`}>Source colour</FieldLabel>
-						<FieldDescription>The accent, and the colour the whole scheme is made from.</FieldDescription>
-					</FieldContent>
-					<ColourInput id={`${field}-source`} name="source" value={palette.source} onChange={(source) => void set({ source })} />
-				</Field>
-				<Field orientation="horizontal">
-					<FieldContent>
-						<FieldLabel htmlFor={`${field}-neutral`}>Neutral colour</FieldLabel>
-						<FieldDescription>The tint of the surfaces and the lines.</FieldDescription>
-					</FieldContent>
-					<ColourInput id={`${field}-neutral`} name="neutral" value={palette.neutral} onChange={(neutral) => void set({ neutral })} />
-				</Field>
-				<Field orientation="horizontal">
-					<FieldContent>
-						<FieldLabel htmlFor={`${field}-neutral-variant`}>Neutral variant colour</FieldLabel>
-						<FieldDescription>The tint of muted text and outlines.</FieldDescription>
-					</FieldContent>
-					<ColourInput id={`${field}-neutral-variant`} name="neutralVariant" value={palette.neutralVariant} onChange={(neutralVariant) => void set({ neutralVariant })} />
-				</Field>
-				<Field orientation="horizontal">
-					<FieldContent>
-						<FieldLabel htmlFor={`${field}-match`}>Colour match</FieldLabel>
-						<FieldDescription>Stay true to the source colour, at the cost of the neutrals' tint, which turns grey. Off, the scheme below tones the source as it does.</FieldDescription>
-					</FieldContent>
-					<Switch id={`${field}-match`} checked={palette.colorMatch} onCheckedChange={(colorMatch) => void set({ colorMatch })} />
-				</Field>
-				<Field orientation="responsive" data-disabled={palette.colorMatch || undefined}>
-					<FieldContent>
-						<FieldLabel htmlFor={`${field}-scheme`}>Scheme</FieldLabel>
-						<FieldDescription>How the source colour is spread over the roles, while colour match is off.</FieldDescription>
-					</FieldContent>
-					<Select items={schemeItems} value={palette.scheme} disabled={palette.colorMatch} onValueChange={(scheme) => scheme && void set({ scheme: scheme as Palette["scheme"] })}>
-						<SelectTrigger id={`${field}-scheme`} className="w-40">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectGroup>
-								{schemeItems.map((item) => (
-									<SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-								))}
-							</SelectGroup>
-						</SelectContent>
-					</Select>
-				</Field>
-				<Field orientation="horizontal">
-					<FieldContent>
-						<FieldLabel htmlFor={`${field}-contrast`}>Contrast</FieldLabel>
-						<FieldDescription>Less to the left, more to the right, standard in the middle. Now {palette.contrast.toFixed(1)}.</FieldDescription>
-					</FieldContent>
-					<div className="flex w-40 shrink-0">
-						<Slider id={`${field}-contrast`} aria-label="Contrast" min={-1} max={1} step={0.1} value={[palette.contrast]} onValueChange={(v) => void set({ contrast: Math.round((Array.isArray(v) ? v[0] : v) * 10) / 10 })} />
-					</div>
-				</Field>
-				{palette.customColors.map(({ name, hex }) => (
-					<Field key={name} orientation="horizontal">
-						<FieldContent>
-							<FieldLabel htmlFor={`${field}-${name}`}>{CUSTOM_LABELS[name as CustomName].title}</FieldLabel>
-							<FieldDescription>{CUSTOM_LABELS[name as CustomName].about} Not an M3 role: its hue is kept, darker in light and lighter in dark.</FieldDescription>
-						</FieldContent>
-						<ColourInput id={`${field}-${name}`} name={name} value={hex} onChange={(hex) => void set({ customColors: palette.customColors.map((c) => (c.name === name ? { ...c, hex } : c)) })} />
-					</Field>
-				))}
-				<Field orientation="horizontal" data-setting="code-follows-palette">
-					<FieldContent>
-						<FieldLabel htmlFor={`${field}-code`}>Code follows the palette</FieldLabel>
-						<FieldDescription>Code in dark draws with the scheme's roles, like the rest of the window. Off, it keeps the poimandres theme's own colours. Code in light always follows the palette.</FieldDescription>
-					</FieldContent>
-					<Switch id={`${field}-code`} checked={s.prefs.codeFollowsPalette !== false} onCheckedChange={(on) => void followCode(on)} />
-				</Field>
-				<Field orientation="horizontal">
-					<FieldContent>
-						<FieldTitle>pine's colours</FieldTitle>
-						<FieldDescription>Poimandres' mint on its night blue, toned by M3's tonal spot scheme.</FieldDescription>
-					</FieldContent>
-					<Button variant="outline" size="xs" disabled={!s.prefs.palette} aria-label="Reset colours" onClick={() => void set(undefined)}><Undo2Icon data-icon="inline-start" />Reset</Button>
-				</Field>
-			</FieldGroup>
-		</FieldSet>
+		<>
+			<Field orientation="responsive" data-setting="theme">
+				<FieldContent>
+					<FieldLabel htmlFor={id}>Theme</FieldLabel>
+					<FieldDescription>Any VS Code colour theme: put its .json file into {folder}, and it is offered here. The choice is pine's (ui.theme in pine.json), so every Pine app that uses this pine shows it.</FieldDescription>
+				</FieldContent>
+				<Select items={items} value={s.theme} onValueChange={(v) => v && v !== s.theme && void s.setTheme(v)} disabled={!usable.length}>
+					<SelectTrigger id={id} className="w-56">
+						<SelectValue />
+					</SelectTrigger>
+					{/* Below the trigger, not over it: a long list next to the window's edge stays on screen. */}
+					<SelectContent alignItemWithTrigger={false} align="end" className="min-w-60">
+						{(["dark", "light"] as const).map((kind, i) => {
+							const of = usable.filter((t) => t.kind === kind);
+							return of.length ? (
+								<SelectGroup key={kind}>
+									{i && usable.some((t) => t.kind === "dark") ? <SelectSeparator /> : null}
+									<SelectLabel>{kind === "dark" ? "Dark" : "Light"}</SelectLabel>
+									{of.map((t) => (
+										<SelectItem key={t.id} value={t.id}>
+											<Swatch colors={t.colors} />
+											{t.name}
+										</SelectItem>
+									))}
+								</SelectGroup>
+							) : null;
+						})}
+					</SelectContent>
+				</Select>
+			</Field>
+			{broken.length ? (
+				<Alert variant="destructive">
+					<TriangleAlertIcon />
+					<AlertDescription>
+						{broken.map((t) => <p key={t.id}>{t.id}.json: {t.problem}</p>)}
+					</AlertDescription>
+				</Alert>
+			) : null}
+		</>
 	);
 }
 
@@ -1977,25 +2162,16 @@ function AppPage() {
 	useEffect(() => void bridge.command().then(setCommand), []);
 	// (Looked at again whenever this page is opened: the browser may have been fetched in a terminal.)
 	useEffect(() => void store.checkBrowser(), []);
+	// (And the themes: a file may have been put into the folder by hand.)
+	useEffect(() => void store.refreshThemes(), []);
 	const field = useId();
 	return (
 		<Page title="App" lead="How this window behaves, and the pine it talks to.">
 			<FieldSet>
 				<FieldLegend>This app</FieldLegend>
 				<FieldGroup>
-					<Field orientation="responsive">
-						<FieldContent>
-							<FieldTitle>Appearance</FieldTitle>
-							<FieldDescription>Light, dark, or what the system is set to.</FieldDescription>
-						</FieldContent>
-						<div className="flex items-center gap-1.5">
-							<ToggleGroup aria-label="Appearance" variant="outline" value={[s.prefs.theme]} onValueChange={one((theme) => void set({ theme }))}>
-								<ToggleGroupItem value="system">System</ToggleGroupItem>
-								<ToggleGroupItem value="light">Light</ToggleGroupItem>
-								<ToggleGroupItem value="dark">Dark</ToggleGroupItem>
-							</ToggleGroup>
-						</div>
-					</Field>
+					<ThemePicker />
+					<AgentAccent />
 					{s.updates ? (
 						<Field orientation="responsive" data-setting="updates">
 							<FieldContent>
@@ -2033,7 +2209,6 @@ function AppPage() {
 					</Field>
 				</FieldGroup>
 			</FieldSet>
-			<Colours />
 			<FieldSet>
 				<FieldLegend>pine</FieldLegend>
 				<FieldGroup>
@@ -2124,7 +2299,7 @@ export function Settings() {
 				{/* A provider of its own, as in shadcn's sidebar in a dialog: the page needs one where no app side bar is around it (Storybook).
 				    Its ⌘B listener changes nothing here (open is fixed and the side bar cannot collapse); the app's provider still gets the key. */}
 				<SidebarProvider open className="min-h-0 w-full flex-none @3xl/settings:w-auto">
-					<SidebarRoot collapsible="none" className="w-full border-b border-surface-container-high bg-transparent @3xl/settings:w-50 @3xl/settings:border-r @3xl/settings:border-b-0">
+					<SidebarRoot collapsible="none" className="w-full border-b border-line-soft bg-transparent @3xl/settings:w-50 @3xl/settings:border-r @3xl/settings:border-b-0">
 						<SidebarContent>
 							<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade-x @3xl/settings:*:data-[slot=scroll-area-viewport]:scroll-fade">
 								<SidebarGroup role="navigation" className="py-2 @3xl/settings:py-4">

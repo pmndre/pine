@@ -64,6 +64,10 @@ src/
                     selector, a number), line differences, a page's text; and `capped`, the limit on how often a type that is told may report
   mime.ts           an e-mail message read into sender, subject, text and attachments, for the mail and smtp types
   env-file.ts       sets and removes entries in .env (secrets of sources that agents set up)
+  themes.ts         the themes of the owner's UIs: VS Code colour theme files in <home>/themes (seeded once from
+                    examples/home/themes), listed for `GET /themes`, the one `ui.theme` names
+  theme-colors.ts   a VS Code colour theme resolved into pine's colour roles, as hex colours and nothing else (no
+                    fs: Storybook uses it too); a theme's `pine` object overrides a role by name
   update.ts         `pine update`: brings pine up to date the way it was installed (git or npm) and fetches what the new version needs;
                     a pine inside the Pine app says where the new app is
   prebuilt.ts       where a helper that was built with pine lies (beside its source, in prebuilt/), for the Pine app

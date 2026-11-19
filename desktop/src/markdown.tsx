@@ -105,7 +105,7 @@ function Link({ href, children, node }: React.ComponentProps<"a"> & ExtraProps) 
 			{/* Beside the link, not inside it: it is the address in plain letters, not more of the link's words.
 			    It flows with the sentence: a line of its own would cut the link off from where it leads. */}
 			{plain ? null : (
-				<span data-target="" className="ml-1 inline cursor-pointer font-mono text-xs text-outline wrap-anywhere" title={url} onClick={open(url)}>
+				<span data-target="" className="ml-1 inline cursor-pointer font-mono text-xs text-faint wrap-anywhere" title={url} onClick={open(url)}>
 					<ArrowRightIcon className="mr-1 inline size-3" aria-hidden />
 					{short(url.replace(/^https?:\/\//, ""), 72)}
 				</span>
@@ -119,7 +119,7 @@ export const MEDIA = {
 	box: { image: "block max-w-md", video: "block max-w-lg", audio: "block max-w-md" },
 	image: "block max-h-80 max-w-full cursor-zoom-in rounded-md border",
 	video: "block max-h-90 max-w-full rounded-md bg-black",
-	cap: "mt-1 block text-xs text-outline",
+	cap: "mt-1 block text-xs text-faint",
 };
 
 function Player({ kind, src, alt, sound }: { kind: "image" | "video" | "audio"; src: string; alt: string; sound?: { id?: string; name: string; bytes: () => Promise<ArrayBuffer>; auto?: Heard } }) {
@@ -242,8 +242,8 @@ const COMPONENTS: Components = { a: Link, img: Picture, details: Details, summar
 /**
  * The highlighter's theme for code in answers: every colour is a `--code-*` variable of index.css, the
  * ones the code editor reads, so that code in an answer and in the code pane look the same and both
- * follow the palette (or poimandres in dark, when the owner keeps it). The variables change with the
- * look, so one theme serves light and dark. Scopes are TextMate's, mapped to the editor's kinds.
+ * follow pine's theme (theme.ts). The variables change with the theme, so one highlighter theme serves
+ * them all. Scopes are TextMate's, mapped to the editor's kinds.
  */
 const v = (name: string) => `var(--code-${name})`;
 const CODE_THEME = {

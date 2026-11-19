@@ -7,12 +7,12 @@ export const viewports = {
 } as const;
 
 // Chromatic takes every story once per mode. Each mode sets the `theme` global that the preview's
-// decorator reads and one of the viewports above (by its key), so every story is snapshotted in
-// light and dark at each width, and no story is written twice: two themes times two widths, four
-// snapshots a story.
+// decorator reads (a theme of pine's: pmndre, the default and dark, and GitHub Light for a light
+// one) and one of the viewports above (by its key), so every story is snapshotted in light and dark
+// at each width, and no story is written twice: two themes times two widths, four snapshots a story.
 export const allModes = {
-	"light phone": { theme: "light", viewport: "phone" },
-	"light desktop": { theme: "light", viewport: "desktop" },
-	"dark phone": { theme: "dark", viewport: "phone" },
-	"dark desktop": { theme: "dark", viewport: "desktop" },
+	"light phone": { theme: "github-light", viewport: "phone" },
+	"light desktop": { theme: "github-light", viewport: "desktop" },
+	"dark phone": { theme: "pmndre", viewport: "phone" },
+	"dark desktop": { theme: "pmndre", viewport: "desktop" },
 } as const;

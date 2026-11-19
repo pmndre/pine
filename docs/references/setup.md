@@ -152,7 +152,7 @@ Which model the agent runs on is told to it with your message, so it needs no to
 | `add_skill` `name` `description` `instructions` [`files`] [`scope`] | Writes a skill; the same name in the same place replaces it. `files` is a folder in the agent's workspace whose contents go along. |
 | `remove_skill` `name` | Deletes a skill in pine's own skill folders (`skills/`, `agents/<id>/skills/`, a conversation's), also one you put there by hand. A skill in a folder named under `skills` in a configuration file is yours to remove. |
 | **Agents** | |
-| `create_agent` `id` `description` `instructions` [`model`] [`tools`] | Main agent only. See below. Changing and removing one, and pine's settings: "The main agent administers pine". |
+| `create_agent` `id` `description` `instructions` [`model`] [`tools`] [`color`] | Main agent only. See below. Changing and removing one, and pine's settings: "The main agent administers pine". |
 | **Model servers** | |
 | `add_model_server` `name` `url` [`context`] | Main agent only. Adds a model server of your own by its address; pine asks the server for its models. See "Adding a model server". |
 | `remove_model_server` `name` | Main agent only. Takes one out again, with the key pine keeps for it. Refused while an agent, the default or the judge of goals (`defaults.judge`) uses one of its models. You are asked. |
@@ -201,14 +201,15 @@ in [configuration.md](configuration.md), "models.json".
 ## Creating an agent
 
 Ask the main agent: "create an agent that keeps my books". It calls `create_agent` with an id,
-one line on what the agent is for, its instructions, and optionally a model and a list of
-built-in tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`; all of them by default).
-What cannot work (a bad id, a name that is taken, an unknown tool or model) is said before you
-are asked anything. After your yes:
+one line on what the agent is for, its instructions, and optionally a model, a list of
+built-in tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`; all of them by default)
+and its colour in the Pine app (`color`, `#rrggbb`: "make it coral" gives it `#e0805a`;
+you see the colour in what you confirm). What cannot work (a bad id, a name that is taken, an
+unknown tool or model, a colour that is not `#rrggbb`) is said before you are asked anything. After your yes:
 
 ```
 agents/books/
-  agent.json     { "description": "...", "tools": [...] }  and "model" if one was named
+  agent.json     { "description": "...", "tools": [...] }  and "model" and "color" if named
   workspace/
     AGENTS.md    the instructions; the new agent can change them itself from then on
     SOUL.md      a stub
@@ -243,7 +244,7 @@ The ones only it has:
 | Tool | Does |
 |---|---|
 | `agents` [`id`] | Lists the agents: what each is for, its model, reasoning, mode and reach, and what it has (conversations, event sources, MCP servers, schedules, skills, files in its workspace). With `id`, one agent in full, with its workspace and its instructions. Asks nobody. |
-| `update_agent` `id` [`description`] [`instructions`] [`model`] [`thinking`] [`mode`] [`tools`] [`delegates`] [`scope`] [`network`] [`read`] [`write`] [`forget`] | Changes an agent's settings; only what is given changes. You see the change line by line and confirm it. See "Changing and removing an agent". |
+| `update_agent` `id` [`description`] [`color`] [`instructions`] [`model`] [`thinking`] [`mode`] [`tools`] [`delegates`] [`scope`] [`network`] [`read`] [`write`] [`forget`] | Changes an agent's settings; only what is given changes. You see the change line by line and confirm it. See "Changing and removing an agent". |
 | `remove_agent` `id` [`keep_files`] | Removes an agent for good, with everything it has. You see what goes and confirm it. See "Changing and removing an agent". |
 | `settings` | Lists the settings it can change, with what is in force and what each means. Asks nobody. |
 | `set_setting` `key` `value` | Changes one setting in `pine.json`; `"default"` takes the entry out. You see the old and the new value and confirm. See "pine's settings". |
@@ -272,6 +273,7 @@ Tell the main agent what to change about another agent ("give the books agent an
 | Value | What it is |
 |---|---|
 | `description` | One line on what the agent is for |
+| `color` | Its own colour in the Pine app, `#rrggbb` (its avatar is drawn in it); `"none"` takes it away. "Make scout blue" is a `color` change, which you confirm like any other; anything that is not `#rrggbb` is refused before you are asked |
 | `instructions` | The whole new text of its `AGENTS.md`. It replaces the file, so the main agent reads the present text first (`agents` with `id`) |
 | `soul` | The whole new text of its `SOUL.md`: who it is, its character and tone. It replaces the file the same way. This is what the main agent uses when you speak of an agent's personality or how it should sound |
 | `tooling` | The whole new text of its own `TOOLS.md`: tooling defaults and preferences for it alone. It replaces the file the same way; empty takes them back |
@@ -385,6 +387,7 @@ What holds for them:
 | `security.taint` | Outside content: how long pine asks before an agent sends something out, after its conversation has read something from outside |
 | `security.bypassWhenTainted` | Bypass after outside content: whether bypass mode stays in force in such a conversation |
 | `summon.autoForward` | Summon into a chosen conversation: whether `/pine #todo …` runs in the conversation `todo`, when there is one, which is then marked as having read outside content. Off: every summon runs in a conversation of its own |
+| `ui.theme` | Theme: the colours of the Pine app, a theme in the `themes` folder of pine's home by its name (`dracula`, `github-light`). Any VS Code colour theme file put there can be chosen |
 
 A value is checked for what it has to be (a model that exists, one of a few words, a number in
 a range, a time), you see the old and the new value, and where the new one gives something up

@@ -1522,6 +1522,15 @@ export class AgentManager {
 	}
 
 	/**
+	 * Tell a UI that is running that one of pine's settings was changed (by the owner in another UI,
+	 * or by the main agent's set_setting), so that what it shows of it follows: a new theme redraws
+	 * the window. It names the setting and nothing else; a UI asks for the rest.
+	 */
+	settingChanged(key: string): void {
+		this.bus.publish("pine/settings", { key }, { persist: false, source: "pine" });
+	}
+
+	/**
 	 * Open a tab on a conversation, or close its tab, for the main agent's set_conversation: the
 	 * list of tabs a UI opens with is changed, and a UI that is running follows. Closing does what
 	 * closing it in the UI does: what the conversation was subscribed to on its own ends.

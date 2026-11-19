@@ -25,7 +25,7 @@ export const TREE_ITEM = "outline-none";
  * the row that has the keyboard shows it, also where the focus is on the tree's item around it (`TREE_ITEM`).
  */
 export function rowClass(on?: boolean) {
-	return `flex h-7 flex-none items-center gap-2 whitespace-nowrap px-2.5 text-xs outline-primary/60 -outline-offset-2 focus-visible:outline-2 [[data-slot=tree-item]:focus-visible>&]:outline-2 ${on ? "bg-on-surface/12" : "hover:bg-accent"}`;
+	return `flex h-7 flex-none items-center gap-2 whitespace-nowrap px-2.5 text-xs outline-primary/60 -outline-offset-2 focus-visible:outline-2 [[data-slot=tree-item]:focus-visible>&]:outline-2 ${on ? "bg-press" : "hover:bg-accent"}`;
 }
 
 /** A value no line has: the list starts with no line chosen, until useNamedLine chooses one. */

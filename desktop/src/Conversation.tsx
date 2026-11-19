@@ -8,7 +8,7 @@ import { Fragment, memo, type ReactNode, useEffect, useLayoutEffect, useRef, use
 import { Sound } from "@/components/sound";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Attachment, AttachmentContent, AttachmentGroup, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AgentAvatar } from "@/components/agent-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
@@ -540,9 +540,7 @@ function Welcome({ tab }: { tab: Tab }) {
 		<Empty>
 			<EmptyHeader>
 				<EmptyMedia>
-					<Avatar size="lg">
-						<AvatarFallback>{tab.agent.slice(0, 1).toUpperCase()}</AvatarFallback>
-					</Avatar>
+					<AgentAvatar agent={{ id: tab.agent, color: store.agent(tab.agent)?.color }} size="lg" />
 				</EmptyMedia>
 				<EmptyTitle>
 					<h1>{tab.agent}</h1>
@@ -567,7 +565,7 @@ function Welcome({ tab }: { tab: Tab }) {
 						</AlertAction>
 					</Alert>
 				) : null}
-				<p className="text-outline wrap-anywhere">
+				<p className="text-faint wrap-anywhere">
 					{tab.session === "main" ? "Its main conversation: the one it keeps for good, and where what it is subscribed to as an agent arrives." : `Conversation ${tab.session}.`} {tab.folder ? `It works in ${tilde(tab.folder)}.` : "It works in its own workspace."}
 				</p>
 				<div className="flex flex-wrap justify-center gap-1.5">
@@ -800,7 +798,7 @@ function ConvHead({ tab }: { tab: Tab }) {
 					) : null}
 				</BreadcrumbList>
 			</Breadcrumb>
-			{chat && store.pins.has(tab.key) ? <StarIcon size={12} className="text-outline" /> : null}
+			{chat && store.pins.has(tab.key) ? <StarIcon size={12} className="text-faint" /> : null}
 			<span className="min-w-0 flex-1" />
 			{tab.context !== undefined ? <ContextUsage tab={tab} percent={tab.context} /> : null}
 		</div>
@@ -835,6 +833,13 @@ export function Conversation({ tab }: { tab: Tab }) {
 	// The words are marked once what was said is on the page.
 	const loaded = tab.loaded;
 	const scroller = useRef<HTMLDivElement>(null);
+	// What the conversation held when this view of it was opened: its history, or what was said while another tab
+	// was in front. Message Scroller goes to a message of the owner's when it arrives (`scrollAnchor`), and takes
+	// for arrived whichever such message it has not gone to yet. So one that was there from the start is no
+	// anchor: it would be gone to, the oldest first, as soon as a line of the list is exchanged for another
+	// (the mark before the last message for a message that comes), and the view would jump to the very top.
+	const before = useRef<Set<number> | undefined>(undefined);
+	if (loaded && !before.current) before.current = new Set(tab.items.map((item) => item.id));
 	const chat = tab.kind === "chat";
 	const checkpoint = chat && !tab.busy ? lastOwnerMessage(tab.items) : -1;
 	return (
@@ -863,7 +868,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 													<Checkpoint tab={tab} />
 												</MessageScrollerItem>
 											) : null}
-											<MessageScrollerItem messageId={String(item.id)} scrollAnchor={item.t === "user"}>
+											<MessageScrollerItem messageId={String(item.id)} scrollAnchor={item.t === "user" && !before.current?.has(item.id)}>
 												<Row item={item} v={item.v} tab={tab} />
 											</MessageScrollerItem>
 										</Fragment>

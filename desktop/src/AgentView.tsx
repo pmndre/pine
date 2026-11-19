@@ -14,13 +14,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { FieldLegend, FieldSet } from "@/components/ui/field";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Printed } from "@/components/printed";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AgentAvatar } from "@/components/agent-avatar";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 
-const NONE = "px-3.5 py-0.5 text-outline wrap-anywhere";
+const NONE = "px-3.5 py-0.5 text-faint wrap-anywhere";
 /** A section's title over its rows: stock FieldSet and FieldLegend, as the settings sections are. */
 const SECTION = "min-w-0 gap-0";
-const TITLE = "mt-1.5 mb-1 flex min-h-6 w-full items-center gap-2 pr-2 pl-3.5 text-xs font-semibold text-outline";
+const TITLE = "mt-1.5 mb-1 flex min-h-6 w-full items-center gap-2 pr-2 pl-3.5 text-xs font-semibold text-faint";
 
 export function AgentView({ tab }: { tab: Tab }) {
 	useModel(tab);
@@ -48,9 +48,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 		<div className="flex flex-col gap-3 pb-2">
 			<Item className="px-3.5 pt-4 pb-0.5">
 				<ItemMedia>
-					<Avatar size="lg">
-						<AvatarFallback>{tab.agent.slice(0, 1).toUpperCase()}</AvatarFallback>
-					</Avatar>
+					<AgentAvatar agent={{ id: tab.agent, color: store.agent(tab.agent)?.color }} size="lg" />
 				</ItemMedia>
 				<ItemContent>
 					<ItemTitle>{tab.agent}{info.main ? <Badge>main</Badge> : null}</ItemTitle>

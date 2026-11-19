@@ -175,12 +175,67 @@ pine packed into the app; the `pine` of your shell.
 | Keep pine running after the app quits | A pine the app starts goes on in the background when the app is closed: schedules fire, sources report and Telegram answers. It then runs until it is stopped (`pine status` finds it; the next start of the app attaches to it) |
 | Home folder | Another pine home than `~/.pine`. Another home is another pine |
 | pine in a terminal | Whether your shell has the `pine` command and whose it is; Set up and Remove for the app's own. See "`pine` in a terminal". Only in an app that carries pine |
-| Appearance | Light, dark, or what the system is set to |
-| Colours | The palette the window's colours are made from: the source colour (the accent), the neutral colour (the tint of the surfaces), the neutral variant colour (the tint of muted text and outlines), colour match, the scheme (while colour match is off), the contrast, the warning, info and keyword colours (their hue is kept, their shade follows light or dark), and whether code follows the palette (on by default: code in dark draws with the scheme's roles; off, it keeps the poimandres theme's own colours). Each change redraws the window at once; Reset brings back pine's palette. Kept with the app's other preferences, like Appearance: not in pine's configuration, and no agent sees it |
+| Theme | The window's colours: one of the themes in the `themes` folder of pine's home, dark ones and light ones. It is pine's setting `ui.theme` (see "Themes" below), so every Pine app on that pine shows it, and the main agent can change it when you ask. A theme file pine cannot read is named under the list, with what is wrong with it |
 | Notifications | A system notification when an agent is done, stops with an error, needs your approval or asks you something while the window is not in front, also for a summon that no tab shows; a click opens that conversation. The words are pine's own ("main is done"), never the agent's |
 
 Closing the window does not quit the app on a Mac: it, and a daemon it started, stay until
 you quit (`⌘Q`). A daemon the app started that stops answering is started again.
+
+## Themes
+
+A theme is a VS Code colour theme: the `.json` file nearly every editor theme is published as, with
+`type` (dark or light), `colors` (the editor's surfaces, text and accents) and `tokenColors` (code, by
+TextMate scope). They lie in the `themes` folder of pine's home, one file each, and a theme is named
+by its file: `one-dark-pro.json` is `one-dark-pro`. `ui.theme` in `pine.json` says which one is in
+force; pmndre when it names none.
+
+| Theme | Kind |
+|---|---|
+| `pmndre` | dark, pine's own and the default: poimandres with pine's colours |
+| `one-dark-pro`, `dracula`, `tokyo-night`, `catppuccin-mocha`, `nord`, `github-dark`, `gruvbox-dark` | dark |
+| `github-light`, `one-light`, `catppuccin-latte`, `solarized-light`, `rose-pine-dawn` | light |
+
+pine puts these into the folder the first time it starts without one (and `pine init` does).
+After that the folder is yours: a theme you delete stays deleted, and pmndre is there even without
+its file. To add a theme, copy its `.json` into the folder and pick it in Settings > App: a theme's
+file is in its VS Code extension (in its repository, usually under `themes/`), and Shiki's
+collection (`@shikijs/themes`, the `tm-themes` repository) has many more. Comments and trailing
+commas in the file are fine. A theme that builds on another file (`include`) cannot be read; use one
+that holds all of its colours.
+
+pine reads the colours that mean the same as one of its own (`editor.background`,
+`editor.foreground`, `descriptionForeground`, `sideBar.background`, `editor.selectionBackground`,
+the accent from `button.background`, `activityBarBadge.background`, `progressBar.background`,
+`textLink.foreground` or `focusBorder`, whichever is a colour and stands out, `editorError.foreground`,
+`gitDecoration.*`, `terminal.ansi*`) and code by scope (`keyword`, `keyword.control`, `storage.type`,
+`string`, `constant.numeric`, `entity.name.function`, `entity.name.type`, `comment`...), and derives
+the rest from those. A theme can say what pine should use for any of its colours in an object of
+its own, which editors ignore:
+
+```json
+{ "name": "Mine", "type": "dark", "colors": { ... }, "tokenColors": [ ... ],
+  "pine": { "brand": "#7aa2f7", "faint": "#565f89", "code-keyword": "#bb9af7" } }
+```
+
+| `pine` key | What it colours |
+|---|---|
+| `bg`, `surface`, `raised`, `sunk`, `composer`, `side` | The page, cards and the input, buttons, what lies below (the side bar off a Mac), the side bar on a Mac (translucent) |
+| `text`, `text-muted`, `faint` | Text, quieter text, the quietest (hints, times, icons) |
+| `line`, `line-soft`, `hover`, `press`, `select` | Borders, soft dividers, a row under the pointer, a row in front, selected text |
+| `brand`, `brand-soft`, `on-accent` | The accent (what is on or at work), its tint, text on it |
+| `warn`, `bad`, `info`, `plan`, `add`, `del` (and `warn-soft`, `bad-soft`, `add-bg`, `del-bg`) | Warnings, errors, renamed files, keywords, added and removed lines |
+| `code-<kind>` | Code: `text`, `comment`, `keyword`, `control`, `definition`, `modifier`, `string`, `regexp`, `literal`, `null`, `name`, `attribute`, `function`, `call`, `type`, `namespace`, `tag`, `operator`, `punctuation`, `heading`, `link`, `inserted`, `deleted`, `gutter`, `cursor`, `match`; `code-meta-style` and `code-attribute-style` are `italic` or `normal` |
+| `term-0` … `term-15`, `term-bg`, `term-fg` | The terminal's sixteen colours, its page and its text |
+
+An agent can have a colour of its own (on its page under Agents, or ask the main agent: "make scout
+blue"). Its avatar is drawn in it in every theme, and while its conversation is in front the
+window's accent is that colour instead of the theme's. Settings > App turns that off ("The agent in
+front colours the window").
+
+A value is a hex colour, `#rrggbb` or `#rrggbbaa`. Settings > App lists a file pine cannot read with
+what is wrong with it. The theme is pine's setting, not the app's: every Pine app that uses this pine
+shows it, the main agent can set it (`set_setting ui.theme`), and with another machine's pine
+(Settings > Environments) the window takes that pine's theme.
 
 ## Environments: the pine of another machine
 
@@ -384,6 +439,7 @@ daemon's doing. What differs is how it is drawn and reached.
 | `/mcp`, `/sources`, `/subscribe` | Also Settings > MCP servers and Settings > Events |
 | `/attach <path>`, `/paste` | Files from the Finder put on the input, a picture pasted into it, or the `+` in the bar under the input |
 | `/export` | Asks where to save the file |
+| `/emit <topic> [json]` | The same, and `/emit` alone or Publish… in the event log opens a form: the topic, and the payload in a field of its own, checked to be JSON before anything is sent |
 | `/voice`, `ctrl+r` | The microphone in the bar under the input, or `⌃R` |
 | `/quit` | `⌘Q` |
 | `shift+tab` (next mode) | The same, while the input is empty |
@@ -398,7 +454,7 @@ daemon's doing. What differs is how it is drawn and reached.
 | Menus and keys | Everything is in the menu bar, with its key |
 | Notifications | See the settings above. The app's icon carries the number of conversations that wait for you |
 | Find | `⌘F` marks what you look for in the conversation |
-| A Material 3 palette | Every colour of the window is a role of one Material 3 scheme, generated from poimandres' mint (the source), night blue (the neutral) and blue grey (the neutral variant), light and dark alike, or from your own colours (Settings > App > Colours). Code in an answer, in a diff and in the editor follows the palette too, in light and dark; turn off "Code follows the palette" to keep poimandres' own colours for code in dark |
+| Themes | Any VS Code colour theme, chosen in Settings > App: the window, code in answers, diffs and the editor, and the terminal all follow it. See "Themes" |
 | Several views at once | A conversation, its changes and a file in the editor side by side |
 | A terminal | A shell of yours beside each conversation, and ▶ on an answer's shell code blocks to run them in it: see "The terminal" |
 | `/browser` | A command of the app's own, which the terminal UI does not have: the browser at the right of the window (`⇧⌘B`, View > Toggle Browser). See "The browser" |
@@ -555,14 +611,14 @@ of pine's: the app is your own hand, like a `pine` command.
 | Page | What you do there | The same by command or by asking the main agent |
 |---|---|---|
 | General | pine's settings, each by a name with its key in `pine.json` beside it and a sentence on what it does: the model, reasoning and mode agents start from, how long a command and a task may run, how many agents work at once, and what pine asks you about. What only tunes pine to a model server is not there: that is written into `pine.json` by hand ([setup.md](setup.md), "pine's settings"). And the notes `pine check` would print about this setup | `set_setting`; `pine check` |
-| Agents | Every agent. On an agent's page: what it is for, its model, reasoning, mode, built-in tools, whom it may hand work to, network from its shell, folders outside its workspace, and the files it is told (`AGENTS.md`, `SOUL.md`, `TOOLS.md`; its `MEMORY.md` and your rules for it are shown). New agent; Remove, with or without its folder | `create_agent`, `update_agent`, `remove_agent`; `pine agent …` |
+| Agents | Every agent. On an agent's page: what it is for, its colour (None, a preset, or Other… with any colour: its avatar in the side bar, on its tabs, in its panel and on an empty conversation is drawn in it, and the window takes its primary while its conversation is in front), its model, reasoning, mode, built-in tools, whom it may hand work to, network from its shell, folders outside its workspace, and the files it is told (`AGENTS.md`, `SOUL.md`, `TOOLS.md`; its `MEMORY.md` and your rules for it are shown). New agent; Remove, with or without its folder | `create_agent`, `update_agent`, `remove_agent`; `pine agent …` |
 | Models | Model servers of your own (add by name and address, with its key when it wants one; remove). Providers: sign in through the browser or with an API key, sign out; after a sign-in, the choice of the model your agents run on. That model (`defaults.model`) with Change, and each agent whose model cannot answer with the reason. The models you can use now | `add_model_server`; `pine model …`, `pine login`, `pine logout`; `set_setting` |
 | MCP servers | Every server with whom it is for and whether it connects. Add a remote one (its https address) or a program on this computer, for all agents or one. Sign in to a remote one through the browser. Remove | `add_mcp_server`; `pine mcp …` |
 | Skills | Every skill with whom it is for. Read one, change it, add one for all agents or one agent, remove one. A skill that lies in a folder of yours that the configuration names is shown and not changed | `add_skill`, `remove_skill`; `pine skills` |
-| Events | **Sources**: what runs, who is subscribed, the last event; add one by type (the type's options as a form, what it will do said before it is added, a password or token typed into a field of its own), subscribe an agent or all agents, end a subscription, remove. **Schedules**: add (at set times, every so often, once), remove. **Routes**: add, remove | `add_source`, `subscribe`, `add_schedule`, `add_route`; `pine sources`, `pine subscribe`, `pine schedules` |
+| Events | **Sources**: what runs, who is subscribed, the last event; add one by type (the type's options as a form, what it will do said before it is added, a password or token typed into a field of its own), subscribe an agent or all agents, end a subscription, remove. **Schedules**: each schedule said as When and Then (whom it wakes, with what task); New schedule opens a form in the same words: When (at set times, every so often, once at a time, once after a while), Then which agent (or every agent) and the task, then a name; remove. **Routes**: first when you need one at all (an agent that reacts to a source is subscribed to it, a time is a schedule); each route said as When and Then; New route opens a form in the same words: When (the topic, an optional condition, how often), Then one of wake an agent, set shared state, publish an event, ask a model once and publish its answer, with only that one's fields shown and sent; remove | `add_source`, `subscribe`, `add_schedule`, `add_route`; `pine sources`, `pine subscribe`, `pine schedules` |
 | Instructions | The three files for all agents in pine's home: `AGENTS.md`, `TOOLS.md`, `USER.md` | Telling the main agent something that is for all agents |
 | Environments | This computer and the machines whose pine the app can use, over SSH: add one by its host, use one, forget one. See "Environments: the pine of another machine" | `ssh` to the machine and `pine` there |
-| App | The app's own settings (appearance, colours, notifications, whether there is a newer app and whether that is asked at the start), and the pine it talks to: started here or attached, restart, home folder, the `pine` command for a terminal, and whether the browser of the web tools is on this Mac, with Fetch it when it is not | `pine browser-install` |
+| App | The app's own settings (the theme, notifications, whether there is a newer app and whether that is asked at the start), and the pine it talks to: started here or attached, restart, home folder, the `pine` command for a terminal, and whether the browser of the web tools is on this Mac, with Fetch it when it is not | `pine browser-install` |
 
 A secret you type on these pages (a model server's key, a source's token, a provider's API
 key) goes from the field to the daemon and from there into pine's `.env` or `auth.json`. It is
@@ -672,20 +728,22 @@ desktop/
     components/    only what stock components cannot express when composed in place (printed.tsx:
                    what a tool or a program printed, a Code Block that follows its end; sound.tsx:
                    a sound's line, its player and its bars, measured with src/tui/levels.ts), and pine's
-                   own small parts (logo.tsx: the logo; empty-view.tsx: a view with nothing in it);
+                   own small parts (logo.tsx: the logo; empty-view.tsx: a view with nothing in it;
+                   agent-avatar.tsx: an agent's initial on the stock avatar, in its own colour);
                    no part there only renames or bundles a stock one
     use-load.ts    loading what a view shows
     lists.tsx      the look of a row of the tree of files and of the lists to open a row from,
                    which are ui-sdk's, used directly (shadcn has neither); and the chosen line of
                    a palette's list, named to screen readers (`useNamedLine`)
-    index.css      the only stylesheet: pine's mapping of shadcn's tokens to M3 roles on top of
-                   material-theme-builder's, the code colours (`--code-*`: M3 roles, and poimandres in
-                   `.dark[data-code=poimandres]`), the page's density and a few base rules
+    index.css      the only stylesheet: pine's colour roles (pmndre's values, until a theme sets
+                   them), shadcn's tokens pointed at them, the code colours (`--code-*`), the
+                   terminal's (`--term-*`), the page's density and a few base rules
                    (components.json is shadcn's configuration: Base UI, lucide icons)
-    theme.ts       the `.dark` class on the root element, from the Appearance setting: Light or Dark
-                   by itself, System by the system's appearance; pine's palette (`DEFAULT_PALETTE`), which
-                   `<Mtb>` turns into the M3 scheme in main.tsx and in Storybook's preview; and
-                   `cleanPalette`, which makes a stored or sent palette safe field by field
+    theme.ts       a theme as pine hands it over (`Look`), made safe (`cleanLook`: names of roles,
+                   values that are colours) and set on the root element (`applyLook`: its variables,
+                   and `.dark` for a dark theme); the preset colours of an agent (`AGENT_COLOURS`), what
+                   reads on a colour (`onColour`), and the accent of the agent in front over the
+                   theme's (`applyAgentAccent`)
     preview-bridge.ts  the page's stand-in for the preload's bridge, in the preview only
                    (`npm run dev:preview`): it calls the preview's server under `/__pine/`
   .agents/skills/  shadcn's agent skill, as `npx skills add shadcn/ui` installed it (locked in
@@ -742,61 +800,44 @@ holds only tokens and base rules.
   start of a bar along the top (`pl-window-buttons`, a token in `index.css`): the window says where
   the buttons end (`titleBarOverlay` in `electron/main.ts`, read as `env(titlebar-area-x)`), so it is
   none in full screen, in an ordinary browser (the preview, Storybook) and on another system.
-- Colours come from Material 3, through material-theme-builder. `<Mtb>` (from
-  `material-theme-builder/react`) wraps the page in `main.tsx` and every story in
-  `.storybook/preview.tsx`; it writes the scheme of pine's palette (`DEFAULT_PALETTE` in `theme.ts`:
-  source `#5de4c7`, poimandres' mint; neutral `#1b1e28`, its night blue; neutral variant `#767c9d`,
-  its blue grey; colour match off and the tonal spot scheme; and the custom colours `warn`, `info` and
-  `plan`, the warning, info and keyword colours, whose hue is kept while the shade follows light or
-  dark) into the page as `--md-sys-color-*`, light on `:root` and dark on `.dark`. Colour match is off
-  because with it the package uses M3's content variant, as Google's Material Theme Builder does, and
-  that variant divides a neutral's chroma by 8: the night blue would come out grey.
-  pine has no colour names of its own. A component uses shadcn's token where one means the same
-  (`text-foreground`, `text-muted-foreground`, `bg-muted`, `border-border`, `bg-primary`,
-  `text-destructive`, `bg-accent`...), and otherwise an M3 role through the package's Tailwind plugin
-  (`material-theme-builder/tailwind`: `text-outline` for faint text, `bg-surface-container-high`,
-  `border-surface-container-high` for a soft line, `text-warn`, `text-info`, `text-plan`); where a
-  name is both, shadcn's wins. A tint or a state layer is a role with Tailwind's opacity modifier:
-  `bg-primary/12` for a soft background, `bg-on-surface/8` for hover and `bg-on-surface/12` for press.
-  A role of the scheme, never a literal colour, is what a new colour points at.
-  shadcn's tokens come from the package's `shadcn.css`, and pine overrides them in `index.css`, after
-  it and with its doubled selectors. That mapping is pine's own reading of the bridge between shadcn
-  and M3, chosen token by token as the role closest to how the app looked before M3, not the
-  package's: popovers are surface container low, secondary surface container high with the text
-  colour on it, muted surface container, the border, the side bar's border and inputs surface
-  container highest, the charts the primary, info, plan, warn and error. The focus ring is the
-  outline (grey, never the primary), the side bar is surface container low made translucent, hover
-  and press (`--accent`, `--sidebar-accent`) are state layers of the text colour over the surface,
-  and the side bar's text is muted. Light has one refinement of its own on top of the generated
-  scheme (`:root:not(.dark)` in `index.css`, which wins over the package's `:root` and never touches
-  dark): tonalSpot at contrast 0 gives light a near-white, cool-violet, nearly flat band where the
-  shell, the cards and the inputs read as one grey and hairlines vanish, so pine sets light's surface
-  ramp, on-surface, outline and primary itself — a cleaner, faintly teal-cool neutral with room between
-  its steps, so a card lifts off the shell and a border is seen, and a primary a shade fresher than the
-  generated deep teal while it stays AA on white. The other literal colours are the shadows and the
-  poimandres `--p-*` values, which colour code in dark only while the owner keeps them for it.
-- The code colours (`--code-*` in `index.css`) are read by the editor's theme and highlight style
-  (`CodePanel.tsx`) and by the highlighter's theme for code in answers (`CODE_THEME` in
-  `markdown.tsx`, a Shiki theme whose colours are those variables, one theme for both looks), so
-  code looks the same everywhere. In light they are M3 roles; in dark too while "Code follows the
-  palette" is on (`codeFollowsPalette` in `prefs.json`, on unless it is `false`), with the plain text
-  on surface variant below the names on surface, and regular expressions, attributes and namespaces
-  on tertiary, as poimandres tells them apart. Off, the page puts `data-code="poimandres"` on the root
-  element (`Themed` in `main.tsx`) and dark code is poimandres, token by token.
-- The owner's palette (Settings > App > Colours) is an app preference, kept by the main process in
-  `prefs.json` in the app's data folder (`palette`, beside `theme`) and set through the same `prefs`
-  call. The main process checks each field when it is set and when it is read (`cleanPalette`: a
-  colour is `#rrggbb`, colour match a boolean, the scheme one of material-theme-builder's variants,
-  the contrast in [-1, 1], the custom colours exactly `warn`, `info` and `plan`); a field that is
-  wrong is pine's default. Reset stores no palette. The page hands the stored palette, or
-  `DEFAULT_PALETTE`, to `<Mtb>`. The window's background before the page draws is the palette's
-  surface for the appearance, computed with material-theme-builder's `builder` (on a Mac the window
-  is transparent behind its vibrancy). The preview keeps the palette in its stand-in for the bridge,
-  in memory.
-- Dark mode is the `.dark` class on the root element (`dark:` utilities), which `theme.ts` sets from
-  the Appearance setting: Light or Dark by itself, System by `prefers-color-scheme`. The page reads
-  the setting and not only the query because in the preview nothing drives the query; in the app the
-  same setting also sets Electron's native theme, for the window and the system's own controls.
+- Every colour is one of pine's roles, a variable in `index.css` (`--bg`, `--surface`, `--raised`,
+  `--sunk`, `--side`, `--line`, `--line-soft`, `--text`, `--text-muted`, `--faint`, `--brand`,
+  `--warn`, `--bad`, `--info`, `--plan`, `--add`, `--del` and their soft variants, `--select`,
+  `--scrim`). shadcn's tokens point at them (`--background` is `--bg`, `--primary` `--brand`,
+  `--accent` `--hover`, `--ring` `--faint`: what has the keyboard is grey, never the accent), and the
+  ones shadcn has no name for are utilities of their own (`text-faint`, `border-line-soft`,
+  `bg-press`, `bg-hover`, `text-warn`, `text-add`...). A new colour points at a role, never at a
+  literal colour. The values in `index.css` are pmndre's: what the window shows before a theme is set,
+  and in a page that has none.
+- A theme sets them all. The daemon resolves the theme file (src/theme-colors.ts) into the roles, the
+  code colours (`--code-*`) and the terminal's (`--term-*`), and hands the app only those, as
+  `#rrggbb[aa]` (`GET /themes`). The page checks them again (`cleanLook` in `theme.ts`: a role's name,
+  a colour or a font style, nothing else) and sets them on the root element with `.dark` for a dark
+  theme (`applyLook`). A theme is never CSS: no value from a file reaches the page as anything but a
+  colour.
+- The code colours (`--code-*`) are read by the editor's theme and highlight style (`CodePanel.tsx`)
+  and by the highlighter's theme for code in answers (`CODE_THEME` in `markdown.tsx`, a Shiki theme
+  whose colours are those variables), so code looks the same everywhere and follows the theme. The
+  terminal (`Terminal.tsx`) reads `--term-*`, the theme's own sixteen colours.
+- The model asks pine for its themes when it connects, when Settings > App is opened, and when pine
+  says a setting changed (`pine/settings`, published when the owner or the main agent sets one): the
+  window follows a theme chosen in another UI. The main process keeps the last theme (`look` in
+  `prefs.json`, made safe by `cleanLook` when it is set and when it is read): the window opens in it
+  before pine answers, Electron's native theme (the window's frame, the Mac's materials, the system's
+  own controls) is its kind, and off a Mac the window's background before the page draws is its page
+  colour. There is no light, dark or system setting: a theme is dark or light. Storybook draws the
+  stories in pine's own themes (`.storybook/themes.ts`, resolved as pine resolves them), pmndre and
+  GitHub Light for Chromatic's dark and light modes, and any of them from the toolbar.
+- An agent may have a colour of its own (`color` in its `agent.json`, set on its page in Settings >
+  Agents: None, nine presets apart from each other and from the mint, or Other… with any colour).
+  `AgentAvatar` (`src/components/agent-avatar.tsx`) draws an agent's initial wherever the window
+  shows one: without a colour it is the stock avatar; with one, its fallback is the colour itself with
+  white or a near-black on it, whichever reads better (`onColour`), the same in every theme.
+- While a coloured agent's conversation is in front (`agentInFront()`), `AgentAccent` in `main.tsx`
+  lays its colour over the theme's accent (`applyAgentAccent`: `--brand`, its tint, `--on-accent` and
+  the cursor); any other tab gives the theme's back. The owner turns it off in Settings > App
+  (`agentAccent` in `prefs.json`, on unless it is `false`; a preference of the app before themes that
+  kept role families without the primary counts as off).
 - Tests and the few rules that reach into a component select by shadcn's `data-slot` attributes
   and by roles, not by utility classes. Where nothing stock tells one of pine's own elements
   apart, it carries a `data-slot` of its own (`composer`, `code-panel`, `tab`...), never a bare class.
@@ -821,8 +862,8 @@ of rows to open) is ui-sdk's (`@ui-sdk/react`), used directly, with the row's lo
 piece shadcn has. The two meet in the side bar: each agent's list is a ui-sdk list drawn as the
 stock `SidebarMenu` (`render`), and each row is the stock `SidebarMenuButton` drawn as the list's
 option, so the rows look like the side bar's and the arrow keys move between them.
-The side bar's colours are the `--sidebar*` tokens in `index.css`, set from M3 roles: rows are
-muted (on surface variant), the one in front pressed (the text colour at 12%), and its background is left to the window behind it (the system's
+The side bar's colours are the `--sidebar*` tokens in `index.css`, set from pine's own: rows are
+muted, the one in front pressed, and its background is left to the window behind it (the system's
 material on a Mac). A story sits beside the file of what it shows: `src/<File>.stories.tsx`
 for a file of `src/`, `src/components/<name>.stories.tsx` for a composition there (titled
 `Components/<Name>`: `Components/Logo`, `Components/EmptyView`). One story per part and state,

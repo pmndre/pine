@@ -11,6 +11,7 @@ import { type AgentInfo, api, type Approval, type Conversation, type GoalInfo, m
 import { bridge, type Prefs, type ServiceState, type Update } from "./bridge.ts";
 import { baseName, childKind, errText, eventBody, isGoalRound, isSummon, learnHome, MODES, oneLine, plural, short, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
 import { runnable } from "./runnable.ts";
+import { applyLook, cleanLook, type ThemeEntry } from "./theme.ts";
 
 /** The reasoning levels, each with what it means for the answer. */
 export const REASONING_ABOUT: Record<string, string> = { off: "answers at once", minimal: "a moment of thought", low: "thinks briefly", medium: "thinks it through", high: "thinks long", xhigh: "thinks very long", max: "as long as the model can" };
@@ -208,7 +209,10 @@ export type Picker = { title: string; items: Array<{ value: string; label: strin
 export class Store extends Model {
 	service: ServiceState = { status: "starting" };
 	connected = false;
-	prefs: Prefs = { keepRunning: false, hosts: [], theme: "system", notify: true, updates: true, codeFollowsPalette: true };
+	prefs: Prefs = { keepRunning: false, hosts: [], notify: true, updates: true, agentAccent: true };
+	/** The themes in the themes folder of pine's home, and the one in force (`ui.theme`, pmndre when none is chosen). */
+	themes: ThemeEntry[] = [];
+	theme = "pmndre";
 	platform = "darwin";
 	focused = true;
 	versions = { app: "", electron: "" };
@@ -277,6 +281,8 @@ export class Store extends Model {
 	}
 	palette = false;
 	picker?: Picker;
+	/** The form that publishes an event as the owner, while it is open. */
+	publishing = false;
 	/** The approval or question whose dialog is open. */
 	asking?: string;
 	asked = new Set<string>();
@@ -331,6 +337,8 @@ export class Store extends Model {
 		// Whether the event stream is up: a page loaded anew is not told it by an event.
 		this.connected = first.connected === true;
 		this.prefs = first.prefs;
+		// The theme the window had last, until pine says which one is in force.
+		applyLook(cleanLook(first.prefs.look));
 		this.platform = first.platform;
 		this.focused = first.focused;
 		this.versions = first.versions;
@@ -509,7 +517,29 @@ export class Store extends Model {
 		void this.refreshConversations();
 		void this.refreshSaid(true);
 		void this.pending();
+		void this.refreshThemes();
 		this.touch();
+	}
+
+	/**
+	 * Asks pine for its themes and draws the window in the one in force. The main process is handed
+	 * it too, so that the window opens in it next time (and its frame and background follow it).
+	 */
+	async refreshThemes(): Promise<void> {
+		const got = await api.themes().catch(() => undefined);
+		if (!got) return;
+		this.themes = got.themes;
+		this.theme = got.theme;
+		const look = cleanLook(got.themes.find((t) => t.id === got.theme));
+		applyLook(look);
+		if (look && JSON.stringify(look) !== JSON.stringify(this.prefs.look)) this.prefs = await bridge.prefs({ look }).catch(() => this.prefs);
+		this.touch();
+	}
+
+	/** The owner picks a theme: `ui.theme` in pine.json, set through pine as any of its settings. */
+	async setTheme(id: string): Promise<void> {
+		const done = await this.attempt(() => api.setSetting("ui.theme", id));
+		if (done) await this.refreshThemes();
 	}
 
 	/** The agents, the main one first: it is the one that administers the others. */
@@ -528,8 +558,8 @@ export class Store extends Model {
 		if (this.service.status !== "ready") return;
 		const list = await this.askAgents().catch(() => undefined);
 		if (!list) return;
-		const was = this.agents.map((a) => `${a.id}|${a.description}|${a.model}|${a.mode}|${a.thinking}|${a.modelProblem ?? ""}`).join("\n");
-		const now = list.map((a) => `${a.id}|${a.description}|${a.model}|${a.mode}|${a.thinking}|${a.modelProblem ?? ""}`).join("\n");
+		const was = this.agents.map((a) => `${a.id}|${a.description}|${a.color ?? ""}|${a.model}|${a.mode}|${a.thinking}|${a.modelProblem ?? ""}`).join("\n");
+		const now = list.map((a) => `${a.id}|${a.description}|${a.color ?? ""}|${a.model}|${a.mode}|${a.thinking}|${a.modelProblem ?? ""}`).join("\n");
 		if (was === now) return;
 		const fresh = list.filter((a) => !this.agents.some((x) => x.id === a.id)).map((a) => a.id);
 		const gone = this.agents.filter((a) => !list.some((x) => x.id === a.id)).map((a) => a.id);
@@ -738,6 +768,20 @@ export class Store extends Model {
 		if (!(await this.attempt(() => api.setSetting("defaults.model", model)))) return;
 		await this.refreshAgents();
 		this.flash(`Your agents now run on ${model}. An agent with a model of its own keeps it.`, "good", 6000);
+	}
+
+	/** Open or close the form that publishes an event as the owner. What waits for an answer is asked once it is closed. */
+	setPublishing(open: boolean): void {
+		this.publishing = open;
+		this.touch();
+		if (!open) this.askNext();
+	}
+
+	/** An event published as the owner: true when the daemon took it. */
+	async publish(topic: string, payload: unknown): Promise<boolean> {
+		const done = await this.attempt(() => api.emit(topic, payload));
+		if (done) this.flash(`Published event #${done.id} on ${topic}.`);
+		return Boolean(done);
 	}
 
 	pick(p: Omit<Picker, "done">): Promise<string | undefined> {
@@ -1478,7 +1522,7 @@ export class Store extends Model {
 	 * its dialog when the one before it is gone. One that was put off is not asked again by itself.
 	 */
 	askNext(): void {
-		if (this.asking || this.picker || !this.active) return;
+		if (this.asking || this.picker || this.publishing || !this.active) return;
 		const next = [...this.active.approvals.values()].find((a) => !this.asked.has(a.req.id));
 		if (!next) return;
 		this.asking = next.req.id;
@@ -1751,7 +1795,7 @@ export class Store extends Model {
 				this.attention("Pine", p.tool === "question" ? `${tab.agent} has a question for you` : `${tab.agent} needs your approval`, tab.key);
 				this.dirty.add(tab).add(this);
 				this.badge();
-				if (tab === this.active && !this.asking && !this.picker) this.ask(p.id);
+				if (tab === this.active && !this.asking && !this.picker && !this.publishing) this.ask(p.id);
 			} else if (e.topic === "approval/decided") {
 				for (const tab of this.tabs) {
 					const item = tab.approvals.get(p.id);
@@ -1772,6 +1816,8 @@ export class Store extends Model {
 			return;
 		}
 		if (e.topic === "pine/conversation") return void this.followed(p);
+		// A theme chosen in another UI, or by the main agent: the window follows.
+		if (e.topic === "pine/settings") return void (p.key === "ui.theme" && this.refreshThemes());
 		if (ns !== "agent") return;
 		if (kind === "goal") return this.goalEvent(p);
 

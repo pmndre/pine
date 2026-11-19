@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import http from "node:http";
+import { checkNewAgent } from "./agent-admin.ts";
 import type { AgentManager } from "./agents.ts";
 import { mainAgentId, type PineConfig } from "./config.ts";
 import { type Approvals, timingSafeEqual } from "./security.ts";
@@ -109,7 +110,7 @@ export class HttpServer {
 				if (url.pathname === "/agents") {
 					// (`modelProblem` only where there is one: why that agent's model cannot answer.)
 					const problems = await this.manager.modelProblems();
-					return send(200, Object.values(this.cfg.agents).map((a) => ({ id: a.id, main: a.id === mainAgentId(this.cfg), description: a.description, workspace: a.workspace, model: a.model ?? this.cfg.defaults.model, thinking: a.thinking, mode: a.mode, delegates: a.delegates, ...(problems[a.id] ? { modelProblem: problems[a.id] } : {}) })));
+					return send(200, Object.values(this.cfg.agents).map((a) => ({ id: a.id, main: a.id === mainAgentId(this.cfg), description: a.description, ...(a.color ? { color: a.color } : {}), workspace: a.workspace, model: a.model ?? this.cfg.defaults.model, thinking: a.thinking, mode: a.mode, delegates: a.delegates, ...(problems[a.id] ? { modelProblem: problems[a.id] } : {}) })));
 				}
 				if (url.pathname === "/tasks") return send(200, this.tasks.list({ agent: q.get("agent") ?? undefined, session: q.get("session") ?? undefined, status: (q.get("status") as any) ?? undefined, limit: num("limit") }));
 				if (url.pathname === "/models") return send(200, await this.manager.availableModels());
@@ -263,7 +264,14 @@ export class HttpServer {
 			// Agents are made and removed by the owner here (`pine agent add`, `pine agent remove`), as the main agent does it by tool.
 			if (url.pathname === "/agents") {
 				if (typeof body.id !== "string" || typeof body.description !== "string" || typeof body.instructions !== "string") throw new HttpError(400, "id, description and instructions required");
-				const made = await this.manager.addAgent({ id: body.id, description: body.description, instructions: body.instructions, model: typeof body.model === "string" ? body.model : undefined, tools: Array.isArray(body.tools) ? body.tools.map(String) : undefined });
+				const spec = { id: body.id, description: body.description, instructions: body.instructions, model: typeof body.model === "string" ? body.model : undefined, tools: Array.isArray(body.tools) ? body.tools.map(String) : undefined, color: typeof body.color === "string" ? body.color : undefined };
+				// What is wrong with the owner's values is theirs to correct, not a failure of the daemon.
+				try {
+					checkNewAgent(this.cfg, spec);
+				} catch (e) {
+					throw new HttpError(400, errText(e));
+				}
+				const made = await this.manager.addAgent(spec);
 				return send(200, { id: made.id, workspace: made.workspace });
 			}
 			// (An address of its own, and the agent's name once more in the body: "/agents/<id>/remove" removes a conversation.)

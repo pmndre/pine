@@ -1044,6 +1044,7 @@ ${found.description}`, `this takes away something ${found.scope === "global" ? "
 						instructions: Type.String({ description: "Who it is and how it works, written to the agent itself (\"You are ...\"): its job, what it should and should not do, how it reports. This becomes its instruction file" }),
 						model: Type.Optional(Type.String({ description: "Model for it, as provider/model. Leave out to use pine's default" })),
 						tools: Type.Optional(Type.String({ description: `Built-in tools it gets, separated by commas. Default: all of ${AGENT_TOOLS.join(", ")}. Leave out bash, edit and write for an agent that should only read` })),
+						color: Type.Optional(Type.String({ description: "Its colour in the Pine app, as #rrggbb (for example #e0805a for coral). Only when your owner names one; leave out for none" })),
 					}),
 					execute: async (_id, p, signal) => {
 						run();
@@ -1053,9 +1054,9 @@ ${found.description}`, `this takes away something ${found.scope === "global" ? "
 							if (!models.includes(p.model)) throw new Error(`there is no model "${p.model}". Models: ${models.slice(0, 40).join(", ")}`);
 						}
 						// What cannot work is said now, before the owner is asked anything.
-						const spec = { id: p.id, description: p.description, instructions: p.instructions, model: p.model, tools: wanted };
+						const spec = { id: p.id, description: p.description, instructions: p.instructions, model: p.model, tools: wanted, color: p.color };
 						const checked = checkNewAgent(cfg, spec);
-						const summary = `create the agent "${p.id}": ${checked.description}\nModel: ${p.model ?? `${cfg.defaults.model} (the default)`} · tools: ${checked.tools.join(", ")}\nInstructions:\n${truncate(p.instructions.trim(), 1200)}`;
+						const summary = `create the agent "${p.id}": ${checked.description}\nModel: ${p.model ?? `${cfg.defaults.model} (the default)`} · tools: ${checked.tools.join(", ")}${checked.color ? ` · color: ${checked.color}` : ""}\nInstructions:\n${truncate(p.instructions.trim(), 1200)}`;
 						const decision = await confirm("create_agent", summary, `this adds an agent to pine: a folder of its own under agents/${p.id}, working inside its own sandbox like every agent${careful()}`, signal);
 						if (!decision.allow) throw new Error(`not created (${decision.by}). Do not retry; tell your owner what you proposed.`);
 						const made = createAgent(cfg, spec);
@@ -1131,7 +1132,7 @@ ${found.description}`, `this takes away something ${found.scope === "global" ? "
 				const reach = unsandboxed(levelOf(a)) ? "your owner's whole account + network, no sandbox" : `its own folders, in the sandbox${a.sandbox.network ? " + network" : ""}`;
 				const opened = [...a.sandbox.read.map((p) => `${p} (read)`), ...a.sandbox.write.map((p) => `${p} (read and change)`)];
 				return `- ${a.id}${a.id === mainId ? " (the main agent: you)" : ""}: ${a.description || "no description"}
-    model ${a.model ?? `${cfg.defaults.model} (the default)`} · reasoning ${a.thinking} · mode ${a.mode} · reach ${reach} · built-in tools ${some(a.tools ?? AGENT_TOOLS)}
+    model ${a.model ?? `${cfg.defaults.model} (the default)`} · reasoning ${a.thinking} · mode ${a.mode} · reach ${reach} · built-in tools ${some(a.tools ?? AGENT_TOOLS)}${a.color ? ` · color ${a.color}` : ""}
     conversations: ${some(has.conversations)} · event sources: ${some(has.sources)} · MCP servers: ${some(has.servers)} · schedules: ${some(has.schedules)} · skills: ${some(has.skills)} · ${has.files} file${has.files === 1 ? "" : "s"} in its workspace${has.working ? " · working right now" : ""}${opened.length ? `\n    folders opened for it: ${opened.join(", ")}` : ""}`;
 			};
 			tools.push(
@@ -1153,10 +1154,11 @@ ${found.description}`, `this takes away something ${found.scope === "global" ? "
 				defineTool({
 					name: "update_agent",
 					label: "Change agent",
-					description: `Change an agent's settings, when your owner asks for it: what it is for, its instructions, its model, how much it reasons, its mode, its built-in tools, whom it may hand work to, how far its shell and file tools reach, and folders outside its workspace that it may use. Give only what changes; the rest stays. Your owner sees the change and confirms it, and it holds from the agent's next message on. What an agent has (event sources, MCP servers, schedules, skills) is not changed here: use those tools with "agent".`,
+					description: `Change an agent's settings, when your owner asks for it: what it is for, its colour in the Pine app, its instructions, its model, how much it reasons, its mode, its built-in tools, whom it may hand work to, how far its shell and file tools reach, and folders outside its workspace that it may use. Give only what changes; the rest stays. Your owner sees the change and confirms it, and it holds from the agent's next message on. What an agent has (event sources, MCP servers, schedules, skills) is not changed here: use those tools with "agent".`,
 					parameters: Type.Object({
 						id: Type.String({ description: `The agent. Agents: ${Object.keys(cfg.agents).join(", ")}` }),
 						description: Type.Optional(Type.String({ description: "One line: what it is for" })),
+						color: Type.Optional(Type.String({ description: 'Its colour in the Pine app, as #rrggbb (for example #3366cc for blue). "none" takes it away' })),
 						instructions: Type.Optional(Type.String({ description: "The whole new text of its instructions, written to the agent itself. It replaces what is there: read the present text with agents (id) first and give back all of it with your change" })),
 						soul: Type.Optional(Type.String({ description: "The whole new text of its SOUL.md: who it is, its character and tone, written to the agent itself. It replaces what is there: read the present text with agents (id) first and give back all of it with your change. Use this, not instructions, when your owner speaks of its personality or how it should sound" })),
 						tooling: Type.Optional(Type.String({ description: "The whole new text of its own TOOLS.md: defaults and preferences for tools that are for this agent alone, on top of the TOOLS.md for all agents. It replaces what is there: read the present text with agents (id) first and give back all of it with your change. What is for all agents is not set here: you write that into the TOOLS.md in pine's home" })),
@@ -1175,7 +1177,7 @@ ${found.description}`, `this takes away something ${found.scope === "global" ? "
 						notHere("changing an agent");
 						const target = cfg.agents[p.id];
 						if (!target) throw new Error(`there is no agent "${p.id}". Agents: ${Object.keys(cfg.agents).join(", ")}`);
-						const change: AgentChange = { description: p.description, instructions: p.instructions, soul: p.soul, tooling: p.tooling, model: p.model, thinking: p.thinking, mode: p.mode, tools: listOf(p.tools), delegates: listOf(p.delegates), network: p.network, read: p.read, write: p.write, forget: p.forget };
+						const change: AgentChange = { description: p.description, color: p.color, instructions: p.instructions, soul: p.soul, tooling: p.tooling, model: p.model, thinking: p.thinking, mode: p.mode, tools: listOf(p.tools), delegates: listOf(p.delegates), network: p.network, read: p.read, write: p.write, forget: p.forget };
 						const checked = checkAgentChange(cfg, target, change, p.model && p.model !== "default" ? await manager.availableModels() : []);
 						const decision = await confirm("update_agent", `change the agent "${target.id}"\n${checked.lines.join("\n")}`, `this changes an agent in pine's configuration${checked.warnings.length ? `. Note: ${checked.warnings.join("; ")}` : ""}`, signal);
 						if (!decision.allow) throw new Error(`not changed (${decision.by}). Do not retry; tell your owner what you proposed.`);
@@ -1236,6 +1238,7 @@ ${found.description}`, `this takes away something ${found.scope === "global" ? "
 						if (!decision.allow) throw new Error(`not changed (${decision.by}). Do not retry; tell your owner what you proposed.`);
 						applySetting(cfg, checked);
 						if (checked.setting.live) await manager.refreshSessions();
+						manager.settingChanged(checked.key);
 						return ok(`Your owner confirmed it. ${checked.key} is now ${checked.setting.live ? checked.setting.now(cfg) : checked.text}.${checked.setting.live ? "" : " It is saved, and holds from the next start of pine: tell your owner that pine has to be restarted for it."}`);
 					},
 				}),
