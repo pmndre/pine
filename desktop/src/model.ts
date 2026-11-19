@@ -1378,6 +1378,23 @@ export class Store extends Model {
 		void this.refreshTaints();
 	}
 
+	/**
+	 * "Continue in…" on a summon: the owner picks one of the agent's conversations, and the daemon
+	 * hands the summon's request and the event it came with on to it, marked as outside content.
+	 * That conversation is then opened.
+	 */
+	async continueSummon(agent: string, session: string): Promise<void> {
+		const list = (this.conversations.get(agent) ?? []).filter((c) => !isSummon(c.session) && !c.session.endsWith("~u"));
+		const names = [...new Set(["main", ...list.map((c) => c.session)])];
+		const to = await this.pick({ title: `Continue this summon in a conversation of ${agent}`, items: names.map((n) => ({ value: n, label: this.titleOf(agent, n), about: n === "main" ? "the agent's own conversation" : undefined })), placeholder: "Search conversations" });
+		if (!to) return;
+		const done = await this.attempt(() => api.continueSummon(agent, session, to));
+		if (!done) return;
+		await this.openTab(agent, done.session);
+		void this.refreshConversations(agent);
+		void this.refreshTaints();
+	}
+
 	async askRename(tab: Tab): Promise<void> {
 		if (tab.kind !== "chat") return;
 		if (tab.session === "main") return this.flash("An agent's main conversation keeps its name.");

@@ -550,6 +550,14 @@ export const SETTINGS: Record<string, Setting> = {
 		live: true,
 		wider: (v) => (v === true ? "an agent in bypass mode then acts without any question on whatever a web page or a message told it" : undefined),
 	},
+	"summon.autoForward": {
+		title: "Summon into a named conversation",
+		about: "A summon is the owner calling pine from somewhere else (\"/pine #todo add milk\"). On: a summon that names #conversation runs in that conversation of the agent, if there is one, and that conversation is marked as having read outside content. Off: every summon runs in a conversation of its own, and the owner moves it by hand.",
+		kind: "boolean",
+		now: (c) => String(c.summon.autoForward),
+		live: true,
+		wider: (v) => (v === true ? "the thread a summon comes with is then read in the conversation it names, which is marked as having read outside content from then on" : undefined),
+	},
 };
 
 const kindText = (k: Setting["kind"]) => (k === "model" ? "a model, as provider/model" : k === "boolean" ? "true or false" : k === "duration" ? "a time such as 90s or 5m" : "one" in k ? k.one.join(", ") : `a number from ${k.from} to ${k.to}`);
@@ -618,6 +626,7 @@ export function applySetting(cfg: PineConfig, checked: { key: string; setting: S
 	if (!checked.setting.live) return;
 	Object.assign(cfg.defaults, fresh.defaults);
 	Object.assign(cfg.limits, fresh.limits);
+	Object.assign(cfg.summon, fresh.summon);
 	// What a question to the owner waits is read once at the start: it keeps its value until then.
 	Object.assign(cfg.security, { ...fresh.security, approvalTimeoutMs: cfg.security.approvalTimeoutMs });
 	// What an agent takes from the defaults when it does not say.

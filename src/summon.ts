@@ -35,6 +35,9 @@ export function summonText(payload: unknown): string {
 /** The conversation a summon runs in: one of its own, named after the event, listed like any other. */
 export const summonSession = (eventId: number | string) => `summon-${eventId}`;
 
+/** Whether a conversation is a summon's own, by its name. */
+export const isSummon = (session: string) => /^summon-\d+$/.test(session);
+
 const escape =(s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**

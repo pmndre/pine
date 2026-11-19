@@ -137,6 +137,8 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["tell me when my boss writes in slack", /^source-types#slack/],
 		["how do I call pine from my phone by writing /pine and a request", /^sources#summoning-pine-from-somewhere-else/],
 		["ping an agent by name from a message so that it takes the request", /^sources#summoning-pine-from-somewhere-else/],
+		["move a summon into one of my ongoing conversations", /^(sources#summoning-pine-from-somewhere-else|desktop#)/],
+		["can /pine #todo go straight into my todo conversation", /^(sources#summoning-pine-from-somewhere-else|configuration#)/],
 		["a slack message refers to something said earlier in the thread, how do I see what", /^(source-types#(reading-what-was-written-before|slack)|sources#reading-through-a-source)/],
 		["can I read the history of a slack channel or a direct conversation", /^(source-types#(reading-what-was-written-before|slack)|sources#reading-through-a-source)/],
 		["read_source", /read-source$|^sources#reading-through-a-source|^source-types#reading-what-was-written-before/],

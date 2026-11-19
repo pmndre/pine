@@ -277,7 +277,11 @@ A summon opens no tab and does not interrupt what you are doing. When a summoned
 stops with an error, needs your approval or asks you something, a system notification says so
 in pine's own words ("main is done with a summon"), even though no tab shows it, and its line
 in the group carries `!` while it waits. A click on the notification, or on the line, opens
-that conversation, and what it waits for is asked there.
+that conversation, and what it waits for is asked there. **Continue in…** in a summon's right-click
+menu hands the summon on to one of that agent's conversations that you pick: its request and
+the event it came with go there as a message of yours, that conversation opens, and it is
+marked as having read outside content. With the setting "Summon into a named conversation"
+(`summon.autoForward`) on, a summon that names `#conversation` goes there by itself.
 
 Where no agent is named, the app goes by the tab in front, and asks when that is not an
 agent's:
@@ -290,7 +294,7 @@ agent's:
 
 | Part | What it is |
 |---|---|
-| Side bar | Search at the top, then your agents, then your summons (see above). Drag its right edge to make it wider or narrower, or focus the edge with Tab and use the arrow keys (a double click on the edge sets it back), `⌘B` hides it and shows it again (in a window narrower than 768 pixels it opens it over the page instead: see the table below), and it is after a restart as you left it; where nothing is to click, it moves the window. An agent's own conversation (`main conversation`) comes first, then pinned ones, then by when they were last used. A click on a conversation opens it in a tab, and so does Enter: Tab reaches an agent's line (Enter or Space folds it) and then its conversations, where the arrow keys move; a right click offers Pin, Rename, Remove (or Start over for an agent's own). At the bottom: the event log, the settings, and whether pine answers |
+| Side bar | Search at the top, then your agents, then your summons (see above). Drag its right edge to make it wider or narrower, or focus the edge with Tab and use the arrow keys (a double click on the edge sets it back), `⌘B` hides it and shows it again (in a window narrower than 768 pixels it opens it over the page instead: see the table below), and it is after a restart as you left it; where nothing is to click, it moves the window. An agent's own conversation (`main conversation`) comes first, then pinned ones, then by when they were last used. A click on a conversation opens it in a tab, and so does Enter: Tab reaches an agent's line (Enter or Space folds it) and then its conversations, where the arrow keys move; a right click offers Pin, Rename, Remove (or Start over for an agent's own), and on a summon Continue in…. At the bottom: the event log, the settings, and whether pine answers |
 | Tabs | One conversation each, with its agent's initial, as in the terminal UI: a spinner while the agent works, a dot when something arrived while you were elsewhere, `!` when it waits for your approval, `★` for a conversation that is kept for good. Drag a tab to move it. They are the same tabs the terminal UI opens: the daemon keeps the list |
 | Conversation | A conversation in which nothing was said yet shows who its agent is: what it is for, its model and mode, whom it hands work to, and how many skills, event sources, schedules and MCP servers it has. Then your messages, the agent's answers drawn as markdown, and the work of each turn (tool calls, thoughts, sub-tasks, what it said on the way) folded into one line that a click opens (it stays open while the turn runs, with its last lines). A `↳ … ↗` line opens a sub-agent's or delegated task's work in a tab of its own. A request of the agent's waits in the conversation with its buttons until it is answered, then becomes a line. Above your last message a line offers to take it back (**Take back**, `/undo`). Scrolled up, the conversation holds still while the answer goes on, and a button at its foot brings you back to the end |
 | Input | `↩` sends; while the agent works the message is given to that work, and `⌥↩` makes it wait its turn. `⇧↩` is a new line, `↑` brings back earlier inputs, `esc` stops the agent. `/` offers the commands of the terminal UI, `@` the files of the conversation's folder |

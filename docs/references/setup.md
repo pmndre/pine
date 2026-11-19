@@ -384,6 +384,7 @@ What holds for them:
 | `security.approvalTimeout` | How long a question waits for your answer before it counts as a no. From the next start |
 | `security.taint` | Outside content: how long pine asks before an agent sends something out, after its conversation has read something from outside |
 | `security.bypassWhenTainted` | Bypass after outside content: whether bypass mode stays in force in such a conversation |
+| `summon.autoForward` | Summon into a chosen conversation: whether `/pine #todo …` runs in the conversation `todo`, when there is one, which is then marked as having read outside content. Off: every summon runs in a conversation of its own |
 
 A value is checked for what it has to be (a model that exists, one of a few words, a number in
 a range, a time), you see the old and the new value, and where the new one gives something up

@@ -347,6 +347,17 @@ export class HttpServer {
 					throw new HttpError(409, errText(e));
 				}
 			}
+			// The owner hands a summon on to another conversation of the agent. Only here: no agent has a tool for it.
+			if (parts[0] === "agents" && parts[2] === "continue" && parts.length === 3) {
+				if (!this.cfg.agents[parts[1]]) throw new HttpError(404, "no such agent");
+				if (typeof body.session !== "string" || !body.session) throw new HttpError(400, "session: the summon's conversation");
+				if (typeof body.to !== "string" || !body.to) throw new HttpError(400, "to: the conversation to continue it in");
+				try {
+					return send(200, { task: this.manager.continueSummon(parts[1], body.session, body.to).id, session: this.manager.conversationKey(body.to) });
+				} catch (e) {
+					throw new HttpError(409, errText(e));
+				}
+			}
 			// Goal mode. This is the only way to a goal, and it is the owner's, like the folder of a conversation: no tool reaches it.
 			if (parts[0] === "agents" && parts[2] === "goal" && parts.length === 3) {
 				if (!this.cfg.agents[parts[1]]) throw new HttpError(404, "no such agent");

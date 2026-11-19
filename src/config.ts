@@ -348,6 +348,14 @@ export interface PineConfig {
 		 */
 		askAccess: boolean;
 	};
+	summon: {
+		/**
+		 * Whether a summon that names `#conversation` (src/summon.ts) runs in that conversation of
+		 * the agent, when it exists, instead of a new one. Off by default: a summon brings outside
+		 * content, and only the owner's own word moves it into a conversation of theirs.
+		 */
+		autoForward: boolean;
+	};
 	/** Values that must never leave the daemon in events or messages. */
 	secrets: string[];
 	mcp: Record<string, McpServerConfig>;
@@ -612,6 +620,7 @@ export function loadConfig(home = defaultHome()): PineConfig {
 			bypassWhenTainted: raw.security?.bypassWhenTainted === true,
 			askAccess: raw.security?.askAccess !== false,
 		},
+		summon: { autoForward: raw.summon?.autoForward === true },
 		secrets: Object.values(fileEnv).filter((v) => v.length >= 8),
 		mcp: raw.mcp ?? {},
 		sources: loadSources(raw.sources, home, "pine.json: sources", problems, Object.keys(sourceTypes)),

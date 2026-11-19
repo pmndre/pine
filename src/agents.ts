@@ -46,6 +46,7 @@ import * as worktrees from "./worktrees.ts";
 import { branchFile, onBranch, ownerMessage, redoMessage, sessionFile, standingBefore, Turns, type TurnView, type UndoHost, undoMessage, type UndoResult } from "./undo.ts";
 import { classify, LOOK_TOOLS, pineOwn, pineOwnRefusal, PLAN_REFUSAL, SETUP_TOOLS, ROUTERS } from "./actions.ts";
 import { Type } from "typebox";
+import { isSummon } from "./summon.ts";
 import type { ContextUse, ImageRef, PineEvent, ReplyTarget, Task, TaskKind, TaskResult, TaskStatus, Todo, TranscriptEntry, Trust } from "./types.ts";
 import { callTiming, errText, expandHome, type Logger, onPath, programName, safeName, since, sleep, speedOf, speedText, truncate } from "./util.ts";
 
@@ -1432,6 +1433,26 @@ export class AgentManager {
 		if (!this.cfg.agents[agentId]) throw new Error(`no agent called ${agentId}`);
 		if (session.endsWith("~u")) throw new Error("that conversation was started by outside content");
 		return this.submit({ agent: agentId, session, kind: "notify", trust: "owner", tainted: this.outsideMark(agentId, session), prompt: terminalNotice(run), label: run.state === "running" ? "terminal: still running" : "terminal: ended" });
+	}
+
+	/**
+	 * The owner hands a summon on to another conversation of the same agent ("Continue in…" in the
+	 * Pine app): the summon's request and the event it came with go there as a task in the owner's
+	 * name, and that conversation is marked with the summon's outside content. Only the control API
+	 * calls it: no agent writes into another conversation, and a summon only moves by the owner's hand
+	 * (or summon.autoForward, which the owner turned on).
+	 */
+	continueSummon(agentId: string, from: string, to: string): Task {
+		if (!this.cfg.agents[agentId]) throw new Error(`no agent called ${agentId}`);
+		const source = this.conversationKey(from);
+		if (!isSummon(source)) throw new Error(`"${from}" is not a summon: only a summon's conversation is continued in another one`);
+		const first = this.tasks.list({ agent: agentId, session: source, limit: 1000 }).filter((t) => t.kind === "event").at(-1);
+		if (!first) throw new Error(`the summon "${from}" has no request to hand on`);
+		const target = this.conversationKey(to);
+		if (target === source) throw new Error("that is the summon's own conversation");
+		if (isSummon(target) || target.endsWith("~u") || (target !== "main" && !this.conversations(agentId).some((c) => c.session === target))) throw new Error(`there is no conversation "${to}" of ${agentId} to continue the summon in: pick one of its conversations`);
+		const tainted = first.meta.tainted ?? this.outsideMark(agentId, source) ?? "a summon";
+		return this.submit({ agent: agentId, session: target, kind: "event", trust: "owner", tainted, images: first.meta.images, prompt: `[Your owner moved a summon here from the conversation "${source}", to go on with it in this one.]\n\n${first.prompt}`, label: `continued from ${source}` });
 	}
 
 	/** Why a conversation counts as holding outside content, if it does. */

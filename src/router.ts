@@ -129,14 +129,18 @@ export class Router {
 				// A summon picks its agent per event, among those that exist, and starts a conversation of its own.
 				const summon = route.summon ? this.summonOf(route, e) : undefined;
 				if (route.summon && !summon) return;
-				const request = summon ? `Your owner's request: ${summon.request || "(nothing after the trigger: look at the event below and do what it calls for)"}\n\n` : "";
+				const agent = summon ? (summon.agent ?? mainAgentId(this.cfg)) : route.agent;
+				// `#name` moves a summon only where the owner allowed it, and only into a conversation there is.
+				const into = summon ? this.namedConversation(agent, summon) : undefined;
+				const asked = into && summon ? summon.request.replace(/^#\S+\s*/, "") : summon?.request;
+				const request = summon ? `Your owner's request: ${asked || "(nothing after the trigger: look at the event below and do what it calls for)"}\n\n` : "";
 				this.manager.submit({
-					agent: summon ? (summon.agent ?? mainAgentId(this.cfg)) : route.agent,
+					agent,
 					// An event delivered into the owner's conversation is still what it is: framed as data.
 					prompt: `${route.preface ? `${route.preface}\n\n` : ""}${request}${this.guard(text, e, route.taint ? "untrusted" : trust)}`,
 					tainted: route.taint,
 					label: route.label ? render(route.label, ctx) : undefined,
-					session: summon ? summonSession(e.id) : route.session ? render(route.session, ctx) : "main",
+					session: into ?? (summon ? summonSession(e.id) : route.session ? render(route.session, ctx) : "main"),
 					kind: "event",
 					priority: route.priority ?? (trust === "owner" ? 10 : 0),
 					event: { ...e, trust },
@@ -169,6 +173,17 @@ export class Router {
 	/** The summon an event of a summon route carries, read against the agents there are now. */
 	private summonOf(route: RouteConfig, e: PineEvent): Summon | undefined {
 		return parseSummon(summonText(e.payload), route.summon ?? [], Object.keys(this.cfg.agents));
+	}
+
+	/**
+	 * The conversation a summon's `#name` names, when the owner turned summon.autoForward on and
+	 * the agent has a conversation by that name. Otherwise nothing: the summon gets its own.
+	 */
+	private namedConversation(agent: string, summon: Summon): string | undefined {
+		if (!this.cfg.summon.autoForward || !summon.conversation) return undefined;
+		const key = this.manager.conversationKey(summon.conversation);
+		if (key === "main") return key;
+		return this.manager.conversations(agent).some((c) => c.session === key) ? key : undefined;
 	}
 
 	/** Bound the size of outside content and say plainly that it is data. */
