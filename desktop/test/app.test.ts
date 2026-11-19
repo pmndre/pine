@@ -2005,6 +2005,77 @@ test("a window too narrow for the side panel and the browser side by side shows 
 /** Where a pine of a test home answers, and its token, as it wrote them. */
 const daemonOf = (dir: string) => ({ port: [...fs.readFileSync(path.join(dir, "data", "pine.log"), "utf8").matchAll(/http listening on 127\.0\.0\.1:(\d+)/g)].at(-1)![1], token: fs.readFileSync(path.join(dir, "data", "http-token"), "utf8").trim() });
 
+test("a summon is listed under Summons and opens no tab; done or asking, it raises a notification whose click opens it", async () => {
+	// What the page hands to the system's notifications is noted instead of shown: no notification lands on the screen of whoever runs the tests.
+	await app.evaluate(({ ipcMain }: any) => {
+		(globalThis as any).notified = [];
+		ipcMain.removeHandler("pine:notify");
+		ipcMain.handle("pine:notify", (_e: unknown, title: string, body: string, tab?: string) => void (globalThis as any).notified.push({ title, body, tab }));
+	});
+	const notified = (): Promise<Array<{ title: string; body: string; tab?: string }>> => app.evaluate(() => (globalThis as any).notified);
+	const focus = (on: boolean) => app.evaluate(({ BrowserWindow }: any, f: boolean) => BrowserWindow.getAllWindows()[0].webContents.send("pine:focus", f), on);
+	const summons = page.locator("[role=listbox][aria-label=Summons]");
+	const { port } = daemonOf(home);
+	// A shortcut on the owner's phone: a webhook, and scout subscribed to it for summons.
+	await api("POST", "/sources", { name: "phone", type: "webhook", description: "my phone's shortcut", options: { open: true } });
+	await api("POST", "/agents/scout/subscribe", { source: "phone", summon: ["/pine"] });
+	const post = (text: string) => fetch(`http://127.0.0.1:${port}/hook/phone`, { method: "POST", body: text });
+	try {
+		await page.click("[data-slot=tab] >> nth=0");
+		const tabs = await page.locator("[data-slot=tab]").count();
+		// The owner is in another app.
+		await focus(false);
+		assert.equal((await post("a thread about prices\n/pine look up the okapi price")).status, 202);
+		await sees("[role=listbox][aria-label=Summons] [role=option] >> text=look up the okapi price");
+		assert.match((await summons.locator("[role=option]").first().textContent()) ?? "", /main/, "a summon says which agent took it");
+		// It is listed under Summons only, not among the main agent's conversations, and no tab was opened for it.
+		assert.equal(await page.locator("[role=listbox][aria-label='Conversations with main'] [role=option] >> text=look up the okapi price").count(), 0);
+		assert.equal(await page.locator("[data-slot=tab]").count(), tabs);
+		await waitFor(async () => (await notified()).some((n) => /is done/.test(n.body)), "a notification that the summon is done");
+		const done = (await notified()).find((n) => /is done/.test(n.body))!;
+		assert.equal(done.title, "Pine");
+		assert.match(done.tab ?? "", /^main:summon-\d+$/);
+		assert.equal(await page.locator("[data-slot=tab]").count(), tabs, "a summon that is done opens no tab either");
+		// A click on the notification opens that conversation.
+		await focus(true);
+		await menu(`focus:${done.tab}`);
+		await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=look up the okapi price");
+		await sees("[data-slot=markdown] >> text=look up the okapi price");
+		await page.click("[data-slot=tab][data-active] button[aria-label='Close this tab']");
+
+		// A summon that needs an approval calls for the owner too, and its click opens it with the question.
+		await focus(false);
+		await post(`/pine run it ${mockMsg([{ tools: [{ name: "bash", args: { command: "echo summoned" } }] }, { text: "ran it" }])}`);
+		await waitFor(async () => (await notified()).some((n) => /needs your approval/.test(n.body)), "a notification that the summon needs an approval");
+		const asks = (await notified()).find((n) => /needs your approval/.test(n.body))!;
+		assert.match(asks.tab ?? "", /^main:summon-\d+$/);
+		assert.notEqual(asks.tab, done.tab);
+		assert.equal(await page.locator("[data-slot=tab]").count(), tabs);
+		// The question waits in the summon's own conversation, not in another tab of the main agent's.
+		assert.equal(await page.locator("[data-slot=dialog-content][data-tone=warn]").count(), 0);
+		await focus(true);
+		await menu(`focus:${asks.tab}`);
+		await sees("[data-slot=dialog-content][data-tone=warn]");
+		assert.match(await page.textContent("[data-slot=dialog-content][data-tone=warn]"), /echo summoned/);
+		await page.locator("[data-slot=dialog-content][data-tone=warn]").getByRole("button", { name: /^Allow/ }).click();
+		await sees("[data-slot=markdown] >> text=ran it");
+		await shot("17-summons");
+		await page.click("[data-slot=tab][data-active] button[aria-label='Close this tab']");
+	} finally {
+		await focus(true);
+		await api("POST", "/sources/remove", { name: "phone" }).catch(() => {});
+	}
+});
+
+/** Wait until something is true, or say what was waited for. */
+async function waitFor(check: () => Promise<boolean>, what: string, timeout = 20_000): Promise<void> {
+	const end = Date.now() + timeout;
+	while (!(await check())) {
+		if (Date.now() > end) throw new Error(`waited in vain for ${what}`);
+		await new Promise((r) => setTimeout(r, 100));
+	}
+}
+
 test("another machine's pine is used from the foot of the side bar, and this Mac's again, each with its own agents", async () => {
 	await menu("settings:environments");
 	await sees("[data-slot=settings-page] h1 >> text=Environments");
