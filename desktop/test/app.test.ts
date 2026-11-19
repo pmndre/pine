@@ -2016,9 +2016,9 @@ test("a summon is listed under Summons and opens no tab; done or asking, it rais
 	const focus = (on: boolean) => app.evaluate(({ BrowserWindow }: any, f: boolean) => BrowserWindow.getAllWindows()[0].webContents.send("pine:focus", f), on);
 	const summons = page.locator("[role=listbox][aria-label=Summons]");
 	const { port } = daemonOf(home);
-	// A shortcut on the owner's phone: a webhook, and scout subscribed to it for summons.
-	await api("POST", "/sources", { name: "phone", type: "webhook", description: "my phone's shortcut", options: { open: true } });
-	await api("POST", "/agents/scout/subscribe", { source: "phone", summon: ["/pine"] });
+	// A shortcut on the owner's phone: a webhook only the owner reaches (own), and the main agent subscribed to it for summons.
+	await api("POST", "/sources", { name: "phone", type: "webhook", description: "my phone's shortcut", own: true, options: { open: true } });
+	await api("POST", "/agents/main/subscribe", { source: "phone", summon: ["/pine"] });
 	const post = (text: string) => fetch(`http://127.0.0.1:${port}/hook/phone`, { method: "POST", body: text });
 	try {
 		await page.click("[data-slot=tab] >> nth=0");
@@ -2069,8 +2069,8 @@ test("a summon is listed under Summons and opens no tab; done or asking, it rais
 
 test("Continue in… on a summon hands it on to a conversation the owner picks, which opens marked as having read outside content", async () => {
 	const { port } = daemonOf(home);
-	await api("POST", "/sources", { name: "phone", type: "webhook", description: "my phone's shortcut", options: { open: true } });
-	await api("POST", "/agents/scout/subscribe", { source: "phone", summon: ["/pine"] });
+	await api("POST", "/sources", { name: "phone", type: "webhook", description: "my phone's shortcut", own: true, options: { open: true } });
+	await api("POST", "/agents/main/subscribe", { source: "phone", summon: ["/pine"] });
 	// The menu is the system's, which the driver cannot click in: what it would show is noted, and the test picks "Continue in…".
 	await app.evaluate(({ ipcMain }: any) => {
 		const g = globalThis as any;

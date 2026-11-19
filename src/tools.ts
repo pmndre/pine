@@ -495,11 +495,13 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 					when: Type.Optional(Type.String({ description: 'Optional filter as JSON: only wake for events where these fields match, e.g. {"payload.value.state":"FINISH"} or {"payload.file":{"regex":"\\\\.pdf$"}}' })),
 					throttle: Type.Optional(Type.String({ description: 'After one event, ignore the source for this long, e.g. "5m". Default "10s"' })),
 					fresh: Type.Optional(Type.Boolean({ description: "true: every event is handled in a conversation of its own, started empty and closed afterwards, so that nothing piles up. For a source that reports all day and where each report is judged by itself (a camera, a sensor). It is a subscription of you as an agent; what you need from one event to the next you keep in files" })),
-					summon: Type.Optional(Type.String({ description: 'Trigger words, e.g. "/pine" or "/pine, @myhandle": only when your owner wants to call pine through this source. Then an event whose text carries a trigger starts the agent named after it (or the main agent) in a new conversation, and other events start nothing' })),
+					summon: Type.Optional(Type.String({ description: 'Trigger words, e.g. "/pine" or "/pine, @myhandle": only when your owner wants to call pine through this source. Then an event whose text carries a trigger starts the agent named after it (or the main agent) in a new conversation, and other events start nothing. Only the main agent subscribes for summons, and only to a source that checks who wrote an event (x) or that your owner marked as theirs' })),
 				}),
 				execute: async (_id, p, signal) => {
 					run();
 					const summon = typeof p.summon === "string" && p.summon.trim() ? p.summon.split(/[\s,]+/).filter(Boolean) : undefined;
+					// A summon starts whichever agent it names: that is the main agent's to listen for, never another's.
+					if (summon && !isMain) throw new Error(`only the main agent (${mainId}) subscribes for summons: it starts whichever agent a summon names. Tell your owner to ask ${mainId}; a summon reaches you when it names you ("<trigger> ${agent.id} <request>")`);
 					// A fresh conversation for every event, or a summon, is the agent's way of listening, never one conversation's.
 					return ok(await subscribeAs(p.fresh || summon ? "agent" : subScope(p.scope), p.source, { note: p.note, when: parseWhen(p.when), throttle: p.throttle, fresh: p.fresh === true && !summon, summon }, signal));
 				},

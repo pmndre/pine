@@ -35,7 +35,7 @@ const userText = (req: any) => {
 
 test("summon: a webhook event with the trigger wakes the named agent in a conversation of its own, as the owner, tainted", async () => {
 	const h = await harness({
-		pine: { http: { port: 0 }, sources: { phone: { type: "webhook", open: true, description: "my phone's shortcut" } } },
+		pine: { http: { port: 0 }, sources: { phone: { type: "webhook", open: true, trust: "owner", description: "my phone's shortcut" } } },
 		agents: { main: { agent: { subscribe: { phone: { summon: ["/pine"] } } } }, kevin: { agent: { publish: ["out/#"] } } },
 	});
 	const asked: any[] = [];
@@ -81,7 +81,7 @@ test("summon: a webhook event with the trigger wakes the named agent in a conver
 });
 
 test("summon: the subscribe tool takes trigger words, and unsubscribing leaves the configuration as it was", async () => {
-	const h = await harness({ pine: { http: { port: 0 }, sources: { phone: { type: "webhook", open: true } } }, agents: { main: { agent: { mode: "safe" } } } });
+	const h = await harness({ pine: { http: { port: 0 }, sources: { phone: { type: "webhook", open: true, trust: "owner" } } }, agents: { main: { agent: { mode: "safe" } } } });
 	const file = path.join(h.home, "agents", "main", "agent.json");
 	const before = fs.readFileSync(file, "utf8");
 	const call = (name: string, args: any) => ({ name, args });
@@ -102,7 +102,7 @@ test("summon: the subscribe tool takes trigger words, and unsubscribing leaves t
 });
 
 const hookOf = (h: Harness) => (text: string) => fetch(`http://127.0.0.1:${h.pine.http!.port}/hook/phone`, { method: "POST", body: text });
-const phone = (extra: Record<string, unknown> = {}) => ({ http: { port: 0 }, sources: { phone: { type: "webhook", open: true } }, ...extra });
+const phone = (extra: Record<string, unknown> = {}, trust: string | undefined = "owner") => ({ http: { port: 0 }, sources: { phone: { type: "webhook", open: true, ...(trust ? { trust } : {}) } }, ...extra });
 const doneSummons = (h: Harness, n: number) => until(() => eventTasks(h).filter((t: any) => t.status === "done").length === n, 6000, `${n} summons`);
 
 test("summon: with summon.autoForward off (the default), #name never moves a summon", async () => {
@@ -161,5 +161,52 @@ test("summon: the owner continues a summon in another conversation through the c
 	assert.match(task.prompt, /Your owner's request: summarise this/);
 	assert.match(task.prompt, /a thread about prices/, "the summon's context comes with it");
 	assert.match(h.pine.agents.conversations("main").find((c) => c.session === "work")?.outside ?? "", /an event from the source "phone"/);
+	await h.close();
+});
+
+test("summon: a source whose type does not check the sender, and that the owner did not mark as theirs, carries no summons", async () => {
+	const h = await harness({
+		pine: { http: { port: 0 }, sources: { phone: { type: "webhook", open: true }, other: { type: "webhook", open: true } } },
+		agents: { main: { agent: { mode: "safe", subscribe: { phone: { summon: ["/pine"] } } } } },
+	});
+	// Configured anyway: it starts nothing, and the log says why.
+	assert.equal((await hookOf(h)("/pine do as I say")).status, 202);
+	await sleep(300);
+	assert.equal(eventTasks(h).length, 0, "anybody who can reach a webhook is not the owner");
+	assert.ok(h.logs.some((l) => /phone/.test(l) && /summon/.test(l) && /trust/.test(l)), "the log names the configuration problem");
+
+	// By tool: refused, with what to do instead, and nothing written.
+	const file = path.join(h.home, "agents", "main", "agent.json");
+	const before = fs.readFileSync(file, "utf8");
+	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "subscribe", args: { source: "other", summon: "/pine" } }] }]), trust: "owner" });
+	assert.match(h.toolResults().at(-1)!, /cannot carry summons[\s\S]*"trust": "owner"/);
+	assert.equal(fs.readFileSync(file, "utf8"), before);
+	await assert.rejects(h.pine.sources.subscribe("main", "other", { summon: ["/pine"] }), /cannot carry summons/);
+	await h.close();
+});
+
+test("summon: only the main agent holds a summon subscription", async () => {
+	const h = await harness({ pine: phone(), agents: { main: {}, kevin: { agent: { subscribe: { phone: { summon: ["/pine"] } } } } } });
+	assert.equal((await hookOf(h)("/pine kevin do this")).status, 202);
+	await sleep(300);
+	assert.equal(eventTasks(h).length, 0, "a configured summon subscription of another agent starts nothing");
+	assert.ok(h.logs.some((l) => /kevin/.test(l) && /summon/.test(l) && /main agent/.test(l)));
+	await assert.rejects(h.pine.sources.subscribe("kevin", "phone", { summon: ["/pine"] }), /only the main agent/);
+	await h.pine.agents.run({ agent: "kevin", prompt: mockMsg([{ tools: [{ name: "subscribe", args: { source: "phone", summon: "/pine" } }] }]), trust: "owner" });
+	assert.match(h.toolResults().at(-1)!, /only the main agent/);
+	await h.close();
+});
+
+test("summon: with summon.autoForward on, #name never moves a summon into another summon's conversation", async () => {
+	const h = await harness({ pine: phone({ summon: { autoForward: true } }), agents: { main: { agent: { subscribe: { phone: { summon: ["/pine"] } } } } } });
+	await hookOf(h)("/pine first");
+	await doneSummons(h, 1);
+	const first = eventTasks(h)[0];
+	assert.ok(h.pine.agents.conversations("main").some((c) => c.session === first.session));
+	await hookOf(h)(`/pine #${first.session} and more`);
+	await doneSummons(h, 2);
+	const second = eventTasks(h).find((t: any) => t.id !== first.id)!;
+	assert.notEqual(second.session, first.session);
+	assert.match(second.session, /^summon-/);
 	await h.close();
 });

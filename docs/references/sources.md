@@ -267,15 +267,17 @@ What you write after the trigger is read as `<trigger> [agent] [#conversation] <
   outside content: it comes below the request, framed as data, and the conversation is marked
   as having read outside content from its first turn. So what the agent would send out after
   reading it is put to you first, as after any web page ("Trust").
-- **Who can summon:** whoever can make the source report a text with the trigger. Pine does not
-  check who wrote it: a source that carries other people's words (a chat, a channel) lets them
-  summon too. Use it on a source only you write to, such as a `webhook` with a secret, or the
-  `x` type, which reports only what your own X account writes in its direct messages
-  ([source-types.md](source-types.md), "x").
+- **Who can summon:** only sources that vouch for who wrote the trigger carry summons: a type
+  that checks the sender itself, which today is the `x` type (it reports only what your own X
+  account writes, in its direct messages and its own posts: [source-types.md](source-types.md),
+  "x"), or a source you marked `"trust": "owner"` in the configuration because only you can
+  reach it, such as a `webhook` with a secret (`pine check` lists that mark). A summon
+  subscription to any other source (a chat, a channel, a webhook open to anyone) is refused,
+  and one written into the configuration anyway starts nothing and says why in the log.
 - **The text:** the trigger is looked for in the event's `text`, or for a `webhook` in the
   `text` of the body (or the body itself when it is not JSON).
-- One agent holds the subscription, normally the main agent; it starts whichever agent a summon
-  names. It is a subscription of the agent as such (it replaces a plain subscription of its main
+- Only the main agent holds a summon subscription, since it starts whichever agent a summon
+  names; another agent's is refused (a summon reaches that agent when it names it). It is a subscription of the agent as such (it replaces a plain subscription of its main
   conversation to that source) and cannot be one for all agents, which would start each summon
   once per agent. `"separate"` does not go with it.
 

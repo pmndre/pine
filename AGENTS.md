@@ -53,6 +53,7 @@ src/
                     names (`reaches`), the system's reports of what a sandbox refused (`Denials`, macOS), a failed command's words
   sources.ts        event sources and subscriptions: starts a source on its first subscriber, turns a subscription into a route
   manual.ts         pine's manual made searchable: docs/ cut into parts, BM25 over them, synonyms; the `manual` tool and `pine manual`
+  summon.ts         a summon: "<trigger> [agent] [#conversation] <request>" parsed from an event's text; `summon-<id>` conversations
   skills.ts         skills by tool call: where one lies says whom it is for (all agents, an agent, a conversation)
   source-types.ts   what a source type module declares: summary, options schema, plan()
   sources/          the built-in source types (`SOURCE_TYPES` in config.ts). That look: http, command, feed, calendar,

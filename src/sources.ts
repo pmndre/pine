@@ -284,6 +284,8 @@ export class SourceHost {
 			const source = this.cfg.sources[sub.source];
 			if (!source) continue;
 			for (const agentId of this.reached(sub)) {
+				// Only the main agent holds a summon subscription, and only on a source that can carry one.
+				if (sub.summon && this.summonRefusal(agentId, sub.source, source)) continue;
 				const route = { ...this.route(agentId, sub.source, source, sub), name: `sub:*:${agentId}:${sub.source}` };
 				this.router.add(route);
 				this.globalRoutes.push(route.name);
@@ -481,7 +483,14 @@ export class SourceHost {
 		for (const agent of Object.values(this.cfg.agents)) {
 			for (const sub of agent.subscribe) {
 				const found = sourceFor(this.cfg, agent.id, sub.source);
-				if (found) this.router.add(this.route(agent.id, found.key, found.source, sub));
+				if (!found) continue;
+				// A summon subscription the configuration should not have: it starts nothing, and the log says why.
+				const refused = sub.summon ? this.summonRefusal(agent.id, sub.source, found.source) : undefined;
+				if (refused) {
+					this.log.warn(`agents/${agent.id}/agent.json: the summon subscription to ${sub.source} starts nothing: ${refused}`);
+					continue;
+				}
+				this.router.add(this.route(agent.id, found.key, found.source, sub));
 			}
 		}
 		this.wireGlobal();
@@ -494,6 +503,21 @@ export class SourceHost {
 		this.off?.();
 		this.offOut?.();
 		for (const key of [...this.running.keys()]) await this.halt(key);
+	}
+
+	/**
+	 * Why a summon subscription of this agent to this source is not allowed, or nothing. A summon
+	 * puts its request to an agent as the owner's words (rule 3: trust comes from where an event
+	 * entered), so the source has to vouch for its sender: its type checks who wrote it (`summons`),
+	 * or the owner marked the source as theirs (`trust: "owner"`, which audit() reports). And it
+	 * starts whichever agent a summon names, which is the main agent's to do.
+	 */
+	private summonRefusal(agentId: string, name: string, source: SourceConfig): string | undefined {
+		const main = mainAgentId(this.cfg);
+		if (agentId !== main) return `only the main agent (${main}) holds a summon subscription: it starts whichever agent a summon names. Subscribe ${main} instead; a summon reaches ${agentId} when it names it ("<trigger> ${agentId} <request>")`;
+		const type = source.type ? this.types.get(source.type)?.type : undefined;
+		if (type?.summons || source.trust === "owner") return undefined;
+		return `the source "${name}" cannot carry summons: its type (${source.type ?? "custom"}) does not check who wrote an event, so anybody who reaches it could give orders in your owner's name. Use a source whose type checks the sender (x), or, if only your owner can reach this source, they mark it "trust": "owner" in the configuration (that is theirs to decide, not an agent's)`;
 	}
 
 	private routeName = (agentId: string, sub: Pick<SubscriptionConfig, "source" | "session">) => `sub:${agentId}:${sub.source}:${sub.session}`;
@@ -543,7 +567,9 @@ export class SourceHost {
 			// the tools it has there. What a source that is not the owner's reports is outside content
 			// in that conversation, like a page the agent read. `separate` keeps such events out of it:
 			// then the event's own trust decides, which means a conversation and a tool set apart.
-			...(sub.separate ? {} : { trust: "owner" as const, taint: source.trust === "owner" ? undefined : `an event from the source "${name}"` }),
+			// A summon is tainted whatever the source's trust: the owner vouched for who summoned, not for
+			// the event it came with (the thread replied to, the text forwarded), which is outside content.
+			...(sub.separate ? {} : { trust: "owner" as const, taint: source.trust === "owner" && !sub.summon ? undefined : `an event from the source "${name}"` }),
 		};
 	}
 
@@ -1063,6 +1089,8 @@ export class SourceHost {
 		const clean = this.clean(name, raw);
 		const sub = subscriptionFrom(clean);
 		if (found.source.session && found.source.session !== sub.session) throw new Error(`the source "${name}" was set up for the conversation "${found.source.session}" of ${agentId} alone`);
+		const refused = sub.summon ? this.summonRefusal(agentId, name, found.source) : undefined;
+		if (refused) throw new Error(refused);
 		editJson(path.join(agent.dir, "agent.json"), (json) => {
 			json.subscribe = [...rawSubscriptions(json.subscribe).filter((x) => !this.same(sub)(x)), clean];
 		});

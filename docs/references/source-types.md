@@ -30,7 +30,7 @@ nothing: no event, nothing stored, no model woken.
 | `onvif` | told | what a network camera detects | motion, a person, a vehicle, tampering, a doorbell button |
 | `serial` | told | lines from a serial port | an Arduino, a smart meter's P1 port, a GPS receiver |
 | `system` | told | what this computer does | sleep, wake, lock, power, network, disks, apps |
-| `x` | looks | a summon you write in an X (Twitter) direct message | calling pine from a DM thread on X |
+| `x` | looks | a summon you write in an X (Twitter) direct message or post | calling pine from a DM thread or a post on X |
 | `command` with `follow` | told | each line a command prints while it runs | logs, `docker events`, `kubectl -w`, any broker or database with a client |
 | `http` | looks | a change of a page or of one value in it | a price, a version, a status, a device's state page, an API |
 | `feed` | looks | new entries of an RSS, Atom or JSON feed | releases, blogs, videos, podcasts, papers, status pages |
@@ -85,7 +85,7 @@ than its interval, so that sources set to the same interval do not all fire toge
 | Discord | `discord` | A bot. |
 | Matrix (Element) | `matrix` | An access token of an account. |
 | Telegram | `telegram` | A bot, paired with your account. |
-| X (Twitter): calling pine from a direct message | `x` | An X app of your own; you sign in once, pine reads your DMs and posts nothing. |
+| X (Twitter): calling pine from a direct message or a post | `x` | An X app of your own; you sign in once, pine reads your DMs and your own posts and posts nothing. |
 | Gmail, iCloud, Fastmail, your own mail server | `mail` | IMAP with an app password. |
 | Outlook.com, Hotmail, Microsoft 365 | `mail` | `"signIn": "microsoft"`: you sign in at Microsoft in your browser, pine holds no password. |
 | Google Calendar, iCloud, Outlook, Nextcloud | `calendar` | The calendar's iCal address. |
@@ -1921,7 +1921,7 @@ X direct message, `@pineabernier kevin summarise this` in a DM thread with someb
 reports it with the last messages of that DM conversation; when you write it in a post, a reply
 in somebody's thread, with the post you replied to. A summon subscription starts the agent you
 named ([sources.md](sources.md), "Summoning pine from somewhere else"), and the agent can read
-more of that conversation or thread (`read_source`). It reads and posts nothing: the agent
+more of that conversation or thread (`read_source`). It posts nothing: the agent
 answers in pine, never on X.
 
 > When I write /pine in an X DM or reply to a post with it, have the agent I name take it, with the conversation.
@@ -2001,11 +2001,14 @@ the source forgets the sign-in. pine asks X only for `tweet.read users.read dm.r
 offline.access`: nothing that posts, sends or changes anything.
 
 **Cost.** X's API is paid per use, charged to the account of your X app: about $0.01 for each
-DM event read. Each look asks for the last 10 DM events, and a summon also for its thread (up
-to `thread` + 10 events of that conversation), so `every` is what the cost follows: at the
-default of two minutes, looking costs up to about $3 an hour when X counts every event again;
-look less often for less. Your own posts cost about $0.001 each, and a look asks only for the
-ones since the last look, at most 10. More than 10 DMs between two looks: the oldest of them are not seen.
+DM event read, about $0.001 for each post. X bills a resource read again within the same UTC day
+once ([X's pricing](https://docs.x.com/x-api/getting-started/pricing)), so the cost follows how
+many new DM events and posts there are, not how often pine looks. A look asks for the DM events
+10 at a time, going back until it reaches the last look's (5 pages, 50 events, at most), and a
+summon also for its thread (up to `thread` + 10 events of that conversation); posts only since
+the last look, at most 10. More than 50 DM events between two looks: the older ones are not
+looked at, and the source's status and pine's log say so, with the time and the count. `every`
+matters for X's rate limit instead: 15 requests for DM events in 15 minutes.
 
 ## What there is no type for
 

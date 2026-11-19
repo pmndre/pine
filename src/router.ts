@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import type { AgentManager } from "./agents.ts";
 import { mainAgentId, type PineConfig, type RouteConfig } from "./config.ts";
-import { parseSummon, type Summon, summonSession, summonText } from "./summon.ts";
+import { isSummon, parseSummon, type Summon, summonSession, summonText } from "./summon.ts";
 /** One model call without tools or history, as a route's "call" makes it. */
 export interface CompleteOptions {
 	prompt: string;
@@ -133,7 +133,8 @@ export class Router {
 				// `#name` moves a summon only where the owner allowed it, and only into a conversation there is.
 				const into = summon ? this.namedConversation(agent, summon) : undefined;
 				const asked = into && summon ? summon.request.replace(/^#\S+\s*/, "") : summon?.request;
-				const request = summon ? `Your owner's request: ${asked || "(nothing after the trigger: look at the event below and do what it calls for)"}\n\n` : "";
+				// The request is bounded like any text from outside: the owner's words, but carried by an event.
+				const request = summon ? `Your owner's request: ${asked ? truncate(asked, this.cfg.limits.maxEventChars) : "(nothing after the trigger: look at the event below and do what it calls for)"}\n\n` : "";
 				this.manager.submit({
 					agent,
 					// An event delivered into the owner's conversation is still what it is: framed as data.
@@ -182,6 +183,8 @@ export class Router {
 	private namedConversation(agent: string, summon: Summon): string | undefined {
 		if (!this.cfg.summon.autoForward || !summon.conversation) return undefined;
 		const key = this.manager.conversationKey(summon.conversation);
+		// Another summon's conversation holds another event's outside content: never move into it (as continueSummon refuses).
+		if (isSummon(key)) return undefined;
 		if (key === "main") return key;
 		return this.manager.conversations(agent).some((c) => c.session === key) ? key : undefined;
 	}

@@ -789,7 +789,7 @@ export function audit(cfg: PineConfig): string[] {
 			// syslog has no login: without a list of senders, whoever reaches the port writes lines an agent reads.
 			if (s.type === "syslog" && !(Array.isArray(s.options.allow) && s.options.allow.length)) out.push(`${where}: the syslog source "${name}" has no list of senders ("allow"); anyone who can reach the port can make it report`);
 			// Whoever writes as that X account can summon pine: a subscription with "summon" starts an agent on it.
-			if (s.type === "x") out.push(`${where}: the X source "${name}" reports summons written by @${String(s.options.account ?? "").replace(/^@/, "")} in X direct messages; whoever can write as that account can start your agents through a summon subscription`);
+			if (s.type === "x") out.push(`${where}: the X source "${name}" reports summons written by @${String(s.options.account ?? "").replace(/^@/, "")} in X direct messages or posts; whoever can write as that account can start your agents through a summon subscription`);
 		}
 	}
 	for (const r of cfg.routes) if (r.trust === "owner") out.push(`route "${r.name}" treats events on ${r.on.join(", ")} as coming from you; whoever can publish there gets the agent's full tool set`);

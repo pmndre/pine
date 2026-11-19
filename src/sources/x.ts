@@ -48,8 +48,10 @@ export const pace = { timeout: 30_000 };
 const SCOPE = "tweet.read users.read dm.read offline.access";
 /** X's DM events allow 15 looks per 15 minutes for one account: one a minute leaves room. */
 const LEAST = "1m";
-/** How many of the latest DM events one look asks for. */
+/** How many of the latest DM events one look asks for at a time. */
 const LOOK = 10;
+/** How many pages of LOOK a look goes back for the DM events since the last one; what lies further is said, not looked at. */
+const PAGES = 5;
 const HANDLE =/^[A-Za-z0-9_]{1,15}$/;
 const ID = /^\d{1,25}$/;
 
@@ -65,6 +67,7 @@ const triggersOf = (v: unknown): string[] => {
 };
 
 export const type: SourceType = {
+	summons: true,
 	summary: "your owner's own X (Twitter) account: reports a summon when your owner writes a trigger word (\"/pine\", \"@handle\") in an X DM or post, with the thread around it. Reads only; posts nothing",
 	options: Type.Object(
 		{
@@ -169,9 +172,11 @@ export default function x(source: SourceApi) {
 		const k = source.kv.get<Kept | null>("signin");
 		return k && k.client === clientId && k.username.toLowerCase() === account.toLowerCase() ? k : undefined;
 	};
+	// The last time a look could not go back as far as the look before: said until the source stops.
+	let gap: string | undefined;
 	const say = () => {
 		const k = kept();
-		source.status(k ? `signed in to X as @${k.username}; reports your DMs that contain ${triggers.join(" or ")}` : "waiting for you to sign in at X: answer pine's question");
+		source.status(k ? `signed in to X as @${k.username}; reports your DMs and posts that contain ${triggers.join(" or ")}${gap ? `. ${gap}` : ""}` : "waiting for you to sign in at X: answer pine's question");
 	};
 	say();
 	source.onStop(() => {
@@ -196,7 +201,7 @@ export default function x(source: SourceApi) {
 		const summary = `sign in to X as @${account}\nOpen ${page.href} in your browser and sign in as @${account}. X then sends you to ${callback}, which may show an error page: copy the whole address from the browser's address bar and paste it here.`;
 		asking = summary;
 		source.status(`waiting for you to sign in to X as @${account}: answer pine's question`);
-		const answer = await source.approvals.request(summary, "pine reads your X direct messages to find your summons; it gets no right to post or to send. pine does not see your password", [{ name: "address", label: "the address X sent your browser to (it contains code= and state=)", secret: true }]).finally(() => (asking = undefined));
+		const answer = await source.approvals.request(summary, "pine reads your X direct messages and your own posts to find your summons; it gets no right to post or to send. pine does not see your password", [{ name: "address", label: "the address X sent your browser to (it contains code= and state=)", secret: true }]).finally(() => (asking = undefined));
 		if (!answer.allow) {
 			if (answer.by === "timeout" || answer.by === "pine") throw said("nobody signed in to X in time: you are asked again at the next look");
 			refused = true;
@@ -253,7 +258,7 @@ export default function x(source: SourceApi) {
 	const fields = "dm_event.fields=id,text,event_type,created_at,sender_id,dm_conversation_id&event_types=MessageCreate&expansions=sender_id&user.fields=username";
 	const newer = (a: string, b: string) => BigInt(a) > BigInt(b);
 
-	/** DM events as X lists them, oldest first, with the handles of their senders. Throws in pine's words. */
+	/** DM events as X lists them, oldest first, with the handles of their senders, and X's token for the page before. Throws in pine's words. */
 	const dms = async (me: { token: string }, path: string, signal: AbortSignal) => {
 		const r = await ask(path, { token: me.token }, signal);
 		if (r.status === 429) throw said("X says pine looks too often (HTTP 429): waiting longer between looks");
@@ -264,7 +269,8 @@ export default function x(source: SourceApi) {
 		const list: any[] = (Array.isArray(r.body.data) ? r.body.data : []).filter((d: any) => ID.test(String(d?.id ?? "")) && d.event_type === "MessageCreate" && typeof d.text === "string");
 		list.sort((a, b) => (newer(a.id, b.id) ? 1 : -1));
 		named(r.body);
-		return list;
+		const next = typeof r.body.meta?.next_token === "string" && /^[\w-]{1,200}$/.test(r.body.meta.next_token) ? (r.body.meta.next_token as string) : undefined;
+		return { list, next };
 	};
 	const names = new Map<string, string>();
 	/** Keep the handles X named in an answer. */
@@ -281,12 +287,31 @@ export default function x(source: SourceApi) {
 
 	/** The DMs since the last look. false: the token was taken back. */
 	const lookAtDms = async (me: { token: string; id: string }, signal: AbortSignal) => {
-		// X charges for every DM event it hands over: a look asks for the last few, enough for one person between two looks.
-		const all = await dms(me, `/2/dm_events?${fields}&max_results=${LOOK}`, signal);
-		if (!all) return false;
+		// X charges for every DM event it hands over: a look asks for the last few, and goes back a page
+		// at a time, a few pages at most, until it reaches what the last look saw.
+		const last = source.kv.get<string>("last");
+		let all: any[] = [];
+		let next: string | undefined;
+		let pages = 0;
+		let reached = false;
+		do {
+			const page = await dms(me, `/2/dm_events?${fields}&max_results=${LOOK}${next ? `&pagination_token=${next}` : ""}`, signal);
+			if (!page) return false;
+			all = [...page.list, ...all];
+			next = page.next;
+			pages++;
+			// The first look is the starting point: one page of it is enough.
+			reached = last === undefined || page.list.some((d) => !newer(d.id, last));
+		} while (!reached && next && pages < PAGES);
+		all.sort((a, b) => (newer(a.id, b.id) ? 1 : -1));
+		if (!reached && next) {
+			// Counts and a time only: nothing X wrote goes into a status line.
+			gap = `at ${new Date().toISOString().slice(11, 16)} UTC more than ${all.length} DM events came since the last look: the older ones were not looked at for summons`;
+			source.log.warn(gap);
+			say();
+		}
 		// "0" for no DMs at all: a starting point too, so that the first DM after it is news.
 		const newest = (all.at(-1)?.id as string | undefined) ?? "0";
-		const last = source.kv.get<string>("last");
 		if (newest === last) return true;
 		source.kv.set("last", newest);
 		// The first look is the starting point: what was written before pine looked is not news.
@@ -299,7 +324,7 @@ export default function x(source: SourceApi) {
 			const conversation = String(d.dm_conversation_id ?? "");
 			// The thread: that conversation's messages before the summon, asked of X only now that there is one.
 			let around = all;
-			if (thread && /^[\w-]{1,80}$/.test(conversation)) around = (await dms(me, `/2/dm_conversations/${conversation}/dm_events?${fields}&max_results=${Math.min(100, thread + 10)}`, signal).catch(() => undefined)) ?? all;
+			if (thread && /^[\w-]{1,80}$/.test(conversation)) around = (await dms(me, `/2/dm_conversations/${conversation}/dm_events?${fields}&max_results=${Math.min(100, thread + 10)}`, signal).catch(() => undefined))?.list ?? all;
 			const before = around.filter((m) => m.dm_conversation_id === d.dm_conversation_id && newer(d.id, m.id)).slice(-thread);
 			const dropped = cap.dropped();
 			source.emit("summon", {
@@ -402,7 +427,7 @@ export default function x(source: SourceApi) {
 			const conversation = String(q.conversation).trim();
 			if (!/^[\w-]{1,80}$/.test(conversation)) throw new Error('"conversation" is the "conversation" of a summon from a DM, e.g. "1001-2002"');
 			const me = await token(signal, false);
-			const list = await dms(me, `/2/dm_conversations/${conversation}/dm_events?${fields}&max_results=${Math.min(100, Math.max(limit, 5))}`, signal);
+			const list = (await dms(me, `/2/dm_conversations/${conversation}/dm_events?${fields}&max_results=${Math.min(100, Math.max(limit, 5))}`, signal))?.list;
 			if (!list) throw new Error("X did not take the sign-in: try again in a minute");
 			// Reading goes as far as the owner went: a conversation the owner wrote in, and no other.
 			if (!list.some((m) => String(m.sender_id) === me.id)) throw new Error('your owner did not write in that conversation, so it is not read. Use the "conversation" of a summon');

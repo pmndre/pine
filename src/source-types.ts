@@ -90,6 +90,13 @@ export interface SourceType {
 	 */
 	toOwner?: boolean;
 	/**
+	 * The type's own code reports only summons the owner wrote (it checks the sender itself), so a
+	 * summon subscription may treat the request as the owner's words. Without it, a source carries
+	 * summons only when the owner marked it `trust: "owner"`. Never set it for a type that passes on
+	 * a trigger anybody else wrote: a summon starts an agent in the owner's name.
+	 */
+	summons?: boolean;
+	/**
 	 * It can send a file along: a picture, a video or a sound file from the agent's workspace, handed to
 	 * `onSend` as `file` ({ name, mime, bytes }). The daemon reads the file, never the type.
 	 */
