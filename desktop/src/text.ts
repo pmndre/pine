@@ -54,6 +54,8 @@ export const speedText = (s: Speed | undefined) => (s ? [s.read ? `↑ ${rate(s.
 
 export const childKind = (kind: string) => (kind === "subagent" ? "sub-agent" : kind === "delegate" ? "delegated task" : kind);
 export const isGoalRound = (kind: unknown, label: unknown) => kind === "notify" && typeof label === "string" && label.startsWith("goal: ");
+/** A conversation that a summon started: the daemon names it `summon-<event id>` (src/summon.ts). */
+export const isSummon = (session: string) => session.startsWith("summon-");
 
 /** What an event that woke the agent reported, without the frame pine put around it for the model. */
 export const eventBody = (prompt: string) =>

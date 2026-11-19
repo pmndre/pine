@@ -28,7 +28,7 @@ import { ApprovalDialog } from "./ApprovalDialog.tsx";
 import { Palette } from "./Palette.tsx";
 import { PickDialog } from "./PickDialog.tsx";
 import { QuestionDialog } from "./QuestionDialog.tsx";
-import { ago, until } from "./text.ts";
+import { ago, isSummon, until } from "./text.ts";
 import { Listbox, ListboxItem } from "@ui-sdk/react/listbox";
 import { LISTBOX, onPick } from "./lists.tsx";
 import { Logo } from "@/components/logo";
@@ -114,9 +114,14 @@ function Gate() {
 /** How far a conversation's row stands in: a branch under the one it was made from, four steps at most. */
 const INDENT = ["pl-10", "pl-14", "pl-18", "pl-22", "pl-26"];
 
-function ConversationRow({ agent, c, depth = 0 }: { agent: string; c: Conv; depth?: number }) {
+/**
+ * A conversation's line. `summon`: a line of the Summons group, which is no agent's group: it says
+ * whose the conversation is, does not stand in under an agent, and its value names the agent too.
+ */
+function ConversationRow({ agent, c, depth = 0, summon = false }: { agent: string; c: Conv; depth?: number; summon?: boolean }) {
 	const s = store;
 	const tab = s.tabs.find((t) => t.kind === "chat" && t.agent === agent && t.session === c.session);
+	const waits = Boolean(tab?.approvals.size) || [...s.summonAsks.values()].includes(`${agent}:${c.session}`);
 	const main = c.session === "main";
 	const { setOpenMobile } = useSidebar();
 	const menu = async () => {
@@ -158,9 +163,9 @@ function ConversationRow({ agent, c, depth = 0 }: { agent: string; c: Conv; dept
 	return (
 		// The row is the stock menu button drawn as the list's option, so the list keeps its one tab stop and its arrows.
 		<SidebarMenuItem role="none" className="app-no-drag" onContextMenu={(e) => (e.preventDefault(), void menu())}>
-			<SidebarMenuButton isActive={on} onClick={() => setOpenMobile(false)} className={cn(INDENT[Math.min(depth, INDENT.length - 1)], c.tasks && "pr-16 group-has-data-[sidebar=menu-action]/menu-item:pr-16")} render={<ListboxItem value={c.session} label={s.titleOf(agent, c.session)} title={`${agent} · ${c.session} · ${kept}${c.branch ? ` · a branch of ${c.branch.from}` : ""}${c.worktree ? ` · in the worktree ${c.worktree.branch} of ${c.worktree.repo}` : c.folder ? ` · works in ${c.folder}` : ""}`} />}>
-				<span className="grid size-4 flex-none place-items-center">{tab?.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Spinner aria-label="Working" className="size-3" /> : tab?.unread ? <Badge className="size-2 p-0" /> : main || c.pinned ? <StarIcon className="text-outline" /> : depth || c.worktree ? <GitBranchIcon className="text-outline" /> : c.folder ? <FolderIcon className="text-outline" /> : <MessageSquareIcon className="text-outline" />}</span>
-				<span className="min-w-0 flex-1">{s.titleOf(agent, c.session)}</span>
+			<SidebarMenuButton isActive={on} onClick={() => setOpenMobile(false)} className={cn(!summon && INDENT[Math.min(depth, INDENT.length - 1)], c.tasks && "pr-16 group-has-data-[sidebar=menu-action]/menu-item:pr-16")} render={<ListboxItem value={summon ? `${agent}:${c.session}` : c.session} label={`${summon ? `${agent} · ` : ""}${s.titleOf(agent, c.session)}`} title={`${agent} · ${c.session} · ${kept}${c.branch ? ` · a branch of ${c.branch.from}` : ""}${c.worktree ? ` · in the worktree ${c.worktree.branch} of ${c.worktree.repo}` : c.folder ? ` · works in ${c.folder}` : ""}`} />}>
+				<span className="grid size-4 flex-none place-items-center">{waits ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Spinner aria-label="Working" className="size-3" /> : tab?.unread ? <Badge className="size-2 p-0" /> : main || c.pinned ? <StarIcon className="text-outline" /> : depth || c.worktree ? <GitBranchIcon className="text-outline" /> : c.folder ? <FolderIcon className="text-outline" /> : <MessageSquareIcon className="text-outline" />}</span>
+				<span className="min-w-0 flex-1">{summon ? <><b className="font-medium">{agent}</b> · </> : null}{s.titleOf(agent, c.session)}</span>
 			</SidebarMenuButton>
 			{/* The badge is drawn over the button, so the button keeps the room for the time (stock pr-8 fits an action alone; the same selector as stock, so it takes the place of its pr-8). */}
 			{c.tasks ? <SidebarMenuBadge className={cn(!main && "group-hover/menu-item:hidden")}>{ago(c.last).replace(" ago", "")}</SidebarMenuBadge> : null}
@@ -208,12 +213,13 @@ function threaded(rows: Conv[]): Array<{ c: Conv; depth: number }> {
 function AgentGroup({ a }: { a: AgentInfo }) {
 	const s = store;
 	const folded = s.folded.has(a.id);
-	const list = s.conversations.get(a.id) ?? [];
+	// Summons are listed in a group of their own (`Summons`).
+	const list = (s.conversations.get(a.id) ?? []).filter((c) => !isSummon(c.session));
 	// The agent's own conversation first, then what is pinned, then by when it was last used.
 	const sorted = [...list].sort((x, y) => Number(y.session === "main") - Number(x.session === "main") || Number(y.pinned) - Number(x.pinned) || y.last - x.last);
 	const rows = sorted.some((c) => c.session === "main") ? sorted : [{ session: "main", tasks: 0, last: 0, pinned: false, open: false }, ...sorted];
 	// A conversation that is open in a tab and has not been said anything in yet is not in the daemon's list.
-	for (const t of s.tabs) if (t.kind === "chat" && t.agent === a.id && !rows.some((c) => c.session === t.session)) rows.push({ session: t.session, tasks: 0, last: Date.now(), pinned: false, open: true });
+	for (const t of s.tabs) if (t.kind === "chat" && t.agent === a.id && !isSummon(t.session) && !rows.some((c) => c.session === t.session)) rows.push({ session: t.session, tasks: 0, last: Date.now(), pinned: false, open: true });
 	const tabs = s.tabs.filter((t) => t.agent === a.id && t.kind === "chat");
 	const waits = tabs.some((t) => t.approvals.size > 0);
 	const working = s.isBusy(a.id) || tabs.some((t) => t.busy);
@@ -268,6 +274,35 @@ function AgentGroup({ a }: { a: AgentInfo }) {
 	);
 }
 
+/**
+ * What was summoned from somewhere else (a source subscribed with trigger words), whichever agent
+ * took it: below the agents, newest first, so that summons do not crowd the owner's conversations.
+ * A summon opens no tab; its line is where it is opened.
+ */
+function Summons() {
+	const s = store;
+	const rows = s.agents.flatMap((a) => (s.conversations.get(a.id) ?? []).filter((c) => isSummon(c.session)).map((c) => ({ agent: a.id, c })));
+	// One that is open in a tab and not in the daemon's list yet.
+	for (const t of s.tabs) if (t.kind === "chat" && isSummon(t.session) && !rows.some((r) => r.agent === t.agent && r.c.session === t.session)) rows.push({ agent: t.agent, c: { session: t.session, tasks: 0, last: Date.now(), pinned: false, open: true } });
+	if (!rows.length) return null;
+	rows.sort((x, y) => y.c.last - x.c.last);
+	const front = s.active?.kind === "chat" && isSummon(s.active.session) ? s.active.key : null;
+	const open = (key: string) => {
+		const at = key.indexOf(":");
+		void s.openTab(key.slice(0, at), key.slice(at + 1));
+	};
+	return (
+		<SidebarGroup>
+			<SidebarGroupLabel>Summons</SidebarGroupLabel>
+			<SidebarGroupContent>
+				<Listbox aria-label="Summons" className="outline-none" {...LISTBOX} value={front} onValueChange={onPick(open)} render={<SidebarMenu />}>
+					{rows.map(({ agent, c }) => <ConversationRow key={`${agent}:${c.session}`} agent={agent} c={c} summon />)}
+				</Listbox>
+			</SidebarGroupContent>
+		</SidebarGroup>
+	);
+}
+
 function Sidebar() {
 	const s = useModel(store);
 	const front = s.active;
@@ -296,6 +331,7 @@ function Sidebar() {
 						<Tooltip><TooltipTrigger render={<SidebarGroupAction className="app-no-drag" onClick={() => s.openSettings("agents", "+")} aria-label="New agent" />}><PlusIcon /></TooltipTrigger><TooltipContent>New agent</TooltipContent></Tooltip>
 						<SidebarGroupContent className="flex flex-col gap-1">{s.agents.map((a) => <AgentGroup key={a.id} a={a} />)}</SidebarGroupContent>
 					</SidebarGroup>
+					<Summons />
 				</ScrollArea>
 			</SidebarContent>
 			<SidebarFooter className="gap-0">

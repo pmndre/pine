@@ -9,7 +9,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
 import { type AgentInfo, api, type Approval, type Conversation, type GoalInfo, media, type WorktreeMade, type PineEvent, type Program, type Stats, type Task, type Todo, type TranscriptEntry } from "./api.ts";
 import { bridge, type Prefs, type ServiceState, type Update } from "./bridge.ts";
-import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, MODES, oneLine, plural, short, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
+import { baseName, childKind, errText, eventBody, isGoalRound, isSummon, learnHome, MODES, oneLine, plural, short, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
 import { runnable } from "./runnable.ts";
 
 /** The reasoning levels, each with what it means for the answer. */
@@ -566,6 +566,9 @@ export class Store extends Model {
 			const t = this.said[i];
 			const key = `${t.agent}:${t.session.replace(/~u$/, "")}`;
 			if (!titles.has(key) && t.kind === "prompt" && t.prompt.trim()) titles.set(key, short(oneLine(t.prompt), 48));
+			// A summon by what the owner asked in it.
+			const asked = t.kind === "event" && isSummon(t.session) ? /Your owner's request: ([^\n]*)/.exec(t.prompt)?.[1] : undefined;
+			if (!titles.has(key) && asked?.trim()) titles.set(key, short(oneLine(asked), 48));
 		}
 		this.titles = titles;
 		this.touch();
@@ -577,6 +580,7 @@ export class Store extends Model {
 	 */
 	titleOf(agent: string, session: string): string {
 		if (session === "main") return "main conversation";
+		if (isSummon(session)) return this.titles.get(`${agent}:${session}`) ?? "summon";
 		// A branch of a conversation that has no name of its own is called after that one's title.
 		const branch = /^(s[0-9a-z]{6,10})-branch(?:-(\d+))?$/.exec(session);
 		if (branch) return `${this.titleOf(agent, branch[1])} · branch${branch[2] ? ` ${branch[2]}` : ""}`;
@@ -642,8 +646,9 @@ export class Store extends Model {
 	private async pending(): Promise<void> {
 		const list = await api.approvals().catch(() => [] as Approval[]);
 		for (const req of list) {
-			const tab = this.tabFor(req) ?? this.tabs.find((t) => t.kind === "chat" && t.agent === req.agent) ?? this.active;
+			const tab = this.tabForApproval(req);
 			if (!tab || tab.approvals.has(req.id)) continue;
+			this.summonAsks.delete(req.id);
 			tab.approvals.set(req.id, tab.add({ t: "approval", req, state: "open" }));
 			tab.touch();
 		}
@@ -774,18 +779,40 @@ export class Store extends Model {
 		}
 	}
 
-	/** How many tabs want the owner: shown on the app's icon. */
+	/** How many tabs want the owner, and summons that wait for them without a tab: shown on the app's icon. */
 	private badge(): void {
-		void bridge.badge(this.tabs.filter((t) => t.approvals.size > 0).length);
+		void bridge.badge(this.tabs.filter((t) => t.approvals.size > 0).length + new Set(this.summonAsks.values()).size);
 	}
 
 	/**
 	 * Call for the owner while they look at something else. The words are pine's own: nothing an
-	 * agent or a web page wrote goes into a notification.
+	 * agent or a web page wrote goes into a notification. `key` is a tab's, or a conversation's
+	 * ("agent:session") that no tab shows: a click on the notification brings it to the front, or opens it.
 	 */
-	private attention(title: string, body: string, tab: Tab): void {
-		if (this.focused && this.active === tab) return;
-		if (!this.focused) void bridge.notify(title, body, tab.key);
+	private attention(title: string, body: string, key: string): void {
+		if (this.focused && this.active?.key === key) return;
+		if (!this.focused) void bridge.notify(title, body, key);
+	}
+
+	/**
+	 * Questions of summons that no tab shows: the approval's id, and the conversation ("agent:session")
+	 * it waits in. They wait there, never in another conversation of the agent, until it is opened.
+	 */
+	summonAsks = new Map<string, string>();
+
+	/** The summon a top-level task is at work in, as "agent:session", if it is one. */
+	private summonOf(req: { agent?: string; root?: number }): string | undefined {
+		if (req.root === undefined || typeof req.agent !== "string") return undefined;
+		for (const [key, tasks] of this.busy) if (tasks.has(req.root) && key.startsWith(`${req.agent}:`) && isSummon(key.slice(req.agent.length + 1))) return key;
+		return undefined;
+	}
+
+	/** The tab a question goes to. A summon that no tab shows keeps its question: it is not put to another conversation. */
+	private tabForApproval(req: { agent: string; root?: number }): Tab | undefined {
+		const own = this.tabFor(req);
+		if (own) return own;
+		if (this.summonOf(req)) return undefined;
+		return this.tabs.find((t) => t.kind === "chat" && t.agent === req.agent) ?? this.active;
 	}
 
 	// ---- tabs --------------------------------------------------------------------------------------
@@ -821,6 +848,8 @@ export class Store extends Model {
 			this.touch();
 		}
 		await this.fill(tab);
+		// A summon's question waited for its conversation to be opened: it is asked here now.
+		if (isSummon(session)) void this.pending();
 		void this.refreshConversations(agent);
 	}
 
@@ -1549,7 +1578,15 @@ export class Store extends Model {
 		const chat = tab?.kind === "chat" ? tab : undefined;
 		// A folder opened with the app from the Finder is this computer's.
 		if (name.startsWith("folder:")) return this.remote ? this.flash(`That folder is on this computer, and the app uses the pine on ${this.remote}. Use this Mac's pine to open it.`, "warn", 7000) : this.openFolder(name.slice(7));
-		if (name.startsWith("focus:")) return this.activate(this.tabs.find((t) => t.key === name.slice(6)));
+		if (name.startsWith("focus:")) {
+			const key = name.slice(6);
+			const tab = this.tabs.find((t) => t.key === key);
+			if (tab) return this.activate(tab);
+			// A summon's notification: its conversation has no tab until now.
+			const at = key.indexOf(":");
+			if (at > 0 && isSummon(key.slice(at + 1))) return this.openTab(key.slice(0, at), key.slice(at + 1));
+			return;
+		}
 		if (name.startsWith("tab-")) return this.activate(this.tabs[Number(name.slice(4)) - 1]);
 		if (name.startsWith("code-")) {
 			this.codeView = name.slice(5) as CodeView;
@@ -1680,12 +1717,21 @@ export class Store extends Model {
 
 		if (ns === "approval") {
 			if (e.topic === "approval/requested") {
-				const tab = this.tabFor(p) ?? this.tabs.find((t) => t.kind === "chat" && t.agent === p.agent) ?? this.active;
+				const tab = this.tabForApproval(p);
+				const summon = tab ? undefined : this.summonOf(p);
+				if (summon) {
+					// A summon opens no tab: the owner is called, and the question waits in its conversation.
+					this.summonAsks.set(p.id, summon);
+					this.attention("Pine", p.tool === "question" ? `${p.agent} has a question for you about a summon` : `${p.agent} needs your approval for a summon`, summon);
+					this.dirty.add(this);
+					this.badge();
+					return;
+				}
 				if (!tab || tab.approvals.has(p.id)) return;
 				this.endWork(tab);
 				tab.approvals.set(p.id, tab.add({ t: "approval", req: p, state: "open" }));
 				if (tab !== this.active) tab.unread = true;
-				this.attention("Pine", p.tool === "question" ? `${tab.agent} has a question for you` : `${tab.agent} needs your approval`, tab);
+				this.attention("Pine", p.tool === "question" ? `${tab.agent} has a question for you` : `${tab.agent} needs your approval`, tab.key);
 				this.dirty.add(tab).add(this);
 				this.badge();
 				if (tab === this.active && !this.asking && !this.picker) this.ask(p.id);
@@ -1700,6 +1746,7 @@ export class Store extends Model {
 					tab.approvals.delete(p.id);
 					this.dirty.add(tab);
 				}
+				this.summonAsks.delete(p.id);
 				this.asked.delete(p.id);
 				if (this.asking === p.id) this.closeAsking();
 				this.dirty.add(this);
@@ -1721,6 +1768,8 @@ export class Store extends Model {
 			} else if (kind === "done" || kind === "failed") {
 				this.busy.get(key)?.delete(p.task);
 				this.dirty.add(this);
+				// A summon has no tab unless the owner opened one: the owner is called all the same.
+				if (isSummon(p.session) && p.status !== "cancelled" && !this.tabs.some((t) => t.kind === "chat" && t.key === key) && !this.isBusy(p.agent, p.session)) this.attention("Pine", `${p.agent} ${p.status === "done" ? "is done with a summon" : "stopped with an error on a summon"}`, key);
 				// What an agent just did may have been making, changing or removing an agent.
 				void this.refreshAgents();
 				void this.refreshSaid();
@@ -1754,11 +1803,13 @@ export class Store extends Model {
 			const tab = this.tabFor(p) ?? this.tabs.find((t) => t.kind === "chat" && t.agent === p.agent && t.session === p.session);
 			if (!tab) {
 				// An event woke the agent in a conversation nobody is looking at: say so where that agent is on screen.
-				const home = p.kind === "event" ? this.tabs.find((t) => t.kind === "chat" && t.agent === p.agent) : undefined;
+				// Not for a summon: it is listed under Summons, and calls for the owner when it is done or asks.
+				const home = p.kind === "event" && !isSummon(String(p.session)) ? this.tabs.find((t) => t.kind === "chat" && t.agent === p.agent) : undefined;
 				if (home) {
 					home.note(`An event woke ${p.agent} in the conversation ${p.session}.`, "warn", { action: { label: "Open", run: () => void this.openTab(p.agent, String(p.session)) } });
 					this.dirty.add(home);
 				}
+				if (isSummon(String(p.session))) void this.refreshSaid();
 				void this.refreshConversations(p.agent);
 				return;
 			}
@@ -2037,7 +2088,7 @@ export class Store extends Model {
 				if (!tab.busy) this.endWork(tab);
 				this.takeStats(tab, p.stats);
 				if (tab === this.active) void this.pollPrograms();
-				if (p.status !== "cancelled" && !tab.busy) this.attention("Pine", `${tab.agent} ${p.status === "done" ? "is done" : "stopped with an error"}`, tab);
+				if (p.status !== "cancelled" && !tab.busy) this.attention("Pine", `${tab.agent} ${p.status === "done" ? "is done" : "stopped with an error"}`, tab.key);
 				if (p.status === "done") {
 					// Streaming normally showed the answer already; this covers a missed stream.
 					if (p.text) tab.lastAnswer = p.text;
