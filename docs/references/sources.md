@@ -166,11 +166,12 @@ or of a thread, to understand a message it was woken with.
 
 The agent calls `read_source` with the source and what to read; the `sources` tool says for
 each source whether it can be read and what it takes. For `slack` see
-[source-types.md](source-types.md), "Reading what was written before".
+[source-types.md](source-types.md), "Reading what was written before"; for `x`, "Reading more
+of a DM conversation or a thread" there.
 
 - **It reads where the source listens, and no further.** What may be read is the source's to
   say, as it says where it sends: a Slack source that was set up for one channel reads that
-  channel and no other.
+  channel and no other, and an `x` source only DM conversations and threads you took part in.
 - **It is not asked about.** Reading sends nothing out, so it needs no approval (outside manual
   mode), also after outside content.
 - **What it returns is outside content.** Other people wrote it. The conversation is marked as

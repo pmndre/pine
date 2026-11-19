@@ -1918,11 +1918,13 @@ On Linux and Windows a `system` source cannot be set up. What a command can tell
 
 Your own X (Twitter) account, for summoning pine from it: when you write a trigger word in an
 X direct message, `@pineabernier kevin summarise this` in a DM thread with somebody, the source
-reports it with the last messages of that DM conversation, and a summon subscription starts the
-agent you named ([sources.md](sources.md), "Summoning pine from somewhere else"). It reads and
-posts nothing: the agent answers in pine, never on X.
+reports it with the last messages of that DM conversation; when you write it in a post, a reply
+in somebody's thread, with the post you replied to. A summon subscription starts the agent you
+named ([sources.md](sources.md), "Summoning pine from somewhere else"), and the agent can read
+more of that conversation or thread (`read_source`). It reads and posts nothing: the agent
+answers in pine, never on X.
 
-> When I write /pine in an X DM, have the agent I name take it, with the conversation.
+> When I write /pine in an X DM or reply to a post with it, have the agent I name take it, with the conversation.
 
 ```json
 "x": { "type": "x", "clientId": "Y2xpZW50LWlkLWZyb20teA", "account": "abernier", "triggers": ["/pine", "@pineabernier"], "description": "my summons from X direct messages" }
@@ -1936,32 +1938,47 @@ and on the main agent: `"subscribe": { "x": { "summon": ["/pine", "@pineabernier
 | `clientSecret` | | Its Client Secret, only for an app of the type "Web App" (a confidential client). Kept in `.env`. Leave it out for a "Native App". |
 | `account` | | Your X handle, without `@`. A sign-in to any other account is refused. |
 | `callback` | `"http://localhost/pine"` | The Callback URI you set in the X app. Nothing has to answer there. |
-| `triggers` | `["/pine"]` | The words that make one of your DMs a summon. A word of its own, capitals do not matter. |
-| `every` | `"2m"` | How often to look at your DMs; at least `"1m"`, since X allows 15 looks in 15 minutes. |
-| `perMinute` | `5` | At most this many summons a minute. What comes on top is dropped, and the next event says how many in `dropped`. |
+| `triggers` | `["/pine"]` | The words that make one of your DMs or posts a summon. A word of its own, capitals do not matter. |
+| `every` | `"2m"` | How often to look at your DMs and your posts; at least `"1m"`, since X allows 15 looks at DMs in 15 minutes. |
+| `perMinute` | `5` | At most this many summons a minute, DMs and posts together. What comes on top is dropped, and the next event says how many in `dropped`. |
 | `thread` | `10` | How many earlier messages of the DM conversation come with a summon, at most 50. |
 
-Event `summon`: `{ via, text, id, conversation, at?, link, thread, dropped? }`.
+Event `summon`: `{ via, text, id, conversation, replyTo?, at?, link, thread, dropped? }`.
 
 | Field | |
 |---|---|
-| `via` | `"dm"`: it was written in a direct message. |
+| `via` | `"dm"`: it was written in a direct message. `"mention"`: it was written in a post of yours. |
 | `text` | What you wrote, trigger included. |
-| `id`, `conversation` | The DM event's id and the DM conversation's id at X. |
-| `link` | The DM conversation on x.com. |
-| `thread` | The messages before it in that conversation, oldest first: `{ from, text, at }`, with `from` the sender's `@handle`. Outside content. |
+| `id`, `conversation` | For a DM: the DM event's id and the DM conversation's id at X. For a post: the post's id and the id of the first post of its thread. |
+| `replyTo` | For a post that answers another: that post's id. |
+| `link` | The DM conversation, or your post, on x.com. |
+| `thread` | For a DM: the messages before it in that conversation, oldest first. For a post: the post it replies to. Each `{ from, text, at }`, with `from` the writer's `@handle`. Outside content. |
 
-**Only you can summon.** A DM is reported only when X says its sender is the account that
-signed in, and it carries a trigger. What the other side of a DM writes is never reported on
-its own, whatever it says, trigger or not; it comes along only as the `thread` of a summon of
-yours, as outside content. A DM of yours without a trigger is not reported either. `pine check`
+**Only you can summon.** A DM or a post is reported only when X says its sender or author is
+the account that signed in, and it carries a trigger. What the other side of a DM writes, or
+anybody who mentions you in a post, is never reported on its own, whatever it says, trigger or
+not; it comes along only as the `thread` of a summon of yours, as outside content. A DM or a post
+of yours without a trigger is not reported either, nor a retweet: its words are somebody else's.
+Posts are looked for in your own posts and replies, not in your mentions: a summon is something
+you wrote. `pine check`
 names every `x` source and the account it reports.
 
-**What it looks at.** The first look is the starting point: DMs written before the source was
-set up are not reported. A look that finds nothing new does nothing. When X refuses a look (too
+**What it looks at.** The first look is the starting point: DMs and posts written before the
+source was set up are not reported. After that a look asks X only for posts newer than the
+last one it saw. A look that finds nothing new does nothing. When X refuses a look (too
 many, HTTP 429) or is unwell (HTTP 5xx), the pause before the next one grows, and the source's
-status says so in pine's words. X's encrypted chats (XChat) may not be readable through X's API:
-if your DMs are there, DM summons do not arrive.
+status says so in pine's words; DMs and posts are one look, so they wait together. X's
+encrypted chats (XChat) may not be readable through X's API: if your DMs are there, DM summons
+do not arrive, while summons in posts still do.
+
+**Reading more of a DM conversation or a thread.** A summoned agent can ask the source for more
+with `read_source`: `{"conversation": "1001-2002"}` (the `conversation` of a summon from a DM)
+gives the last messages of that DM conversation, `{"post": "1850000000000000000"}` (the `id` of
+a summon from a post) the thread up from that post, through the posts it replies to; `"limit"`
+up to 50 (20 posts up a thread). The source reads only where you took part, and checks it
+itself: a DM conversation you wrote in, a thread with a post of yours in it. Anything else is
+refused, and what is read is outside content: the conversation is marked as having read some.
+Each read costs like a look: about $0.01 per DM event, about $0.001 per post.
 
 **Setting it up on X.** Once, at [developer.x.com](https://developer.x.com):
 
@@ -1987,7 +2004,8 @@ offline.access`: nothing that posts, sends or changes anything.
 DM event read. Each look asks for the last 10 DM events, and a summon also for its thread (up
 to `thread` + 10 events of that conversation), so `every` is what the cost follows: at the
 default of two minutes, looking costs up to about $3 an hour when X counts every event again;
-look less often for less. More than 10 DMs between two looks: the oldest of them are not seen.
+look less often for less. Your own posts cost about $0.001 each, and a look asks only for the
+ones since the last look, at most 10. More than 10 DMs between two looks: the oldest of them are not seen.
 
 ## What there is no type for
 

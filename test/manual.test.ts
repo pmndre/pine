@@ -140,6 +140,8 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["how do I call you from twitter?", /^source-types#x\b/],
 		["can I summon an agent from a DM on X with a tweet-like message", /^source-types#x\b/],
 		["what does it cost to read my twitter DMs", /^source-types#x\b/],
+		["I replied to a tweet with /pine kevin, will kevin see the tweet I answered?", /^source-types#(x\b|reading-more-of-a-dm-conversation-or-a-thread)/],
+		["the summoned agent wants to see more of the twitter thread above my reply", /^(source-types#(reading-more-of-a-dm-conversation-or-a-thread|x\b)|sources#reading-through-a-source)/],
 		["a slack message refers to something said earlier in the thread, how do I see what", /^(source-types#(reading-what-was-written-before|slack)|sources#reading-through-a-source)/],
 		["can I read the history of a slack channel or a direct conversation", /^(source-types#(reading-what-was-written-before|slack)|sources#reading-through-a-source)/],
 		["read_source", /read-source$|^sources#reading-through-a-source|^source-types#reading-what-was-written-before/],

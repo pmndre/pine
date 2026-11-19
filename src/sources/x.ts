@@ -11,18 +11,23 @@ import { capped, clip } from "../watching.ts";
 /**
  * The owner's own X account: reports a summon when the owner writes one of the trigger words in
  * a direct message ("@pineabernier kevin summarise this"), with the last messages of that DM
- * conversation as the thread around it.
+ * conversation as the thread around it, or in a post (a reply in a thread), with the post it
+ * replies to. It can be read for more of a DM conversation or a post thread the owner took part in.
  *
  * options: { clientId, clientSecret?, account, callback?, triggers?, every?, perMinute?, thread? }
  *   clientId   the OAuth 2.0 client id of an X app the owner made at developer.x.com
  *   account    the owner's handle: a sign-in to any other account is refused
  *   callback   the callback address registered in that app; nothing has to answer there
- *   triggers   the words that make a DM a summon ("/pine")
+ *   triggers   the words that make a DM or a post a summon ("/pine")
  *
- * event "summon": { via: "dm", text, id, conversation, at?, link, thread: [{ from, text, at? }], dropped? }
+ * event "summon": { via: "dm" | "mention", text, id, conversation, replyTo?, at?, link, thread: [{ from, text, at? }], dropped? }
+ *   via "mention": a post; id is the post's, conversation the first post of its thread, replyTo the post it answers
  *
- * Who may summon is decided here and nowhere else: a message is reported only when its sender id,
- * which X sets, is the id of the account that signed in, and it carries a trigger. What anybody
+ * read: { conversation } a DM conversation the owner wrote in, { post } the thread up from a post,
+ * when the owner wrote one of its posts; anything else is refused here.
+ *
+ * Who may summon is decided here and nowhere else: a message or a post is reported only when its
+ * sender or author id, which X sets, is the id of the account that signed in, and it carries a trigger. What anybody
  * else writes is never reported, whatever it says. It is a watcher: it sends nothing, and what it
  * reports (the thread above all) is outside content.
  *
@@ -60,15 +65,15 @@ const triggersOf = (v: unknown): string[] => {
 };
 
 export const type: SourceType = {
-	summary: "your owner's own X (Twitter) account: reports a summon when your owner writes a trigger word (\"/pine\", \"@handle\") in an X direct message, with the DM conversation around it. Reads only; posts nothing",
+	summary: "your owner's own X (Twitter) account: reports a summon when your owner writes a trigger word (\"/pine\", \"@handle\") in an X DM or post, with the thread around it. Reads only; posts nothing",
 	options: Type.Object(
 		{
 			clientId: Type.String({ description: "the OAuth 2.0 Client ID of the X app your owner made at developer.x.com (Keys and tokens). Ask your owner for it; it is not a secret" }),
 			clientSecret: Type.Optional(Type.String({ description: "the Client Secret of that app, only when it is a confidential client (a \"Web App\"). Leave it out for a \"Native App\"", secret: true })),
 			account: Type.String({ description: "your owner's X handle, without @, e.g. abernier. A sign-in to any other account is refused" }),
 			callback: Type.Optional(Type.String({ description: 'the Callback URI set in the X app. Default "http://localhost/pine": nothing has to answer there, your owner copies the address from the browser' })),
-			triggers: Type.Optional(Type.Array(Type.String(), { description: 'the words that make a DM of your owner\'s a summon, e.g. ["/pine", "@pineabernier"]. Default ["/pine"]' })),
-			every: Type.Optional(Type.String({ description: 'how often to look at the DMs. Default "2m", at least "1m" (X allows 15 looks in 15 minutes)' })),
+			triggers: Type.Optional(Type.Array(Type.String(), { description: 'the words that make a DM or a post of your owner\'s a summon, e.g. ["/pine", "@pineabernier"]. Default ["/pine"]' })),
+			every: Type.Optional(Type.String({ description: 'how often to look at the DMs and posts. Default "2m", at least "1m" (X allows 15 looks in 15 minutes)' })),
 			perMinute: Type.Optional(Type.Number({ description: "at most this many summons a minute. Default 5; what comes on top is dropped and counted" })),
 			thread: Type.Optional(Type.Number({ description: "how many earlier messages of the DM conversation come with a summon. Default 10, at most 50" })),
 		},
@@ -98,11 +103,13 @@ export const type: SourceType = {
 			opens: true,
 			does: [
 				`ask your owner to sign in to X as @${account}, once, with the X app ${clientId}: read access to posts, the profile and direct messages, nothing that writes`,
-				`look at @${account}'s direct messages every ${every} and report the ones @${account} wrote that contain ${triggers.map((w) => `"${w}"`).join(" or ")}, with the conversation around them. What others write is never reported on its own`,
-				"X charges the X app's account for every DM it reads (about $0.01 each)",
+				`look at @${account}'s direct messages and posts every ${every} and report the ones @${account} wrote that contain ${triggers.map((w) => `"${w}"`).join(" or ")}, with the conversation or the post they reply to. What others write is never reported on its own`,
+				"let your agents read more of a DM conversation or a post thread @" + account + " took part in, and none other",
+				"X charges the X app's account for every DM it reads (about $0.01 each) and for every post of @" + account + "'s it reads (about $0.001 each)",
 			],
 		};
 	},
+	reads: 'more of where a summon came from: {"conversation": "..."} the last messages of a DM conversation (the "conversation" of a summon from a DM), {"post": "..."} the thread up from a post (the "id" of a summon from a post); "limit" up to 50. Only where your owner took part',
 };
 
 interface Kept {
@@ -219,7 +226,14 @@ export default function x(source: SourceApi) {
 	};
 
 	/** What to ask X with right now: kept while it is good, renewed when it is not, asked of the owner when there is nothing to renew. */
-	const token = async (signal: AbortSignal): Promise<{ token: string; id: string; username: string }> => {
+	const token = (signal: AbortSignal, signing = true): Promise<{ token: string; id: string; username: string }> => {
+		// One at a time: a refresh token works once, so a read and a look must not both spend it.
+		const turn = queue.then(() => renew(signal, signing));
+		queue = turn.catch(() => {});
+		return turn;
+	};
+	let queue: Promise<unknown> = Promise.resolve();
+	const renew = async (signal: AbortSignal, signing: boolean): Promise<{ token: string; id: string; username: string }> => {
 		const k = kept();
 		if (k && now && now.until - Date.now() > 120_000) return { token: now.token, id: k.id, username: k.username };
 		now = undefined;
@@ -232,6 +246,7 @@ export default function x(source: SourceApi) {
 			source.log.info("X no longer takes the sign-in (signed out, the app's access revoked, or unused for too long): asking again");
 			say();
 		}
+		if (!signing) throw said("nobody is signed in to X: your owner answers pine's question at the next look", true);
 		return signIn(signal);
 	};
 
@@ -248,36 +263,39 @@ export default function x(source: SourceApi) {
 		if (r.status !== 200) throw said(`X did not show the DMs (HTTP ${r.status})`);
 		const list: any[] = (Array.isArray(r.body.data) ? r.body.data : []).filter((d: any) => ID.test(String(d?.id ?? "")) && d.event_type === "MessageCreate" && typeof d.text === "string");
 		list.sort((a, b) => (newer(a.id, b.id) ? 1 : -1));
-		for (const u of Array.isArray(r.body.includes?.users) ? r.body.includes.users : []) if (ID.test(String(u?.id)) && HANDLE.test(String(u?.username))) names.set(String(u.id), `@${u.username}`);
+		named(r.body);
 		return list;
 	};
 	const names = new Map<string, string>();
+	/** Keep the handles X named in an answer. */
+	const named = (body: any) => {
+		for (const u of Array.isArray(body?.includes?.users) ? body.includes.users : []) if (ID.test(String(u?.id)) && HANDLE.test(String(u?.username))) names.set(String(u.id), `@${u.username}`);
+	};
 
-	source.poll(o.every ?? "2m", async (signal) => {
-		let me = await token(signal);
+	/** The author of a post or a DM as a handle when X named it, an id otherwise. */
+	const fromOf = (id: unknown) => names.get(String(id)) ?? `X user ${String(id).replace(/\D/g, "")}`;
+	const at = (m: any) => (typeof m.created_at === "string" ? { at: m.created_at } : {});
+	const line = (m: any, length = 1000) => ({ from: fromOf(m.sender_id ?? m.author_id), text: clip(String(m.text ?? ""), length), ...at(m) });
+	/** A trigger, and room under the cap that DMs and posts share. */
+	const summons = (text: string) => !!parseSummon(text, triggers, []) && cap.ok();
+
+	/** The DMs since the last look. false: the token was taken back. */
+	const lookAtDms = async (me: { token: string; id: string }, signal: AbortSignal) => {
 		// X charges for every DM event it hands over: a look asks for the last few, enough for one person between two looks.
-		const look = `/2/dm_events?${fields}&max_results=${LOOK}`;
-		let all = await dms(me, look, signal);
-		if (!all) {
-			// Taken back before its time: renewed once, right away.
-			now = undefined;
-			me = await token(signal);
-			all = await dms(me, look, signal);
-			if (!all) throw said("X refused the sign-in it had just renewed (HTTP 401)");
-		}
+		const all = await dms(me, `/2/dm_events?${fields}&max_results=${LOOK}`, signal);
+		if (!all) return false;
 		// "0" for no DMs at all: a starting point too, so that the first DM after it is news.
 		const newest = (all.at(-1)?.id as string | undefined) ?? "0";
 		const last = source.kv.get<string>("last");
-		if (newest === last) return;
+		if (newest === last) return true;
 		source.kv.set("last", newest);
 		// The first look is the starting point: what was written before pine looked is not news.
-		if (last === undefined) return;
+		if (last === undefined) return true;
 		for (const d of all) {
 			if (!newer(d.id, last)) continue;
 			// The one check that says who may summon: the sender, as X says it, is the account that signed in.
 			if (String(d.sender_id) !== me.id) continue;
-			if (!parseSummon(d.text, triggers, [])) continue;
-			if (!cap.ok()) continue;
+			if (!summons(d.text)) continue;
 			const conversation = String(d.dm_conversation_id ?? "");
 			// The thread: that conversation's messages before the summon, asked of X only now that there is one.
 			let around = all;
@@ -289,11 +307,139 @@ export default function x(source: SourceApi) {
 				text: clip(d.text),
 				id: d.id,
 				conversation,
-				...(typeof d.created_at === "string" ? { at: d.created_at } : {}),
+				...at(d),
 				link: `https://x.com/messages/${encodeURIComponent(conversation)}`,
-				thread: before.map((m) => ({ from: names.get(String(m.sender_id)) ?? `X user ${String(m.sender_id).replace(/\D/g, "")}`, text: clip(m.text, 1000), ...(typeof m.created_at === "string" ? { at: m.created_at } : {}) })),
+				thread: before.map((m) => line(m)),
 				...(dropped ? { dropped } : {}),
 			});
 		}
+		return true;
+	};
+
+	const postFields = "tweet.fields=id,text,author_id,created_at,conversation_id,referenced_tweets&expansions=author_id,referenced_tweets.id,referenced_tweets.id.author_id&user.fields=username";
+	/** Posts as X lists them, with the posts they refer to. Throws in pine's words; undefined: the token was taken back. */
+	const posts = async (me: { token: string }, path: string, signal: AbortSignal) => {
+		const r = await ask(path, { token: me.token }, signal);
+		if (r.status === 429) throw said("X says pine looks too often (HTTP 429): waiting longer between looks");
+		if (r.status >= 500) throw said(`X is not answering properly (HTTP ${r.status}): waiting longer between looks`);
+		if (r.status === 401) return undefined;
+		if (r.status !== 200) throw said(`X did not show the posts (HTTP ${r.status})`);
+		named(r.body);
+		const shown = (p: any) => !!p && ID.test(String(p.id ?? "")) && typeof p.text === "string";
+		const referred = new Map<string, any>();
+		for (const p of Array.isArray(r.body.includes?.tweets) ? r.body.includes.tweets : []) if (shown(p)) referred.set(String(p.id), p);
+		const data: any[] = (Array.isArray(r.body.data) ? r.body.data : r.body.data ? [r.body.data] : []).filter(shown);
+		return { data, referred };
+	};
+	const refersTo = (p: any, kind: string): string | undefined => {
+		const ref = (Array.isArray(p?.referenced_tweets) ? p.referenced_tweets : []).find((t: any) => t?.type === kind);
+		return ref && ID.test(String(ref.id)) ? String(ref.id) : undefined;
+	};
+
+	/**
+	 * The owner's own posts since the last look. X's mentions timeline lists what others wrote about
+	 * the owner, and a summon is a post the owner wrote: so it is the owner's own timeline that is
+	 * looked at, replies included and retweets left out. since_id keeps a look to what is new.
+	 */
+	const lookAtPosts = async (me: { token: string; id: string }, signal: AbortSignal) => {
+		const since = source.kv.get<string>("posts");
+		// The first look only finds the starting point: X lists no fewer than 5.
+		const r = await posts(me, `/2/users/${me.id}/tweets?${postFields}&exclude=retweets&max_results=${since === undefined ? 5 : LOOK}${since && since !== "0" ? `&since_id=${since}` : ""}`, signal);
+		if (!r) return false;
+		const list = r.data.sort((a, b) => (newer(a.id, b.id) ? 1 : -1));
+		const newest = list.at(-1)?.id as string | undefined;
+		// "0" for no posts at all: a starting point too, so that the first post after it is news.
+		if (newest && (!since || newer(newest, since))) source.kv.set("posts", newest);
+		else if (since === undefined) source.kv.set("posts", "0");
+		// The first look is the starting point: what was posted before pine looked is not news.
+		if (since === undefined) return true;
+		for (const p of list) {
+			if (since !== "0" && !newer(p.id, since)) continue;
+			// The one check that says who may summon: the author, as X says it, is the account that signed in.
+			if (String(p.author_id) !== me.id) continue;
+			// A retweet is somebody else's words.
+			if (refersTo(p, "retweeted")) continue;
+			if (!summons(p.text)) continue;
+			const parent = refersTo(p, "replied_to");
+			const above = parent ? r.referred.get(parent) : undefined;
+			const dropped = cap.dropped();
+			source.emit("summon", {
+				via: "mention",
+				text: clip(p.text),
+				id: p.id,
+				conversation: ID.test(String(p.conversation_id)) ? String(p.conversation_id) : p.id,
+				...(parent ? { replyTo: parent } : {}),
+				...at(p),
+				link: `https://x.com/${encodeURIComponent(account)}/status/${p.id}`,
+				thread: thread && above ? [line(above)] : [],
+				...(dropped ? { dropped } : {}),
+			});
+		}
+		return true;
+	};
+
+	// DMs and posts in one look: one pace, one backoff, and the cap above shared.
+	source.poll(o.every ?? "2m", async (signal) => {
+		let me = await token(signal);
+		if (!(await lookAtDms(me, signal)) || !(await lookAtPosts(me, signal))) {
+			// Taken back before its time: renewed once, right away.
+			now = undefined;
+			me = await token(signal);
+			if (!(await lookAtDms(me, signal)) || !(await lookAtPosts(me, signal))) throw said("X refused the sign-in it had just renewed (HTTP 401)");
+		}
+	});
+
+	// ---- reading: more of a DM conversation or a post thread, only where the owner took part ----------
+	const ended = new AbortController();
+	source.onStop(() => ended.abort());
+	const READ_MAX = 50;
+	const UP_MAX = 20;
+	source.onRead(async (q) => {
+		if (!kept()) throw new Error("nobody is signed in to X yet: your owner answers pine's question first");
+		const signal = AbortSignal.any([ended.signal, AbortSignal.timeout(pace.timeout * 2)]);
+		const limit = Math.max(1, Math.min(q.limit !== undefined && Number.isInteger(Number(q.limit)) ? Number(q.limit) : 20, READ_MAX));
+		if (q.conversation !== undefined && q.conversation !== "") {
+			const conversation = String(q.conversation).trim();
+			if (!/^[\w-]{1,80}$/.test(conversation)) throw new Error('"conversation" is the "conversation" of a summon from a DM, e.g. "1001-2002"');
+			const me = await token(signal, false);
+			const list = await dms(me, `/2/dm_conversations/${conversation}/dm_events?${fields}&max_results=${Math.min(100, Math.max(limit, 5))}`, signal);
+			if (!list) throw new Error("X did not take the sign-in: try again in a minute");
+			// Reading goes as far as the owner went: a conversation the owner wrote in, and no other.
+			if (!list.some((m) => String(m.sender_id) === me.id)) throw new Error('your owner did not write in that conversation, so it is not read. Use the "conversation" of a summon');
+			const shown = list.slice(-limit);
+			return `The last ${shown.length} messages of the DM conversation ${conversation}, oldest first.\n\n${shown.map((m) => {
+				const one = line(m, 1500);
+				return `[${one.at ?? ""}] ${one.from}: ${one.text}`;
+			}).join("\n")}`;
+		}
+		if (q.post !== undefined && q.post !== "") {
+			const post = String(q.post).trim();
+			if (!ID.test(post)) throw new Error('"post" is the id of a post, as the "id" of a summon from a post had it: digits only');
+			const me = await token(signal, false);
+			// Up the replies, from that post towards the first: X hands over a post and the one it replies to in one answer.
+			const chain: any[] = [];
+			const most = Math.min(limit, UP_MAX);
+			let next: string | undefined = post;
+			while (next && chain.length < most) {
+				const r = await posts(me, `/2/tweets/${next}?${postFields}`, signal);
+				if (!r) throw new Error("X did not take the sign-in: try again in a minute");
+				const p = r.data[0];
+				if (!p) break;
+				chain.push(p);
+				const up = refersTo(p, "replied_to");
+				const parent = up ? r.referred.get(up) : undefined;
+				if (parent && chain.length < most) chain.push(parent);
+				next = parent ? refersTo(parent, "replied_to") : undefined;
+			}
+			if (!chain.length) throw new Error(`X shows no post ${post}: it was deleted, or it is not visible to your owner`);
+			// Reading goes as far as the owner went: a thread with a post of the owner's in it, and no other.
+			if (!chain.some((p) => String(p.author_id) === me.id)) throw new Error('your owner took no part in that thread, so it is not read. Use the "id" of a summon from a post');
+			chain.reverse();
+			return `The thread up to the post ${post}, oldest first${next ? "; there is more above these" : ""}.\n\n${chain.map((p) => {
+				const one = line(p, 1500);
+				return `[${one.at ?? ""}] ${one.from} (post ${p.id}): ${one.text}`;
+			}).join("\n")}`;
+		}
+		throw new Error('say what to read: {"conversation": "..."} with the "conversation" of a summon from a DM, or {"post": "..."} with the "id" of a summon from a post; "limit" up to 50');
 	});
 }
