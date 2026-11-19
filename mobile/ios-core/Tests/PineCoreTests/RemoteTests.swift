@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import PineCore
 
-// The pine of another machine over SSH, as RemoteTest.kt proves it for Android (and test/remote.test.ts
-// and desktop/test/daemon.test.ts for the Mac): what reaches the daemon and what the page gets back,
+// The pine of another machine over SSH, as RemoteTest.kt proves it for Android (and src/remote.test.ts
+// and desktop/electron/daemon.test.ts for the Mac): what reaches the daemon and what the page gets back,
 // through a real sshd. The service lines and the words of a failure are the shared cases, read here
 // over SSH as well.
 struct RemoteTests {

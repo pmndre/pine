@@ -5,7 +5,7 @@ import Foundation
 
 /**
  * What runs on the other machine: src/remote.ts's `remoteCommand()`, character for character. The
- * package's resource is a link to mobile/cases/remote-command.txt (test/mobile-remote.test.ts holds
+ * package's resource is a link to mobile/cases/remote-command.txt (src/remote.test.ts holds
  * that file equal to `remoteCommand()`), copied into the bundle when the package is built.
  */
 public let REMOTE_COMMAND: String = {

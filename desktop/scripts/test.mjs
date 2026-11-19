@@ -1,6 +1,6 @@
 // `npm test` in desktop/: builds the app once for this run, into a temp folder of its own, then
 // runs `node --test` with the arguments given here and PINE_DESKTOP_APP naming that build
-// (test/support/app.ts launches it). The folder is removed at the end. A test file run on its own
+// (e2e/support/app.ts launches it). The folder is removed at the end. A test file run on its own
 // builds for itself instead.
 //   node scripts/test.mjs [node --test arguments]
 import { spawn } from "node:child_process";

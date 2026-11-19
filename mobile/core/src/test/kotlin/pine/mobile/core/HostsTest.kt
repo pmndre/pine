@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
-// What names the other machine, and where its daemon may answer: test/remote.test.ts, on the phone.
+// What names the other machine, and where its daemon may answer: src/remote.test.ts, on the phone.
 // The cases are mobile/cases/hosts.json and loopback.json.
 class HostsTest {
 	@TestFactory

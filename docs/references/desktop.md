@@ -118,7 +118,7 @@ it was built on. See "Packing and signing" for what it carries and how it is sig
 | `npm run dev:preview` | The app's page in an ordinary browser, reloading on every change, on a throwaway pine. `-- --home <dir>` puts it on that pine home instead. See below |
 | `npm run dev:preview:home` | The same on your own pine home, `~/.pine`, at the port after the throwaway one's, so that it runs beside it. Its agents are your real ones. See below |
 | `npm run check` | Type check |
-| `npm test` | The app from end to end: the real app on a pine home of its own with a scripted model. Needs a screen. The app is built once for the run, into a temp folder of its own that every test starts (`scripts/test.mjs`, `test/support/app.ts`), two test files at a time, two minutes at most for a test. A test file run on its own with `node --test` builds for itself. With `PINE_LIVE=1` on a Mac it also dictates with the real voice helper, from a recording |
+| `npm test` | The app from end to end: the real app on a pine home of its own with a scripted model. Needs a screen. The app is built once for the run, into a temp folder of its own that every test starts (`scripts/test.mjs`, `e2e/support/app.ts`), two test files at a time, two minutes at most for a test. A test file run on its own with `node --test` builds for itself. With `PINE_LIVE=1` on a Mac it also dictates with the real voice helper, from a recording |
 | `npm run pack` | `release/mac-arm64/Pine.app`, with pine, Node and the helpers inside |
 | `npm run dist` | The same, and a disk image |
 | `node scripts/smoke.mjs` | Starts a packed app from a folder of its own, on a home of its own, and checks that it answers a message with the pine and the Node it carries, that `pine` works through a link, and that pine finds the helpers in the app |
@@ -754,10 +754,12 @@ desktop/
                    on a throwaway pine or the home `--home` names), test.mjs (`npm test`: the
                    app built once for the run), launch-json.mjs (the checkout's ports and
                    .claude/launch.json), leash.mjs (a preview or `dev` ends with its starter)
-  test/            the app from end to end, driven through its real window; command.test.ts,
-                   updates.test.ts, daemon.test.ts and preview.test.ts need no window.
-                   support/: the build a test starts (app.ts), and a daemon of the test's own
-                   told from another run's by its token (daemon.ts)
+  e2e/             the app from end to end, driven through its real window (`*.live.test.ts`
+                   with `PINE_LIVE=1`). support/: the build a test starts (app.ts), and a daemon
+                   of the test's own told from another run's by its token (daemon.ts). The tests
+                   that need no window sit beside what they test: electron/command.test.ts,
+                   electron/daemon.test.ts, electron/terminal.test.ts, electron/updates.test.ts,
+                   scripts/preview.test.ts, src/runnable.test.ts
 ```
 
 - The page asks for something new through `preload.ts` and a handler in `main.ts`, never by
@@ -783,7 +785,7 @@ desktop/
   not safe here: the cleaning rules (`CLEAN`), links and pictures. After an upgrade of
   Streamdown, read its defaults again and run the desktop suite: its markdown test fails
   without each of the three.
-- A new thing the owner can see or do gets a test in `desktop/test/`, which starts the real
+- A new thing the owner can see or do gets a test in `desktop/e2e/`, which starts the real
   app on a home of its own.
 
 ### How the page is drawn

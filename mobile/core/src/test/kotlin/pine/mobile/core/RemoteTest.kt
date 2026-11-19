@@ -13,7 +13,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-// The pine of another machine over SSH, as test/remote.test.ts and desktop/test/daemon.test.ts
+// The pine of another machine over SSH, as src/remote.test.ts and desktop/electron/daemon.test.ts
 // prove it for the Mac: what reaches the daemon and what the page gets back. What `pine service` says,
 // and the words of a failure, are the shared cases of ServiceTest.
 class RemoteTest {

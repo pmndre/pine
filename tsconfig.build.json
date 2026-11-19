@@ -9,5 +9,6 @@
     "sourceMap": false,
     "allowJs": false
   },
-  "include": ["src", "mcp"]
+  "include": ["src", "mcp"],
+  "exclude": ["**/*.test.ts"]
 }

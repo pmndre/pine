@@ -11,7 +11,7 @@
     "sync": "vite build && cap sync android",
     "sync:ios": "vite build --mode ios && cap sync ios",
     "check": "tsc --noEmit",
-    "test": "node --test 'test/*.test.ts'",
+    "test": "node --test '*.test.ts' 'src/*.test.ts' 'scripts/*.test.ts'",
     "test:core": "node scripts/gradle.mjs core test",
     "apk": "npm run sync && node scripts/gradle.mjs android assembleDebug",
     "apk:release": "npm run sync && node scripts/gradle.mjs android assembleRelease",

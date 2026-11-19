@@ -33,7 +33,7 @@ func stream(_ x: Exchange, _ frames: String...) {
 	for f in frames { x.write(f) }
 }
 
-// The daemon's live events, as EventsTest.kt (and desktop/test/daemon.test.ts for `followEvents`)
+// The daemon's live events, as EventsTest.kt (and desktop/electron/daemon.test.ts for `followEvents`)
 // proves them: in batches, malformed frames skipped, a connection flag on each change, and a retry
 // after a loss.
 struct EventsTests {

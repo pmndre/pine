@@ -41,7 +41,7 @@ const write = (file: string, content: string) => {
 	fs.writeFileSync(file, content);
 };
 
-/** A pine home on the scripted model server, as desktop/test/app.test.ts writes its own: a main agent and a second one. */
+/** A pine home on the scripted model server, as desktop/e2e/app.test.ts writes its own: a main agent and a second one. */
 function throwawayHome(modelServer: string): string {
 	const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-preview-")));
 	write(path.join(home, "models.json"), JSON.stringify({ providers: { mock: { name: "Mock", baseUrl: modelServer, api: "openai-completions", apiKey: "sk-mock", models: [{ id: "m", name: "Mock", contextWindow: 128000, maxTokens: 4096, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } }));

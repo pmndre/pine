@@ -1,6 +1,6 @@
 // What the web bridge runs on the owner's machine over an exec channel: the command src/remote.ts
 // builds for the Pine app (`remoteCommand()`), copied, since that file loads Node's own modules and
-// the browser build cannot carry it. test/web-remote.test.ts at the root fails when they differ.
+// the browser build cannot carry it. src/remote.test.ts fails when they differ.
 // It prints `pine service`'s one line of JSON (where the daemon answers, its token), then holds
 // the session with `cat`, so that a daemon it started lives as long as the channel.
 

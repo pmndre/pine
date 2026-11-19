@@ -40,4 +40,4 @@ Where the platforms differ: the page's origin is `https://localhost` on Android 
 | `fingerprints.json` | A host key's fingerprint as OpenSSH prints it |
 | `service-lines.json` | The line `pine service` writes, and why one is not taken |
 | `failures.json` | The words of a failure when no service line comes |
-| `remote-command.txt` | The command run on the other machine: `remoteCommand()` of `src/remote.ts`, character for character, without a line break at the end (`test/mobile-remote.test.ts` holds it equal). Both cores read this file. |
+| `remote-command.txt` | The command run on the other machine: `remoteCommand()` of `src/remote.ts`, character for character, without a line break at the end (`src/remote.test.ts` holds it equal). Both cores read this file. |

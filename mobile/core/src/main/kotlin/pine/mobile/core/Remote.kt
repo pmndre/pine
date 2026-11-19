@@ -1,6 +1,6 @@
 // A pine on another machine, reached over SSH: `connectRemote` of src/remote.ts on the phone. One
 // SSH session per machine runs `pine service` there (the very command src/remote.ts builds, read
-// from remote-command.txt, which test/mobile-remote.test.ts holds equal to it), reads its one line,
+// from remote-command.txt, which src/remote.test.ts holds equal to it), reads its one line,
 // and keeps the session's stdin open as the leash of a daemon it started. Calls go through a
 // `direct-tcpip` channel of that session each.
 package pine.mobile.core

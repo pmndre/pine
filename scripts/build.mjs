@@ -12,7 +12,9 @@ const out = path.join(root, "build");
 fs.rmSync(out, { recursive: true, force: true });
 execFileSync(process.execPath, [path.join(root, "node_modules", "typescript", "bin", "tsc"), "-p", path.join(root, "tsconfig.build.json")], { cwd: root, stdio: "inherit" });
 
-for (const name of ["README.md", "LICENSE", "docs", "examples"]) fs.cpSync(path.join(root, name), path.join(out, name), { recursive: true });
+// A test sits beside what it tests, in docs/ too (docs/references/interfaces.test.ts): none travels with the package.
+const notATest = (file) => !file.endsWith(".test.ts");
+for (const name of ["README.md", "LICENSE", "docs", "examples"]) fs.cpSync(path.join(root, name), path.join(out, name), { recursive: true, filter: notATest });
 // The README's screenshots are shown from the repository; they need not travel with every install.
 fs.rmSync(path.join(out, "docs", "images"), { recursive: true, force: true });
 // The helper of the app control server is built from its source on the Mac it runs on.
@@ -46,4 +48,6 @@ fs.writeFileSync(path.join(out, "changes.json"), `${JSON.stringify(changesOf(log
 
 const left = fs.readdirSync(out, { recursive: true }).filter((f) => String(f).endsWith(".ts") && !String(f).endsWith(".d.ts") && !String(f).startsWith("examples") && !String(f).startsWith("docs"));
 if (left.length) throw new Error(`uncompiled sources in the package: ${left.join(", ")}`);
+const tests = fs.readdirSync(out, { recursive: true }).filter((f) => /\.test\.(ts|js|d\.ts)$/.test(String(f)) || String(f).startsWith("testing"));
+if (tests.length) throw new Error(`tests in the package: ${tests.join(", ")}`);
 console.log(`package ${pkg.name}@${pkg.version} is in ${out}`);

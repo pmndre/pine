@@ -76,8 +76,8 @@ two consecutive user messages.
 
 | Suite | Runs | Against |
 |---|---|---|
-| `npm test` | More than 250 tests in about ten seconds, files in parallel. The ones whose name starts with `live:` are skipped | The scripted model server in `baseline/tests/mock.mjs` |
-| `npm run test:live` | The `live:` tests of `test/live.test.ts`, `test/browser.test.ts` and `test/computer.test.ts`: delegation to a specialist that reads its files, then a hostile event; an agent that sets up, uses and removes an MCP server, a skill, an event source and a schedule when asked in plain words; an agent driving the real browser; and, on a Mac, app control with the real helper (its own demo window, and TextEdit when the terminal has the grants) | A real model through `claude -p`; Chromium and the network |
+| `npm test` | More than 250 tests in about ten seconds, files in parallel: each test file sits beside the file it tests (`src/agents.test.ts`), and the harness they share is in `testing/`. The ones whose name starts with `live:` are skipped | The scripted model server in `baseline/tests/mock.mjs` |
+| `npm run test:live` | The `live:` tests, in the `*.live.test.ts` files beside their module (`src/pine.live.test.ts`, `mcp/browser.live.test.ts`, `mcp/computer.live.test.ts` and others): delegation to a specialist that reads its files, then a hostile event; an agent that sets up, uses and removes an MCP server, a skill, an event source and a schedule when asked in plain words; an agent driving the real browser; and, on a Mac, app control with the real helper (its own demo window, and TextEdit when the terminal has the grants) | A real model through `claude -p`; Chromium and the network |
 | `npm run baseline` | 59 checks of pi itself | The scripted model server |
 
 The scripted server answers according to a directive embedded in the prompt
@@ -86,7 +86,7 @@ whole daemon in-process on a temp home, and real pieces where it matters: a real
 MQTT broker, real MCP server processes, a fake Telegram API on localhost. App control is tested
 on a stand-in for its helper, a script that speaks the helper's protocol, so no test of the
 ordinary suite touches a real app or needs macOS. The terminal UI is
-driven through an in-memory terminal (`test/support/terminal.ts`) and asserted on what its
+driven through an in-memory terminal (`testing/terminal.ts`) and asserted on what its
 screen shows.
 
 ## Open points

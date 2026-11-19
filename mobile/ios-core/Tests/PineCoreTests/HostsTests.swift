@@ -1,7 +1,7 @@
 import Testing
 import PineCore
 
-// What names the other machine, and where its daemon may answer: test/remote.test.ts, on the phone.
+// What names the other machine, and where its daemon may answer: src/remote.test.ts, on the phone.
 // The cases are mobile/cases/hosts.json and loopback.json.
 struct HostsTests {
 	@Test("a host is a host, user@host or user@host:port, and never an option", arguments: try cases("hosts"))

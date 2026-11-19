@@ -10,7 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-// The daemon's live events, as desktop/test/daemon.test.ts proves `followEvents` for the Mac:
+// The daemon's live events, as desktop/electron/daemon.test.ts proves `followEvents` for the Mac:
 // in batches, malformed frames skipped, a connection flag on each change, and a retry after a loss.
 class EventsTest {
 	private val rig = Rig()

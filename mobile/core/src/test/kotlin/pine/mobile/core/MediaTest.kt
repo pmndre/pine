@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-// Pictures, video and sound straight from the daemon, as desktop/test/daemon.test.ts proves
+// Pictures, video and sound straight from the daemon, as desktop/electron/daemon.test.ts proves
 // `mediaFromDaemon` for the Mac: only the listed paths, only what is drawn or played. The cases are
 // mobile/cases/media-paths.json and media-types.json.
 class MediaTest {

@@ -58,7 +58,7 @@ try {
 		if (!page) await new Promise((r) => setTimeout(r, 200));
 	}
 	if (!page) throw new Error("the app has no window");
-	// (The page is found by the names its parts carry, `data-slot`, as desktop/test/ finds it.)
+	// (The page is found by the names its parts carry, `data-slot`, as desktop/e2e/ finds it.)
 	await page.waitForSelector("[data-slot=empty] h1", { timeout: 60_000 }).catch(async () => {
 		throw new Error(`no conversation appeared. On screen: ${await page.evaluate(() => document.body.innerText.slice(0, 600))}`);
 	});

@@ -15,7 +15,7 @@
     "start": "node scripts/build.mjs && electron .",
     "check": "tsc --noEmit",
     "postinstall": "node scripts/launch-json.mjs",
-    "test": "PINE_DESKTOP_BACKGROUND=1 node scripts/test.mjs --test-force-exit --test-timeout=120000 --test-concurrency=2 'test/*.test.ts'",
+    "test": "PINE_DESKTOP_BACKGROUND=1 node scripts/test.mjs --test-force-exit --test-timeout=120000 --test-concurrency=2 'e2e/*.test.ts' 'electron/*.test.ts' 'src/**/*.test.ts' 'scripts/*.test.ts'",
     "pack": "node scripts/pack.mjs",
     "dist": "node scripts/pack.mjs --dmg",
     "storybook": "storybook dev -p 6006",

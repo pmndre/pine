@@ -16,7 +16,7 @@ to change the code.
 | `npm run baseline` | The 59 pi SDK checks in `baseline/`. Run it after upgrading pi. |
 | `node src/cli.ts <command>` | The CLI without installing it. |
 | `npm run desktop` | The desktop app (`desktop/`, Electron), built and opened. It has its own `package.json` and `node_modules`: `npm install` in `desktop/` once. `npm run dev` there reloads the page as you edit. |
-| `npm run desktop:test` | The desktop app from end to end: the real app, through its real window, on a pine home of its own with the scripted model server. It builds the app once for the run into a temp folder of its own and every test starts that build (`desktop/scripts/test.mjs`, `desktop/test/support/app.ts`), so runs of several checkouts at once never test each other's build; two files at a time, two minutes at most a test. A few minutes; needs a screen. Run it when you change `desktop/`, the control API the app uses (`src/http.ts`, `src/owner.ts`) or `pine service`. `npm run check` in `desktop/` is its type check. |
+| `npm run desktop:test` | The desktop app from end to end: the real app, through its real window, on a pine home of its own with the scripted model server. It builds the app once for the run into a temp folder of its own and every test starts that build (`desktop/scripts/test.mjs`, `desktop/e2e/support/app.ts`), so runs of several checkouts at once never test each other's build; two files at a time, two minutes at most a test. A few minutes; needs a screen. Run it when you change `desktop/`, the control API the app uses (`src/http.ts`, `src/owner.ts`) or `pine service`. `npm run check` in `desktop/` is its type check. |
 | `npm run dev:preview` (in `desktop/`) | The app's page in an ordinary browser on a throwaway pine; `dev:preview:home` on `~/.pine`, whose daemon it never stops. Each checkout has ports of its own, from its path (`desktop/scripts/launch-json.mjs`), and `.claude/launch.json` is written with them by `npm install` in `desktop/` (it is not in git). After pulling, or when the preview pane lists no `desktop-preview`, run `node desktop/scripts/launch-json.mjs` (or `npm install` in `desktop/`). A preview and `npm run dev` end with whatever started them (`desktop/scripts/leash.mjs`). |
 | `npm run storybook` (in `desktop/`) | Storybook for the parts of the app's page, at port 6006: a story sits beside the file of what it shows (`desktop/src/<File>.stories.tsx`, `desktop/src/components/<name>.stories.tsx`: `desktop/src/ApprovalDialog.stories.tsx`, `desktop/src/components/printed.stories.tsx`, `desktop/src/components/logo.stories.tsx`); `npm run build-storybook` builds it. Chromatic publishes the stories on every pull request (`.github/workflows/chromatic.yml`, secret `CHROMATIC_PROJECT_TOKEN`), each in light and dark at a phone's width (360) and the window's (1280) through its modes (`desktop/.storybook/modes.ts`), so no dark or phone twin of a story is written. Add or update a story when you change a part in `desktop/src/components/` (outside `ui/`, which is stock). |
 | `npm run desktop:pack` | `desktop/release/mac-arm64/Pine.app` (`mac/` on Intel), with the package of `npm run build` and its dependencies, the Node it runs on, pine's helpers built (`scripts/helpers.mjs`) and `pine` for a terminal inside, signed with the hardened runtime. `node desktop/scripts/smoke.mjs` starts that app from a folder of its own and checks that it runs on the pine and the Node it carries. Run both when you change `desktop/scripts/`, a helper's build function, `src/prebuilt.ts` or `desktop/electron/service.ts`, and the smoke test also after a change to the page's markup that it finds the page by (`data-slot` names): no workflow runs it. |
@@ -133,14 +133,14 @@ mcp/                bundled MCP servers (separate processes): web, browser, comm
                     (render.ts is not a server: the helper of the http source's `render`, one look at a page with the browser)
                     (computer.swift is the macOS helper of computer.ts: accessibility tree, mouse and key events, pictures; it decides nothing)
 examples/home/      what `pine init` copies
-test/               node:test files; support/harness.ts builds a temp home and a daemon
+testing/            what the tests share: harness.ts builds a temp home and a daemon; stand-ins (ws, slack, telegram, computer, ...)
 baseline/           pi SDK behaviour checks and their results; the mock model server lives here
 docs/               SKILL.md index and references/
 desktop/            the desktop app (Electron; a package of its own, not part of what goes to npm): electron/ is the
                     main process (the window, the daemon's token, `pine service`, `pine` for a terminal, the look for a newer app), src/ the
                     page (React, Tailwind v4, shadcn on Base UI, shadcn's core chat components composed per shadcn's AI Elements
                     patterns for the conversation and the input, Streamdown for answers, lucide icons,
-                    usehooks-ts for the side panel's breakpoint; ui-sdk only for what shadcn lacks), test/ the app driven through its real window, scripts/ what builds, tests, previews and packs it.
+                    usehooks-ts for the side panel's breakpoint; ui-sdk only for what shadcn lacks), e2e/ the app driven through its real window, scripts/ what builds, tests, previews and packs it.
                     The stock components are src/components/ui and nothing else, all from shadcn's own registry in the
                     style components.json names, the chat components included (`npx shadcn add message`, not
                     `@ai-elements/message`). AI Elements means shadcn's pages of patterns (ui.shadcn.com/docs/ai-elements),
@@ -194,7 +194,7 @@ describes a named thing. For a change this means:
 - A thing with a name (a key, a tool, a command, an option) gets a row in a table whose first
   cell is that name in backticks. Such a row is found by the name alone.
 - Words people use for it that the manual does not use go into `SYNONYMS` in `src/manual.ts`.
-- `test/manual.test.ts` holds questions and the part that has to answer each. Add one for a new
+- `src/manual.test.ts` holds questions and the part that has to answer each. Add one for a new
   feature, in the words of somebody who does not know what it is called.
 - A source type is described three times, on purpose, for three readers. The model that sets
   one up reads the type's own `summary` and option descriptions; only the everyday types
@@ -245,7 +245,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    (`outsideMark`). No tool sets a conversation's folder or goal (rules 3 and 11). An agent that is removed leaves nothing: `eraseAgent` is the
    one place that knows what carries an agent's name (routes, lists of others, secrets, stored
    keys, folders under `data/`, its folder and private home), for the tool, the control API and
-   `pine agent remove` alike, and `test/admin.test.ts` looks for anything named after a removed
+   `pine agent remove` alike, and `src/admin.test.ts` looks for anything named after a removed
    agent. Whatever is added to pine that is kept by agent goes into `eraseAgent` too. Each change is
    a few named values that are checked one by one, never text into a file; it is put to the
    owner in every mode; the configuration is read back through `loadConfig` and the file put
@@ -427,7 +427,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    it), rate limits are waited for by pine so that the wait ends with the source, and sockets
    are cut by pine when the source stops. Two SDK internals are relied on, the `ws_message`
    event and a throw from an `authenticated` listener: look at both when the SDK is upgraded,
-   and run `test/chat.test.ts`, which fails without each of these.
+   and run `src/sources/slack.test.ts`, which fails without each of these.
    After a time without a connection the `slack` type asks for what was written meanwhile
    (`catchUp`): only where it listens, and every message it finds goes through `written()`,
    so the same filters and the same cap hold as for one it was told. What it could not look
@@ -458,7 +458,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    A proxy carries only what a browser asks it to carry. What a browser sends without asking
    (WebRTC's own UDP, QUIC, name lookups of its own) is switched off in the browser itself,
    for every way pine starts one (`NO_WAY_AROUND` in `mcp/browser.ts`). The `live:` test
-   "reaches nothing nearby" in `test/browser.test.ts` listens on a UDP port for anything that
+   "reaches nothing nearby" in `mcp/browser.live.test.ts` listens on a UDP port for anything that
    gets out: run it (`npm run test:live`) when Playwright MCP is upgraded, since the switches
    are Chromium's and a new build can rename one.
    A UI of the owner's that shows the browser itself (the Pine app, in the panel beside a
@@ -536,7 +536,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    It renders with Streamdown, whose defaults are not safe here, and replaces three of them:
    its cleaning rules (`CLEAN`), its link component and its image component. On every upgrade
    of Streamdown read its defaults again and run `npm run desktop:test`.
-   `desktop/test/app.test.ts` has a test for it; keep it failing without each of the three.
+   `desktop/e2e/app.test.ts` has a test for it; keep it failing without each of the three.
    The terminal beside a conversation (`desktop/electron/terminal.ts`) is the owner's own shell,
    run by the main process; the page only types into it. What an answer holds reaches it only by
    the owner's press on a code block's Run button, and only a block whose every character shows
@@ -550,7 +550,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    where `main.ts` stands, holds the token and makes every call through the same module
    (`desktop/electron/daemon.ts`), only for a POST of JSON from the page's own loopback origin,
    and sends the same policy. The page's stand-in for the bridge (`desktop/src/preview-bridge.ts`)
-   exists only in that dev mode and in no build; `desktop/test/preview.test.ts` fails without
+   exists only in that dev mode and in no build; `desktop/scripts/preview.test.ts` fails without
    the check of the origin and the content type, and when the stand-in reaches a build.
    The mobile app (`mobile/`) is another holder of the token, beside `main.ts` and the preview's
    server, and is held to the same: its
@@ -564,7 +564,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    only these: `local: false` in `state()` (no machine of its own), `mediaBase` (the address
    the plugin answers media at) and `deviceKey` (the phone's public SSH key). A host key is
    trusted only as the owner confirmed it in the page, exactly the fingerprint shown, and a
-   changed one is refused. `mobile/test/build.test.ts` fails when a build carries the other's
+   changed one is refused. `mobile/vite.config.test.ts` fails when a build carries the other's
    stand-in. What the WebView is kept from (permissions, `onCreateWindow`, a second window, file
    access, navigation) no suite of `npm test` reaches: `npm run smoke` in `mobile/` proves each
    as a named check, and is run before a release that changes `mobile/` or upgrades Capacitor.
@@ -691,7 +691,7 @@ upgrade pi (`npm run baseline`, then `npm test`).
 Work goes to `next`, the repository's default branch, and `main` is what was released. Every
 push to `next` is a preview of the release it leads up to, and every push to `main` a release.
 A release's version follows from the commit messages since the last one
-(`scripts/version.mjs`, tested in `test/release.test.ts`):
+(`scripts/version.mjs`, tested in `scripts/version.test.ts`):
 
 | A commit since the last release | Raises |
 |---|---|
@@ -737,7 +737,7 @@ failed. The helpers need the macOS 26 SDK, so the job selects the newest Xcode o
 A release from `main` gets the Android app too (the job `android` in `release.yml`, on the
 same skeleton as `app`, on Linux): `npm run apk:release` in `mobile/`, signed with the release
 key, `versionName` the release's version and `versionCode` major·1 000 000 + minor·1 000 +
-patch (`mobile/scripts/version-code.ts`, tested in `mobile/test/version.test.ts`), checked with
+patch (`mobile/scripts/version-code.ts`, tested in `mobile/scripts/version-code.test.ts`), checked with
 `apksigner verify`, uploaded as `Pine-<version>.apk`. The key takes four secrets in the
 environment `release`: `ANDROID_KEYSTORE` (the keystore file, as base64), `ANDROID_KEYSTORE_PASSWORD`,
 `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Without any of them the job builds nothing and
@@ -765,6 +765,11 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
 
 ## Tests
 
+- A test file sits beside the file it tests and is named after it (`src/agents.test.ts`,
+  `src/sources/mail.test.ts`, `mcp/browser.test.ts`). What the tests share is in `testing/` (the
+  harness, stand-ins for outside services). A test that only runs with `PINE_LIVE=1` goes into
+  `<module>.live.test.ts`, which `npm run test:live` runs. Only what drives the whole desktop app
+  keeps a folder of its own (`desktop/e2e/`). None of it is in the package (`scripts/build.mjs`).
 - Every test builds its own home in a temp folder with `harness()` and talks to the scripted
   model server from `baseline/tests/mock.mjs`. A prompt containing `<<MOCK {"steps":[...]}>>`
   scripts the model's next replies; `@@REF:name@@` refers to `mock.state.scripts[name]` (use it
@@ -778,46 +783,47 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   and assert on `app.screen()`. Send keys one at a time
   (`term.type("text")` does) and wait with `sees()`, not with sleeps.
 - `pine init` downloads the browser. A test that runs it sets `PINE_SKIP_DOWNLOADS=1` (see
-  `test/cli.test.ts`); the variable exists for tests only and is not a user option.
+  `src/cli.test.ts`); the variable exists for tests only and is not a user option.
 - `npm test` passes `--test-force-exit`, so a leaked handle cannot hang the run; a test that
-  fails must still not leave a daemon behind (see the `after` hooks in `test/support/harness.ts`).
+  fails must still not leave a daemon behind (see the `after` hooks in `testing/harness.ts`).
 - The source types are tested on stand-ins that run on any system and need no network: a web
-  server whose answers the test changes (`test/watch.test.ts`, `test/feeds.test.ts`), a
-  WebSocket server written by hand (`test/support/ws.ts`), scripted IMAP, SMTP, Modbus and
+  server whose answers the test changes (`src/sources/http.test.ts`, `src/sources/feed.test.ts`), a
+  WebSocket server written by hand (`testing/ws.ts`), scripted IMAP, SMTP, Modbus and
   camera servers on a loopback port, hand-made DNS packets, and for `system` a script in place
   of its helper (`standIn`). A source in a test's configuration may look more often than a
   model is allowed to set (`every: "40ms"`): the limit is in `plan()`, which a configuration
-  file does not pass through. The `live:` test in `test/system.test.ts` builds the real helper.
-- App control is tested on a stand-in for its helper (`FAKE_HELPER` in `test/computer.test.ts`),
+  file does not pass through. The `live:` test in `src/sources/system.live.test.ts` builds the real helper.
+- App control is tested on a stand-in for its helper (`FAKE_HELPER` in `testing/computer.ts`),
   a script that speaks the helper's protocol and runs on any system; the server's `helper`
   option names it. No test in the ordinary suite touches a real app or needs macOS. The `live:`
   tests build the real helper and drive its own demo window (`--demo`), which needs no grant.
-- Voice input is tested on a stand-in for its helper (`standIn` in `test/voice.test.ts`), a
+- Voice input is tested on a stand-in for its helper (`standIn` in `src/tui/voice.test.ts`), a
   script that writes the helper's lines and runs on any system; the `voice` option of the UI
   names it. What is not macOS is tested by handing the UI `voiceTools("linux")`. Only the
   `live:` test builds the real helper, and it reads a recording, not the microphone.
 - A model call pine makes itself, without tools (the judge of goal mode), is scripted with the
-  mock's `withoutTools` option: see `judged()` in `test/goals.test.ts`.
+  mock's `withoutTools` option: see `judged()` in `src/goals.test.ts`.
 - pine's own question for what a call needs outside the sandbox (`security.askAccess`) is off in
   `harness()`, so that a test about the sandbox meets the sandbox and not a question. The tests
-  about it (`test/access.test.ts`) turn it on, set `HOME` to a folder of their own for "the
+  about it (`src/access.test.ts`) turn it on, set `HOME` to a folder of their own for "the
   owner's files", and say what "the system reports" through a stand-in for the log (`standIn`).
 - What pine does with a llama.cpp server (slots, filling idle ones, files for conversations that left their
   slot) is tested on the mock: `props` is what the server says about itself at `/props`, a request that
   is not streamed is answered in one piece, and with `slotFiles` it writes and reads slot files
-  (`state.slotActions`). The `live:` test at the end of `test/live.test.ts` asserts the same on a real
+  (`state.slotActions`). The `live:` test at the end of `src/pine.live.test.ts` asserts the same on a real
   server (`PINE_LIVE_URL`), by the tokens the server says it read and kept.
-- The desktop app has its own tests in `desktop/test/`, run by `npm run desktop:test` and not
+- The desktop app has its own tests in `desktop/` (`desktop/e2e/`, and beside what they test in
+  `electron/`, `scripts/` and `src/`), run by `npm run desktop:test` and not
   by `npm test`: they start the real app (Electron, driven by Playwright through its window)
   on a temp home with the mock model server, and a daemon of its own on port 0, so a pine the
   developer has running is left alone. They start the build of the run (`launchApp` in
-  `desktop/test/support/app.ts`), never `desktop/dist`. A test that waits for a daemon, or for one
-  to be gone, asks `/overview` with the test home's token (`desktop/test/support/daemon.ts`), never
+  `desktop/e2e/support/app.ts`), never `desktop/dist`. A test that waits for a daemon, or for one
+  to be gone, asks `/overview` with the test home's token (`desktop/e2e/support/daemon.ts`), never
   `/health`, which any daemon answers: runs of several checkouts start daemons side by side. `sees()` there waits for something on screen and says
   what is there instead when it does not come. What a menu item does is sent as the menu
   sends it (`menu()`): keys typed into the page do not reach the system's menus. Voice input
   is tested with a stand-in for the helper (`PINE_DESKTOP_VOICE`, for tests only); the `live:`
-  test in `desktop/test/voice-live.test.ts` (`PINE_LIVE=1`) puts the real helper behind it,
+  test in `desktop/e2e/voice.live.test.ts` (`PINE_LIVE=1`) puts the real helper behind it,
   listening to a recording. No test shows the app's real window with its title bar: after a
   change to the frame (`app-drag` and `app-no-drag` in `src/index.css`, the parts of
   `src/App.tsx` that carry them: `TitleBar`, `Sidebar` and `Gate`; the side panel's sheet in a
@@ -826,32 +832,32 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   `trafficLightPosition`, `vibrancy`), look at it once in light and dark, with the side panel
   open in a window narrower than 1024 pixels too.
 - Whether there is a newer app (`desktop/electron/updates.ts`) is asked of a stand-in for GitHub
-  on a loopback port, without a window in `desktop/test/updates.test.ts` and through the app in
+  on a loopback port, without a window in `desktop/electron/updates.test.ts` and through the app in
   `app.test.ts` (`PINE_DESKTOP_RELEASES`, for tests only: an app from a checkout asks nobody).
   No test reaches GitHub, and what would open in a browser is noted instead (`shell.openExternal`).
 - The browser in the app's panel is tested without a browser: the relay on its stand-in for
-  Playwright's server (`FAKE_BROWSER` in `test/browser.test.ts`, which also plays the owner's
+  Playwright's server (`FAKE_BROWSER` in `mcp/browser.test.ts`, which also plays the owner's
   hand), the control API and the app on a stand-in for the browser's door (a file in the test
   home's `data/browser-view/` that names a server of the test's own). The `live:` test in
-  `desktop/test/browser-live.test.ts` (`PINE_LIVE=1`) puts the real browser behind the real
+  `desktop/e2e/browser.live.test.ts` (`PINE_LIVE=1`) puts the real browser behind the real
   app, on a page of its own on the loopback.
 - The terminal beside a conversation is tested without a window on a real pseudo-terminal with
-  `/bin/sh`, `/bin/bash` and `/bin/zsh` (`desktop/test/terminal.test.ts`: the shell hooks of
+  `/bin/sh`, `/bin/bash` and `/bin/zsh` (`desktop/electron/terminal.test.ts`: the shell hooks of
   `desktop/electron/shell-hooks.ts`, what a run reports, what a Run button refuses), and in the app
   with `PINE_DESKTOP_SHELL=/bin/bash` (for tests only, like `PINE_DESKTOP_STILL_RUNNING_MS`). A shell
   named that way reads none of the developer's startup files.
 - `pine` for a terminal (`desktop/electron/command.ts`) is tested without a window
-  (`desktop/test/command.test.ts`), on folders of the test's own as the PATH and the home:
+  (`desktop/electron/command.test.ts`), on folders of the test's own as the PATH and the home:
   no test writes into a folder of the real PATH, and none runs what asks for a password.
 - The Android app has its own suites in `mobile/`, not run by `npm test` at the root. `npm run
   check` and `npm test` there are run by the `android` job of the Release workflow before it
   builds the APK; `npm run test:core` and `npm run smoke` by no workflow. `npm test` there: the mobile bridge with a fake native plugin in place of
-  Capacitor's (`test/bridge.test.ts`), Capacitor's configuration (`test/config.test.ts`), both
-  builds of the page, each without the other's stand-in (`test/build.test.ts`), and the
-  release's versionCode (`test/version.test.ts`). `npm run test:core`: the Kotlin core on the
+  Capacitor's (`src/mobile-bridge.test.ts`), Capacitor's configuration (`capacitor.config.test.ts`), both
+  builds of the page, each without the other's stand-in (`vite.config.test.ts`), and the
+  release's versionCode (`scripts/version-code.test.ts`). `npm run test:core`: the Kotlin core on the
   JVM (JUnit), against an SSH server in the test (Apache MINA sshd) whose exec handler checks the
-  command and a stand-in daemon (a local HTTP server); its cases mirror `test/remote.test.ts`
-  and `desktop/test/daemon.test.ts`. One root test, `test/mobile-remote.test.ts`, fails when the
+  command and a stand-in daemon (a local HTTP server); its cases mirror `src/remote.test.ts`
+  and `desktop/electron/daemon.test.ts`. One root test, in `src/remote.test.ts`, fails when the
   command the core runs over SSH differs from `remoteCommand()`. `npm run smoke` is by hand:
   an emulator without a window, a test SSH server on this computer (`SmokeMachine.kt`) running
   the real `pine service` on a home of its own with the scripted model server. It is the one
@@ -882,7 +888,7 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   touches `~/.ssh` or the system's sshd. `npm test` in `web/relay/`: the relay's fetch handler
   with `connect()`, the name lookup and the WebSocket pair handed in (a stand-in TCP server on a
   loopback port; a pair that delivers Blobs unless asked otherwise, as workerd does). One root
-  test, `test/web-remote.test.ts`, fails when the command the web bridge runs over SSH differs
+  test, `src/remote.test.ts`, fails when the command the web bridge runs over SSH differs
   from `remoteCommand()`. `npm run smoke` in `web/` is by hand: the deployment under `wrangler
   dev` (local, never logged in to Cloudflare, its files in a temp folder), headless Chrome for
   Testing with a throwaway profile, a `sshd` of its own running the real `pine service` on a
@@ -900,7 +906,7 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   the model server's cache only covers a prompt whose beginning is unchanged, and on a local
   model a miss means reading the whole conversation again. Turn-dependent facts go into the
   `<pine-note>` that `contextNote()` puts in front of the incoming message. The two cache tests
-  in `test/agents.test.ts` fail when a request stops being an extension of the one before; the
+  in `src/agents.test.ts` fail when a request stops being an extension of the one before; the
   mock's `prefixCache` option reports cached tokens the way a server would, and `strip` removes
   the notes from what the mock echoes.
 - With families (`short()` in `src/agents.ts`) a request begins the same for every conversation of an
@@ -909,7 +915,7 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   frozen when it began (kv `prefix:`), and what was added to a file since in the note. So nothing that
   differs between two conversations of an agent, or between today and tomorrow, goes into a tool's
   description or into `SHORT_PROMPT`: which agents and sources there are is said in `contextNote()`.
-  The cache tests in `test/catalogue.test.ts` fail when a request stops being an extension of the one
+  The cache tests in `src/catalogue.test.ts` fail when a request stops being an extension of the one
   before it across a restart, a line in `MEMORY.md` or a new agent. A family is a router and nothing
   more: `classify()` calls it `look`, and the tool it hands the call to (`ctx.executeTool`) passes the
   gate under its own name. A new tool of pine's goes into a group in `GROUPS` with a line in `BRIEF`
