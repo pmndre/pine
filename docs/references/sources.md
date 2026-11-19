@@ -222,6 +222,46 @@ it is removed from the agent's list of conversations. Quitting the UI closes not
 tabs open again next time, and what they listen to carries on in between. A conversation that
 listens to a source is not removed for being unused.
 
+### Summoning pine from somewhere else
+
+> When I write "/pine kevin brainstorm this" in a message that reaches pine, have kevin do it.
+
+A summon is you calling pine, or one of its agents by name, from a place that is not pine (a
+ping, a mention in a message that pine reads): a shortcut
+on your phone through a `webhook`, a chat, a message thread. A subscription becomes a summon
+subscription with trigger words: `summon` on the agent's `subscribe` tool ("/pine, @myhandle"),
+`"summon": ["/pine"]` in the configuration. Then only an event whose text carries a trigger
+starts anything; every other event of that source starts nothing.
+
+What you write after the trigger is read as `<trigger> [agent] [#conversation] <request>`:
+
+| You write | What starts |
+|---|---|
+| `/pine brainstorm this idea` | the main agent, with the request "brainstorm this idea" |
+| `/pine kevin summarise this thread` | the agent kevin, with "summarise this thread" |
+| `/pine kev summarise this` | `kev` is no agent: the main agent, with "kev summarise this", so a typo does not lose it |
+| `/pine #todo add milk` | the main agent, with "#todo add milk": for now the name stays in the request |
+| `nice thread. /pine what do you make of it?` | the main agent, with "what do you make of it?"; what comes before the trigger is in the event |
+| `I like /pineapple` | nothing: a trigger is a word of its own |
+
+- **Where it runs:** each summon in a new conversation of its own, `summon-<event id>`, listed
+  with the agent's other conversations. Two summons are two conversations. The agent's main
+  conversation is left alone.
+- **As whom:** your request is your words, and the run has your trust, with the tools that
+  agent has with you. The rest of the event (the thread around the trigger, who wrote what) is
+  outside content: it comes below the request, framed as data, and the conversation is marked
+  as having read outside content from its first turn. So what the agent would send out after
+  reading it is put to you first, as after any web page ("Trust").
+- **Who can summon:** whoever can make the source report a text with the trigger. Pine does not
+  check who wrote it: a source that carries other people's words (a chat, a channel) lets them
+  summon too. Use it on a source only you write to, such as a `webhook` with a secret.
+- **The text:** the trigger is looked for in the event's `text`, or for a `webhook` in the
+  `text` of the body (or the body itself when it is not JSON).
+- One agent holds the subscription, normally the main agent; it starts whichever agent a summon
+  names. It is a subscription of the agent as such (it replaces a plain subscription of its main
+  conversation to that source) and cannot be one for all agents, which would start each summon
+  once per agent. `"separate"` does not go with it.
+
 ### Ask the agent
 
 Every agent has these tools for it:
@@ -392,6 +432,7 @@ The same key in `pine.json` is the global scope.
 | `session` | `main` (`on-<source>` with `separate`) | The conversation that listens. Leaving it out is the agent scope. `"new"`: a fresh conversation for every event, closed when it is answered ("A fresh conversation for every event"). |
 | `separate` | `false` | `true`: do not deliver into a conversation of yours, but into one of its own (`on-<source>`), with the reduced tool set for sources that are not yours. See "Trust". |
 | `prompt` | | Replaces the standard text for the event. Templates as in routes: `{{payload.file}}`. |
+| `summon` | | Trigger words, such as `["/pine", "@myhandle"]`: the subscription is for summons, and an event starts something only when its text carries a trigger. See "Summoning pine from somewhere else". No default throttle. |
 
 ### Being woken only for what counts
 

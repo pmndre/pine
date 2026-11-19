@@ -38,6 +38,7 @@ const SYNONYMS: string[][] = [
 	["source", "watch", "monitor", "observe", "listen", "trigger", "event", "sensor", "feed"],
 	["subscribe", "subscription", "listen", "follow", "wake", "notify", "notification"],
 	["unsubscribe", "stop", "mute", "silence"],
+	["summon", "summons", "summoning", "summoned", "ping", "mention", "invoke"],
 	["mcp", "server", "connector", "integration", "plugin", "extension", "tool"],
 	["skill", "procedure", "howto", "recipe", "playbook", "instruction", "knowhow"],
 	["secret", "token", "password", "key", "credential", "apikey", "env"],

@@ -135,6 +135,8 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["a websocket that needs a login message after connecting", /^source-types#(stream|what-a-stream-reaches)/],
 		["receive github webhooks on a machine that has no public address", /^(source-types#(stream|what-a-stream-reaches|which-type-for-which-service|webhook)|events#webhooks)/],
 		["tell me when my boss writes in slack", /^source-types#slack/],
+		["how do I call pine from my phone by writing /pine and a request", /^sources#summoning-pine-from-somewhere-else/],
+		["ping an agent by name from a message so that it takes the request", /^sources#summoning-pine-from-somewhere-else/],
 		["a slack message refers to something said earlier in the thread, how do I see what", /^(source-types#(reading-what-was-written-before|slack)|sources#reading-through-a-source)/],
 		["can I read the history of a slack channel or a direct conversation", /^(source-types#(reading-what-was-written-before|slack)|sources#reading-through-a-source)/],
 		["read_source", /read-source$|^sources#reading-through-a-source|^source-types#reading-what-was-written-before/],

@@ -441,7 +441,12 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 			// Only where there is one to end: a subscription that needs no such step is in place before anything else of this turn runs.
 			const other = fresh ? "main" : FRESH;
 			if (scope === "agent" && cfg.agents[agent.id]?.subscribe.some((x) => x.source === name && x.session === other)) await host.unsubscribe(agent.id, name, other);
-			const text = told(name, await host.subscribe(agent.id, name, { ...rest, session: scope === "local" ? here() : fresh ? FRESH : "main" }), scope, undefined, fresh === true);
+			const done = await host.subscribe(agent.id, name, { ...rest, session: scope === "local" ? here() : fresh ? FRESH : "main" });
+			if (rest.summon) {
+				const words = (rest.summon as string[]).join(", ");
+				return `Subscribed to ${name} (agent) for summons. It is ${done.running ? "running" : "not running yet"}. An event of it whose text carries ${words} is your owner calling pine: "<trigger> [agent] <request>" starts that agent (or the main agent, when no agent is named) in a new conversation of its own, with the request as your owner's words and the rest of the event as outside content. Events without a trigger start nothing. Tell your owner what to write and how to stop it (ask you, or: pine unsubscribe ${agent.id} ${name}).`;
+			}
+			const text = told(name, done, scope, undefined, fresh === true);
 			// Said in a side conversation while the agent listens too: both are woken, which the owner should know.
 			const also = scope === "local" ? host.available(agent.id, here()).find((x) => x.name === name) : undefined;
 			return `${text}${also?.agent || also?.global ? ` Note: your main conversation is subscribed to ${name} as well (${also.agent ? "agent" : "global"} scope), so each event starts a turn there too. Tell your owner; unsubscribe with scope "${also.agent ? "agent" : "global"}" ends that one if it is not wanted.` : ""}`;
@@ -490,11 +495,13 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 					when: Type.Optional(Type.String({ description: 'Optional filter as JSON: only wake for events where these fields match, e.g. {"payload.value.state":"FINISH"} or {"payload.file":{"regex":"\\\\.pdf$"}}' })),
 					throttle: Type.Optional(Type.String({ description: 'After one event, ignore the source for this long, e.g. "5m". Default "10s"' })),
 					fresh: Type.Optional(Type.Boolean({ description: "true: every event is handled in a conversation of its own, started empty and closed afterwards, so that nothing piles up. For a source that reports all day and where each report is judged by itself (a camera, a sensor). It is a subscription of you as an agent; what you need from one event to the next you keep in files" })),
+					summon: Type.Optional(Type.String({ description: 'Trigger words, e.g. "/pine" or "/pine, @myhandle": only when your owner wants to call pine through this source. Then an event whose text carries a trigger starts the agent named after it (or the main agent) in a new conversation, and other events start nothing' })),
 				}),
 				execute: async (_id, p, signal) => {
 					run();
-					// A fresh conversation for every event is the agent's way of listening, never one conversation's.
-					return ok(await subscribeAs(p.fresh ? "agent" : subScope(p.scope), p.source, { note: p.note, when: parseWhen(p.when), throttle: p.throttle, fresh: p.fresh === true }, signal));
+					const summon = typeof p.summon === "string" && p.summon.trim() ? p.summon.split(/[\s,]+/).filter(Boolean) : undefined;
+					// A fresh conversation for every event, or a summon, is the agent's way of listening, never one conversation's.
+					return ok(await subscribeAs(p.fresh || summon ? "agent" : subScope(p.scope), p.source, { note: p.note, when: parseWhen(p.when), throttle: p.throttle, fresh: p.fresh === true && !summon, summon }, signal));
 				},
 			}),
 			defineTool({

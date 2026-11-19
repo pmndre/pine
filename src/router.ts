@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import type { AgentManager } from "./agents.ts";
-import type { PineConfig, RouteConfig } from "./config.ts";
+import { mainAgentId, type PineConfig, type RouteConfig } from "./config.ts";
+import { parseSummon, type Summon, summonSession, summonText } from "./summon.ts";
 /** One model call without tools or history, as a route's "call" makes it. */
 export interface CompleteOptions {
 	prompt: string;
@@ -84,6 +85,8 @@ export class Router {
 		}
 		const ctx = this.context(e);
 		if (!matchWhen(route.when, ctx)) return;
+		// A summon route lets through only what carries a trigger: anything else of the source starts nothing.
+		if (route.summon && !this.summonOf(route, e)) return;
 		const key = `${route.name}|${render(route.key ?? "{{topic}}", ctx)}`;
 		if (route.throttleMs) {
 			const last = this.lastFired.get(key) ?? 0;
@@ -123,13 +126,17 @@ export class Router {
 			if (route.agent) {
 				const reply = route.reply === false ? undefined : route.reply ? { topic: render(route.reply.topic, ctx), payload: renderDeep(route.reply.payload ?? {}, ctx) as Record<string, unknown> } : e.reply;
 				const text = route.prompt ? render(route.prompt, ctx) : defaultPrompt(e, route.whole);
+				// A summon picks its agent per event, among those that exist, and starts a conversation of its own.
+				const summon = route.summon ? this.summonOf(route, e) : undefined;
+				if (route.summon && !summon) return;
+				const request = summon ? `Your owner's request: ${summon.request || "(nothing after the trigger: look at the event below and do what it calls for)"}\n\n` : "";
 				this.manager.submit({
-					agent: route.agent,
+					agent: summon ? (summon.agent ?? mainAgentId(this.cfg)) : route.agent,
 					// An event delivered into the owner's conversation is still what it is: framed as data.
-					prompt: `${route.preface ? `${route.preface}\n\n` : ""}${this.guard(text, e, route.taint ? "untrusted" : trust)}`,
+					prompt: `${route.preface ? `${route.preface}\n\n` : ""}${request}${this.guard(text, e, route.taint ? "untrusted" : trust)}`,
 					tainted: route.taint,
 					label: route.label ? render(route.label, ctx) : undefined,
-					session: route.session ? render(route.session, ctx) : "main",
+					session: summon ? summonSession(e.id) : route.session ? render(route.session, ctx) : "main",
 					kind: "event",
 					priority: route.priority ?? (trust === "owner" ? 10 : 0),
 					event: { ...e, trust },
@@ -157,6 +164,11 @@ export class Router {
 			.filter((i) => i && IMAGE_TYPES.includes(i.mimeType) && (typeof i.data === "string" || (typeof i.path === "string" && roots.some((r) => isInside(r, realish(i.path))))))
 			.slice(0, 8)
 			.map((i) => (typeof i.data === "string" ? { data: i.data, mimeType: i.mimeType } : { path: i.path, mimeType: i.mimeType }));
+	}
+
+	/** The summon an event of a summon route carries, read against the agents there are now. */
+	private summonOf(route: RouteConfig, e: PineEvent): Summon | undefined {
+		return parseSummon(summonText(e.payload), route.summon ?? [], Object.keys(this.cfg.agents));
 	}
 
 	/** Bound the size of outside content and say plainly that it is data. */

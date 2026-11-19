@@ -103,6 +103,12 @@ export interface SubscriptionConfig {
 	separate: boolean;
 	/** Replaces the standard text the agent is woken with. Templates as in routes. */
 	prompt?: string;
+	/**
+	 * Trigger words ("/pine", "@handle"): the subscription is for summons. Only an event whose text
+	 * carries one starts anything, and it starts the agent it names (`src/summon.ts`), or the main
+	 * agent, in a new conversation of its own.
+	 */
+	summon?: string[];
 }
 
 export interface RouteConfig {
@@ -147,6 +153,12 @@ export interface RouteConfig {
 	taint?: string;
 	/** Short line for listings and the UI. Template. */
 	label?: string;
+	/**
+	 * Set by summon subscriptions: the trigger words. An event without one in its text is dropped;
+	 * one with a trigger goes to the agent it names, if that agent exists, or to the main agent,
+	 * in the conversation `summon-<event id>`. `agent` and `session` are not used then.
+	 */
+	summon?: string[];
 }
 
 /**
@@ -821,6 +833,10 @@ export function subscriptionFrom(v: Record<string, any>): SubscriptionConfig {
 	if (typeof v.source !== "string" || !v.source) throw new Error(`an entry needs "source": the name of the source`);
 	if (v.when !== undefined && (typeof v.when !== "object" || v.when === null || Array.isArray(v.when))) throw new Error(`"when" must be an object of conditions`);
 	const separate = v.separate === true;
+	const summon = v.summon === undefined ? undefined : (typeof v.summon === "string" ? [v.summon] : v.summon);
+	if (summon !== undefined && (!Array.isArray(summon) || !summon.length || summon.some((w) => typeof w !== "string" || !w.trim() || /\s/.test(w.trim())))) throw new Error(`"summon" must be a list of trigger words without spaces, e.g. ["/pine", "@myhandle"]`);
+	// A summon runs as the owner's request, which a separate subscription (the event's own trust) cannot be.
+	if (summon !== undefined && separate) throw new Error(`"summon" and "separate" do not go together: a summon is your owner's request and runs in a conversation of its own anyway`);
 	return {
 		source: v.source,
 		session: typeof v.session === "string" && v.session ? v.session : separate ? `on-${v.source}` : "main",
@@ -831,6 +847,7 @@ export function subscriptionFrom(v: Record<string, any>): SubscriptionConfig {
 		throttleDefault: v.throttle === undefined ? true : undefined,
 		separate,
 		prompt: typeof v.prompt === "string" ? v.prompt : undefined,
+		summon: summon?.map((w: string) => w.trim()),
 	};
 }
 
