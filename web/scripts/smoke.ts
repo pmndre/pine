@@ -21,8 +21,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { startMock } from "../../baseline/tests/mock.mjs";
 import { pageCsp } from "../../desktop/electron/daemon.ts";
-import { headless } from "../test/support/browser.ts";
-import { freePort, startMachine } from "../test/support/machine.ts";
+import { headless } from "../testing/browser.ts";
+import { freePort, startMachine } from "../testing/machine.ts";
 
 const web = path.resolve(import.meta.dirname, "..");
 const repo = path.resolve(web, "..");

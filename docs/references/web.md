@@ -119,4 +119,4 @@ The smoke's relay has to reach `sshd` on this computer, which a relay refuses:
 
 | Name | What it is |
 |---|---|
-| `RELAY_ALLOW_LOOPBACK` | The smoke's one way to the loopback. `npm run smoke` gives `wrangler dev` `RELAY_ALLOW_LOOPBACK=1` on its command line: it lets a relay that is itself served on the loopback reach the loopback, and nothing else. It is never in a deployed configuration: `web/relay/test/loopback.test.ts` fails when `wrangler.jsonc`, `.dev.vars` or `.env` names it |
+| `RELAY_ALLOW_LOOPBACK` | The smoke's one way to the loopback. `npm run smoke` gives `wrangler dev` `RELAY_ALLOW_LOOPBACK=1` on its command line: it lets a relay that is itself served on the loopback reach the loopback, and nothing else. It is never in a deployed configuration: `web/relay/src/relay.test.ts` fails when `wrangler.jsonc`, `.dev.vars` or `.env` names it |

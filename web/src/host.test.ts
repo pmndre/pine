@@ -1,15 +1,15 @@
 // The web bridge through the page's `window.pine`, as the page uses it: the page's bridge in its
 // frame, the door at the top, and the web bridge on a stand-in for the SSH core and the machine
-// (support/fake-ssh.ts), whose daemon is a real HTTP server on a loopback port.
+// (testing/fake-ssh.ts), whose daemon is a real HTTP server on a loopback port.
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { PageBridge, ServiceState } from "../../desktop/src/bridge.ts";
-import { frameBridge } from "../src/frame-bridge.ts";
-import { webBridge, type Store } from "../src/host.ts";
-import { REMOTE_COMMAND } from "../src/remote-command.ts";
-import { serve } from "../src/serve.ts";
-import { fakeMachine, fp, startDaemon, type Daemon, type Machine } from "./support/fake-ssh.ts";
-import { windows } from "./support/windows.ts";
+import { frameBridge } from "./frame-bridge.ts";
+import { webBridge, type Store } from "./host.ts";
+import { REMOTE_COMMAND } from "./remote-command.ts";
+import { serve } from "./serve.ts";
+import { fakeMachine, fp, startDaemon, type Daemon, type Machine } from "../testing/fake-ssh.ts";
+import { windows } from "../testing/windows.ts";
 
 let daemon: Daemon;
 before(async () => (daemon = await startDaemon()));
@@ -23,14 +23,16 @@ function memoryStore(): Store {
 	};
 }
 
-/** The page's bridge on a web bridge for `machine`, keeping what it stores in `store`. */
+/** The page's bridge on a web bridge for `machine`, keeping what it stores in `store`; what the top copied, opened and saved is noted. */
 function client(machine: Machine, store = memoryStore(), waitMs = 2) {
 	const w = windows();
 	const copied: string[] = [];
+	const opened: string[] = [];
+	const saved: [string, string][] = [];
 	// The waits between attempts to connect again, as asked for; each is a few milliseconds here.
 	const waits: number[] = [];
 	const wait = (ms: number) => (waits.push(ms), new Promise<void>((r) => setTimeout(r, waitMs)));
-	const bridge = webBridge({ connect: machine.connect, store, relay: (host, port) => `wss://relay.test/ssh?host=${host}&port=${port}`, clipboard: async (text) => void copied.push(text), version: "9.9.9", wait, serviceMs: 500 });
+	const bridge = webBridge({ connect: machine.connect, store, relay: (host, port) => `wss://relay.test/ssh?host=${host}&port=${port}`, clipboard: async (text) => void copied.push(text), open: (url) => void opened.push(url), save: (name, text) => void saved.push([name, text]), version: "9.9.9", wait, serviceMs: 500 });
 	serve(bridge, w.top, () => w.frame);
 	const page = frameBridge(w.parentOfFrame, w.frame);
 	const states: ServiceState[] = [];
@@ -38,7 +40,7 @@ function client(machine: Machine, store = memoryStore(), waitMs = 2) {
 	page.onService((s: ServiceState) => (states.push(s), told.push(s)));
 	page.onEvents((e: unknown) => told.push(e));
 	page.onConnection((c: unknown) => told.push(c));
-	return { page, states, told, store, copied, waits, wake: () => bridge.wake(), stop: () => bridge.stop() };
+	return { page, states, told, store, copied, opened, saved, waits, wake: () => bridge.wake(), stop: () => bridge.stop() };
 }
 
 /** Waits for the state the page was last told to match. */
@@ -442,6 +444,59 @@ test("disconnecting goes back to the machines: the connection is let go of, the 
 	assert.equal(machine.commands.length, commands);
 	assert.match((again.states.at(-1) as { message: string }).message, /Add the machine/);
 	again.stop();
+	c.stop();
+});
+
+// Pictures, video and sound, links and saved files, under the desktop's rules (`MEDIA` and
+// `mediaFromDaemon` in desktop/electron/daemon.ts, `openOutside` in desktop/electron/main.ts).
+
+test("media: a listed path comes to the page as its bytes and kind, fetched with the token the page never sees", async () => {
+	const c = await ready();
+	assert.equal(c.page.mediaBase, "pine-media://daemon");
+	const picture = await c.page.media("/media/tool/t1");
+	assert.equal(picture.type, "image/png");
+	assert.deepEqual([...picture.bytes], [0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+	const video = await c.page.media("/agents/main/image?path=clip.mp4&session=s1");
+	assert.equal(video.type, "video/mp4");
+	assert.equal(new TextDecoder().decode(video.bytes), "not really a video");
+	const asked = daemon.seen.find((x) => x.url === "/media/tool/t1");
+	assert.equal(asked?.auth, `Bearer ${daemon.token}`);
+	c.stop();
+});
+
+test("media: a path outside the rules is refused before anything is asked of the daemon", async () => {
+	const c = await ready();
+	const before = daemon.seen.length;
+	const bad = ["/agents", "/events/stream?topic=%23", "/media/tool/a/b", "/tasks/x/images/1", "/agents/main/message", "//evil.example/x", "https://evil.example/media/tool/t1", "/media/tool/t1\r\nX-Evil: 1", "/media/tool/t1#x"];
+	for (const target of bad) await assert.rejects(c.page.media(target), /not|cannot/, target);
+	// The stand-in daemon is shared with the other tests of this file, whose event streams may ask it meanwhile: only these paths must not have reached it.
+	const asked = daemon.seen.slice(before).map((x) => x.url);
+	assert.deepEqual(asked.filter((url) => bad.includes(url)), []);
+	c.stop();
+});
+
+test("media: only what is drawn or played; a page, a drawing with scripts, a missing one are not shown", async () => {
+	const c = await ready();
+	await assert.rejects(c.page.media("/media/tool/page"), /not shown/);
+	await assert.rejects(c.page.media("/media/tool/drawing"), /not shown/);
+	await assert.rejects(c.page.media("/media/tool/gone"), /not found/);
+	c.stop();
+});
+
+test("links: an address of the web opens in a new tab; anything else is refused and opens nothing", async () => {
+	const c = await ready();
+	await c.page.open("https://example.com/a?b=c");
+	await c.page.open("http://example.org");
+	for (const bad of ["javascript:alert(1)", "file:///etc/passwd", "data:text/html,<b>x</b>", "pine-media://daemon/media/tool/t1", "not an address", "//example.com"]) await assert.rejects(c.page.open(bad), /http/, bad);
+	assert.deepEqual(c.opened, ["https://example.com/a?b=c", "http://example.org/"]);
+	c.stop();
+});
+
+test("saving: the text is handed to the browser to save under the name's last part, which is what the page is told", async () => {
+	const c = await ready();
+	assert.equal(await c.page.saveText("pine-main-s1-2026-11-19.md", "# hi\n"), "pine-main-s1-2026-11-19.md");
+	assert.equal(await c.page.saveText("../../etc/x.md", "x"), "x.md");
+	assert.deepEqual(c.saved, [["pine-main-s1-2026-11-19.md", "# hi\n"], ["x.md", "x"]]);
 	c.stop();
 });
 

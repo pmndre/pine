@@ -179,8 +179,10 @@ web/                the web client (a package of its own, not part of what goes 
                     the fixed list in `protocol.ts`), SSH in the browser (`ssh.ts`: @microsoft/dev-tunnels-ssh with
                     Ed25519 on WebCrypto), what runs over it (`tunnel.ts`, `remote-command.ts`), and what the page
                     carries inside its sandboxed iframe (`frame-bridge.ts`, `page-*.ts`). scripts/ builds it and
-                    runs the smoke. relay/ is the relay, a Cloudflare Worker of its own package that carries SSH
-                    and nothing else and serves the build beside it. docs/references/web.md describes it; docs/adr/0003-web-client.md says why it is so
+                    runs the smoke; testing/ is what its tests and the smoke share (a stand-in for SSH, a real
+                    sshd, headless Chrome). relay/ is the relay, a Cloudflare Worker of its own package that
+                    carries SSH and nothing else and serves the build beside it (its tests' stand-ins in
+                    relay/testing.ts). docs/references/web.md describes it; docs/adr/0003-web-client.md says why it is so
 ```
 
 ## What agents know about pine
@@ -593,7 +595,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    name (`.ts.net`, on Funnel's ports alone) it connects by that name through TLS, the
    certificate checked for it, after the name's addresses passed the same check. Its one way to the
    loopback, `RELAY_ALLOW_LOOPBACK`, is the smoke's, given to `wrangler dev` on its command line;
-   `web/relay/test/loopback.test.ts` fails when a configuration that is deployed sets it. What no
+   `web/relay/src/relay.test.ts` fails when a configuration that is deployed sets it. What no
    suite of `npm test` reaches (the opaque origin, a message from another window, the token kept
    from the page, a frame that navigates itself making the whole client start anew) `npm run smoke` in `web/` proves as named checks.
 11. **Only the owner opens a folder for a conversation, and looking at one runs nothing.**
@@ -881,10 +883,10 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
 - The web client has its own suites in `web/` and `web/relay/`, not run by `npm test` at the
   root but by the `build` job of `.github/workflows/web-preview.yml` on a pull request that
   touches `web/`, the desktop page or what it is built from, or the workflow, before its preview is uploaded. `npm test` in `web/`: the web bridge through the contract the page calls, in Node with a
-  stand-in for SSH (`test/support/fake-ssh.ts`): the message door (another window, a method not
+  stand-in for SSH (`web/testing/fake-ssh.ts`): the message door (another window, a method not
   on the list, bad arguments), host-key trust and change, `local: false`, media and link rules,
   reconnecting; and the SSH core in headless Chrome for Testing against a real `sshd` on a
-  loopback port with its own host key and `authorized_keys` (`test/support/machine.ts`): no test
+  loopback port with its own host key and `authorized_keys` (`web/testing/machine.ts`): no test
   touches `~/.ssh` or the system's sshd. `npm test` in `web/relay/`: the relay's fetch handler
   with `connect()`, the name lookup and the WebSocket pair handed in (a stand-in TCP server on a
   loopback port; a pair that delivers Blobs unless asked otherwise, as workerd does). One root

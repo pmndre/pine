@@ -8,7 +8,7 @@ import type { AddressInfo } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright-core";
-import { bundle } from "../../scripts/bundle.ts";
+import { bundle } from "../scripts/bundle.ts";
 
 /** Chrome for Testing as Playwright installed it, the newest build there is. */
 export function chromeForTesting(): string {

@@ -4,7 +4,7 @@
   "type": "module",
   "description": "The Pine page in a web browser, connected to the owner's pine over SSH. Not part of what goes to npm.",
   "scripts": {
-    "test": "node --test --test-force-exit \"test/*.test.ts\"",
+    "test": "node --test --test-force-exit \"src/*.test.ts\"",
     "check": "tsc --noEmit",
     "build": "node scripts/build.ts",
     "smoke": "node scripts/smoke.ts"

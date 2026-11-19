@@ -2,7 +2,7 @@
 // Node socket to a server of the test's own on a loopback port) and the rate-limiting binding.
 import net from "node:net";
 import { Duplex } from "node:stream";
-import type { Deps, RelaySocket, RelayWebSocket, TcpSocket } from "../src/relay.ts";
+import type { Deps, RelaySocket, RelayWebSocket, TcpSocket } from "./src/relay.ts";
 
 type Listener = (event: any) => void;
 

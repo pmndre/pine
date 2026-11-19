@@ -41,7 +41,7 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-      # web/'s tests start an sshd of their own on a loopback port (test/support/machine.ts).
+      # web/'s tests start an sshd of their own on a loopback port (web/testing/machine.ts).
       - name: sshd for the SSH core's tests
         run: |
           sudo apt-get update -q

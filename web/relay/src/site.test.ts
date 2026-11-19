@@ -3,7 +3,7 @@
 // whose origin is opaque, load its own scripts and styles.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { site } from "../src/site.ts";
+import { site } from "./site.ts";
 
 /** Static assets as Cloudflare's binding serves them: a few files of the build. */
 const ASSETS = {

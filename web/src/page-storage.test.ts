@@ -3,7 +3,7 @@
 // back when the page loads again.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { keptStorage } from "../src/page-storage.ts";
+import { keptStorage } from "./page-storage.ts";
 
 const settle = () => new Promise((r) => setTimeout(r, 30));
 

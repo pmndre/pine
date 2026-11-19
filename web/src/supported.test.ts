@@ -2,7 +2,7 @@
 // names the browsers that work, and nothing else starts.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { unsupported } from "../src/supported.ts";
+import { unsupported } from "./supported.ts";
 
 test("with Ed25519 in WebCrypto there is nothing to say", async () => {
 	assert.equal(await unsupported(crypto.subtle), undefined);

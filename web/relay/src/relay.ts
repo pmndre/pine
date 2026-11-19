@@ -48,7 +48,7 @@ export type Env = {
 	/**
 	 * "1" lets a relay that is itself served on the loopback reach the loopback, and nothing else
 	 * besides. For the web client's smoke alone, which passes it to `wrangler dev` on its command
-	 * line; no configuration that is deployed sets it (test/loopback.test.ts), and a deployed
+	 * line; no configuration that is deployed sets it (src/relay.test.ts), and a deployed
 	 * Worker is never served on the loopback.
 	 */
 	RELAY_ALLOW_LOOPBACK?: string;

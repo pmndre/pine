@@ -6,9 +6,9 @@ import { execFileSync } from "node:child_process";
 import { createServer, type AddressInfo, type Socket } from "node:net";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { openPage, type Browser } from "./support/browser.ts";
-import { startMachine, type Machine } from "./support/machine.ts";
-import type * as Ssh from "../src/ssh.ts";
+import { openPage, type Browser } from "../testing/browser.ts";
+import { startMachine, type Machine } from "../testing/machine.ts";
+import type * as Ssh from "./ssh.ts";
 
 declare const ssh: typeof Ssh;
 declare let key: CryptoKeyPair;
@@ -18,7 +18,7 @@ let browser: Browser;
 
 before(async () => {
 	machine = await startMachine();
-	browser = await openPage(fileURLToPath(new URL("./support/page.ts", import.meta.url)));
+	browser = await openPage(fileURLToPath(new URL("../testing/page.ts", import.meta.url)));
 });
 
 /** Where the page connects to, as values it can be handed. */

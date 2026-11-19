@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { FUNNEL_PORTS, isFunnel, isName } from "../src/addresses.ts";
-import { relay } from "../src/relay.ts";
-import { limiter, names, pairs, request } from "./support.ts";
+import { FUNNEL_PORTS, isFunnel, isName } from "./addresses.ts";
+import { relay } from "./relay.ts";
+import { limiter, names, pairs, request } from "../testing.ts";
 
 // The relay refuses before it upgrades: no WebSocket is made and nothing is connected.
 async function refused(host: string, table: Record<string, string[]> = {}) {
