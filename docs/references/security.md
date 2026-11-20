@@ -517,7 +517,7 @@ The bundled browser has one question of the same kind: when the agent opens an a
 computer or your network (`http://localhost:5173`), you are asked, and a yes allows that host
 and port for the conversation. See "Local addresses" in [mcp.md](mcp.md).
 
-App control (the bundled `computer` server, macOS) has one as well: the first time the agent
+App control (the bundled `computer` server: macOS, Windows, Linux with X11) has one as well: the first time the agent
 looks at or acts in an app, you are asked, and a yes allows that app for the conversation.
 After it, what the agent does there is not asked about click by click. Only an agent in `auto` or `bypass` mode has these tools, only in your own conversations,
 never in a run started from outside. See [computer.md](computer.md).

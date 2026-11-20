@@ -8,7 +8,7 @@ to change the code.
 
 | Command | What it does |
 |---|---|
-| `npm test` | All tests against the scripted model server. About ten seconds. Run it after every change. |
+| `npm test` | All tests against the scripted model server. About ten seconds. Run it after every change. The Test workflow (`.github/workflows/test.yml`) runs it for every pull request and push to `next` on Linux (x64 and arm64, with the sandbox set up by `pine init`), macOS and Windows; a test that cannot run on a system skips itself and says why. |
 | `npm run build` | Makes the npm package in `build/`: the sources compiled to JavaScript at the same paths, plus docs and examples. Node runs TypeScript directly in a checkout but not inside `node_modules`, so only the package is compiled. Code that names one of pine's own module files at run time uses `EXT` from `src/config.ts` (".ts" or ".js"). |
 | `npm run release` | What the Release workflow runs on every push to `main` and to `next` (`.github/workflows/release.yml`): works out the next version, builds, publishes to npm, and marks the release with a tag. From `next` it is a preview (`--next` by hand). `node scripts/release.mjs --dry-run` shows the version and checks the package without publishing. The checkout's `package.json` is marked private so that the sources are never published uncompiled. |
 | `npm run check` | Type check (`tsc --noEmit`). |
@@ -16,10 +16,10 @@ to change the code.
 | `npm run baseline` | The 59 pi SDK checks in `baseline/`. Run it after upgrading pi. |
 | `node src/cli.ts <command>` | The CLI without installing it. |
 | `npm run desktop` | The desktop app (`desktop/`, Electron), built and opened. It has its own `package.json` and `node_modules`: `npm install` in `desktop/` once. `npm run dev` there reloads the page as you edit. |
-| `npm run desktop:test` | The desktop app from end to end: the real app, through its real window, on a pine home of its own with the scripted model server. It builds the app once for the run into a temp folder of its own and every test starts that build (`desktop/scripts/test.mjs`, `desktop/test/support/app.ts`), so runs of several checkouts at once never test each other's build; two files at a time, two minutes at most a test. A few minutes; needs a screen. Run it when you change `desktop/`, the control API the app uses (`src/http.ts`, `src/owner.ts`) or `pine service`. `npm run check` in `desktop/` is its type check. |
+| `npm run desktop:test` | The desktop app from end to end: the real app, through its real window, on a pine home of its own with the scripted model server. It builds the app once for the run into a temp folder of its own and every test starts that build (`desktop/scripts/test.mjs`, `desktop/test/support/app.ts`), so runs of several checkouts at once never test each other's build; two files at a time, two minutes at most a test. A few minutes; needs a screen. Run it when you change `desktop/`, the control API the app uses (`src/http.ts`, `src/owner.ts`) or `pine service`. The Test workflow runs it on macOS and on Linux under `xvfb-run` when those change. `npm run check` in `desktop/` is its type check. |
 | `npm run dev:preview` (in `desktop/`) | The app's page in an ordinary browser on a throwaway pine; `dev:preview:home` on `~/.pine`, whose daemon it never stops. Each checkout has ports of its own, from its path (`desktop/scripts/launch-json.mjs`), and `.claude/launch.json` is written with them by `npm install` in `desktop/` (it is not in git). After pulling, or when the preview pane lists no `desktop-preview`, run `node desktop/scripts/launch-json.mjs` (or `npm install` in `desktop/`). A preview and `npm run dev` end with whatever started them (`desktop/scripts/leash.mjs`). |
 | `npm run storybook` (in `desktop/`) | Storybook for the parts of the app's page, at port 6006: a story sits beside the file of what it shows (`desktop/src/<File>.stories.tsx`, `desktop/src/components/<name>.stories.tsx`: `desktop/src/ApprovalDialog.stories.tsx`, `desktop/src/components/printed.stories.tsx`, `desktop/src/components/logo.stories.tsx`); `npm run build-storybook` builds it. Chromatic publishes the stories on every pull request (`.github/workflows/chromatic.yml`, secret `CHROMATIC_PROJECT_TOKEN`), each in light and dark at a phone's width (360) and the window's (1280) through its modes (`desktop/.storybook/modes.ts`), so no dark or phone twin of a story is written. Add or update a story when you change a part in `desktop/src/components/` (outside `ui/`, which is stock). |
-| `npm run desktop:pack` | `desktop/release/mac-arm64/Pine.app` (`mac/` on Intel), with the package of `npm run build` and its dependencies, the Node it runs on, pine's helpers built (`scripts/helpers.mjs`) and `pine` for a terminal inside, signed with the hardened runtime. `node desktop/scripts/smoke.mjs` starts that app from a folder of its own and checks that it runs on the pine and the Node it carries. Run both when you change `desktop/scripts/`, a helper's build function, `src/prebuilt.ts` or `desktop/electron/service.ts`, and the smoke test also after a change to the page's markup that it finds the page by (`data-slot` names): no workflow runs it. |
+| `npm run desktop:pack` | On a Mac `desktop/release/mac-arm64/Pine.app` (`mac/` on Intel); on Linux and Windows the app's folder (`linux-unpacked`, `win-unpacked`), and with `--dist` an AppImage and a deb, or an NSIS installer (`desktop/scripts/pack.mjs`). On a Mac: with the package of `npm run build` and its dependencies, the Node it runs on, pine's helpers built (`scripts/helpers.mjs`) and `pine` for a terminal inside, signed with the hardened runtime. `node desktop/scripts/smoke.mjs` starts that app from a folder of its own and checks that it runs on the pine and the Node it carries. Run both when you change `desktop/scripts/`, a helper's build function, `src/prebuilt.ts` or `desktop/electron/service.ts`, and the smoke test also after a change to the page's markup that it finds the page by (`data-slot` names): no workflow runs it. |
 | `npm test`, `npm run check` (in `mobile/`) | The mobile app's bridge and both builds of its page (Android, iOS) under `node:test`, and its type check against the desktop page's `Bridge`. `npm install` in `mobile/` once. Run both when you change `mobile/src`, the page's bridge (`desktop/src/bridge.ts`) or what the page reads from it. The `android` and `ios` jobs of the Release workflow run both before they build the APK and the IPA. |
 | `npm run test:core` (in `mobile/`) | The native plugin's Kotlin core on the JVM: an SSH server in the test (Apache MINA sshd) and a stand-in daemon. Run it when you change `mobile/core/`, `mobile/cases/` or `src/remote.ts`. |
 | `swift test` (in `mobile/ios-core/`) | The iOS plugin's Swift core on the Mac: a real OpenSSH `sshd` started by the test on a loopback port and a stand-in daemon, and the same cases as the Kotlin core (`mobile/cases/`). Run it when you change `mobile/ios-core/`, `mobile/cases/` or `src/remote.ts`. The `ios` job of the Release workflow runs it. |
@@ -66,8 +66,8 @@ src/
   source-types.ts   what a source type module declares: summary, options schema, plan()
   sources/          the built-in source types (`SOURCE_TYPES` in config.ts). That look: http, command, feed, calendar,
                     modbus, presence. That are told: folder, mqtt, webhook, ftp, telegram, stream, mail, slack, matrix,
-                    discord, smtp, syslog, serial, onvif, system (system.swift is its macOS helper: it repeats what
-                    the system says and decides nothing), and command with `follow`
+                    discord, smtp, syslog, serial, onvif, system (its helpers repeat what the system says and decide
+                    nothing: system.swift on macOS, system.cs on Windows, system-linux.ts on D-Bus), and command with `follow`
   watching.ts       what the types that look share: fetching an address, picking a value (a field, a pattern, a
                     selector, a number), line differences, a page's text; and `capped`, the limit on how often a type that is told may report
   mime.ts           an e-mail message read into sender, subject, text and attachments, for the mail and smtp types
@@ -104,7 +104,9 @@ src/
                     functions as the tools, without the question (the token is the owner)
   service.ts        `ensureDaemon`: the daemon of a home, found or started in this process. The terminal UI uses it
                     directly, another program through `pine service`
-  remote.ts         the pine of another machine over SSH: the host checked to be no option, `pine service` run there,
+  csharp.ts         pine's helpers on Windows: a C# program built with the compiler every Windows carries (csc.exe, C# 5),
+                    into prebuilt/ beside its source or a folder of pine's, as the Swift helpers are built on a Mac
+  remote.ts         the pine of another machine over SSH (and, on Windows, of a WSL distribution through wsl.exe: `connectWsl`): the host checked to be no option, `pine service` run there,
                     a port of this computer forwarded to its loopback and nowhere else. Node's own modules only: the
                     Pine app's main process carries it (Settings > Environments); `pine --ssh` uses it for the terminal UI
   limiter.ts        model slots with priority
@@ -124,12 +126,13 @@ src/
                     picture.ts (pictures, video and sound: conversion with sips or ffmpeg, Kitty-protocol or half-block drawing, the system's player for sound),
                     levels.ts (the bars of a sound: its levels by frequency band for each tenth of a second, from a wav file or a decoder's samples;
                     the Pine app's page is built with this file too, so nothing in it runs or imports Node's own when it is loaded),
-                    voice.ts (dictating a message: builds and runs voice.swift, the macOS helper that listens and has the system
-                    recognise the words on the device; on another system a sentence and nothing else)
+                    voice.ts (dictating a message, recognised on the device: voice.swift on macOS, voice.cs on Windows
+                    (System.Speech), voice-linux.ts and voice-whisper.ts on Linux (whisper.cpp); a sentence where a piece is missing)
   types.ts, util.ts shared types; topics, templates, filters, durations, logger; the folded parts of a text (`foldsIn`, for the
                     terminal UI, and `unfolded` for a place that folds nothing)
   dev/claude-model.ts   OpenAI-compatible server backed by `claude -p` (development only)
 mcp/                bundled MCP servers (separate processes): web, browser, commands, computer; lib.ts is what they share
+                    (computer.cs and computer-linux.py are computer.ts's helpers on Windows and on Linux with X11)
                     (render.ts is not a server: the helper of the http source's `render`, one look at a page with the browser)
                     (computer.swift is the macOS helper of computer.ts: accessibility tree, mouse and key events, pictures; it decides nothing)
 examples/home/      what `pine init` copies
@@ -299,6 +302,9 @@ These are invariants. A change that breaks one needs a test that shows why it is
    A conversation that has read outside content keeps what its mode gives it: outside
    content takes no reach away. What changes is what is asked (rule 5). A run started from
    outside never has any of it.
+   Windows has no sandbox of pine's: an AppContainer cannot run Git's bash or git, and `safe`
+   mode there is pine in WSL (`docs/adr/0004-three-systems.md`). Do not add a sandbox for
+   Windows that does not run the shell and the git an agent uses.
    On a machine without a sandbox `safe` cannot be had. `levelOf()` in `src/security.ts`
    gives an agent whose mode nobody chose `auto` there, and `audit()` names it; an agent that
    was set to `safe` gets no shell (the gate), and a run started from outside gets none
@@ -661,8 +667,12 @@ These are invariants. A change that breaks one needs a test that shows why it is
    clicks, types or presses in the app pine itself runs in, where the owner answers pine's
    questions. There is no list of forbidden apps, on purpose: do not add one. The helper only
    does what it is told; a check that decides who may do what belongs in `computer.ts`, where
-   the tests reach it with a stand-in for the helper. On a system that is not macOS the server
-   is not registered, and started by hand it offers nothing and says so.
+   the tests reach it with a stand-in for the helper. Windows and Linux cannot send keys to a
+   process: there the helper checks, right before each key, that the named app is in front, and
+   before each click that the window under the point is that app's, and stops otherwise
+   (`mcp/computer.cs`, `mcp/computer-linux.py`). Where there is no desktop it can act in (Linux
+   under Wayland or without a display, any other system) the server is not registered, and
+   started by hand it offers nothing and says so.
 
 ## pi behaviours pine depends on
 
@@ -733,6 +743,17 @@ takes. The app of a release can be built again by hand, without publishing anyth
 (`gh workflow run release.yml -f version=0.38.0`, from `main`): from that release's tag, with
 the workflow as it is on `main` now, which is the way to repair a release whose `app` job
 failed. The helpers need the macOS 26 SDK, so the job selects the newest Xcode on the runner.
+
+A release from `main` gets the Pine app for Linux (`app-linux`: an AppImage and a deb for x64 and
+arm64, started under a virtual screen, with checksums and GitHub's attestation) and for Windows
+(`app-windows` packs and starts each, `app-windows-sign` has both folders and then both installers
+signed through SignPath Foundation: two approvals a release at signpath.io; four secrets in the
+environment `release`, listed above the job; without them nothing is built). Only pine's own
+programs are signed (`desktop/signpath/`, whose README says how it is set up), and each has to say
+"Pine" and the release's version: the `pack` job of `test.yml` checks that on Windows. The Windows
+app talks to pine in WSL as to another machine (`desktop/electron/wsl.ts`), and no runner of
+GitHub's has WSL: `desktop/test/wsl.test.ts` tests it on a stand-in, and a real round trip is by
+hand on a Windows computer.
 
 A release from `main` gets the Android app too (the job `android` in `release.yml`, on the
 same skeleton as `app`, on Linux): `npm run apk:release` in `mobile/`, signed with the release
@@ -888,6 +909,11 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   Testing with a throwaway profile, a `sshd` of its own running the real `pine service` on a
   home of its own with the scripted model server; each named check fails the run. Run it before
   a release that changes `web/` or upgrades wrangler, Chrome or the SSH library.
+- The Test workflow runs on Linux (x64, arm64), macOS and Windows. A test that cannot run on a
+  system skips itself with the reason (`skip: process.platform === "win32" && "..."`), never
+  silently. Windows' helpers (`*.cs`) are built and run by tests gated on `win32`, which only CI
+  runs; on Windows the tests' commands run in `auto` mode (`harness()`), since there is no sandbox.
+  GitHub's runners are slower than a desk: `PINE_TEST_PATIENCE` multiplies every `until`.
 - A new security property needs a test that fails without the code that provides it.
 
 ## Style

@@ -8,7 +8,8 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { connectRemote, RemoteError, sshHost } from "../../src/remote.ts";
+import { sealed } from "./fds.ts";
+import { connectRemote, connectWsl, RemoteError, sshHost, wslDistro } from "../../src/remote.ts";
 
 export interface Service {
 	base: string;
@@ -43,10 +44,37 @@ export interface Launch {
 	from: string;
 }
 
+/** A variable of an environment by its name, which Windows does not tell apart by case (Path, PATH). */
+export const named = (env: NodeJS.ProcessEnv, name: string) => env[name] ?? Object.entries(env).find(([k]) => k.toUpperCase() === name)?.[1];
+
+/**
+ * How a program is started. A .cmd or .bat (npm's `pine` on Windows) runs only through cmd.exe,
+ * which Node no longer does by itself: it is handed to the shell as one line, each word quoted.
+ */
+export function started(file: string, args: string[], platform: string = process.platform): { file: string; args: string[]; shell: boolean } {
+	if (platform !== "win32" || !/\.(cmd|bat)$/i.test(file)) return { file, args, shell: false };
+	const quoted = (word: string) => `"${word.replace(/"/g, '""')}"`;
+	return { file: [file, ...args].map(quoted).join(" "), args: [], shell: true };
+}
+
 const run = (file: string, args: string[], opts: { timeout?: number; env?: NodeJS.ProcessEnv } = {}) =>
 	new Promise<{ code: number; out: string }>((resolve) => {
-		execFile(file, args, { timeout: opts.timeout ?? 8000, env: opts.env, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => resolve({ code: err ? 1 : 0, out: String(stdout) }));
+		const how = started(file, args);
+		execFile(how.file, how.args, { timeout: opts.timeout ?? 8000, env: opts.env, maxBuffer: 4 * 1024 * 1024, shell: how.shell, windowsHide: true }, (err, stdout) => resolve({ code: err ? 1 : 0, out: String(stdout) }));
 	});
+
+/** The shell the owner logs in with: $SHELL, else the account's (Linux), else zsh, a Mac's own. */
+function loginShell(): string {
+	if (process.env.SHELL && fs.existsSync(process.env.SHELL)) return process.env.SHELL;
+	if (process.platform === "darwin") return "/bin/zsh";
+	try {
+		const own = os.userInfo().shell;
+		if (own && fs.existsSync(own)) return own;
+	} catch {
+		// no entry for this user
+	}
+	return "/bin/sh";
+}
 
 let shellEnv: Promise<NodeJS.ProcessEnv> | undefined;
 
@@ -59,7 +87,7 @@ let shellEnv: Promise<NodeJS.ProcessEnv> | undefined;
 export function loginEnv(): Promise<NodeJS.ProcessEnv> {
 	shellEnv ??= (async () => {
 		if (process.platform === "win32") return { ...process.env };
-		const shell = process.env.SHELL && fs.existsSync(process.env.SHELL) ? process.env.SHELL : "/bin/zsh";
+		const shell = loginShell();
 		// Between two marks, so that whatever a profile prints does not get in the way.
 		const { out } = await run(shell, ["-ilc", "printf '\\n__PINE_ENV__\\n'; env; printf '__PINE_END__\\n'"], { timeout: 6000 });
 		const body = /__PINE_ENV__\n([\s\S]*?)__PINE_END__/.exec(out)?.[1];
@@ -76,15 +104,23 @@ export function loginEnv(): Promise<NodeJS.ProcessEnv> {
 	return shellEnv;
 }
 
-function onPath(name: string, env: NodeJS.ProcessEnv): string | undefined {
-	for (const dir of String(env.PATH ?? "").split(path.delimiter)) {
+/**
+ * A program on the PATH of `env`. On Windows a name without an extension is one of those PATHEXT
+ * lists (`pine` is npm's pine.cmd there; the file without one beside it is for Git Bash, and
+ * Windows does not run it).
+ */
+export function onPath(name: string, env: NodeJS.ProcessEnv, platform: string = process.platform): string | undefined {
+	const exts = platform === "win32" && !path.extname(name) ? String(named(env, "PATHEXT") || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
+	for (const dir of String(named(env, "PATH") ?? "").split(platform === "win32" ? ";" : ":")) {
 		if (!dir) continue;
-		const file = path.join(dir, name);
-		try {
-			fs.accessSync(file, fs.constants.X_OK);
-			return file;
-		} catch {
-			// not here
+		for (const ext of exts) {
+			const file = path.join(dir, name + ext.toLowerCase());
+			try {
+				fs.accessSync(file, fs.constants.X_OK);
+				if (platform !== "win32" || fs.statSync(file).isFile()) return file;
+			} catch {
+				// not here
+			}
 		}
 	}
 	return undefined;
@@ -112,8 +148,9 @@ export async function findPine(appRoot: string, resources?: string): Promise<Lau
 	];
 	const script = places.find((p) => fs.existsSync(p.file) && (p.from !== "this checkout" || fs.existsSync(path.join(appRoot, "..", "src", "cli.ts"))));
 	if (script) {
-		const own = resources ? path.join(resources, "node", "bin", "node") : undefined;
-		const theirs = [onPath("node", env), "/opt/homebrew/bin/node", "/usr/local/bin/node", path.join(os.homedir(), ".volta", "bin", "node")];
+		// As nodejs.org hands it out for each system: bin/node, and node.exe at the top on Windows.
+		const own = resources ? (process.platform === "win32" ? path.join(resources, "node", "node.exe") : path.join(resources, "node", "bin", "node")) : undefined;
+		const theirs = [onPath("node", env), ...(process.platform === "win32" ? [] : ["/opt/homebrew/bin/node", "/usr/local/bin/node", path.join(os.homedir(), ".volta", "bin", "node")])];
 		const candidates = [process.env.PINE_NODE, ...(script.from === "the app" ? [own, ...theirs] : [...theirs, own])].filter((x): x is string => Boolean(x && fs.existsSync(x)));
 		for (const node of candidates) if ((await nodeVersion(node, env)) >= 24) return { argv: [node, script.file], env, from: script.from };
 		throw new ServiceError("no-node", candidates.length ? `pine needs Node 24 or newer, and the node found on this computer (${candidates[0]}) is older. Install a current one from https://nodejs.org, then try again.` : "pine runs on Node, and no node was found on this computer. Install Node 24 or newer from https://nodejs.org, then try again.");
@@ -140,7 +177,8 @@ export function pineRoot(launch: Launch): string | undefined {
 /** Run a pine command to its end and hand on what it prints, line by line. For `pine init` on a first start. */
 export function runPine(launch: Launch, args: string[], onLine: (line: string) => void, extraEnv: NodeJS.ProcessEnv = {}): Promise<number> {
 	return new Promise((resolve) => {
-		const child = spawn(launch.argv[0], [...launch.argv.slice(1), ...args], { env: { ...launch.env, ...extraEnv }, stdio: ["ignore", "pipe", "pipe"] });
+		const how = started(launch.argv[0], [...launch.argv.slice(1), ...args]);
+		const child = spawn(how.file, how.args, { env: { ...launch.env, ...extraEnv }, stdio: sealed(["ignore", "pipe", "pipe"]), shell: how.shell, windowsHide: true });
 		let buf = "";
 		const take = (d: Buffer) => {
 			buf += d.toString("utf8").replace(/\r/g, "\n");
@@ -150,8 +188,8 @@ export function runPine(launch: Launch, args: string[], onLine: (line: string) =
 				if (line.trim()) onLine(line);
 			}
 		};
-		child.stdout.on("data", take);
-		child.stderr.on("data", take);
+		child.stdout!.on("data", take);
+		child.stderr!.on("data", take);
 		child.on("error", (e) => (onLine(e.message), resolve(1)));
 		child.on("close", (code) => (buf.trim() && onLine(buf), resolve(code ?? 1)));
 	});
@@ -166,7 +204,8 @@ export function connect(launch: Launch, opts: { home?: string; keep?: boolean } 
 		const args = [...launch.argv.slice(1), "service", ...(opts.home ? ["--home", opts.home] : []), ...(opts.keep ? ["--keep"] : [])];
 		// Its stdin is the leash: when this app dies without a word, the pipe closes and the daemon stops.
 		// (One that is kept gets no pipe it could still be writing into when this app is gone, but for its one line.)
-		const child: ChildProcess = spawn(launch.argv[0], args, { env: launch.env, stdio: opts.keep ? ["ignore", "pipe", "ignore"] : ["pipe", "pipe", "pipe"], detached: Boolean(opts.keep) });
+		const how = started(launch.argv[0], args);
+		const child: ChildProcess = spawn(how.file, how.args, { env: launch.env, stdio: sealed(opts.keep ? ["ignore", "pipe", "ignore"] : ["pipe", "pipe", "pipe"]), detached: Boolean(opts.keep), shell: how.shell, windowsHide: true });
 		let out = "";
 		let err = "";
 		let settled = false;
@@ -210,10 +249,15 @@ export function connect(launch: Launch, opts: { home?: string; keep?: boolean } 
 				version: typeof said.version === "string" ? said.version : undefined,
 				stop: async () => {
 					if (gone || opts.keep) return;
-					child.kill("SIGTERM");
-					// It stops its agents and closes its database first; a daemon that hangs is ended.
-					const hard = setTimeout(() => child.kill("SIGKILL"), 12_000);
+					// Its input is the leash: closed, the daemon stops its agents and closes its database, and
+					// ends within ten seconds. That works on every system: on Windows a signal is no request
+					// but the end of the process, and the database would be left open. One that does not end
+					// is told with a signal, and one that hangs is ended.
+					child.stdin?.end();
+					const term = setTimeout(() => child.kill("SIGTERM"), 11_000);
+					const hard = setTimeout(() => child.kill("SIGKILL"), 15_000);
 					await ended;
+					clearTimeout(term);
 					clearTimeout(hard);
 				},
 			});
@@ -235,6 +279,11 @@ export function connect(launch: Launch, opts: { home?: string; keep?: boolean } 
  */
 export async function connectSsh(host: string, env: NodeJS.ProcessEnv): Promise<Service> {
 	try {
+		// "wsl:<distribution>": the pine of a Linux distribution on this Windows computer (src/remote.ts).
+		if (host.startsWith("wsl:")) {
+			const w = await connectWsl(host.slice(4), { env, wsl: process.env.PINE_DESKTOP_WSL });
+			return { base: w.base, token: w.token, mode: `in WSL (${w.label})`, started: w.started, home: `${w.label}:${w.home}`, version: w.version, host: w.host, label: w.label, stop: w.stop };
+		}
 		const r = await connectRemote(host, { env, ssh: process.env.PINE_DESKTOP_SSH });
 		return { base: r.base, token: r.token, mode: `on ${r.label}`, started: r.started, home: `${r.label}:${r.home}`, version: r.version, host: r.host, label: r.label, stop: r.stop };
 	} catch (e) {
@@ -249,13 +298,23 @@ export function readHosts(raw: unknown): string[] {
 	if (!Array.isArray(raw)) return out;
 	for (const value of raw) {
 		try {
-			const host = typeof value === "string" ? sshHost(value)?.host : undefined;
+			const host = typeof value === "string" ? hostOf(value) : undefined;
 			if (host && !out.includes(host)) out.push(host);
 		} catch {
 			// not a host for ssh: not kept
 		}
 	}
 	return out.slice(0, 20);
+}
+
+/** A machine as the app keeps it: a host for ssh, or "wsl:<distribution>" for one of this Windows computer's. */
+export function hostOf(value: string): string | undefined {
+	const v = value.trim();
+	if (v.toLowerCase().startsWith("wsl:")) {
+		const d = wslDistro(v.slice(4))?.distro;
+		return d ? `wsl:${d}` : undefined;
+	}
+	return sshHost(v)?.host;
 }
 
 export { sshHost };

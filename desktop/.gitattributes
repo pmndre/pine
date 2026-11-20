@@ -1,0 +1,2 @@
+# The launcher for a terminal on Windows is read by cmd.exe, which wants its lines ended the Windows way.
+*.cmd text eol=crlf

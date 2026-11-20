@@ -22,6 +22,11 @@ name: Release
 # Without them the app is not built, and the job says so: an app that is not signed and notarised
 # is one macOS refuses to open, so none is handed out.
 #
+# A release from main also gets the Pine app for Linux (an AppImage and a deb for x64 and arm64,
+# with SHA256SUMS and GitHub's build attestation; no secrets) and for Windows (an installer for
+# x64 and arm64, signed through SignPath Foundation: four secrets, listed above the job app-windows;
+# desktop/signpath/README.md says how it is set up).
+#
 # A release from main also gets the Android app (mobile/), attached as Pine-<version>.apk, with
 # versionName the release's version and versionCode major*1000000 + minor*1000 + patch
 # (mobile/scripts/version-code.ts). It is signed with pine's release key, which takes four more
@@ -86,6 +91,7 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - run: npm run check
+      - run: npm test
       - id: publish
         run: node scripts/release.mjs
         env:
@@ -188,6 +194,277 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - if: always()
         run: rm -f "$RUNNER_TEMP/app-store-connect.p8"
+
+  # The Pine app of a release for Linux: an AppImage and a deb for each kind of processor, started
+  # on a virtual screen before they are uploaded. Nothing is signed: what a download is, the
+  # release's SHA256SUMS and GitHub's attestation of where it was built say.
+  app-linux:
+    needs: release
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.release.outputs.channel == 'latest')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write # the packages go to the release
+      id-token: write # the attestation
+      attestations: write
+    env:
+      VERSION: ${{ inputs.version || needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.version && format('v{0}', inputs.version) || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: What node-pty is built with, and a screen for the smoke test
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 xvfb
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: npm ci && npm ci --prefix desktop
+      - name: Pack
+        run: node desktop/scripts/pack.mjs --dist --arch ${{ matrix.arch }}
+        env:
+          PINE_VERSION: ${{ env.VERSION }}
+      - name: Start it once
+        run: xvfb-run -a node desktop/scripts/smoke.mjs
+      - name: Checksums
+        run: |
+          cd desktop/release
+          sha256sum Pine-$VERSION-*.AppImage *.deb > SHA256SUMS-linux-${{ matrix.arch }}
+          cat SHA256SUMS-linux-${{ matrix.arch }}
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: desktop/release/Pine-*
+      - run: gh release upload "v$VERSION" desktop/release/Pine-$VERSION-*.AppImage desktop/release/*.deb desktop/release/SHA256SUMS-linux-${{ matrix.arch }} --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # The Pine app of a release for Windows: an installer for each kind of processor, signed with
+  # SignPath Foundation's certificate for open-source projects. Two jobs: app-windows packs the app's
+  # folder on each processor and starts it once; app-windows-sign has both folders signed in one
+  # request, makes the two installers from the signed folders, and has those signed in a second one.
+  # So a release asks the owner for two approvals at signpath.io, not four.
+  # It needs four secrets in the environment "release":
+  #   SIGNPATH_API_TOKEN, SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_POLICY_SLUG
+  # and the project at signpath.io needs the two artifact configurations in desktop/signpath/
+  # (slugs "app-folder" and "installer"). desktop/signpath/README.md says how it is set up.
+  # Without the secrets nothing is built, and the job says so: an unsigned installer is one Windows
+  # warns about on every download.
+  app-windows:
+    needs: release
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.release.outputs.channel == 'latest')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+          - arch: arm64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    environment: release
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ inputs.version || needs.release.outputs.version }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - id: signing
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_POLICY_SLUG: ${{ secrets.SIGNPATH_POLICY_SLUG }}
+        run: |
+          missing=""
+          for name in SIGNPATH_API_TOKEN SIGNPATH_ORGANIZATION_ID SIGNPATH_PROJECT_SLUG SIGNPATH_POLICY_SLUG; do
+            if [ -z "$(printenv "$name")" ]; then missing="$missing $name"; fi
+          done
+          if [ "$(echo $missing | wc -w)" -eq 4 ]; then
+            echo "::notice::The Pine app for Windows was not built: the environment \"release\" has no SignPath secrets yet (see release.yml)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "$missing" ]; then
+            echo "::error::The Pine app for Windows cannot be signed: these secrets are missing in the environment \"release\":$missing"
+            exit 1
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.signing.outputs.ready == 'true'
+        run: git config --global core.autocrlf false
+      - if: steps.signing.outputs.ready == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.version && format('v{0}', inputs.version) || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - if: steps.signing.outputs.ready == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - if: steps.signing.outputs.ready == 'true'
+        run: npm ci && npm ci --prefix desktop
+      - if: steps.signing.outputs.ready == 'true'
+        name: Pack the app's folder
+        run: node desktop/scripts/pack.mjs --dir --arch ${{ matrix.arch }}
+        env:
+          PINE_VERSION: ${{ env.VERSION }}
+      - if: steps.signing.outputs.ready == 'true'
+        name: Start it once
+        run: node desktop/scripts/smoke.mjs
+      - if: steps.signing.outputs.ready == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pine-windows-${{ matrix.arch }}
+          path: desktop/release/win-*unpacked/
+          retention-days: 3
+
+  app-windows-sign:
+    needs: [release, app-windows]
+    if: always() && needs.app-windows.result == 'success'
+    runs-on: windows-latest
+    # Each request waits for the owner's approval at signpath.io (an e-mail says one is waiting).
+    timeout-minutes: 300
+    environment: release
+    permissions:
+      contents: write # the installers go to the release
+      actions: read # SignPath reads the artifacts it signs
+    env:
+      VERSION: ${{ inputs.version || needs.release.outputs.version }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - id: signing
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_POLICY_SLUG: ${{ secrets.SIGNPATH_POLICY_SLUG }}
+        run: |
+          missing=""
+          for name in SIGNPATH_API_TOKEN SIGNPATH_ORGANIZATION_ID SIGNPATH_PROJECT_SLUG SIGNPATH_POLICY_SLUG; do
+            if [ -z "$(printenv "$name")" ]; then missing="$missing $name"; fi
+          done
+          if [ "$(echo $missing | wc -w)" -eq 4 ]; then
+            echo "::notice::The Pine app for Windows was not built: the environment \"release\" has no SignPath secrets yet (see release.yml)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "$missing" ]; then
+            echo "::error::The Pine app for Windows cannot be signed: these secrets are missing in the environment \"release\":$missing"
+            exit 1
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.signing.outputs.ready == 'true'
+        run: git config --global core.autocrlf false
+      - if: steps.signing.outputs.ready == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.version && format('v{0}', inputs.version) || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - if: steps.signing.outputs.ready == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - if: steps.signing.outputs.ready == 'true'
+        run: npm ci && npm ci --prefix desktop
+      - if: steps.signing.outputs.ready == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pine-windows-x64
+          path: desktop/release/unsigned/x64
+      - if: steps.signing.outputs.ready == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pine-windows-arm64
+          path: desktop/release/unsigned/arm64
+      - if: steps.signing.outputs.ready == 'true'
+        id: unsigned
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pine-windows-unsigned
+          path: desktop/release/unsigned/
+          retention-days: 3
+      - if: steps.signing.outputs.ready == 'true'
+        name: Sign both folders (waits for the approval at signpath.io)
+        uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: app-folder
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          parameters: |
+            version: "${{ env.VERSION }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: desktop/release/signed
+      - if: steps.signing.outputs.ready == 'true'
+        name: The installers, from the signed folders
+        run: |
+          node desktop/scripts/pack.mjs --prepackaged desktop/release/signed/x64 --arch x64
+          node desktop/scripts/pack.mjs --prepackaged desktop/release/signed/arm64 --arch arm64
+          mkdir -p desktop/release/installers
+          mv "desktop/release/Pine-$VERSION-x64-setup.exe" "desktop/release/Pine-$VERSION-arm64-setup.exe" desktop/release/installers/
+        env:
+          PINE_VERSION: ${{ env.VERSION }}
+      - if: steps.signing.outputs.ready == 'true'
+        id: installers
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pine-windows-installers
+          path: desktop/release/installers/
+          retention-days: 3
+      - if: steps.signing.outputs.ready == 'true'
+        name: Sign both installers (waits for the approval at signpath.io)
+        uses: signpath/github-action-submit-signing-request@4a84eb4ad763290f059275786f2deed97c2c672b # v3.1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.installers.outputs.artifact-id }}
+          parameters: |
+            version: "${{ env.VERSION }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: desktop/release/out
+      - if: steps.signing.outputs.ready == 'true'
+        name: What another Windows will say to it
+        shell: pwsh
+        run: |
+          $files = @(
+            "desktop\release\out\Pine-$env:VERSION-x64-setup.exe",
+            "desktop\release\out\Pine-$env:VERSION-arm64-setup.exe",
+            "desktop\release\signed\x64\Pine.exe",
+            "desktop\release\signed\arm64\Pine.exe"
+          ) + (Get-ChildItem -Recurse -Path desktop\release\signed -Filter "pine-*.exe" | ForEach-Object { $_.FullName })
+          foreach ($f in $files) {
+            $s = Get-AuthenticodeSignature $f
+            "$f : $($s.Status) $($s.SignerCertificate.Subject)"
+            if ($s.Status -ne "Valid") { exit 1 }
+          }
+      - if: steps.signing.outputs.ready == 'true'
+        run: gh release upload "v$VERSION" "desktop/release/out/Pine-$VERSION-x64-setup.exe" "desktop/release/out/Pine-$VERSION-arm64-setup.exe" --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
 
   # The Android app of a release (mobile/): a signed APK attached to the release, next to the disk images.
   android:

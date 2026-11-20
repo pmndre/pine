@@ -29,7 +29,7 @@ PINE of course also handles regular chat, coding, tasks and orchestration. Agent
 - **Orchestration:** Agents can delegate, create sub-agents in parallel. A pinned tab simply persists an agent and its task. Name it, give it instructions, chat with it or subscribe it to events.
 
 > [!IMPORTANT]
-> pine runs on macOS and Linux; `pine init` sets up what it needs. Windows users can try [Docker](#docker). It remains open what exactly is necessary to make it run completely in Windows.
+> pine runs on macOS, Linux and Windows; `pine init` sets up what it needs. Its sandbox is the system's own on macOS and Linux. On Windows the Pine app runs pine in WSL, where it has the Linux sandbox; pine on Windows itself works in `auto` and `bypass` mode ([operations.md](docs/references/operations.md), "On Windows").
 
 ```
                   you:  terminal UI · Telegram
@@ -171,6 +171,19 @@ docker run -it --cap-add SYS_ADMIN --cap-add NET_ADMIN --security-opt seccomp=un
 so if a right is missing. With pine as an ordinary user in the container instead of root, add
 `--security-opt systempaths=unconfined`. `--privileged` works in place of all of them.
 
+## Code signing policy
+
+The Pine app for Windows is signed. Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [drcmda](https://github.com/drcmda), [abernier](https://github.com/abernier)
+- Approvers: [drcmda](https://github.com/drcmda)
+
+Only what is built from this repository's source by its release workflow ([release.yml](.github/workflows/release.yml)) is signed, and every release is approved by hand. How it is set up: [desktop/signpath/](desktop/signpath/README.md).
+
+### Privacy
+
+pine will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it: the model servers, web addresses, sources and MCP servers it talks to are the ones its owner sets up. One exception, in the Pine app: when it starts, it asks GitHub (`api.github.com`) for the number of pine's latest release, to say when a newer app is out. That question carries nothing about your computer or your pine.
+
 ## Documentation
 
 Start at [docs/SKILL.md](docs/SKILL.md); it indexes everything.
@@ -179,7 +192,7 @@ Start at [docs/SKILL.md](docs/SKILL.md); it indexes everything.
 | --------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | Understand how the pieces fit                                                           | [overview.md](docs/references/overview.md)                   |
 | Use the terminal UI                                                                     | [tui.md](docs/references/tui.md)                             |
-| Use the desktop app (macOS): conversations, an editor, and a settings panel in one window | [desktop.md](docs/references/desktop.md)                     |
+| Use the desktop app (macOS, Linux, Windows): conversations, an editor, and a settings panel in one window | [desktop.md](docs/references/desktop.md)                     |
 | Use pine from an Android phone or an iPhone, over SSH                                   | [mobile.md](docs/references/mobile.md)                       |
 | Use your pine from a web browser on any computer, over SSH, with nothing installed       | [web.md](docs/references/web.md)                             |
 | Work on a project: `pine .`, the code pane with git changes, files and tool output, `/undo` | [coding.md](docs/references/coding.md)                       |

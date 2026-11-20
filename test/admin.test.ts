@@ -32,7 +32,7 @@ async function pine(agents: Record<string, any>, extra: Record<string, unknown> 
 	return { h, asked, main: as("main"), as, offered, idle, file: (id: string) => path.join(h.home, "agents", id, "agent.json") };
 }
 
-test("admin: the main agent lists agents and changes one by tool call; what is wrong is said before the owner is asked, and the others have no such tools", async (t) => {
+test("admin: the main agent lists agents and changes one by tool call; what is wrong is said before the owner is asked, and the others have no such tools", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async (t) => {
 	const outside = fs.mkdtempSync(path.join(os.tmpdir(), "pine-admin-"));
 	t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
 	fs.writeFileSync(path.join(outside, "victim.txt"), "UNTOUCHED");
@@ -43,7 +43,7 @@ test("admin: the main agent lists agents and changes one by tool call; what is w
 	// What an agent is for is the first paragraph of its AGENTS.md (the heading aside); in an older home without one, `description` in agent.json.
 	assert.match(out[0], /- aide: Second pair of hands\n/);
 	assert.match(out[0], /- helper: Reads papers\.\n    model mock\/m \(the default\) · reasoning off · mode safe · reach its own folders, in the sandbox · built-in tools read, bash, edit, write, grep, find, ls\n    conversations: none · event sources: none · MCP servers: none · schedules: none · skills: none · 2 files in its workspace/);
-	assert.match(out[1], /workspace: .*agents\/helper\/workspace\n    may hand work to: none\n\nIts instructions \(AGENTS\.md in its workspace, which it also keeps itself; update_agent "instructions" replaces them\):\n# Helper\n\nReads papers\.\n\nYou are HELPER\./);
+	assert.match(out[1], /workspace: .*agents[\\/]helper[\\/]workspace\n    may hand work to: none\n\nIts instructions \(AGENTS\.md in its workspace, which it also keeps itself; update_agent "instructions" replaces them\):\n# Helper\n\nReads papers\.\n\nYou are HELPER\./);
 	assert.match(out[2], /there is no agent "nobody"\. Agents: aide, helper, main/);
 	assert.equal(asked.length, 0, "looking asks nobody");
 
@@ -339,7 +339,7 @@ test("admin: an agent renamed by the owner takes everything that named it along,
 	await h.close();
 });
 
-test("admin: the main agent gives an agent a color, when it makes one and later, with the owner's yes; a bad color is refused before anyone is asked", async () => {
+test("admin: the main agent gives an agent a color, when it makes one and later, with the owner's yes; a bad color is refused before anyone is asked", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const { h, asked, main, file } = await pine({ helper: { agent: { description: "Reads papers" } } });
 
 	// Made with a color: the owner sees it, and it is written in lower case.
@@ -464,7 +464,7 @@ test("admin: the main agent does for another agent what that agent can do for it
 	await stub.close();
 });
 
-test("admin: pine's settings are listed and changed by tool call, each value checked, confirmed and read back", async () => {
+test("admin: pine's settings are listed and changed by tool call, each value checked, confirmed and read back", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const { h, asked, main } = await pine({ helper: { agent: { description: "Reads papers" } }, loud: { agent: { thinking: "high" } } });
 	const file = path.join(h.home, "pine.json");
 	let out = await main(call("settings"));

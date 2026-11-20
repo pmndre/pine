@@ -573,6 +573,12 @@ function renderTurn(signal: AbortSignal): Promise<() => void> {
  * browser is found by the folder its profile lies in, which is this look's and nobody else's.
  */
 function sweep(dir: string): Promise<void> {
+	// Windows has no ps: CIM says the processes' command lines. The folder is pine's own (a temp folder it made).
+	if (process.platform === "win32")
+		return new Promise((resolve) => {
+			const script = `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains('${(dir + path.sep).replace(/'/g, "''")}') -and $_.ProcessId -ne ${process.pid} } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`;
+			execFile(path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", script], { timeout: 15_000, windowsHide: true }, () => resolve());
+		});
 	return new Promise((resolve) => {
 		execFile("ps", ["axww", "-o", "pid=,args="], { maxBuffer: 16 * 1024 * 1024, timeout: 5000, env: { PATH: process.env.PATH ?? "/usr/bin:/bin" } }, (_err, out) => {
 			for (const line of String(out ?? "").split("\n")) {
@@ -643,13 +649,21 @@ function renderOnce(job: RenderJob, scratch: string, signal: AbortSignal): Promi
 		if (signal.aborted) return reject(new Error("stopped"));
 		// Of the daemon's environment only what a browser needs to be found and to start. No secret is in it.
 		const env: Record<string, string> = { TMPDIR: scratch };
-		for (const k of ["HOME", "PATH", "PLAYWRIGHT_BROWSERS_PATH"]) if (process.env[k]) env[k] = process.env[k]!;
-		const child = spawn(program[0], program.slice(1), { cwd: scratch, env, stdio: ["pipe", "pipe", "ignore"], detached: true });
+		// (Windows: where the browser lies is found from the profile's folders, and a program does not start without SystemRoot.)
+		const keep = ["HOME", "PATH", "PLAYWRIGHT_BROWSERS_PATH", ...(process.platform === "win32" ? ["SystemRoot", "windir", "PATHEXT", "USERPROFILE", "LOCALAPPDATA", "APPDATA"] : [])];
+		for (const k of keep) if (process.env[k]) env[k] = process.env[k]!;
+		if (process.platform === "win32") env.TEMP = env.TMP = scratch;
+		const child = spawn(program[0], program.slice(1), { cwd: scratch, env, stdio: ["pipe", "pipe", "ignore"], detached: true, windowsHide: true });
 		let out = Buffer.alloc(0);
 		let failure: Error | undefined;
 		let hard: NodeJS.Timeout | undefined;
 		// The whole group: a helper that started others must not leave them behind.
 		const group = (sig: NodeJS.Signals) => {
+			// Windows has no groups: the helper's tree, by its parents (taskkill /T).
+			if (process.platform === "win32") {
+				if (child.pid) execFile(path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "taskkill.exe"), ["/PID", String(child.pid), "/T", ...(sig === "SIGKILL" ? ["/F"] : [])], { windowsHide: true }, () => {});
+				return;
+			}
 			try {
 				process.kill(-child.pid!, sig);
 			} catch {

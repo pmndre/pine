@@ -16,7 +16,8 @@ const mac = { skip: !sandboxAvailable() };
 const call = (name: string, args: any) => ({ name, args });
 const background = (command: string) => call("bash", { command, background: true });
 /** A command that prints, waits until the test makes `file`, prints again and ends: the test decides when. */
-const waits = (file: string, then = "") => `echo first; while [ ! -e ${file} ]; do sleep 0.05; done; echo last${then ? `; ${then}` : ""}`;
+// (The file in quotes and with / : Git's bash on Windows would take a backslash as an escape.)
+const waits = (file: string, then = "") => `echo first; while [ ! -e '${file.replace(/\\/g, "/")}' ]; do sleep 0.05; done; echo last${then ? `; ${then}` : ""}`;
 /** What pine told a conversation about its background commands, oldest first. */
 const told = (h: Harness, session = "main") => h.pine.tasks.list({ agent: "main", session, limit: 100 }).filter((t) => t.kind === "notify").sort((a, b) => a.id - b.id);
 const gone = (pid: number) => {

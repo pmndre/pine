@@ -1,17 +1,30 @@
 // The app's main process. It owns three things the page must not: the daemon's token, the
 // operating system (windows, menus, dialogs, notifications), and the child that is the daemon
 // when this app had to start one. The page gets a narrow bridge (preload.ts) and nothing else.
-import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, nativeTheme, Notification, protocol, session, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, nativeTheme, Notification, protocol, session, shell } from "electron";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildVoice, Listening, NOT_HERE } from "../../src/tui/voice.ts";
+import { csc } from "../../src/csharp.ts";
+import { buildVoice, buildVoiceWindows, Listening, NO_CSC, NOT_HERE, voiceTools } from "../../src/tui/voice.ts";
 import { type Command, install, look, remove, said } from "./command.ts";
 import { callDaemon, followEvents, mediaFromDaemon, pageCsp } from "./daemon.ts";
-import { connect, connectSsh, findPine, type Launch, loginEnv, pineRoot, readHosts, runPine, type Service, ServiceError, sshHost } from "./service.ts";
-import { Terminals } from "./terminal.ts";
+import { connect, connectSsh, findPine, hostOf, type Launch, loginEnv, onPath, pineRoot, readHosts, runPine, type Service, ServiceError } from "./service.ts";
+import { fromWsl, install as installIntoWsl, toWsl } from "./wsl.ts";
+import { wslDistros } from "../../src/remote.ts";
+import { shellKeeps, Terminals } from "./terminal.ts";
 import { LATEST, lookForUpdate, type Update } from "./updates.ts";
 import { cleanLook, type Look } from "../src/theme.ts";
+
+// `pine` in a terminal, from an AppImage (command.ts): the link in the PATH leads to the AppImage
+// itself, whose folder under /tmp is another one at every start, and its runtime says by which name
+// it was started. Started as `pine`, this is not the app but the launcher it carries: the app's pine
+// on the app's Node, with the terminal's arguments, its input and its output.
+if (process.platform === "linux" && process.env.APPIMAGE && path.basename(process.env.ARGV0 ?? "") === "pine") {
+	const done = spawnSync(path.join(process.resourcesPath, "bin", "pine"), process.argv.slice(1).filter((a) => a !== "--no-sandbox"), { stdio: "inherit" });
+	process.exit(done.status ?? 1);
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(HERE, "..");
@@ -27,6 +40,7 @@ const originOf = (url: string) => {
 };
 const ORIGIN = DEV_URL ? originOf(DEV_URL) : "app://pine";
 const isMac = process.platform === "darwin";
+const isWindows = process.platform === "win32";
 /** Tests only: the window opens behind the owner's windows and the app never takes the focus or a place in the Dock. */
 const BACKGROUND = Boolean(process.env.PINE_DESKTOP_BACKGROUND);
 if (BACKGROUND && isMac) app.setActivationPolicy("accessory");
@@ -34,6 +48,8 @@ if (BACKGROUND && isMac) app.setActivationPolicy("accessory");
 // A second set of windows and data for tests and for trying things out beside the real app.
 if (process.env.PINE_DESKTOP_DATA) app.setPath("userData", path.resolve(process.env.PINE_DESKTOP_DATA));
 app.setName("Pine");
+// Its notifications, its taskbar button and its installer's shortcut are one app on Windows: the appId pack.mjs gives it.
+if (isWindows) app.setAppUserModelId("dev.pine.desktop");
 
 protocol.registerSchemesAsPrivileged([
 	{ scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true } },
@@ -98,9 +114,23 @@ function windowBackground(): string {
 	return (prefs.look?.colors.bg ?? "#1b1e28").slice(0, 7);
 }
 
-/** Repaints the window's background for the current theme; a no-op before the window exists. */
+/**
+ * How tall the bar along the top of the page is (h-11 at the page's 15px, index.css): off a Mac the
+ * system draws its window controls over the page at its top right (titleBarOverlay), as tall as it.
+ */
+const TITLE_BAR = 41;
+
+/** The system's window controls off a Mac, in the theme's colors: on the bar's background (the page's `sunk`), drawn in its quieter text. */
+function windowControls(): { color: string; symbolColor: string; height: number } {
+	const colors = prefs.look?.colors;
+	return { color: (colors?.sunk ?? "#171922").slice(0, 7), symbolColor: (colors?.["text-muted"] ?? colors?.text ?? "#a6accd").slice(0, 7), height: TITLE_BAR };
+}
+
+/** Repaints the window's background (and off a Mac its controls) for the current theme; a no-op before the window exists. */
 function refreshBackground(): void {
-	if (win && !win.isDestroyed()) win.setBackgroundColor(windowBackground());
+	if (!win || win.isDestroyed()) return;
+	win.setBackgroundColor(windowBackground());
+	if (!isMac) win.setTitleBarOverlay(windowControls());
 }
 
 function savePrefs(): void {
@@ -129,6 +159,8 @@ let connected = false;
 let round = 0;
 let quitting = false;
 let listening: Listening | undefined;
+/** Whether the owner's terminal has the keyboard, as the page says (`pine:term-focus`). */
+let terminalFocused = false;
 
 const send = (channel: string, ...args: unknown[]) => {
 	if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
@@ -172,7 +204,7 @@ async function startService(): Promise<void> {
 		// Another machine was picked while this one connected: it stays held, and the other is shown.
 		if (mine !== round) return;
 		service = s;
-		setState({ status: "ready", mode: s.mode, started: s.started, home: s.home, version: s.version, from: host ? `ssh ${host}` : (launch?.from ?? ""), host: s.host, label: s.label });
+		setState({ status: "ready", mode: s.mode, started: s.started, home: s.home, version: s.version, from: host ? (host.startsWith("wsl:") ? `wsl ${host.slice(4)}` : `ssh ${host}`) : (launch?.from ?? ""), host: s.host, label: s.label });
 		follow(s);
 	} catch (e) {
 		if (mine !== round) return;
@@ -186,6 +218,15 @@ async function startService(): Promise<void> {
  * while another is shown. They are let go of when the app quits.
  */
 const held = new Map<string, Service>();
+
+/** The WSL distribution whose pine the app uses now, if it uses one. */
+const wslNow = () => (prefs.use?.startsWith("wsl:") ? prefs.use.slice(4) : undefined);
+
+/** A path of this computer as the daemon in use knows it: the same, or under /mnt in WSL (undefined where WSL cannot reach it). */
+const forDaemon = (p: string) => {
+	const d = wslNow();
+	return d ? toWsl(p, d) : p;
+};
 
 /** Whether a pine still answers: one on another machine may have lost its connection meanwhile. */
 const answers = (s: Service) => fetch(`${s.base}/health`, { signal: AbortSignal.timeout(2500) }).then((r) => r.ok, () => false);
@@ -275,10 +316,12 @@ function createWindow(): void {
 		minHeight: 480,
 		show: false,
 		title: "Pine",
-		titleBarStyle: isMac ? "hiddenInset" : "default",
+		// Off a Mac the page reaches the top too, and the system draws its window controls over its top right
+		// (in the theme's colors, refreshBackground). Its menus are then not shown, and their keys still work.
+		titleBarStyle: isMac ? "hiddenInset" : "hidden",
 		trafficLightPosition: { x: 16, y: 16 },
-		// Gives the page where the window buttons end (env(titlebar-area-x), 0 in full screen), so the bars make room for them by themselves.
-		titleBarOverlay: isMac,
+		// Gives the page where the window buttons are (env(titlebar-area-x) and -width, 0 in full screen), so the bars make room for them by themselves.
+		titleBarOverlay: isMac ? true : windowControls(),
 		vibrancy: isMac ? "sidebar" : undefined,
 		visualEffectState: "followWindow",
 		// So that the window does not flash another color before the page draws.
@@ -303,6 +346,9 @@ function createWindow(): void {
 		}
 	});
 	win.webContents.on("will-attach-webview", (e) => e.preventDefault());
+	// Off a Mac the shell's own Ctrl keys reach the shell while the terminal has the keyboard, not the menu (shellKeeps).
+	if (!isMac) win.webContents.on("before-input-event", (_e, input) => win?.webContents.setIgnoreMenuShortcuts(terminalFocused && shellKeeps(input)));
+	win.webContents.on("did-start-loading", () => (terminalFocused = false));
 	const keep = () => {
 		if (!win || win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
 		prefs.bounds = win.getBounds();
@@ -426,7 +472,7 @@ function buildMenu(): void {
 				...(isMac ? [] : [{ type: "separator" as const }, item("Settings…", "settings", "Ctrl+,"), { role: "quit" as const }]),
 			],
 		},
-		{ label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "pasteAndMatchStyle" }, { role: "selectAll" }, { type: "separator" }, item("Find in Conversation", "find", "CmdOrCtrl+F"), item("Copy Last Answer", "copy", "CmdOrCtrl+Shift+C"), ...(isMac ? [item("Dictate Message", "voice", "Ctrl+R")] : [])] },
+		{ label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "pasteAndMatchStyle" }, { role: "selectAll" }, { type: "separator" }, item("Find in Conversation", "find", "CmdOrCtrl+F"), item("Copy Last Answer", "copy", "CmdOrCtrl+Shift+C"), ...(isMac || !voiceTools().unavailable ? [item("Dictate Message", "voice", "Ctrl+R")] : [])] },
 		{
 			label: "View",
 			submenu: [
@@ -519,8 +565,9 @@ function wire(): void {
 	handle("pine:use", (host?: string) => use(typeof host === "string" ? host : undefined));
 	// A machine is added by its name alone; it is connected to when it is picked.
 	handle("pine:hosts-add", (value: string) => {
-		const host = sshHost(String(value ?? ""))?.host;
+		const host = hostOf(String(value ?? ""));
 		if (!host) throw new Error("Write the machine as you would after ssh: host or user@host.");
+		if (host.startsWith("wsl:") && process.platform !== "win32") throw new Error("WSL is Windows': this computer has none.");
 		if (!prefs.hosts.includes(host)) {
 			if (prefs.hosts.length >= 20) throw new Error("There are 20 machines in the list already: forget one first.");
 			prefs.hosts.push(host);
@@ -563,7 +610,32 @@ function wire(): void {
 	});
 	handle("pine:pick-folder", async (title?: string) => {
 		const r = await dialog.showOpenDialog(win!, { title: typeof title === "string" ? title.slice(0, 80) : "Choose a folder", properties: ["openDirectory", "createDirectory"] });
-		return r.canceled ? undefined : r.filePaths[0];
+		if (r.canceled) return undefined;
+		const p = forDaemon(r.filePaths[0]);
+		if (!p) throw new Error(`${r.filePaths[0]} cannot be reached from ${wslNow()}: pick a folder on a drive of this computer, or one in the distribution.`);
+		return p;
+	});
+	// A file dropped on the page, by the path the daemon knows it under.
+	ipcMain.on("pine:daemon-path", (e, p: unknown) => {
+		e.returnValue = typeof p === "string" && p ? (forDaemon(p) ?? "") : "";
+	});
+	// WSL on this Windows computer: its distributions, and the pine this app carries brought into one.
+	handle("pine:wsl-distros", async () => (process.platform === "win32" ? await wslDistros() : []));
+	handle("pine:wsl-install", async (distro: string) => {
+		if (process.platform !== "win32" || !app.isPackaged) throw new Error("Only the Pine app for Windows brings pine into WSL.");
+		const d = hostOf(`wsl:${String(distro)}`)?.slice(4);
+		if (!d) throw new Error("There is no such distribution.");
+		await installIntoWsl(d, app.getVersion(), process.resourcesPath);
+		// A home there, as pine init makes it. Its sandbox needs the password of the distribution's
+		// user (bubblewrap is installed with sudo): that part is the owner's, in a terminal.
+		await new Promise<void>((resolve, reject) => {
+			const c = spawn("wsl.exe", ["--distribution", d, "--exec", "/bin/sh", "-c", '"$HOME/.local/share/pine-app/bin/pine" init'], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
+			let err = "";
+			c.stderr!.on("data", (b: Buffer) => (err += b.toString("utf8")));
+			c.on("error", reject);
+			c.on("close", (code) => (code === 0 || /sandbox/i.test(err) ? resolve() : reject(new Error(err.trim().slice(-400) || `pine init ended with ${code}`))));
+		});
+		return { sandbox: `wsl --distribution ${d} --exec ~/.local/share/pine-app/bin/pine init` };
 	});
 	handle("pine:save-text", async (name: string, text: string) => {
 		const r = await dialog.showSaveDialog(win!, { defaultPath: path.join(app.getPath("documents"), path.basename(String(name))) });
@@ -573,8 +645,10 @@ function wire(): void {
 	});
 	handle("pine:open", (url: string) => openOutside(String(url)));
 	handle("pine:reveal", (file: string) => {
-		// Shown in the Finder, never opened: opening would start whatever the file is.
-		if (typeof file === "string" && path.isAbsolute(file) && fs.existsSync(file)) shell.showItemInFolder(file);
+		// Shown in the Finder, never opened: opening would start whatever the file is. A path of WSL's is Windows' first.
+		const d = wslNow();
+		const here = typeof file === "string" && d && file.startsWith("/") ? fromWsl(file, d) : file;
+		if (typeof here === "string" && path.isAbsolute(here) && fs.existsSync(here)) shell.showItemInFolder(here);
 	});
 	handle("pine:notify", (title: string, body: string, tab?: string) => {
 		if (!prefs.notify || !Notification.isSupported() || win?.isFocused()) return;
@@ -583,24 +657,48 @@ function wire(): void {
 		n.show();
 	});
 	handle("pine:badge", (count: number) => {
-		if (isMac) app.dock?.setBadge(count > 0 ? String(count) : "");
-		else app.setBadgeCount(Math.max(0, Number(count) || 0));
+		const n = Math.max(0, Number(count) || 0);
+		if (isMac) app.dock?.setBadge(n > 0 ? String(n) : "");
+		// Windows has no number on a taskbar button: a dot over its icon says that something waits.
+		else if (isWindows) win?.setOverlayIcon(n > 0 ? waiting() : null, n > 0 ? `${n} waiting for you` : "");
+		else app.setBadgeCount(n);
 	});
-	// Dictating a message. The words are recognised on this Mac by the helper the terminal UI
-	// uses too (src/tui/voice.ts): nothing is sent anywhere, and what is heard is text for the
-	// input and nothing more. The page puts it there; nothing here sends a message.
+	// Dictating a message. The words are recognised on this computer by the helper the terminal UI
+	// uses too (src/tui/voice.ts): voice.swift on a Mac, voice.cs on Windows, whisper.cpp on Linux.
+	// Nothing is sent anywhere, and what is heard is text for the input and nothing more. The page
+	// puts it there; nothing here sends a message.
 	handle("pine:voice-start", async (language?: string) => {
 		listening?.cancel();
 		listening = undefined;
 		const lang = typeof language === "string" && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(language) ? language : undefined;
 		let command: string[];
-		if (process.env.PINE_DESKTOP_VOICE) command = [process.env.PINE_DESKTOP_VOICE]; // a stand-in, for tests
+		// A stand-in, for tests: a program, or a command line as a JSON array (the real helper told to read a recording).
+		if (process.env.PINE_DESKTOP_VOICE) command = process.env.PINE_DESKTOP_VOICE.startsWith("[") ? (JSON.parse(process.env.PINE_DESKTOP_VOICE) as string[]).map(String) : [process.env.PINE_DESKTOP_VOICE];
 		else {
-			if (!isMac) throw new Error(NOT_HERE);
-			launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
-			const source = path.join(pineRoot(launch) ?? "", "src", "tui", "voice.swift");
-			if (!fs.existsSync(source)) throw new Error("this pine has no voice input: its helper's source was not found. Update pine.");
-			command = [await buildVoice(path.join(app.getPath("userData"), "voice"), source)];
+			if (!isMac && !isWindows && process.platform !== "linux") throw new Error(NOT_HERE);
+			if (isWindows) {
+				// The pine of this app on Windows runs in WSL; the helper listens on Windows, from the source the app carries.
+				const source = [...(app.isPackaged ? [path.join(process.resourcesPath, "pine")] : []), path.join(APP_ROOT, "..")].map((root) => path.join(root, "src", "tui", "voice.cs")).find((f) => fs.existsSync(f));
+				if (!source) throw new Error("this app has no voice input on Windows: its helper's source was not found. Update the app.");
+				if (!csc()) throw new Error(NO_CSC);
+				command = [buildVoiceWindows(path.join(app.getPath("userData"), "voice"), { source })];
+			} else if (isMac) {
+				launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
+				const source = path.join(pineRoot(launch) ?? "", "src", "tui", "voice.swift");
+				if (!fs.existsSync(source)) throw new Error("this pine has no voice input: its helper's source was not found. Update pine.");
+				command = [await buildVoice(path.join(app.getPath("userData"), "voice"), source)];
+			} else {
+				launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
+				const root = pineRoot(launch) ?? "";
+				// The helper runs on Node: the one pine runs on, which the app's own Electron is not.
+				const helper = [".js", ".ts"].map((ext) => path.join(root, "src", "tui", `voice-whisper${ext}`)).find((f) => fs.existsSync(f));
+				if (!helper) throw new Error("this pine has no voice input on Linux: its helper was not found. Update pine.");
+				const node = launch.argv.length > 1 ? launch.argv[0] : onPath("node", launch.env);
+				if (!node) throw new Error("voice input on Linux runs on Node, and no node was found on this computer. Install Node 24 or newer from https://nodejs.org, then try again.");
+				const tools = voiceTools("linux", undefined, { node, helper });
+				if (tools.unavailable) throw new Error(tools.unavailable);
+				command = await tools.program();
+			}
 		}
 		const mine: Listening = new Listening(command, lang, {
 			ready: () => listening === mine && send("pine:voice", { type: "ready" }),
@@ -635,7 +733,29 @@ function wire(): void {
 	});
 }
 
+/** A dot for the taskbar button on Windows, drawn here: 16 pixels, in the theme's color for what is wrong or waits. */
+function waiting(): Electron.NativeImage {
+	const hex = (prefs.look?.colors.bad ?? "#d0679d").slice(1, 7);
+	const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+	const size = 16;
+	const pixels = Buffer.alloc(size * size * 4);
+	for (let y = 0; y < size; y++) {
+		for (let x = 0; x < size; x++) {
+			// Covered by a circle of radius 7, with a soft edge one pixel wide; premultiplied, in the order Windows keeps (BGRA).
+			const a = Math.max(0, Math.min(1, 7.5 - Math.hypot(x + 0.5 - size / 2, y + 0.5 - size / 2)));
+			pixels.set([Math.round(b * a), Math.round(g * a), Math.round(r * a), Math.round(255 * a)], (y * size + x) * 4);
+		}
+	}
+	return nativeImage.createFromBitmap(pixels, { width: size, height: size });
+}
+
 // ---- life of the app ---------------------------------------------------------------------------
+
+/**
+ * A folder among the arguments the app was started with: on Windows and Linux a folder dropped on its
+ * icon, or `Pine <folder>`, comes so. (Started from a checkout, the app's own folder is one of them.)
+ */
+const folderIn = (argv: string[]) => argv.slice(1).find((a) => !a.startsWith("-") && path.isAbsolute(a) && path.resolve(a) !== app.getAppPath());
 
 /** A folder the app was opened with (dropped on its icon, or `open -a Pine <folder>`): a conversation that works there. */
 const pendingFolders: string[] = [];
@@ -654,7 +774,7 @@ if (!app.requestSingleInstanceLock()) app.quit();
 else {
 	app.on("second-instance", (_e, argv) => {
 		show();
-		const dir = argv.slice(1).find((a) => !a.startsWith("-") && path.isAbsolute(a));
+		const dir = folderIn(argv);
 		if (dir) openFolder(dir);
 	});
 	app.on("open-file", (e, file) => {
@@ -671,6 +791,9 @@ else {
 		protocol.handle("pine-media", media);
 		session.defaultSession.setPermissionRequestHandler((_wc, _permission, done) => done(false));
 		wire();
+		ipcMain.on("pine:term-focus", (e, focused) => {
+			if (fromPage(e)) terminalFocused = focused === true;
+		});
 		ipcMain.on("pine:ready", (e) => {
 			if (!fromPage(e)) return;
 			pageReady = true;
@@ -687,6 +810,9 @@ else {
 		}
 		buildMenu();
 		createWindow();
+		// Off a Mac a folder the app was started with comes as an argument of this first start, not as an event.
+		const dir = isMac ? undefined : folderIn(process.argv);
+		if (dir) openFolder(dir);
 		void startService();
 		void firstCommand();
 		app.on("activate", show);

@@ -22,9 +22,9 @@
   "scripts": {
     "start": "node src/cli.ts start",
     "check": "tsc --noEmit",
-    "test": "node --test --test-force-exit 'test/*.test.ts'",
-    "test:live": "PINE_LIVE=1 node --test --test-force-exit test/live.test.ts test/browser.test.ts test/computer.test.ts test/voice.test.ts test/system.test.ts test/render.test.ts",
-    "baseline": "sh baseline/run-all.sh",
+    "test": "node --test --test-force-exit \"test/*.test.ts\"",
+    "test:live": "node scripts/live.mjs",
+    "baseline": "node baseline/run-all.mjs",
     "build": "node scripts/build.mjs",
     "release": "node scripts/release.mjs",
     "desktop": "npm --prefix desktop start",

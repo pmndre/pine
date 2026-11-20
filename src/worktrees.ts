@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { helperArgv, isInside, realish } from "./security.ts";
+import { bin, helperArgv, helperBase, helperPath, isInside, realish } from "./security.ts";
 import { git, type GitOptions } from "./workspace-view.ts";
 
 // A worktree is a second checkout of a repository, on a branch of its own, sharing the history.
@@ -92,7 +92,7 @@ function shell(script: string, args: string[], write: string[]): Promise<{ code:
 	const jail = helperArgv(write);
 	if (!jail) return Promise.resolve({ code: 127, err: "there is no sandbox on this system to run it in" });
 	return new Promise((resolve) => {
-		const child = spawn(jail[0], [...jail.slice(1), "/bin/sh", "-c", script, "sh", ...args], { stdio: ["ignore", "ignore", "pipe"], env: { PATH: "/usr/bin:/bin", LC_ALL: "C" } });
+		const child = spawn(jail[0], [...jail.slice(1), bin("sh"), "-c", script, "sh", ...args], { stdio: ["ignore", "ignore", "pipe"], env: { ...helperBase(), PATH: helperPath(), LC_ALL: "C" } });
 		let err = "";
 		child.stderr!.on("data", (d: Buffer) => (err.length < 2000 ? (err += d.toString("utf8")) : undefined));
 		const timer = setTimeout(() => child.kill("SIGKILL"), LONG);

@@ -7,9 +7,10 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import zlib from "node:zlib";
-import { available, BUILDING, buildHelper, computer, grantText, NO_COMPILER, type Node, outline, parseKeys, pickWindow, PICTURE_TOOLS, TOOLS, toolsOffered, toScreen, unavailable } from "../mcp/computer.ts";
+import { available, BUILDING, buildHelper, computer, grantText, LINUX_PACKAGES, LINUX_SOURCE, LINUX_TOOLS, linuxHelper, modsFor, NO_COMPILER, type Node, outline, parseKeys, pickWindow, PICTURE_TOOLS, TOOLS, toolsFor, toolsOffered, toScreen, unavailable, WINDOWS_SOURCE, windowsReferences } from "../mcp/computer.ts";
 import { classify } from "../src/actions.ts";
-import { APP_LOOK, appTarget, computerSession } from "../src/computer.ts";
+import { APP_LOOK, appTarget, computerSession, hasDesktop } from "../src/computer.ts";
+import { buildCsharp } from "../src/csharp.ts";
 import { effectiveMcp, loadConfig, mcpTaints, toPiMcp } from "../src/config.ts";
 import { startClaudeModel } from "../src/dev/claude-model.ts";
 import { rootsFor } from "../src/security.ts";
@@ -102,28 +103,103 @@ test("computer: a window is found by its number or by a part of its title", () =
 	assert.throws(() => pickWindow([], 1), /has no window open/);
 });
 
-test("computer: on a system that is not macOS nothing is offered, and a call is answered in plain words", async (t) => {
-	for (const system of ["linux", "win32", "freebsd"]) {
-		assert.deepEqual(toolsOffered({}, system), [], system);
-		assert.equal(available({}, system), false);
+test("computer: macOS, Windows and Linux with X11 have it; Wayland, a Linux without a screen and other systems are told why not", async (t) => {
+	const x11 = { DISPLAY: ":0" };
+	const wayland = { DISPLAY: ":0", WAYLAND_DISPLAY: "wayland-0", XDG_SESSION_TYPE: "wayland" };
+	for (const [system, env, has] of [["darwin", {}, true], ["win32", {}, true], ["linux", x11, true], ["linux", wayland, false], ["linux", { WAYLAND_DISPLAY: "wayland-0" }, false], ["linux", {}, false], ["freebsd", x11, false]] as const) {
+		assert.equal(hasDesktop(system, env), has, `${system} ${JSON.stringify(env)}`);
+		assert.equal(available({}, system, env), has);
+		assert.equal(toolsOffered({}, system, env).length, has ? TOOLS.length : 0);
+		assert.equal(Boolean(computerSession({ owner: true, level: "auto", dataDir: "/d", platform: system, env })), has, "the daemon starts the server exactly where it has something to work on");
 	}
-	assert.match(unavailable("linux"), /^App control is not available on this system \(Linux\)\. It works on macOS only\./);
-	assert.equal(computerSession({ owner: true, level: "auto", dataDir: "/home/x/data", platform: "linux" }), undefined, "the daemon does not start the server there");
-	assert.equal(toolsOffered({}, "darwin").length, TOOLS.length);
-	// A stand-in for the helper runs anywhere: that is how the rest of this file runs on Linux.
-	assert.ok(available({ helper: "/x" }, "linux") && computerSession({ owner: true, level: "auto", dataDir: "/d", platform: "linux", standIn: true }));
+	assert.match(unavailable("linux", wayland), /^App control is not available here: this Linux desktop runs Wayland, and app control works with X11 only/);
+	assert.match(unavailable("linux", {}), /no X11 display: DISPLAY is not set/);
+	assert.match(unavailable("freebsd", {}), /^App control is not available on this system \(freebsd\)\. It works on macOS, Windows and Linux with X11\./);
+	// A stand-in for the helper runs anywhere: that is how the rest of this file runs on every system.
+	assert.ok(available({ helper: "/x" }, "linux", {}) && computerSession({ owner: true, level: "auto", dataDir: "/d", platform: "linux", env: {}, standIn: true }));
 
-	// The server as a process. Where it has no helper to build, this is the whole of it.
-	if (process.platform === "darwin") return;
-	const child = spawn(process.execPath, [path.resolve(import.meta.dirname, "../mcp/computer.ts")], { stdio: ["pipe", "pipe", "inherit"], env: { ...process.env, PINE_MCP_OPTIONS: "{}" } });
+	// The server as a process, where it has nothing to work on: no tools, and a sentence.
+	if (process.platform !== "linux") return;
+	const env = { ...process.env, PINE_MCP_OPTIONS: "{}", WAYLAND_DISPLAY: "wayland-0" };
+	const child = spawn(process.execPath, [path.resolve(import.meta.dirname, "../mcp/computer.ts")], { stdio: ["pipe", "pipe", "inherit"], env });
 	t.after(() => child.kill());
 	const lines: any[] = [];
 	child.stdout.on("data", (d) => lines.push(...String(d).split("\n").filter(Boolean).map((l) => JSON.parse(l))));
 	for (const [id, method, params] of [[1, "initialize", {}], [2, "tools/list", {}], [3, "tools/call", { name: "app_click", arguments: { app: "TextEdit", x: 1, y: 1 } }]] as const) child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
 	await until(() => lines.length === 3, 5000, "the server's answers");
-	assert.match(lines[0].result.instructions, /not available on this system/);
+	assert.match(lines[0].result.instructions, /runs Wayland/);
 	assert.deepEqual(lines[1].result.tools, []);
-	assert.ok(lines[2].result.isError && /App control is not available on this system \(Linux\)/.test(lines[2].result.content[0].text), JSON.stringify(lines[2]));
+	assert.ok(lines[2].result.isError && /App control is not available here: this Linux desktop runs Wayland/.test(lines[2].result.content[0].text), JSON.stringify(lines[2]));
+});
+
+test("computer: the tools speak of the system they run on", () => {
+	const mac = JSON.stringify(toolsFor("darwin"));
+	assert.ok(mac.includes("your owner's Mac") && mac.includes("cmd+s"));
+	for (const system of ["win32", "linux"]) {
+		const text = JSON.stringify(toolsFor(system));
+		assert.ok(!/\bMac\b/.test(text) && !text.includes("cmd+") && text.includes("ctrl+s") && text.includes("your owner's computer"), system);
+		assert.deepEqual(toolsFor(system).map((x) => x.name), toolsFor("darwin").map((x) => x.name));
+	}
+	for (const x of toolsFor("win32")) assert.ok(x.description.length < 330, x.name);
+	// cmd is ctrl outside a Mac; the Windows key, which talks to the system and not to the app, is never pressed.
+	assert.deepEqual(modsFor("mac", ["cmd", "shift"]), ["cmd", "shift"]);
+	assert.deepEqual(modsFor("windows", ["cmd", "shift"]), ["ctrl", "shift"]);
+	assert.deepEqual(modsFor("linux", ["cmd", "ctrl"]), ["ctrl"]);
+	assert.throws(() => modsFor("windows", ["fn"]), /There is no fn key to press on Windows/);
+});
+
+test("computer: the Linux helper is started isolated, by absolute paths, and what is missing is named with the packages to install", async () => {
+	const ran: string[][] = [];
+	const has = (present: string[]) => (f: string) => present.includes(f);
+	const all = Object.values(LINUX_TOOLS);
+	const works = async (file: string, args: string[]) => (ran.push([file, ...args]), { code: 0, stdout: "", stderr: "" });
+	assert.deepEqual(await linuxHelper(works, has(all)), [LINUX_TOOLS.python, "-I", LINUX_SOURCE]);
+	assert.deepEqual(ran[0].slice(0, 2), ["/usr/bin/python3", "-I"], "python3 reads no module from the folder it starts in or from PYTHONPATH");
+	assert.ok(fs.existsSync(LINUX_SOURCE) && path.isAbsolute(LINUX_SOURCE));
+	const noXlib = async () => ({ code: 1, stdout: "", stderr: "ModuleNotFoundError: No module named 'Xlib'" });
+	await assert.rejects(() => linuxHelper(noXlib, has([LINUX_TOOLS.python])), (e: Error) => /needs a few programs that are not installed on this computer \(python3-xlib, xdotool, imagemagick\)\./.test(e.message) && e.message.includes(`sudo apt install ${LINUX_PACKAGES}`));
+	const noAtspi = async () => ({ code: 1, stdout: "", stderr: "ValueError: Namespace Atspi not available" });
+	await assert.rejects(() => linuxHelper(noAtspi, has(all)), /\(python3-pyatspi\)/);
+	await assert.rejects(() => linuxHelper(works, has([])), /\(python3, xdotool, imagemagick\)/);
+});
+
+test("computer: the Windows helper is built with the assemblies of .NET Framework, found where Windows keeps them", () => {
+	const fw = path.join("C:", "Windows", "Microsoft.NET", "Framework64", "v4.0.30319");
+	const gac = path.join("C:", "Windows", "Microsoft.NET", "assembly", "GAC_MSIL", "UIAutomationTypes");
+	const files = new Set([path.join(fw, "System.Drawing.dll"), path.join(fw, "WPF", "UIAutomationClient.dll"), path.join(fw, "WPF", "WindowsBase.dll"), path.join(gac, "v4.0_4.0.0.0__31bf3856ad364e35", "UIAutomationTypes.dll")]);
+	const refs = windowsReferences(fw, path.join("C:", "Windows"), (f) => files.has(f), (d) => (d === gac ? ["v4.0_4.0.0.0__31bf3856ad364e35"] : []));
+	assert.deepEqual(refs, [path.join(fw, "WPF", "UIAutomationClient.dll"), path.join(gac, "v4.0_4.0.0.0__31bf3856ad364e35", "UIAutomationTypes.dll"), path.join(fw, "WPF", "WindowsBase.dll"), path.join(fw, "System.Drawing.dll"), "System.Windows.Forms.dll", "System.Web.Extensions.dll"]);
+	assert.ok(fs.existsSync(WINDOWS_SOURCE));
+	// C# 5, as the compiler every Windows carries takes it.
+	const source = fs.readFileSync(WINDOWS_SOURCE, "utf8").replace(/\/\/.*$/gm, "").replace(/"(?:[^"\\\n]|\\.)*"/g, '""');
+	assert.ok(!/\$"|\?\.[A-Za-z]|\bnameof\(|\)\s*=>|\bout var\b/.test(source), "no string interpolation, null-conditional, nameof, expression bodies or out var");
+});
+
+test("computer: on Windows and Linux shortcuts use ctrl, the menu bar has no Apple menu, and input that cannot stay in the app stops", async (t) => {
+	const c = fakeHelper(t, {}, "windows");
+	await c.call("app_key", { app: "TextEdit", keys: "cmd+s ctrl+shift+z" });
+	assert.deepEqual(c.did().slice(-2), ["key ctrl+s to=100 front=100", "key ctrl+shift+z to=100 front=100"]);
+	assert.match(await c.fails("app_key", { app: "TextEdit", keys: "fn+f1" }), /There is no fn key to press on Windows/);
+	assert.equal(await c.call("app_menu", { app: "TextEdit" }), 'The menus of TextEdit:\n- File >\n- Format >\nGive path to look into one or to pick an entry. Example: path "File > Save".');
+	assert.match(await c.fails("app_open", { app: "Nope" }), /No app called "Nope" was found on this computer\./);
+	// The helper is told which app a click is for, so that it can look again right before it presses.
+	await c.call("app_screenshot", { app: "TextEdit" });
+	await c.call("app_click", { app: "TextEdit", x: 640, y: 400 });
+	assert.equal(c.lines().at(-1), "click 420.3,250.3 left x1 to=100");
+	const typed = fakeHelper(t, {}, "windows", "typed-only");
+	await typed.call("app_set_text", { app: "TextEdit", ref: "e2", text: "x" });
+	assert.ok(typed.did().includes("key ctrl+a to=100 front=100"), typed.did().join("; "));
+
+	const moved = fakeHelper(t, {}, "windows", "moved");
+	assert.match(await moved.fails("app_type", { app: "TextEdit", text: "secret" }), /^Another window came to the front, or lies where the click was to land, so pine stopped: nothing more was typed or clicked\./);
+	const admin = fakeHelper(t, {}, "windows", "elevated");
+	assert.match(await admin.fails("app_type", { app: "TextEdit", text: "x" }), /^That app runs as administrator, and Windows does not let a program without those rights click or type in it\. Nothing was done\./);
+	assert.deepEqual([moved.did(), admin.did()], [[], []]);
+	// No grants to ask for, and none of macOS's windows to point at.
+	const refused = fakeHelper(t, {}, "windows", "no-access");
+	assert.ok(!(await refused.fails("app_snapshot", { app: "TextEdit" })).includes("macOS"));
+	assert.deepEqual(refused.lines().filter((l) => l.startsWith("status ask")), []);
+	assert.match(grantText("accessibility", "Terminal", false, "linux"), /^This Linux desktop does not let pine read its apps: .*gsettings set org\.gnome\.desktop\.interface toolkit-accessibility true/);
 });
 
 test("computer: a model that cannot see gets no tools that need eyes; the owner can leave tools out", () => {
@@ -193,7 +269,7 @@ test("computer: which app a call is about, and who gets the server at all", () =
 	assert.equal(appTarget("app_press", { app: 7 }), undefined);
 
 	const on = { owner: true, level: "auto" as const, dataDir: "/home/pine/data", platform: "darwin" };
-	assert.deepEqual(computerSession(on), { helperDir: "/home/pine/data/computer" });
+	assert.deepEqual(computerSession(on), { helperDir: path.join("/home/pine/data", "computer") });
 	assert.equal(computerSession({ ...on, owner: false }), undefined, "never a run started from outside");
 	assert.equal(computerSession({ ...on, level: "safe" }), undefined, "never an agent that works in its sandbox");
 });
@@ -225,7 +301,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 	switch (m.cmd) {
 		case "status":
 			if (m.ask) note("status ask=" + m.ask);
-			return ok({ accessibility: granted("access"), screen: granted("screen"), host: flags.includes("no-host") ? undefined : info(apps.terminal) });
+			return ok({ accessibility: granted("access"), screen: granted("screen"), host: flags.includes("no-host") ? undefined : info(apps.terminal), ...(flags.includes("windows") ? { system: "windows" } : {}) });
 		case "apps":
 			return ok({ accessibility: granted("access"), apps: Object.values(apps).map((a) => ({ ...info(a), ...(granted("access") ? { windows: windows[a.pid] } : {}) })), displays: [{ index: 1, x: 0, y: 0, w: 2560, h: 1440, main: true }, { index: 2, x: -1920, y: 0, w: 1920, h: 1080 }] });
 		case "find": {
@@ -243,6 +319,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 		case "activate":
 			note("activate " + m.pid + (m.ref ? " " + m.ref : ""));
 			if (flags.includes("stuck")) return ok({ front: false });
+			if (flags.includes("elevated") && m.pid === 100) return fail("elevated");
 			front = m.pid;
 			return ok({ front: true });
 		case "windows":
@@ -275,14 +352,14 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 			text = m.text;
 			return ok({ done: true });
 		case "menu":
-			if (!m.ref) return ok({ items: [{ ref: "m0", title: "Apple", submenu: true }, { ref: "m1", title: "File", submenu: true }, { ref: "m2", title: "Format", submenu: true }] });
+			if (!m.ref) return ok({ items: [...(flags.includes("windows") ? [] : [{ ref: "m0", title: "Apple", submenu: true }]), { ref: "m1", title: "File", submenu: true }, { ref: "m2", title: "Format", submenu: true }] });
 			if (m.ref === "m1") return ok({ items: [{ ref: "m11", title: "New", shortcut: "cmd+n" }, { ref: "m12", title: "Save…", shortcut: "cmd+s" }, { ref: "m13", title: "Open Recent", submenu: true }, { ref: "m14", title: "Revert To", disabled: true }] });
 			if (m.ref === "m13") return ok({ items: [{ ref: "m131", title: "Letter.rtf" }] });
 			return ok({ items: [{ ref: "m21", title: "Wrap to Page", mark: "✓" }] });
 		case "at":
 			return ok(m.x < 1000 ? { pid: 100, name: "TextEdit", role: "AXButton", title: "Bold", wpid: 100, wname: "TextEdit" } : { pid: 200, name: "Notes", role: "AXGroup", wpid: 200, wname: "Notes" });
 		case "click":
-			note("click " + m.x + "," + m.y + " " + m.button + " x" + m.count);
+			note("click " + m.x + "," + m.y + " " + m.button + " x" + m.count + (flags.includes("windows") ? " to=" + m.pid : ""));
 			return ok();
 		case "drag":
 			note("drag " + m.x + "," + m.y + " to " + m.x2 + "," + m.y2);
@@ -291,6 +368,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 			note("scroll " + m.x + "," + m.y + " dx=" + m.dx + " dy=" + m.dy);
 			return ok();
 		case "type":
+			if (flags.includes("moved")) return fail("moved");
 			note("type " + JSON.stringify(m.text) + " to=" + m.pid + " front=" + front);
 			return ok();
 		case "key":
@@ -577,7 +655,7 @@ test("computer: the bundled server is configured like the others and marks sessi
 	assert.equal(mcpTaints(server), true, "what a screen shows was written by others");
 	// Where the helper is kept is pine's to say, whatever the options say.
 	const pi = toPiMcp("computer", server, computerSession({ owner: true, level: "auto", dataDir: cfg.dataDir, platform: "darwin" })) as any;
-	assert.ok(pi.args[0].endsWith("mcp/computer.ts"));
+	assert.ok(pi.args[0].endsWith(path.join("mcp", "computer.ts")));
 	assert.deepEqual(JSON.parse(pi.env.PINE_MCP_OPTIONS), { images: false, helperDir: path.join(cfg.dataDir, "computer") });
 	// The example home has it, and loads on any system.
 	const example = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "../examples/home/pine.json"), "utf8"));
@@ -598,7 +676,7 @@ async function withApps(t: { after(fn: () => void): void }, pine: Record<string,
 	const h = await harness({
 		// The main agent as pine ships it: auto mode, the owner's account.
 		pine: { defaults: { mode: undefined }, mcp: { computer: { pine: "computer", options: { helper: [process.execPath, script, log, ...flags] } } }, ...pine },
-		agents: { main: { agent: { untrusted: { tools: ["read"], mcp: ["computer"] }, ...main } }, clerk: { agent: {} } },
+		agents: { main: { agent: { untrusted: { tools: ["read"], mcp: ["computer"] }, ...main } }, clerk: { agent: { mode: "safe" } } },
 		mockOptions: {
 			withoutTools: ({ user }: { user: string }) => {
 				if (!user.includes("ALLOW or BLOCK?")) return "SUMMARY-OK";
@@ -790,6 +868,120 @@ test("live: through the daemon, the real helper operates a real window and the r
 	assert.deepEqual(asked, ["operate the app Pine Demo"], "one question for the one app");
 	assert.match(h.pine.agents.status().sessions[0].tainted ?? "", /returned outside content/);
 	await h.close();
+});
+
+// ---- the real helpers of Linux and Windows --------------------------------------------------------
+
+/** Lines of the helper's protocol, asked of a program directly. */
+async function askHelper(cmd: string[], requests: Array<Record<string, unknown>>): Promise<any[]> {
+	const child = spawn(cmd[0], cmd.slice(1), { stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
+	try {
+		const answers: any[] = [];
+		let buffer = "";
+		const done = new Promise<void>((resolve, reject) => {
+			child.stdout.on("data", (d) => {
+				buffer += String(d);
+				for (let i = buffer.indexOf("\n"); i >= 0; i = buffer.indexOf("\n")) {
+					answers.push(JSON.parse(buffer.slice(0, i)));
+					buffer = buffer.slice(i + 1);
+					if (answers.length === requests.length) resolve();
+				}
+			});
+			child.once("error", reject);
+			child.once("exit", () => resolve());
+		});
+		for (const [i, r] of requests.entries()) child.stdin.write(`${JSON.stringify({ id: i + 1, ...r })}\n`);
+		await done;
+		return answers;
+	} finally {
+		child.kill();
+	}
+}
+
+// The Linux helper against its own GTK window, on a real X server (a desktop, or Xvfb with a
+// session bus and the accessibility bus). It types and clicks in that window only.
+const x11 = process.env.PINE_LIVE === "1" && process.platform === "linux" && hasDesktop();
+test("live: on Linux with X11 the real helper reads and operates a GTK window, by outline and by keyboard and mouse", { skip: !x11, timeout: 120_000 }, async (t) => {
+	const cmd = await linuxHelper();
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pine-computer-x11-"));
+	t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+	const demo = spawn(LINUX_TOOLS.python, ["-I", LINUX_SOURCE, "--demo"], { stdio: "ignore" });
+	t.after(() => demo.kill());
+	const server = computer({}, { scratch: dir, launch: async () => spawn(cmd[0], cmd.slice(1), { stdio: ["pipe", "pipe", "pipe"] }) });
+	t.after(() => server.close());
+	const call = async (name: string, args: Record<string, unknown> = {}) => {
+		const r = await server.call(name, args);
+		return typeof r === "string" ? r : r.map((p) => (p.type === "text" ? p.text : `[${p.mimeType}]`)).join("\n");
+	};
+	await until(async () => /- Pine Demo.*: window 1 "Pine Demo"/.test(await call("apps").catch(() => "")), 15_000, "the demo window");
+
+	const app = "Pine Demo";
+	const before = await call("app_snapshot", { app });
+	const ref = (line: RegExp) => before.match(line)?.[1] ?? assert.fail(`${line} in\n${before}`);
+	const field = ref(/- text field \[ref=(e\d+)\]/);
+	const shout = ref(/- button "Shout" \[ref=(e\d+)\]/);
+	const loud = ref(/- checkbox "Loud" \[ref=(e\d+)\] \(not checked\)/);
+	assert.match(before, /- text "Nothing yet"/);
+	assert.equal(await call("app_set_text", { app, ref: field, text: "pine" }), 'The text field in Pine Demo now holds "pine".');
+	assert.match(await call("app_press", { app, ref: loud }), /^Pressed the checkbox "Loud" in Pine Demo/);
+	assert.match(await call("app_press", { app, ref: shout }), /^Pressed the button "Shout" in Pine Demo/);
+	assert.match(await call("app_snapshot", { app }), /- text "PINE!!!"/);
+	assert.match(await call("app_menu", { app, path: "Demo" }), /- Reset {3}ctrl\+r/);
+	assert.equal(await call("app_menu", { app, path: "Demo > Reset" }), 'Picked "Demo > Reset" in Pine Demo.');
+	assert.match(await call("app_snapshot", { app }), /- text "Nothing yet"/);
+
+	// The keyboard and the mouse, through the window in front.
+	await call("app_set_text", { app, ref: field, text: "x" });
+	assert.match(await call("app_key", { app, keys: "cmd+a" }), /^Pressed ctrl\+a in Pine Demo/);
+	assert.match(await call("app_type", { app, text: "Wald" }), /^Typed 4 characters/);
+	const shot = await call("app_screenshot", { app });
+	const [, w, h] = shot.match(/: (\d+) by (\d+) pixels/) ?? assert.fail(shot);
+	assert.ok(shot.endsWith("[image/jpeg]") && Number(w) > 100 && Number(h) > 100, shot);
+	// Pressed by reference once more, so that the result is known, then read back.
+	await call("app_press", { app, ref: shout });
+	assert.match(await call("app_snapshot", { app }), /- text field \[ref=e\d+\]: "Wald"[\s\S]*- text "WALD!!!"/, "typed with the keyboard, the loud box still ticked");
+	// A position where the demo is not: the far corner of the whole screen.
+	const screen = await call("app_screenshot");
+	const [, sw, sh] = screen.match(/: (\d+) by (\d+) pixels/) ?? assert.fail(screen);
+	assert.match(await call("app_click", { app, x: Number(sw) - 1, y: Number(sh) - 1 }).catch((e) => e.message), /Nothing of Pine Demo is at that position|At that position is/);
+});
+
+// The Windows helper, built with the compiler Windows carries, on a window of its own: Notepad.
+test("windows: the real helper is built, lists the apps and reads Notepad's window as an outline", { skip: process.platform !== "win32" && "Windows only", timeout: 180_000 }, async (t) => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pine-computer-win-"));
+	// (Windows keeps a program's file locked a moment after it ended.)
+	t.after(() => {
+		try {
+			fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+		} catch {
+			// A program Windows still holds open: the temp folder is left, which is no part of the test.
+		}
+	});
+	const program = buildCsharp(WINDOWS_SOURCE, "pine-computer", "app control", windowsReferences(), { dir });
+	const [status] = await askHelper([program], [{ cmd: "status" }]);
+	assert.equal(status.ok, true, JSON.stringify(status));
+	assert.equal(status.system, "windows");
+
+	const notepad = spawn(path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "notepad.exe"), [], { stdio: "ignore" });
+	t.after(async () => {
+		notepad.kill();
+		// Notepad of the Store runs as a process of its own: found by the helper, and ended by its id.
+		for (const a of await askHelper([program], [{ cmd: "find", app: "notepad" }]).catch(() => [])) if (a?.running && a.pid) try { process.kill(a.pid); } catch {}
+	});
+	const server = computer({}, { scratch: dir, launch: async () => spawn(program, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true }) });
+	t.after(() => server.close());
+	const call = async (name: string, args: Record<string, unknown> = {}) => {
+		const r = await server.call(name, args);
+		return typeof r === "string" ? r : r.map((p) => (p.type === "text" ? p.text : `[${p.mimeType}]`)).join("\n");
+	};
+	let apps = "";
+	await until(async () => /- Notepad\b.*: windows? 1 "[^"]*Notepad"/i.test((apps = await call("apps").catch(() => ""))), 30_000, "Notepad's window in the list of apps");
+	const snap = await call("app_snapshot", { app: "notepad" });
+	assert.match(snap, /^Notepad, window 1 "[^"]*Notepad"\./i);
+	assert.match(snap, /\[ref=e\d+\]/, snap);
+	const shot = await call("app_screenshot", { app: "notepad" });
+	assert.match(shot, /^Picture of Notepad, window 1 .*: \d+ by \d+ pixels/i);
+	assert.ok(shot.endsWith("[image/jpeg]"), shot.slice(-100));
 });
 
 /**

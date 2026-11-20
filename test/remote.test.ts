@@ -19,7 +19,7 @@ test("remote: an ssh host is a host, user@host or an alias, and never an option"
 	for (const bad of ["-oProxyCommand=x", "server; rm -rf ~", "a b", "$(x)", "-J", "@server"]) assert.throws(() => sshHost(bad), RemoteError, bad);
 });
 
-test("remote: the command finds pine in the login shell's PATH, whatever that shell is", () => {
+test("remote: the command finds pine in the login shell's PATH, whatever that shell is", { skip: process.platform === "win32" && "the remote command is run here with the POSIX shells an owner may log in with" }, () => {
 	const run = sshArgs("user@server", [], remoteCommand());
 	assert.equal(run.at(-2), "user@server");
 	assert.ok(run.includes("BatchMode=yes"));
@@ -80,7 +80,13 @@ import net from "node:net";
 const args = process.argv.slice(2);
 const opt = (name) => args.map((a, i) => args[i - 1] === "-o" && a.startsWith(name + "=") ? a.slice(name.length + 1) : undefined).find(Boolean);
 const log = (line) => fs.appendFileSync(process.env.LOG, line + "\\n");
-if (args.includes("-O")) {
+if (args.includes("-N")) {
+	// A forward of its own (where ssh has no control socket): it carries the port to where -L says.
+	const [, lport, fhost, fport] = /^127\\.0\\.0\\.1:(\\d+):(.*):(\\d+)$/.exec(args[args.indexOf("-L") + 1]);
+	log("apart " + lport);
+	net.createServer((c) => { const o = net.connect(Number(fport), fhost); c.pipe(o); o.pipe(c); o.on("error", () => c.destroy()); c.on("error", () => o.destroy()); }).listen(Number(lport), "127.0.0.1");
+	process.on("SIGTERM", () => (log("forward ended"), process.exit(0)));
+} else if (args.includes("-O")) {
 	const spec = args[args.indexOf("-L") + 1];
 	log("forward " + spec);
 	const c = net.connect(opt("ControlPath"));
@@ -115,7 +121,7 @@ async function reach(env: Record<string, string>) {
 	}
 }
 
-test("remote: one connection, the forward goes through its control socket, and a port somebody took is not used", async () => {
+test("remote: one connection, the forward goes through its control socket, and a port somebody took is not used", { skip: process.platform === "win32" && "the stand-in for ssh is a script that Windows does not start by itself" }, async () => {
 	// The first two ports were taken between choosing and binding: ssh said so, and a third was asked for.
 	const r = await reach({ TAKEN: "2" });
 	assert.ok(r.s, String(r.e));
@@ -139,7 +145,7 @@ test("remote: one connection, the forward goes through its control socket, and a
 	assert.equal(none.lines().at(-1), "ended");
 });
 
-test("remote: a service line that points away from the other machine's loopback is refused", async () => {
+test("remote: a service line that points away from the other machine's loopback is refused", { skip: process.platform === "win32" && "the stand-in for ssh is a script that Windows does not start by itself" }, async () => {
 	const r = await reach({ SAY: JSON.stringify({ base: "http://10.1.2.3:7463", token: "far-token", started: false }) });
 	assert.ok(r.e instanceof RemoteError);
 	assert.match(r.e!.message, /not a port of its own loopback/);
@@ -147,15 +153,37 @@ test("remote: a service line that points away from the other machine's loopback 
 	assert.equal(r.lines().at(-1), "ended");
 });
 
-test("remote: a machine ssh does not know yet is accepted once from a terminal", async () => {
+test("remote: a machine ssh does not know yet is accepted once from a terminal", { skip: process.platform === "win32" && "the stand-in for ssh is a script that Windows does not start by itself" }, async () => {
 	const r = await reach({ FAIL: "No ED25519 host key is known for far and you have requested strict checking.\nHost key verification failed." });
 	assert.ok(r.e instanceof RemoteError);
 	assert.equal(r.e!.kind, "ssh");
 	assert.match(r.e!.message, /Connect to it once from a terminal \(ssh you@far\)/);
 });
 
-test("remote: a pine there without the service command says to update it", async () => {
+test("remote: a pine there without the service command says to update it", { skip: process.platform === "win32" && "the stand-in for ssh is a script that Windows does not start by itself" }, async () => {
 	const r = await reach({ FAIL: 'error: unknown command "service"' });
 	assert.ok(r.e instanceof RemoteError);
 	assert.match(r.e!.message, /pine update/);
+});
+
+test("remote: where ssh has no control socket (Windows), the forward is a connection of its own that ends with the first", { skip: process.platform === "win32" && "the stand-in for ssh is a script that Windows does not start by itself" }, async () => {
+	const http = await import("node:http");
+	const server = http.createServer((req, res) => res.writeHead(req.headers.authorization === "Bearer far-token" ? 200 : 401).end("{}"));
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	const far = `http://127.0.0.1:${(server.address() as any).port}`;
+	const dir = temp();
+	const log = path.join(dir, "log");
+	fs.writeFileSync(log, "");
+	try {
+		const s = await connectRemote("you@far", { ssh: standIn(dir), apart: true, env: { ...process.env, LOG: log, SAY: JSON.stringify({ base: far, token: "far-token", started: false }) } });
+		const lines = () => fs.readFileSync(log, "utf8").trim().split("\n");
+		assert.equal(lines()[0], "master ", "no control socket asked for");
+		assert.ok(lines().some((l) => l.startsWith("apart ")));
+		assert.equal((await fetch(`${s.base}/overview`, { headers: { authorization: "Bearer far-token" } })).status, 200);
+		await s.stop();
+		await assert.rejects(fetch(`${s.base}/overview`, { signal: AbortSignal.timeout(2000) }), "the forward is gone with it");
+	} finally {
+		server.close();
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
 });

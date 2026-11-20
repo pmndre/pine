@@ -23,7 +23,7 @@ import { Limiter, type Slot } from "./limiter.ts";
 import { modelRuntime } from "./models.ts";
 import { families, NOT_A_SUBAGENTS, SUBAGENT_CANNOT_ASK, serverTool } from "./catalogue.ts";
 import { type Occupant, type Page, SlotBook } from "./slots.ts";
-import { type Approvals, checkPath, denialTools, globMatch, grantable, grantPath, isInside, isOpen, levelOf, matchesToolPattern, outsidePath, ownFileOf, realish, received, type Roots, bin, rootsFor, sandboxArgv, sandboxAvailable, sandboxGuard, type SandboxVariant, shellEnv, shellRefuses, shq, toolSubject } from "./security.ts";
+import { type Approvals, checkPath, denialTools, gitForWindows, globMatch, grantable, grantPath, isInside, isOpen, levelOf, matchesToolPattern, outsidePath, ownFileOf, realish, received, type Roots, bin, rootsFor, sandboxArgv, sandboxAvailable, sandboxGuard, type SandboxVariant, shellEnv, shellRefuses, shq, toolSubject } from "./security.ts";
 import { type AgentChange, applyAgentChange, checkAgentChange, checkAgentId, countFiles, eraseAgent, renameAgent } from "./admin.ts";
 import { createAgent, type NewAgent } from "./agent-admin.ts";
 import type { Router } from "./router.ts";
@@ -805,7 +805,8 @@ export class AgentManager {
 			const clean = path.basename(String(f.name ?? "file")).replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^\.+/, "").slice(-80) || "file";
 			const target = path.join(dir, `${stamp}${i}-${clean}`);
 			fs.writeFileSync(target, buf, { flag: "wx", mode: 0o644 });
-			out.files.push(path.relative(workspace, target));
+			// With / as the agent's shell writes paths, on Windows too.
+			out.files.push(path.relative(workspace, target).split(path.sep).join("/"));
 			const mimeType = types[path.extname(clean).toLowerCase()];
 			if (mimeType && buf.length <= 10 * 1024 * 1024) out.images.push({ path: target, mimeType });
 		}
@@ -3103,6 +3104,11 @@ export class AgentManager {
 				// operating system, not a path check in this process, decides what they can reach.
 				const sandboxFs = { cwd: roots.cwd, prefix: () => jail(), env: () => shellEnv(agent, roots, {}, live.wide()), guard: () => sandboxGuard(roots, live.variant()) };
 				for (const tool of sandboxedFileTools(sandboxFs, profile.tools)) pi.registerTool(tool);
+			} else if (process.platform === "win32" && gitForWindows()) {
+				// Windows has no sandbox. pi's grep and find need ripgrep and fd, which it fetches and
+				// which may not be had; the grep and find of Git for Windows are there with its bash.
+				const plain = { cwd: roots.cwd, prefix: () => [], env: () => shellEnv(agent, roots, {}, live.wide()) };
+				for (const tool of sandboxedFileTools(plain, profile.tools.filter((t) => t === "grep" || t === "find"))) pi.registerTool(tool);
 			}
 
 			if (live.trust === "owner") {

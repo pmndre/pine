@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { XIcon } from "lucide-react";
-import { fn } from "storybook/test";
+import { expect, fn, within } from "storybook/test";
 import { Button } from "@/components/ui/button";
 import { AgentAvatar } from "./agent-avatar.tsx";
 import { TabMenu } from "./tab-menu.tsx";
@@ -45,4 +45,21 @@ export const PinnedLast: Story = {
 export const MainAlone: Story = {
 	args: { trigger: tab("scout"), pin: "main", others: false, right: false, onAction: fn() },
 	play: rightClick,
+};
+
+/** Off a Mac (Windows, Linux): the key that closes a tab is written as the system writes it, Ctrl+W. */
+export const OffMac: Story = {
+	args: { trigger: tab("scout", "the landing page"), pin: "pin", onAction: fn() },
+	beforeEach: () => {
+		const was = document.documentElement.dataset.platform;
+		document.documentElement.dataset.platform = "win32";
+		return () => {
+			if (was === undefined) delete document.documentElement.dataset.platform;
+			else document.documentElement.dataset.platform = was;
+		};
+	},
+	play: async (context) => {
+		await rightClick!(context);
+		await expect(await within(document.body).findByText("Ctrl+W")).toBeInTheDocument();
+	},
 };

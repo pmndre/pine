@@ -66,8 +66,16 @@ export interface AppState {
  * The bridge as the page sees it: the preload script's, or a stand-in of the same shape (the
  * preview's, the mobile app's, the web client's).
  */
-export type PageBridge = Omit<Bridge, "state"> & {
+export type PageBridge = Omit<Bridge, "state" | "termFocus" | "wslDistros" | "wslInstall"> & {
 	state: () => Promise<AppState>;
+	/** WSL on Windows: its distributions, and the pine the app carries brought into one. The desktop app's only. */
+	wslDistros?: Bridge["wslDistros"];
+	wslInstall?: (distro: string) => Promise<{ sandbox: string }>;
+	/**
+	 * Whether the owner's terminal has the keyboard, for a bridge whose window has menus with keys (the
+	 * desktop app's): off a Mac the shell's Ctrl keys then reach the shell. The others leave it out.
+	 */
+	termFocus?: Bridge["termFocus"];
 	/**
 	 * Where the daemon's pictures, video and sound are fetched from, set by a bridge whose page
 	 * fetches them from another address than the app's scheme (the mobile app's, on its own origin; the web client's, whose page asks its bridge for the bytes).

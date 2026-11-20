@@ -14,6 +14,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { after, afterEach, before, test } from "node:test";
 import { mockMsg, startMock } from "../../baseline/tests/mock.mjs";
+import { sandboxMissing } from "../../src/security.ts";
 import { httpMcp } from "../../test/support/http-mcp.ts";
 import { launchApp } from "./support/app.ts";
 import { daemonGone, ours } from "./support/daemon.ts";
@@ -64,6 +65,10 @@ const menu = (command: string) => app.evaluate(({ BrowserWindow }: any, c: strin
 const api = (method: string, url: string, body?: unknown) => page.evaluate(([m, u, b]: [string, string, unknown]) => (window as any).pine.call(m, u, b), [method, url, body]);
 
 before(async () => {
+	// The agents here work in `safe` mode, in the sandbox, as an owner's do. On Linux it is bubblewrap,
+	// which `pine init` sets up: without it they get no shell and see no folder, and half of what is
+	// tested here cannot happen. That is said once, here, and not as a dozen timeouts.
+	if (process.platform === "linux" && sandboxMissing()) throw new Error(`No sandbox on this computer: ${sandboxMissing()}. The app's tests need one: run "node src/cli.ts init --yes" at the root first.`);
 	mock = await startMock({ strip: /<pine-note>[\s\S]*?<\/pine-note>\s*/g, promptTokens: (body: any, raw: string) => contextAt(body) ?? Math.ceil(raw.length / 4) });
 	home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-desktop-")));
 	write(path.join(home, "models.json"), JSON.stringify({ providers: { mock: { name: "Mock", baseUrl: mock.baseUrl, api: "openai-completions", apiKey: "sk-mock", models: [{ id: "m", name: "Mock", contextWindow: 128000, maxTokens: 4096, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } }));
@@ -100,7 +105,8 @@ process.stdin.resume();
 	github = http.createServer((_req, res) => {
 		releases.asked++;
 		const version = releases.tag.slice(1);
-		res.writeHead(releases.status, { "content-type": "application/json" }).end(JSON.stringify({ tag_name: releases.tag, html_url: "https://example.invalid/elsewhere", assets: ["arm64", "x64"].map((arch) => ({ name: `Pine-${version}-${arch}.dmg` })) }));
+		// The app for each system and processor is attached (`appFile` in electron/updates.ts), so a release counts wherever the test runs.
+		res.writeHead(releases.status, { "content-type": "application/json" }).end(JSON.stringify({ tag_name: releases.tag, html_url: "https://example.invalid/elsewhere", assets: ["arm64", "x64"].flatMap((arch) => [".dmg", ".AppImage", "-setup.exe"].map((kind) => ({ name: `Pine-${version}-${arch}${kind}` }))) }));
 	});
 	await new Promise<void>((r) => github.listen(0, "127.0.0.1", r));
 
@@ -193,6 +199,9 @@ function contextAt(body: any): number | undefined {
 /** The edge between the side bar and the rest of the window, and the one before the panel beside a conversation. */
 const SIDE_EDGE = "#sidebar-panel + [data-slot=resizable-handle]";
 const CODE_EDGE = "[data-slot=resizable-handle]:has(+ #code-panel)";
+/** How the app calls this computer: "This Mac" on a Mac, "This computer" elsewhere. */
+const HERE = process.platform === "darwin" ? "Mac" : "computer";
+
 /** The edge before the browser's aside, and the toggles of the panel and of the browser at the top right of the title bar. */
 const BROWSER_EDGE = "[data-slot=resizable-handle]:has(+ #browser-panel)";
 const CODE_TOGGLE = "header [data-toggle=code]";
@@ -203,7 +212,7 @@ test("starts a daemon of its own and shows the main agent", async () => {
 	assert.equal(await page.textContent("[data-slot=empty] h1"), "main");
 	// This home has no browser for the web tools in the build its pine drives (the folder for it
 	// is empty): that is asked once, at the start, and "Not now" is remembered.
-	await sees("[data-slot=dialog-title] >> text=The browser for the web tools is not on this Mac");
+	await sees(`[data-slot=dialog-title] >> text=The browser for the web tools is not on this ${HERE}`);
 	await shot("00-browser");
 	await page.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" }).click();
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
@@ -364,14 +373,19 @@ test("the agent's browser is shown in an aside of its own as a picture, and what
 		await waitFor("the click arrived", () => ops().some((o) => o.do === "click"));
 		const click = ops().find((o) => o.do === "click");
 		assert.ok(Math.abs(click.x - 100 * box.k) <= 1 && Math.abs(click.y - 60 * box.k) <= 1 && click.button === "left", JSON.stringify(click));
-		// Letters typed in a row go as one text, a key by its name, and what is pasted as text too.
-		await page.keyboard.type("okapi");
+		// Letters typed in a row go as one text, a key by its name, and what is pasted as text too. (The letters
+		// are pressed in one go: the driver's keys take a round trip each, which on a busy machine can leave them
+		// further apart than a hand's, and a letter that comes late is rightly sent on its own.)
+		await page.evaluate(() => {
+			for (const key of "okapi") document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+		});
 		await page.keyboard.press("Enter");
-		await page.keyboard.press("Meta+KeyA");
-		await waitFor("what was typed arrived", () => ops().some((o) => o.do === "key" && o.key === "Meta+KeyA"));
+		// The key of shortcuts (⌘ here, Ctrl elsewhere) goes as the shortcut key of the system the agent's browser runs on.
+		await page.keyboard.press("ControlOrMeta+KeyA");
+		await waitFor("what was typed arrived", () => ops().some((o) => o.do === "key" && o.key === "ControlOrMeta+KeyA"));
 		assert.equal(ops().filter((o) => o.do === "text").map((o) => o.text).join(""), "okapi");
 		assert.ok(ops().filter((o) => o.do === "text").length < 5, "letters are not sent one by one");
-		assert.deepEqual(ops().filter((o) => o.do === "key").map((o) => o.key), ["Enter", "Meta+KeyA"]);
+		assert.deepEqual(ops().filter((o) => o.do === "key").map((o) => o.key), ["Enter", "ControlOrMeta+KeyA"]);
 		// The wheel adds up, a tab is chosen by a click, back is a button.
 		await page.mouse.wheel(0, 120);
 		await page.mouse.wheel(0, 120);
@@ -515,16 +529,21 @@ const activeOption = () =>
  * and a look before the second finds the line from before, or none.
  */
 const named = (pattern: RegExp, is = true) =>
-	page.waitForFunction(
-		([source, is]: [string, boolean]) => {
-			const field = document.activeElement;
-			const id = field?.getAttribute("aria-activedescendant");
-			const option = id ? document.getElementById(id) : null;
-			return field?.getAttribute("role") === "combobox" && option !== null && new RegExp(source).test(option.textContent ?? "") === is;
-		},
-		[pattern.source, is],
-		{ timeout: 20_000 },
-	);
+	page
+		.waitForFunction(
+			([source, is]: [string, boolean]) => {
+				const field = document.activeElement;
+				const id = field?.getAttribute("aria-activedescendant");
+				const option = id ? document.getElementById(id) : null;
+				return field?.getAttribute("role") === "combobox" && option !== null && new RegExp(source).test(option.textContent ?? "") === is;
+			},
+			[pattern.source, is],
+			{ timeout: 20_000 },
+		)
+		.catch(async () => {
+			const lines = await page.$$eval("[role=dialog] [role=option]", (els: Element[]) => els.slice(0, 8).map((e) => e.textContent));
+			throw new Error(`The line named is ${is ? "not" : "still"} ${pattern}: ${JSON.stringify({ named: await activeOption(), lines })}`);
+		});
 
 /**
  * Waits until a dialog that was drawn has the keyboard, and its list, where it has one, a chosen line.
@@ -620,6 +639,22 @@ test("an empty composer is drawn at full strength, and its send button says ther
 	await page.fill("[data-slot=composer] textarea", "something");
 	assert.notEqual(await send.getAttribute("aria-disabled"), "true");
 	await page.fill("[data-slot=composer] textarea", "");
+});
+
+test("the bar along the top keeps room for the window's buttons where the system draws them: none at its end on a Mac, the controls' width elsewhere", async () => {
+	const bar = await page.$eval("header:has([data-toggle=code])", (h: Element) => {
+		const overlay = (navigator as any).windowControlsOverlay;
+		const area = overlay?.visible ? overlay.getTitlebarAreaRect() : undefined;
+		return { right: parseFloat(getComputedStyle(h).paddingRight), controls: area ? innerWidth - area.x - area.width : 0, visible: Boolean(overlay?.visible), rem: parseFloat(getComputedStyle(document.documentElement).fontSize) };
+	});
+	// The bar's own room, 2 on the scale: all there is at its end on a Mac, whose buttons are at the start.
+	const own = bar.rem * 0.5;
+	if (process.platform === "darwin") assert.equal(bar.right, own, JSON.stringify(bar));
+	else {
+		assert.equal(bar.visible, true, "the window draws its controls over the page");
+		assert.ok(bar.controls > 0, JSON.stringify(bar));
+		assert.ok(Math.abs(bar.right - Math.max(bar.controls, own)) <= 1, JSON.stringify(bar));
+	}
 });
 
 test("a click into the composer draws no ring and no brighter border: it looks as it did before", async () => {
@@ -960,9 +995,9 @@ test("a folder is opened for a conversation: changes, and a file edited and save
 	await page.locator("[data-slot=code-panel]").getByRole("button", { name: "Edit" }).click();
 	await sees("[data-slot=code-panel] .cm-content");
 	await page.click("[data-slot=code-panel] .cm-content");
-	await page.keyboard.press("Meta+A");
+	await page.keyboard.press("ControlOrMeta+A");
 	await page.keyboard.type("export const answer = 43;\n");
-	await page.keyboard.press("Meta+S");
+	await page.keyboard.press("ControlOrMeta+S");
 	for (let i = 0; i < 50 && !fs.readFileSync(path.join(folder, "src", "index.ts"), "utf8").includes("43"); i++) await new Promise((r) => setTimeout(r, 100));
 	assert.equal(fs.readFileSync(path.join(folder, "src", "index.ts"), "utf8"), "export const answer = 43;\n");
 	await shot("05-editor");
@@ -1137,6 +1172,8 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await sees(`${list} [role=option][data-highlighted]`);
 	await page.keyboard.press("Escape");
 	await page.waitForSelector(list, { state: "detached" });
+	// (Focus comes back a moment after the list is gone.)
+	for (let i = 0; i < 40 && !(await reasoning.evaluate((el: Element) => el === document.activeElement)); i++) await new Promise((r) => setTimeout(r, 50));
 	assert.equal(await reasoning.evaluate((el: Element) => el === document.activeElement), true);
 	await page.keyboard.press("Enter");
 	await sees(`${list} [role=option][data-highlighted]`);
@@ -1304,7 +1341,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	}
 	// App: the browser of the web tools is still not there, and can be fetched from here. (The
 	// test fetches nothing: PINE_SKIP_DOWNLOADS. What the command printed is shown.)
-	await sees("[data-setting=browser] [data-slot=badge][data-variant=outline] >> text=not on this Mac");
+	await sees(`[data-setting=browser] [data-slot=badge][data-variant=outline] >> text=not on this ${HERE}`);
 	await page.locator("[data-setting=browser]").getByRole("button", { name: "Fetch it" }).click();
 	await sees("[data-setting=browser] [data-slot=code-block-content] >> text=Not fetched: PINE_SKIP_DOWNLOADS is set.");
 	// Fetched some other way (a terminal): the page says so when it is opened again.
@@ -1313,7 +1350,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	for (const place of places) write(path.join(browsers, path.basename(place), "INSTALLATION_COMPLETE"), "");
 	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=Models");
 	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=App");
-	await sees("[data-setting=browser] [data-slot=badge][data-variant=default] >> text=on this Mac");
+	await sees(`[data-setting=browser] [data-slot=badge][data-variant=default] >> text=on this ${HERE}`);
 	await menu("settings");
 });
 
@@ -1650,6 +1687,8 @@ test("conversations are kept in groups: one made from the agent's menu is filled
 	await page.keyboard.press("Enter");
 	await sees("[data-slot=dialog-content] [role=option] >> text=Okapi");
 	await page.keyboard.type("Okapi");
+	// Enter once the list has followed what was typed: on a slow machine it is a moment behind the keys.
+	await sees("[data-slot=dialog-content] [role=option][aria-selected=true] >> text=Okapi");
 	await page.keyboard.press("Enter");
 	await group("Okapi").locator("[role=option]", { hasText: /okapi-web$/ }).waitFor();
 	assert.equal(await groupOf("okapi-web"), "Okapi");
@@ -1704,6 +1743,8 @@ test("a conversation is opened from the palette with the keyboard alone", async 
 	// Its results keep their group headers.
 	await sees("[cmdk-group-heading] >> text=Conversations");
 	await sees("[role=option] >> text=scout · where is the okapi invoice");
+	// The first line is chosen anew a moment after the last letter: an arrow before that is undone by it.
+	await named(/scout · where is the okapi invoice/);
 	await page.keyboard.press("ArrowDown");
 	await page.keyboard.press("ArrowUp");
 	await named(/scout · where is the okapi invoice/);
@@ -1740,7 +1781,7 @@ test("an event is published from the event log with a form: a topic, and a paylo
 	assert.equal(await page.getAttribute("#publish-payload", "aria-invalid"), "true");
 	await shot("11b-publish-wrong");
 	await page.getByLabel("Payload").fill('{"value": "away"}');
-	await page.getByLabel("Payload").press("Meta+Enter");
+	await page.getByLabel("Payload").press("ControlOrMeta+Enter");
 	await page.waitForSelector("[data-slot=publish-form]", { state: "detached" });
 	await sees("[data-slot=toast] >> text=on house/mode");
 	await sees("[aria-label=Events] [data-slot=collapsible-trigger] >> text=house/mode");
@@ -1881,7 +1922,7 @@ test("a conversation moves into a worktree of its folder: the chip names the bra
 	await page.click("[data-slot=tab][data-active] button[aria-label='Close this tab']");
 });
 
-test("dictating puts what is heard into the input and sends nothing", async () => {
+test("dictating puts what is heard into the input and sends nothing", { skip: process.platform !== "darwin" && "dictating is a Mac's: the speech recognition macOS has on the device" }, async () => {
 	const sent = await page.$$eval("[data-item=user]", (els: Element[]) => els.length);
 	await page.fill("[data-slot=composer] textarea", "Typed first:");
 	await menu("voice");
@@ -2138,10 +2179,13 @@ test("a phone-wide window lays the side bar and the panel over the conversation,
 		await sees("[data-slot=sheet-content] [data-slot=code-panel]");
 		await menu("code");
 		await page.waitForSelector("[data-slot=code-panel]", { state: "detached" });
-		// Wide again: the side bar is a column as wide as it was.
+		// Wide again: the side bar is a column as wide as it was. (The window grows first and the column
+		// is put back a moment after: what is measured at once can be the step between.)
 		await size(1280, 820);
 		await sees("#sidebar-panel [data-slot=sidebar]");
-		assert.equal(Math.round(await page.$eval("#sidebar-panel [data-slot=sidebar]", (el: Element) => el.getBoundingClientRect().width)), wide);
+		const sidebarWidth = () => page.$eval("#sidebar-panel [data-slot=sidebar]", (el: Element) => Math.round(el.getBoundingClientRect().width));
+		await page.waitForFunction((w: number) => Math.round(document.querySelector("#sidebar-panel [data-slot=sidebar]")!.getBoundingClientRect().width) === w, wide, { timeout: 5000 }).catch(() => {});
+		assert.equal(await sidebarWidth(), wide);
 	} finally {
 		// The tests after this one have the width the start of this file set, whatever failed here.
 		await size(1280, 820);
@@ -2204,7 +2248,7 @@ test("what was typed in a file and not saved stays when the panel becomes a shee
 		}
 		await sees("[data-slot=code-panel] .cm-content");
 		await page.click("[data-slot=code-panel] .cm-content");
-		await page.keyboard.press("Meta+End");
+		await page.keyboard.press("ControlOrMeta+End");
 		await page.keyboard.type("unsaved draft");
 		const save = page.locator("[data-slot=code-panel]").getByRole("button", { name: "Save" });
 		assert.ok(await save.isEnabled());
@@ -2215,7 +2259,7 @@ test("what was typed in a file and not saved stays when the panel becomes a shee
 		assert.ok(await save.isEnabled());
 		// Escape that closes the editor's search is the editor's, and so is one in the editor itself: the sheet stays.
 		await page.click("[data-slot=code-panel] .cm-content");
-		await page.keyboard.press("Meta+F");
+		await page.keyboard.press("ControlOrMeta+F");
 		await sees("[data-slot=code-panel] .cm-search");
 		await page.keyboard.press("Escape");
 		await page.waitForSelector("[data-slot=code-panel] .cm-search", { state: "detached" });
@@ -2318,7 +2362,7 @@ test("another machine's pine is used from the foot of the side bar, and this Mac
 
 	// The foot of the side bar lists both machines; the other one is picked, and the window shows its pine.
 	await page.click("[data-slot=service-status]");
-	await sees("[data-slot=dropdown-menu-radio-item] >> text=This Mac");
+	await sees(`[data-slot=dropdown-menu-radio-item] >> text=This ${HERE}`);
 	// The menu opens over the side bar, which moves the window: it is no part of that, or a click on it would move the
 	// window instead (the system takes it, so a click of the driver's, which goes to the page, cannot show this).
 	const region = await page.$$eval("[data-slot=dropdown-menu-content], [data-slot=dropdown-menu-radio-item]", (els: Element[]) => els.map((e) => getComputedStyle(e).getPropertyValue("-webkit-app-region")));
@@ -2351,7 +2395,7 @@ test("another machine's pine is used from the foot of the side bar, and this Mac
 	// Back to this Mac: its own agents and conversation, as they were; the other pine goes on, held by the app.
 	const farPort = daemonOf(far).port;
 	await page.click("[data-slot=service-status]");
-	await page.click("[data-slot=dropdown-menu-radio-item] >> text=This Mac");
+	await page.click(`[data-slot=dropdown-menu-radio-item] >> text=This ${HERE}`);
 	await page.waitForFunction(() => [...document.querySelectorAll("[data-slot=agent-label] > :first-child")].map((e) => e.textContent?.trim()).includes("scout"), undefined, { timeout: 30_000 });
 	assert.doesNotMatch(await agents(), /helper/);
 	assert.match(await page.textContent("[data-slot=service-status]"), /started here/);

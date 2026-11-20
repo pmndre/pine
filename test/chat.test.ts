@@ -4,7 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import { test } from "node:test";
 import { pace, type as slackType } from "../src/sources/slack.ts";
-import { type Harness, harness, mockMsg, sleep, until } from "./support/harness.ts";
+import { assertPrivate, type Harness, harness, mockMsg, sleep, until } from "./support/harness.ts";
 import { ANNA, ANNAS, APP, APP_ID, BOSS, BOT, BOT_ID, deafSocket, DEV, DM, ME, OPS, PINE, RANDOM, slackSite, USER } from "./support/slack.ts";
 import { type WsConn, wsServer } from "./support/ws.ts";
 
@@ -527,7 +527,7 @@ test("slack: the files of a message are fetched from Slack's file host into the 
 	assert.match(path.basename(files[1].path), /^[a-z0-9]+-cat\.png$/);
 	assert.equal(fs.readFileSync(files[0].path, "utf8"), "%PDF-1.4 the plan");
 	assert.deepEqual(fs.readFileSync(files[1].path), picture);
-	assert.equal(fs.statSync(files[0].path).mode & 0o777, 0o600);
+	assertPrivate(files[0].path, 0o600);
 	assert.deepEqual(fs.readdirSync(dir).sort(), [path.basename(files[0].path), path.basename(files[1].path)].sort());
 	// A picture is handed on to be looked at, as mail's and ftp's are.
 	assert.deepEqual(got.images, [{ path: files[1].path, mimeType: "image/png" }]);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { after, test } from "node:test";
 import { PineTui, searchItems, urlAt } from "../src/tui/app.ts";
 import { Client } from "../src/tui/client.ts";
@@ -111,7 +112,7 @@ test("tui: what /reset cleared does not come back when the UI is opened again", 
 	await t.h.close();
 });
 
-test("tui: tabs, slash commands and keys", async () => {
+test("tui: tabs, slash commands and keys", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const t = await open({ agents: { main: {}, gonzo: { agent: { description: "law" } } } });
 	await t.sees("type a message");
 
@@ -354,7 +355,7 @@ test("tui: a click into the input leaves it the place where keys go", async () =
 	await t.close();
 });
 
-test("tui: the mouse works on tabs, their close buttons, the bottom bar and the lists it opens", async () => {
+test("tui: the mouse works on tabs, their close buttons, the bottom bar and the lists it opens", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const t = await open({ agents: { main: {}, gonzo: { agent: { description: "law" } } } });
 	await t.sees("type a message");
 	const last = () => t.app.screen().length - 1;
@@ -414,13 +415,14 @@ test("tui: dropped files are attached, shown, removable, and arrive in the agent
 	fs.writeFileSync(path.join(dir, "shot one.png"), png);
 	fs.writeFileSync(path.join(dir, "notes.txt"), "the notes\n");
 	fs.writeFileSync(path.join(dir, "extra.txt"), "x");
-	const esc = (p: string) => p.replace(/ /g, "\\ ");
+	// (Windows' terminals quote a path with spaces instead.)
+	const esc = (p: string) => (process.platform === "win32" ? `"${p}"` : p.replace(/ /g, "\\ "));
 	const t = await open({ agents: { main: {} } });
 	await t.sees("type a message");
 
 	// Terminals paste dropped files as paths: escaped, quoted, or as file:// URLs.
 	t.term.paste(`${esc(path.join(dir, "shot one.png"))} '${path.join(dir, "notes.txt")}'`);
-	t.term.paste(`file://${encodeURI(path.join(dir, "extra.txt"))}`);
+	t.term.paste(pathToFileURL(path.join(dir, "extra.txt")).href);
 	await t.sees(/attached: shot one\.png 1 KB ×\s+notes\.txt 1 KB ×\s+extra\.txt 1 KB ×/);
 	const row = t.app.screen().findIndex((l) => l.includes("attached:"));
 	t.term.click(t.app.screen()[row].lastIndexOf("×"), row);
@@ -461,7 +463,8 @@ test("tui: bypass in a conversation that has read outside content is a choice, a
 	// Bypass from the configuration: it applies until the conversation reads outside content, then says so.
 	await t.send(mockMsg([{ tools: [{ name: "mcp__feed__echo", args: { text: "x" } }] }]));
 	await t.sees("bypass is paused in this conversation");
-	await t.sees(/bypass \(paused\).* · outside content/);
+	// (The bar may cut its end short: how fast the model was can come before it.)
+	await t.sees(/bypass \(paused\).* · outside con/);
 	await t.send("and now?");
 	await t.sees("ECHO[and now?]");
 	assert.ok(notesOf(t.h.mock.state.requests.at(-1)).at(-1)!.includes("it is paused in this conversation"), "the agent knows too, and can say why something is refused");
@@ -596,8 +599,8 @@ test("tui: finding the address under a click", () => {
 	assert.equal(urlAt([" ftp://x.example/ file:///etc/hosts javascript:alert(1)"], 0, 8, 80), undefined, "only http and https");
 });
 
-test("tui: reasoning level and context use are shown in the bottom bar; the level is set by click, list or command", async () => {
-	const t = await open({ agents: { main: { agent: { description: "front desk" } } }, model: { reasoning: true, contextWindow: 20000 }, mockOptions: { prefixCache: true } });
+test("tui: reasoning level and context use are shown in the bottom bar; the level is set by click, list or command", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
+	const t = await open({ agents: { main: { agent: { description: "front desk" } } }, model: { reasoning: true, contextWindow: 40000 }, mockOptions: { prefixCache: true } });
 	await t.sees("type a message");
 	const bar = () => t.app.screen().at(-1)!;
 	assert.match(bar(), /main · main · no folder · mock\/m · reasoning off · safe/);
@@ -608,8 +611,8 @@ test("tui: reasoning level and context use are shown in the bottom bar; the leve
 	await t.sees("ECHO[hello]");
 	await until(() => /context \d+%/.test(bar()), 2000, "the context figure");
 	const first = Number(bar().match(/context (\d+)%/)![1]);
-	assert.ok(first > 0 && first < 100, `a plausible share of a 20000 token window: ${first}%`);
-	await t.send(`a longer message ${"that takes up room ".repeat(60)}`);
+	assert.ok(first > 0 && first < 100, `a plausible share of a 40000 token window: ${first}%`);
+	await t.send(`a longer message ${"that takes up room ".repeat(300)}`);
 	await until(() => Number(bar().match(/context (\d+)%/)?.[1] ?? 0) > first, 3000, "the figure to grow with the conversation");
 	// The second message found the first one in the model server's cache.
 	await until(() => /cache \d+%/.test(bar()), 2000, "the cache figure");
@@ -823,7 +826,9 @@ test("tui: /branch goes on in a new tab from a message picked in a list, or from
 	// The list: all of it first, then the owner's messages, the latest first.
 	await t.send("/branch");
 	await t.sees("│ Branch idea from");
-	const order = ["all of it", "second thought", "first thought"].map((w) => t.text().indexOf(w, t.text().indexOf("Branch idea from")));
+	// Read inside the dialog's frame only: the conversation drawn beside it holds the same words.
+	const box = t.text().split("\n").map((l) => (l.includes("│") ? l.slice(l.indexOf("│") + 1) : "")).join("\n");
+	const order = ["all of it", "second thought", "first thought"].map((w) => box.indexOf(w, box.indexOf("Branch idea from")));
 	assert.ok(order.every((n, i) => n > 0 && (i === 0 || n > order[i - 1])), t.text());
 	t.term.type([KEY.down, KEY.down, KEY.enter]);
 	await t.sees(/3 main·idea-branch ×/);
@@ -1201,9 +1206,16 @@ test("tui: what a model thinks is a few lines while it thinks and one line after
 	// A thought longer than the window, closed from far down in it: the line that is left is in view.
 	await t.send(mockMsg([{ reasoning: steps(90).replaceAll("step", "long"), text: "Third answer." }]));
 	await t.sees("Third answer.");
-	const closed = rows().flatMap((l, y) => (/▸ thought for/.test(l) ? [y] : [])).at(-1)!;
+	// The third thought's own line, once it is drawn: until then the last one may still be the second's.
+	const lastThought = () => rows().flatMap((l, y) => (/▸ thought for/.test(l) ? [y] : [])).at(-1) ?? -1;
+	await until(() => lastThought() > rowOf("Second answer."), 2000, "the third thought to be one line");
+	// A click goes by what was drawn last: wait until the screen holds still, or it lands on what was there before.
+	for (let last = "", i = 0; i < 30 && t.text() !== last; i++) (last = t.text()), await new Promise((r) => setTimeout(r, 100));
+	const closed = lastThought();
 	t.term.click(6, closed);
-	await until(() => rows().some((l) => l.startsWith(" │ long-1 ")), 2000, "the long thought to open");
+	await until(() => rows().some((l) => l.startsWith(" │ long-1 ")), 5000, "the long thought to open").catch((e) => {
+		throw new Error(`${e.message} (clicked row ${closed})\n${t.text()}`);
+	});
 	assert.ok(rows().some((l) => l.includes("▾ thought for")), `its first line stays in view when it opens\n${t.text()}`);
 	t.term.type(["\x1b[6~", "\x1b[6~"]);
 	await until(() => !rows().some((l) => l.includes("▾ thought for")) && rows().some((l) => /^ │ long-\d+ /.test(l)), 2000, "the window to be inside the thought");

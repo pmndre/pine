@@ -30,7 +30,7 @@ import { Palette } from "./Palette.tsx";
 import { PickDialog } from "./PickDialog.tsx";
 import { PublishDialog } from "./PublishDialog.tsx";
 import { QuestionDialog } from "./QuestionDialog.tsx";
-import { ago, until } from "./text.ts";
+import { ago, newApp, shortcut, until } from "./text.ts";
 import { Listbox, ListboxItem } from "@ui-sdk/react/listbox";
 import { LISTBOX, onPick } from "./lists.tsx";
 import { Logo } from "@/components/logo";
@@ -80,7 +80,7 @@ export function Gate() {
 		<>Connecting to {named}</>,
 		about,
 		<div key="s" className="flex w-full flex-col items-center gap-4">
-			<div className="flex items-center gap-2"><Pulse label="Loading" />{s.local ? <Button variant="outline" onClick={() => void s.useMachine()}>Use this Mac</Button> : null}</div>
+			<div className="flex items-center gap-2"><Pulse label="Loading" />{s.local ? <Button variant="outline" onClick={() => void s.useMachine()}>Use {s.platform === "darwin" ? "this Mac" : "this computer"}</Button> : null}</div>
 			{machines}
 		</div>,
 	];
@@ -112,7 +112,7 @@ export function Gate() {
 									{key ? <Button data-slot="trust-host-key" onClick={() => void s.trustHostKey(key)}>Trust this key</Button> : null}
 									{host || s.local ? <Button variant={key ? "outline" : "default"} onClick={() => void bridge.retry()}>Try again</Button> : null}
 									{state.kind === "no-node" ? <Button variant="outline" onClick={() => void bridge.open("https://nodejs.org")}>nodejs.org</Button> : null}
-									{host && s.local ? <Button variant="outline" onClick={() => void s.useMachine()}>Use this Mac</Button> : null}
+									{host && s.local ? <Button variant="outline" onClick={() => void s.useMachine()}>Use {s.platform === "darwin" ? "this Mac" : "this computer"}</Button> : null}
 								</div>
 								{machines}
 							</div>,
@@ -125,7 +125,7 @@ export function Gate() {
 								<div key="l" className="flex w-full flex-col items-center gap-4">
 									<div className="flex items-center gap-2">
 										<Button data-slot="gate-reload" onClick={() => void s.reload()}>Try again</Button>
-										{host && s.local ? <Button variant="outline" onClick={() => void s.useMachine()}>Use this Mac</Button> : null}
+										{host && s.local ? <Button variant="outline" onClick={() => void s.useMachine()}>Use {s.platform === "darwin" ? "this Mac" : "this computer"}</Button> : null}
 									</div>
 									{machines}
 								</div>,
@@ -454,14 +454,14 @@ function Sidebar() {
 	return (
 		<SidebarRoot collapsible={isMobile ? "offcanvas" : "none"} className="w-full min-w-0 bg-transparent app-drag">
 			<SidebarHeader className="h-11 flex-none flex-row items-center justify-end gap-0.5 py-0 pr-2 pl-window-buttons app-drag">
-				<HoverTooltip><TooltipTrigger render={<SidebarTrigger size="icon" className="app-no-drag" aria-label="Hide the sidebar" />} /><TooltipContent>Hide the sidebar<Kbd>⌘B</Kbd></TooltipContent></HoverTooltip>
+				<HoverTooltip><TooltipTrigger render={<SidebarTrigger size="icon" className="app-no-drag" aria-label="Hide the sidebar" />} /><TooltipContent>Hide the sidebar<Kbd>{shortcut("⌘B")}</Kbd></TooltipContent></HoverTooltip>
 			</SidebarHeader>
 			<SidebarContent>
 				<ScrollArea className="flex min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade flex-1">
 					<SidebarGroup className="pt-1 pb-0">
 						<SidebarMenu>
 							<SidebarMenuItem className="app-no-drag">
-								<HoverTooltip><TooltipTrigger render={<SidebarMenuButton onClick={() => void s.command("palette")} />}><SearchIcon /><span className="grow min-w-0 flex-1">Search</span><Kbd>⌘K</Kbd></TooltipTrigger><TooltipContent>Find a conversation by its name or by what was said in it, or a command, an agent, a settings page</TooltipContent></HoverTooltip>
+								<HoverTooltip><TooltipTrigger render={<SidebarMenuButton onClick={() => void s.command("palette")} />}><SearchIcon /><span className="grow min-w-0 flex-1">Search</span><Kbd>{shortcut("⌘K")}</Kbd></TooltipTrigger><TooltipContent>Find a conversation by its name or by what was said in it, or a command, an agent, a settings page</TooltipContent></HoverTooltip>
 							</SidebarMenuItem>
 						</SidebarMenu>
 					</SidebarGroup>
@@ -476,14 +476,14 @@ function Sidebar() {
 				<SidebarMenu>
 					{newer ? (
 						<SidebarMenuItem className="app-no-drag">
-							<HoverTooltip><TooltipTrigger render={<SidebarMenuButton className="text-primary hover:text-primary" onClick={() => void bridge.open(newer.url)} />}><ArrowUpIcon /><span className="grow min-w-0 flex-1 truncate">Pine {newer.version} is available</span><ExternalLinkIcon /></TooltipTrigger><TooltipContent>{`This is Pine ${newer.mine}. Opens the release's page on GitHub in your browser: download the disk image there and put the app in place of this one.`}</TooltipContent></HoverTooltip>
+							<HoverTooltip><TooltipTrigger render={<SidebarMenuButton className="text-primary hover:text-primary" onClick={() => void bridge.open(newer.url)} />}><ArrowUpIcon /><span className="grow min-w-0 flex-1 truncate">Pine {newer.version} is available</span><ExternalLinkIcon /></TooltipTrigger><TooltipContent>{`This is Pine ${newer.mine}. Opens the release's page on GitHub in your browser. The new app is ${newApp().what} there: ${newApp().how}.`}</TooltipContent></HoverTooltip>
 						</SidebarMenuItem>
 					) : null}
 					<SidebarMenuItem className="app-no-drag">
 						<SidebarMenuButton isActive={front?.kind === "events"} onClick={() => void s.openEvents()}><AudioLinesIcon /><span className="grow min-w-0 flex-1">Events</span></SidebarMenuButton>
 					</SidebarMenuItem>
 					<SidebarMenuItem className="app-no-drag">
-						<SidebarMenuButton isActive={front?.kind === "settings"} onClick={() => s.openSettings()}><SettingsIcon /><span className="grow min-w-0 flex-1">Settings</span><Kbd>⌘,</Kbd></SidebarMenuButton>
+						<SidebarMenuButton isActive={front?.kind === "settings"} onClick={() => s.openSettings()}><SettingsIcon /><span className="grow min-w-0 flex-1">Settings</span><Kbd>{shortcut("⌘,")}</Kbd></SidebarMenuButton>
 					</SidebarMenuItem>
 					<Machines />
 				</SidebarMenu>
@@ -609,7 +609,7 @@ function BesideToggle({ which, label, keys, icon }: { which: Beside; label: stri
 	return (
 		<HoverTooltip>
 			<TooltipTrigger render={<Toggle size="sm" data-toggle={which === "aside" ? "browser" : "code"} data-behind={behind || undefined} className="app-no-drag aria-pressed:bg-background aria-pressed:ring-1 aria-pressed:ring-border data-behind:bg-transparent data-behind:text-muted-foreground" disabled={s.active?.kind !== "chat"} pressed={which === "code" ? s.code : s.aside} onPressedChange={() => s.toggle(which)} aria-label={label} />}>{icon}</TooltipTrigger>
-			<TooltipContent>{label}<Kbd>{keys}</Kbd></TooltipContent>
+			<TooltipContent>{label}<Kbd>{shortcut(keys)}</Kbd></TooltipContent>
 		</HoverTooltip>
 	);
 }
@@ -626,7 +626,7 @@ function measureRoom(el: HTMLDivElement | null): (() => void) | undefined {
 	return () => observer.disconnect();
 }
 
-function TitleBar() {
+export function TitleBar() {
 	const s = useModel(store);
 	// Drawn again when the window crosses the width where the panels become sheets: what the icons say depends on it.
 	useMediaQuery(ROOM);
@@ -639,8 +639,8 @@ function TitleBar() {
 	// a menu), and when the window gets wide. A click on the conversation already in front puts it away too (ConversationRow).
 	useEffect(() => setOpenMobile(false), [s.active?.id, isMobile, setOpenMobile]);
 	return (
-		<header className={cn("flex h-11 flex-none items-center gap-1 pr-2 app-drag", column ? "pl-0.5" : "pl-window-buttons")}>
-			{column ? null : <HoverTooltip><TooltipTrigger render={<SidebarTrigger size="icon" className="app-no-drag" aria-label="Show the sidebar" />} /><TooltipContent>Show the sidebar<Kbd>⌘B</Kbd></TooltipContent></HoverTooltip>}
+		<header className={cn("flex h-11 flex-none items-center gap-1 app-drag", s.platform === "darwin" ? "pr-2" : "pr-window-controls", column ? "pl-0.5" : "pl-window-buttons")}>
+			{column ? null : <HoverTooltip><TooltipTrigger render={<SidebarTrigger size="icon" className="app-no-drag" aria-label="Show the sidebar" />} /><TooltipContent>Show the sidebar<Kbd>{shortcut("⌘B")}</Kbd></TooltipContent></HoverTooltip>}
 			{/* A row that scrolls cuts off what a tab draws outside itself (the line around the tab in front, the mark where a dragged tab
 			    would land): the padding is the room for both, and the margin keeps the tabs where they were. It scrolls without a bar;
 			    the fade at a cut end says there is more. */}
@@ -649,7 +649,7 @@ function TitleBar() {
 					{s.tabs.map((t, i) => <TabButton key={t.id} tab={t} index={i} />)}
 				</div>
 			</ScrollArea>
-			<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon" className="app-no-drag" onClick={() => void s.newConversation()} aria-label={with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent"} />}><PlusIcon /></TooltipTrigger><TooltipContent>{with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent"}<Kbd>⌘T</Kbd></TooltipContent></HoverTooltip>
+			<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon" className="app-no-drag" onClick={() => void s.newConversation()} aria-label={with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent"} />}><PlusIcon /></TooltipTrigger><TooltipContent>{with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent"}<Kbd>{shortcut("⌘T")}</Kbd></TooltipContent></HoverTooltip>
 			<span className="min-w-0 flex-1" />
 			<BesideToggle which="code" label="Side panel: the agent, its files, changes, output and what is running" keys="⌥⌘B" icon={<PanelRightIcon />} />
 			<BesideToggle which="aside" label="Browser: the page the agent works in" keys="⇧⌘B" icon={<GlobeIcon />} />
@@ -669,7 +669,7 @@ function NoTab() {
 				<EmptyDescription>Every conversation is still in the side bar. Open one there, or start a new one.</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent className="flex-row justify-center">
-				<Button onClick={() => void s.newConversation()}>New conversation<Kbd>⌘T</Kbd></Button>
+				<Button onClick={() => void s.newConversation()}>New conversation<Kbd>{shortcut("⌘T")}</Kbd></Button>
 				{main ? <Button variant="outline" onClick={() => void s.openTab(main.id, "main")}>Open {main.id}</Button> : null}
 			</EmptyContent>
 		</Empty>
@@ -710,14 +710,14 @@ function Help({ close }: { close: () => void }) {
 				<div className="flex flex-col gap-1.5 px-4 text-xs select-text">
 					{keys.map(([k, about]) => (
 						<Field key={k} orientation="horizontal" className="items-baseline">
-							<span className="w-24 flex-none"><Kbd>{k}</Kbd></span>
+							<span className="w-24 flex-none"><Kbd>{shortcut(k)}</Kbd></span>
 							<span className="text-muted-foreground">{about}</span>
 						</Field>
 					))}
 					{COMMANDS.map((c) => (
 						<Field key={c.name} orientation="horizontal" className="items-baseline">
 							<span className="w-24 flex-none font-mono">/{c.name}</span>
-							<span className="text-muted-foreground">{c.about}{c.keys ? <> <Kbd>{c.keys}</Kbd></> : null}</span>
+							<span className="text-muted-foreground">{c.about}{c.keys ? <> <Kbd>{shortcut(c.keys)}</Kbd></> : null}</span>
 						</Field>
 					))}
 				</div>
@@ -743,7 +743,7 @@ function UpdateAsk() {
 					<DialogTitle>Pine {u.version} is available</DialogTitle>
 				</DialogHeader>
 				<div className="select-text">
-					<p className="text-muted-foreground">This is Pine {u.mine}. The new app is a disk image on the release's page on GitHub: download it, quit Pine and put the new app in place of this one. Your pine home, with your agents, conversations and settings, stays as it is.</p>
+					<p className="text-muted-foreground">This is Pine {u.mine}. The new app is {newApp().what} on the release's page on GitHub: {newApp().how}. Your pine home, with your agents, conversations and settings, stays as it is.</p>
 					<p className="mt-2.5 cursor-auto font-mono text-xs text-faint select-text">{u.url}</p>
 				</div>
 				<DialogFooter>
@@ -756,7 +756,7 @@ function UpdateAsk() {
 }
 
 /**
- * The browser the web tools drive is not on this Mac in the build this pine needs: asked at the
+ * The browser the web tools drive is not on this computer in the build this pine needs: asked at the
  * start, once for a version of pine. Settings > App offers the same at any time. While it is
  * fetched, the dialog stays.
  */
@@ -767,7 +767,7 @@ function BrowserAsk() {
 		<Dialog open onOpenChange={(open) => open || s.browserFetching || later()}>
 			<DialogContent showCloseButton={false} className="sm:max-w-xl">
 				<DialogHeader>
-					<DialogTitle>The browser for the web tools is not on this Mac</DialogTitle>
+					<DialogTitle>The browser for the web tools is not on {s.platform === "darwin" ? "this Mac" : "this computer"}</DialogTitle>
 				</DialogHeader>
 				<div className="flex flex-col gap-3 select-text">
 					<p className="text-muted-foreground">Your agents open pages that need a real browser with one that pine fetches for itself. Each version of pine drives a build of its own, and this one's is not here yet: it was never fetched, or it is the build of an older pine. It is about 600 MB and is fetched once. Until then the browser tools do not work; web search and reading a page do.</p>

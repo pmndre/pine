@@ -26,7 +26,9 @@ whenParentGone(() => {
 try {
 	const app = await buildApp(into);
 	if (leaving) throw new Error("stopped before the tests started");
-	child = spawn(process.execPath, ["--test", ...process.argv.slice(2)], { stdio: "inherit", env: { ...process.env, PINE_DESKTOP_APP: app } });
+	// PINE_DESKTOP_BACKGROUND keeps the apps under test out of the developer's way; it is set here and
+	// not as `VAR=1 node ...` in package.json, which cmd.exe (npm's shell on Windows) cannot run.
+	child = spawn(process.execPath, ["--test", ...process.argv.slice(2)], { stdio: "inherit", env: { PINE_DESKTOP_BACKGROUND: "1", ...process.env, PINE_DESKTOP_APP: app } });
 	const code = await new Promise((resolve) => child.on("close", (c, signal) => resolve(c ?? (signal ? 1 : 0))));
 	process.exit(leaving ? 1 : code);
 } catch (e) {

@@ -268,12 +268,14 @@ test("telegram: after outside content an agent still tells its owner without a q
 	assert.equal(sentFiles[1], "phone: sent to your owner on Telegram, with clip.mp4");
 	assert.match(sentFiles[2], /notes\.txt is not a picture, a video or a sound file in your workspace/, "a file that is neither is not sent");
 	assert.match(sentFiles[3], /is not a picture, a video or a sound file in your workspace/, "and nothing from outside the workspace");
-	assert.deepEqual(files().map((c) => [c.method, c.body.chat_id, c.body.caption, (c.body.photo ?? c.body.video).name, (c.body.photo ?? c.body.video).type]), [
+	// The calls of one step run side by side: what arrives first is up to the machine.
+	const byText = (a: unknown[], b: unknown[]) => JSON.stringify(a).localeCompare(JSON.stringify(b));
+	assert.deepEqual(files().map((c) => [c.method, c.body.chat_id, c.body.caption, (c.body.photo ?? c.body.video).name, (c.body.photo ?? c.body.video).type]).sort(byText), [
 		["sendPhoto", "1001", "Somebody is at the door.", "door.png", "image/png"],
 		["sendVideo", "1001", "The clip.", "clip.mp4", "video/mp4"],
 		["sendPhoto", "1001", undefined, "door.png", "image/png"],
-	]);
-	assert.equal(files()[0].body.photo.size, PNG.length, "the picture arrives whole");
+	].sort(byText));
+	assert.equal(files().find((c) => c.method === "sendPhoto")!.body.photo.size, PNG.length, "the picture arrives whole");
 	assert.equal(tg.sent().at(-1).text.length, 1500, "a message too long for a caption goes first, by itself");
 	assert.equal(asked.length, 1, "none of this was put to the owner");
 	// An owner who wants to see every message first says so, and is asked in every conversation.

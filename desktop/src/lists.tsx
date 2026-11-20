@@ -44,7 +44,7 @@ const NO_LINE = "\u0000";
  *   chosen and name none). A ref and not an effect: the dialog draws its content after itself.
  * - after the text changed (`redo`), once cmdk has chosen the first line: if it is not named, another
  *   line and then it, since cmdk ignores a choice of the line it has. A list of one line cannot be
- *   moved off it, and stays unnamed until a key.
+ *   moved off it: its line is named on the field directly.
  * Returns the Command's `ref` and `defaultValue`.
  */
 export function useNamedLine(redo: unknown, start?: string) {
@@ -64,6 +64,9 @@ export function useNamedLine(redo: unknown, start?: string) {
 			if (!el || !chosen || el.querySelector("[cmdk-input]")?.getAttribute("aria-activedescendant") === chosen.id) return;
 			const other = [...el.querySelectorAll("[cmdk-item]")].find((line) => line !== chosen);
 			if (other) (point(other), point(chosen));
+			// A list of one line cannot be moved off it: its line is named here. React leaves the attribute
+			// alone while cmdk's own value for it does not change, and cmdk names the next line it chooses.
+			else el.querySelector("[cmdk-input]")?.setAttribute("aria-activedescendant", chosen.id);
 		});
 		return () => cancelAnimationFrame(frame);
 	}, [redo]);

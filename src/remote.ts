@@ -109,6 +109,29 @@ function answer(child: ChildProcess, ms = 60_000): Promise<Answer> {
 	});
 }
 
+/**
+ * The forward as a connection of its own, where ssh has no control socket (Windows): ssh binds
+ * the port and holds it, and ends at once when it cannot (ExitOnForwardFailure). It counts once
+ * the daemon answers through it.
+ */
+async function forwardApart(program: string, host: string, env: NodeJS.ProcessEnv, port: number, far: string, token: string): Promise<{ child?: ChildProcess; err: string }> {
+	const f = spawn(program, sshArgs(host, ["-N", "-o", "ExitOnForwardFailure=yes", "-L", `127.0.0.1:${port}:${far}`]), { env, stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
+	let err = "";
+	let over = false;
+	f.stderr!.on("data", (d: Buffer) => (err = (err + d.toString("utf8")).slice(-2000)));
+	f.once("error", (x) => ((over = true), (err = x.message)));
+	f.once("close", () => (over = true));
+	for (let i = 0; i < 60 && !over; i++) {
+		const ok = await fetch(`http://127.0.0.1:${port}/overview`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(1000) })
+			.then((r) => r.ok)
+			.catch(() => false);
+		if (ok) return { child: f, err };
+		await new Promise((r) => setTimeout(r, 250));
+	}
+	f.kill();
+	return { err: err.trim() || "the forward did not answer" };
+}
+
 /** What went wrong with ssh, in words that say what to do. */
 function sshTrouble(host: string, a: Exclude<Answer, { said: any }>): string {
 	const said = a.err.replace(/^#.*\n?/gm, "").trim().slice(-500);
@@ -161,19 +184,23 @@ export interface RemoteService {
  * sent to a port that somebody else took, and nobody signs in twice.
  * `ssh` names the program (a stand-in in tests); `env` is the environment it runs in.
  */
-export async function connectRemote(value: string, opts: { env?: NodeJS.ProcessEnv; ssh?: string } = {}): Promise<RemoteService> {
+export async function connectRemote(value: string, opts: { env?: NodeJS.ProcessEnv; ssh?: string; apart?: boolean } = {}): Promise<RemoteService> {
 	const named = sshHost(value);
 	if (!named) throw new RemoteError("ssh", "Name the machine as you would after ssh: host or user@host.");
 	const { host, label } = named;
 	const program = opts.ssh || "ssh";
 	const env = opts.env ?? process.env;
-	// The control socket, in a folder only this user can open.
+	// The control socket, in a folder only this user can open. Windows' OpenSSH has no control
+	// sockets: there the forward is a second connection of its own (`forwardApart`).
+	const apart = process.platform === "win32" || opts.apart === true;
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pine-ssh-"));
-	const control = ["-o", `ControlPath=${path.join(dir, "c")}`];
-	const child: ChildProcess = spawn(program, sshArgs(host, ["-o", "ControlMaster=yes", "-o", "ControlPersist=no", ...control], remoteCommand()), { env, stdio: ["pipe", "pipe", "pipe"] });
+	const control = apart ? [] : ["-o", `ControlPath=${path.join(dir, "c")}`];
+	const child: ChildProcess = spawn(program, sshArgs(host, apart ? [] : ["-o", "ControlMaster=yes", "-o", "ControlPersist=no", ...control], remoteCommand()), { env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
 	let gone = false;
-	const ended = new Promise<void>((done) => child.once("close", () => ((gone = true), fs.rmSync(dir, { recursive: true, force: true }), done())));
+	let forward: ChildProcess | undefined;
+	const ended = new Promise<void>((done) => child.once("close", () => ((gone = true), forward?.kill(), fs.rmSync(dir, { recursive: true, force: true }), done())));
 	const stop = async () => {
+		forward?.kill();
 		if (gone) return;
 		child.kill("SIGTERM");
 		const hard = setTimeout(() => child.kill("SIGKILL"), 12_000);
@@ -192,6 +219,13 @@ export async function connectRemote(value: string, opts: { env?: NodeJS.ProcessE
 		let err = "";
 		for (let tries = 0; tries < 5 && !port; tries++) {
 			const p = await freePort();
+			if (apart) {
+				const f = await forwardApart(program, host, env, p, far, String(said.token));
+				if (gone) break;
+				if (f.child) (port = p), (forward = f.child);
+				else err = f.err;
+				continue;
+			}
 			const r = await new Promise<{ code: number | null; err: string }>((resolve) => {
 				const f = spawn(program, sshArgs(host, [...control, "-O", "forward", "-L", `127.0.0.1:${p}:${far}`]), { env, stdio: ["ignore", "ignore", "pipe"] });
 				let e = "";
@@ -219,4 +253,134 @@ export async function connectRemote(value: string, opts: { env?: NodeJS.ProcessE
 		await stop();
 		throw e;
 	}
+}
+
+// ---------------------------------------------------------------------------------------------
+// WSL: on Windows, the pine of a Linux distribution that runs on this same computer. It is
+// reached as another machine is, with wsl.exe in place of ssh: `pine service` runs there, and its
+// one line says where its daemon answers. WSL hands a port that a program in the distribution
+// listens on (its loopback too) to Windows' own loopback; where that is switched off, a relay
+// carries each connection through wsl.exe instead (`relayed`).
+
+/** Where the Pine app puts the pine it brings into a distribution: found before one on the PATH. */
+export const WSL_APP_BIN = "$HOME/.local/share/pine-app/bin";
+
+/** `REMOTE_SCRIPT`, with the pine the app installed in the distribution first on the PATH. */
+export const WSL_SCRIPT = REMOTE_SCRIPT.replace("command -v pine", `[ -x "${WSL_APP_BIN}/pine" ] && PATH="${WSL_APP_BIN}:$PATH"; command -v pine`);
+
+/** What may name a distribution: its name as `wsl.exe -l` lists it, never an option. */
+export function wslDistro(value: string | undefined): { distro: string; label: string } | undefined {
+	const distro = value?.trim();
+	if (!distro) return undefined;
+	if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(distro)) throw new RemoteError("ssh", `"${distro.slice(0, 80)}" is not the name of a WSL distribution. The names are those "wsl --list" shows.`);
+	return { distro, label: distro };
+}
+
+/** wsl.exe writes its own messages in UTF-16; what a program inside the distribution prints is passed through as it is. */
+export function wslText(bytes: Buffer): string {
+	const utf16 = bytes.length >= 2 && bytes.length % 2 === 0 && bytes.subarray(0, Math.min(bytes.length, 64)).some((b, i) => i % 2 === 1 && b === 0);
+	return (utf16 ? bytes.toString("utf16le") : bytes.toString("utf8")).replace(/^﻿/, "").replace(/\0/g, "");
+}
+
+/** The distributions this computer has, the default one first. Empty without WSL. */
+export async function wslDistros(opts: { wsl?: string; env?: NodeJS.ProcessEnv } = {}): Promise<string[]> {
+	const out = await new Promise<Buffer>((resolve) => {
+		const c = spawn(opts.wsl || "wsl.exe", ["--list", "--quiet"], { env: opts.env ?? process.env, stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+		const parts: Buffer[] = [];
+		c.stdout!.on("data", (d: Buffer) => parts.push(d));
+		c.on("error", () => resolve(Buffer.alloc(0)));
+		c.on("close", (code) => resolve(code === 0 ? Buffer.concat(parts) : Buffer.alloc(0)));
+	});
+	return wslText(out)
+		.split(/\r?\n/)
+		.map((l) => l.trim())
+		.filter((l) => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(l));
+}
+
+/** The arguments for wsl.exe that run `script` with sh in the distribution, with no shell of Windows in between. */
+export const wslArgs = (distro: string, script: string) => ["--distribution", distro, "--exec", "/bin/sh", "-c", script];
+
+/** What the relay runs in the distribution for one connection: the daemon's port, joined to wsl.exe's stdin and stdout. */
+const RELAY = `const s = require("net").connect(Number(process.argv[1]), process.argv[2]); process.stdin.pipe(s); s.pipe(process.stdout); s.on("error", () => process.exit(1)); s.on("close", () => process.exit(0));`;
+
+/** Whether a daemon answers at this address of Windows' loopback. */
+const answers = (base: string, token: string) =>
+	fetch(`${base}/overview`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(3000) })
+		.then((r) => r.ok)
+		.catch(() => false);
+
+/**
+ * The pine of a WSL distribution on this computer. `wsl` names the program (a stand-in in
+ * tests). The connection is wsl.exe running `pine service` there; it holds a daemon that it
+ * started by its stdin, as an ssh connection does.
+ */
+export async function connectWsl(value: string, opts: { env?: NodeJS.ProcessEnv; wsl?: string; direct?: boolean } = {}): Promise<RemoteService> {
+	const named = wslDistro(value);
+	if (!named) throw new RemoteError("ssh", "Name the WSL distribution, as \"wsl --list\" shows it.");
+	const { distro, label } = named;
+	const program = opts.wsl || "wsl.exe";
+	const env = opts.env ?? process.env;
+	const child: ChildProcess = spawn(program, wslArgs(distro, WSL_SCRIPT), { env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+	let gone = false;
+	let relay: net.Server | undefined;
+	const carried = new Set<net.Socket>();
+	// Closing the relay takes no new connection; those a client keeps open end with it too.
+	const unrelay = () => {
+		relay?.close();
+		for (const sock of carried) sock.destroy();
+	};
+	const ended = new Promise<void>((done) => child.once("close", () => ((gone = true), unrelay(), done())));
+	const stop = async () => {
+		unrelay();
+		if (gone) return;
+		// The daemon it started ends with its stdin.
+		child.stdin?.end();
+		const soft = setTimeout(() => child.kill("SIGTERM"), 5000);
+		const hard = setTimeout(() => child.kill("SIGKILL"), 12_000);
+		await ended;
+		clearTimeout(soft);
+		clearTimeout(hard);
+	};
+	try {
+		const a = await answer(child);
+		if ("failed" in a && /unknown command "service"/.test(a.err)) throw new RemoteError("ssh", `The pine in ${distro} is too old to be reached this way: it has no "service" command. Update it there with "pine update", then try again.`);
+		if ("failed" in a) throw new RemoteError("ssh", wslTrouble(distro, a));
+		const said = a.said;
+		if (said.error) throw new RemoteError("failed", `The pine in ${label} did not start: ${said.error}`);
+		const far = loopbackEnd(String(said.base));
+		const token = String(said.token);
+		let base = `http://${far}`;
+		// WSL hands the port to Windows' loopback, unless that is switched off (.wslconfig): then a relay.
+		if (opts.direct === false || !(await answers(base, token))) {
+			const [host, port] = [far.slice(0, far.lastIndexOf(":")).replace(/^\[|\]$/g, ""), far.slice(far.lastIndexOf(":") + 1)];
+			const script = `${WSL_SCRIPT.slice(0, WSL_SCRIPT.indexOf("command -v pine"))}exec node -e '${RELAY.replace(/'/g, "")}' ${port} ${host}`;
+			relay = net.createServer((sock) => {
+				carried.add(sock);
+				sock.once("close", () => carried.delete(sock));
+				const c = spawn(program, wslArgs(distro, script), { env, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
+				sock.pipe(c.stdin!);
+				c.stdout!.pipe(sock);
+				const end = () => (sock.destroy(), c.kill());
+				sock.on("error", end).on("close", end);
+				c.on("error", end).on("close", end);
+			});
+			await new Promise<void>((resolve, reject) => relay!.once("error", reject).listen(0, "127.0.0.1", () => resolve()));
+			base = `http://127.0.0.1:${(relay.address() as net.AddressInfo).port}`;
+			if (!(await answers(base, token))) throw new RemoteError("ssh", `The pine in ${distro} started, but this computer reaches it neither on its own loopback nor through wsl.exe.`);
+		}
+		return { base, token, started: said.started === true, home: String(said.home ?? "~/.pine"), version: typeof said.version === "string" ? said.version : undefined, host: `wsl:${distro}`, label, stop, ended };
+	} catch (e) {
+		await stop();
+		throw e;
+	}
+}
+
+/** What went wrong with wsl.exe, in words that say what to do. */
+function wslTrouble(distro: string, a: Exclude<Answer, { said: any }>): string {
+	const said = wslText(Buffer.from(a.err)).trim().slice(-600);
+	if (a.failed === "spawn") return "wsl.exe could not be started: this Windows has no WSL. Install it with \"wsl --install\" in a terminal as administrator, then restart Windows.";
+	if (a.failed === "timeout") return `${distro} did not answer within a minute.${said ? ` wsl said: ${said}` : ""}`;
+	if (/WSL_E_DISTRO_NOT_FOUND|no distribution with the supplied name/i.test(said)) return `There is no WSL distribution called ${distro}. "wsl --list" shows those there are; "wsl --install -d Ubuntu" adds one.`;
+	if (a.detail === "127" || /pine is not installed there/.test(said)) return `pine is not installed in ${distro} yet.`;
+	return said || `wsl.exe ended (exit ${a.detail}) without saying why.`;
 }

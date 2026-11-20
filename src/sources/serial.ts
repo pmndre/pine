@@ -38,6 +38,8 @@ const serialName = (file: string) => /^\/dev\/(cu|tty)\.[A-Za-z0-9_.-]+$/.test(f
 /** The device a `port` option means: resolved, under /dev, there, and a serial port. Throws a sentence otherwise. */
 export function portOf(raw: unknown): string {
 	const given = String(raw ?? "").trim();
+	// Windows names its ports COM1, COM2...: reading one takes a program pine does not have there yet.
+	if (process.platform === "win32") throw new Error("a serial port cannot be read on Windows yet. Use a computer with macOS or Linux for this device, or a pine in WSL with the port passed through (usbipd)");
 	if (!path.isAbsolute(given)) throw new Error('"port" is the device\'s path: /dev/cu.usbserial-1420 on a Mac, /dev/ttyUSB0 or /dev/ttyACM0 on Linux');
 	let file: string;
 	try {

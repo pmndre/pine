@@ -2,12 +2,13 @@
 
 ## Requirements
 
-- macOS or Linux. The agent sandbox is built on the system's own: `sandbox-exec` on macOS,
+- macOS, Linux or Windows. The agent sandbox is built on the system's own: `sandbox-exec` on macOS,
   [bubblewrap](https://github.com/containers/bubblewrap) on Linux, which `pine init` installs
   and sets up. Agents in `safe` and `manual` mode work in it; an agent in `auto` mode (the
   main agent, as pine comes) needs none. Without a sandbox pine starts and works: agents
   whose mode you did not choose work in `auto`, one you set to `safe` has no shell, and `pine check`
-  says why. See [security.md](security.md), "On Linux".
+  says why. See [security.md](security.md), "On Linux". Windows has no sandbox of pine's: see
+  "On Windows" below.
 - Optional: `ffmpeg` for videos in the terminal UI (on Linux also for pictures other than
   png, for the bars of a sound that is not a wav file, and its `ffplay` for sound; `mpv`,
   `pw-play`, `paplay` or `aplay` do as well. macOS plays sound and draws its bars with what it
@@ -42,6 +43,24 @@ git clone https://github.com/pmndre/pine ~/dev/pine
 ```bash
 ~/dev/pine/bin/pine init
 ```
+
+### On Windows
+
+Two ways, and the Pine app ([desktop.md](desktop.md)) does either:
+
+- **pine in WSL** (the way to `safe` mode). WSL runs a Linux on the same computer, and pine
+  there has the Linux sandbox. Install WSL once, in a terminal as administrator, and restart:
+  `wsl --install` (it brings Ubuntu). In the Pine app, Settings > Environments lists the
+  distributions; add one, and the app brings the pine it carries into it and makes a home. The
+  sandbox there needs bubblewrap, which takes your password in the distribution: run once, in a
+  terminal, `wsl --distribution Ubuntu --exec ~/.local/share/pine-app/bin/pine init`. Folders of
+  Windows reach that pine under `/mnt/c`; its agents run Linux's programs.
+- **pine on Windows itself**, with `npm install -g @pmndre/pine` or the Pine app. It needs
+  [Git for Windows](https://git-scm.com/download/win): its bash is the shell pine gives an
+  agent. There is no sandbox (docs/adr/0004-three-systems.md says why an AppContainer cannot run
+  that shell): agents work in `auto` and `bypass` mode with your rights, as on any system
+  without one, and the code pane, worktrees and undo, whose git runs in the sandbox, are not
+  there. A serial port cannot be read yet.
 
 ## First start
 
@@ -488,7 +507,7 @@ has the token is you. An error is answered with `{ "error": "..." }` and what to
 | The first message fails with "this computer has no such command" | `dev/claude-haiku`, what the example home starts with, is Claude through the `claude` command of Claude Code, and that is not installed. Sign in to a provider (`pine login <provider>`, or Settings > Models in the Pine app) and pick one of what it offers with `/model`. |
 | The browser cannot open `localhost` or a page says "not reachable from the browser" | Local addresses need your yes. The agent opens the address with `browser_navigate` and you are asked; see "Local addresses" in [mcp.md](mcp.md). A server the agent started itself also needs network access for its shell. |
 | The agent says macOS does not let pine operate apps, or take pictures of the screen | macOS has to be told once: System Settings > Privacy & Security > Accessibility (and Screen & System Audio Recording for pictures), switch on the terminal app pine runs in. See "What macOS has to be told, once" in [computer.md](computer.md). |
-| The agent has no tools to click or type in apps | App control is for an agent that reaches your whole account, in your own conversations, on macOS. `pine check` says which under `apps`. See [computer.md](computer.md). |
+| The agent has no tools to click or type in apps | App control is for an agent that reaches your whole account, in your own conversations, on macOS, Windows, or Linux with X11 (not Wayland). `pine check` says which under `apps`. See [computer.md](computer.md). |
 | The UI says "reconnecting…" | The daemon it was attached to stopped. Start it again; the UI picks it up. |
 | `no daemon answers on http://127.0.0.1:7463` | The daemon is not running, or `http.port` differs from what the CLI reads in this home. |
 | A task fails with a connection error | The model server is down or `baseUrl` is wrong. `curl <baseUrl>/models` should answer. |

@@ -15,7 +15,8 @@ export function realish(p: string): string {
 	const rest: string[] = [];
 	for (;;) {
 		try {
-			return path.join(fs.realpathSync(cur), ...rest.reverse());
+			// (On Windows the system's own resolution, which also turns a short name like RUNNER~1 into the long one.)
+			return path.join(process.platform === "win32" ? fs.realpathSync.native(cur) : fs.realpathSync(cur), ...rest.reverse());
 		} catch {
 			const parent = path.dirname(cur);
 			if (parent === cur) return path.resolve(p);
@@ -25,7 +26,14 @@ export function realish(p: string): string {
 	}
 }
 
-export const isInside = (root: string, p: string) => p === root || p.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
+export const isInside = (root: string, p: string) => {
+	// Windows: a path is the same whatever its case and its separators (C:\\Users\\Me, c:/users/me).
+	if (process.platform === "win32") {
+		const [r, q] = [path.resolve(root).toLowerCase(), path.resolve(p).toLowerCase()];
+		return q === r || q.startsWith(r.endsWith(path.sep) ? r : r + path.sep);
+	}
+	return p === root || p.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
+};
 
 /** Files that steer an agent or the daemon. A run that has seen outside content must not change them. */
 const INSTRUCTION_FILES = ["AGENTS.md", "AGENTS.override.md", "CLAUDE.md", "SYSTEM.md"];
@@ -390,10 +398,39 @@ export function sandboxProfile(_cfg: PineConfig, agent: AgentConfig, roots: Root
 
 /** Where a system program lies on this machine: the same few folders on macOS and Linux, never the agent's PATH. */
 export function bin(name: string): string {
+	if (process.platform === "win32") return winBin(name);
 	return ["/bin", "/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"].map((d) => path.join(d, name)).find((f) => fs.existsSync(f)) ?? name;
 }
 
-let kind: "macos" | "linux" | null | undefined;
+let gitFolder: string | null | undefined;
+
+/**
+ * Where Git for Windows is installed, or undefined. On Windows the shell pine gives an agent is
+ * its bash, and the programs pine's own tools run (cat, head, find, grep, sh) are the ones that
+ * come with it, in usr\bin: the same programs as on Linux. Looked for where its installer puts
+ * it, and beside a git.exe on the PATH the daemon was started with.
+ */
+export function gitForWindows(): string | undefined {
+	if (gitFolder !== undefined) return gitFolder ?? undefined;
+	const roots = [process.env.ProgramFiles, process.env["ProgramFiles(x86)"], process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Programs")].filter((d): d is string => !!d).map((d) => path.join(d, "Git"));
+	for (const dir of (process.env.PATH ?? process.env.Path ?? "").split(path.delimiter)) {
+		if (path.isAbsolute(dir) && fs.existsSync(path.join(dir, "git.exe"))) roots.push(path.dirname(dir), path.dirname(path.dirname(dir)));
+	}
+	gitFolder = roots.find((r) => fs.existsSync(path.join(r, "usr", "bin", "bash.exe"))) ?? null;
+	return gitFolder ?? undefined;
+}
+
+function winBin(name: string): string {
+	const git = gitForWindows();
+	const exe = name.endsWith(".exe") ? name : `${name}.exe`;
+	if (name === "git" && git && fs.existsSync(path.join(git, "cmd", "git.exe"))) return path.join(git, "cmd", "git.exe");
+	if (git && fs.existsSync(path.join(git, "usr", "bin", exe))) return path.join(git, "usr", "bin", exe);
+	const system = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", exe);
+	return fs.existsSync(system) ? system : name;
+}
+
+export type SandboxKind = "macos" | "linux";
+let kind: SandboxKind | null | undefined;
 let bwrap = "";
 let whyNot = "";
 let bwrapSaid = "";
@@ -425,7 +462,7 @@ export function inContainer(): boolean {
  * it is tried once, because bubblewrap can be installed and still not be allowed to work (a
  * system that has switched off user namespaces for ordinary users, some containers).
  */
-export function sandboxKind(): "macos" | "linux" | undefined {
+export function sandboxKind(): SandboxKind | undefined {
 	if (kind !== undefined) return kind ?? undefined;
 	kind = null;
 	if (process.platform === "darwin") {
@@ -456,6 +493,10 @@ export function sandboxKind(): "macos" | "linux" | undefined {
 				whyNot = `bubblewrap is installed (${bwrap}) but cannot make a sandbox here ("${said}"). ${why}`;
 			}
 		}
+	} else if (process.platform === "win32") {
+		// What an AppContainer cannot run (Git's bash, git itself: docs/adr/0004-three-systems.md). On
+		// Windows the sandbox is pine in WSL, which the Pine app sets up.
+		whyNot = "pine has no sandbox on Windows itself. For safe mode use pine in WSL: the Pine app sets it up (Settings > Environments)";
 	} else whyNot = `no sandbox is implemented for ${process.platform}`;
 	return kind ?? undefined;
 }
@@ -505,7 +546,8 @@ const protectedOf = (roots: Roots): Protected => ({
  * every command, because on Linux what exists at that moment is part of it.
  */
 export function sandboxArgv(cfg: PineConfig, agent: AgentConfig, roots: Roots, variant: Boxed, network = false, tag?: string): string[] {
-	if (sandboxKind() !== "linux") return ["/usr/bin/sandbox-exec", "-p", sandboxProfile(cfg, agent, roots, variant, network, tag)];
+	const k = sandboxKind();
+	if (k === "macos" || k === undefined) return ["/usr/bin/sandbox-exec", "-p", sandboxProfile(cfg, agent, roots, variant, network, tag)];
 	const v = variant === true ? "restricted" : variant === false ? "normal" : variant;
 	const net = agent.sandbox.network || network;
 	// Sockets between programs go with the network, as on macOS.
@@ -551,7 +593,8 @@ export function denialTools(): DenialTools {
  * not is removed again. On macOS the profile forbids it outright and there is nothing to do.
  */
 export function sandboxGuard(roots: Roots, variant: SandboxVariant | boolean): Guard | undefined {
-	return sandboxKind() === "linux" && (variant === true || variant === "restricted") ? new Guard(protectedOf(roots)) : undefined;
+	const k = sandboxKind();
+	return k === "linux" && (variant === true || variant === "restricted") ? new Guard(protectedOf(roots)) : undefined;
 }
 
 /**
@@ -566,6 +609,17 @@ export function helperArgv(write: string[] = []): string[] | undefined {
 	return undefined;
 }
 
+/** The PATH a helper of pine's runs with: the system's own folders, and on Windows Git's (its sh and coreutils). */
+export function helperPath(): string {
+	if (process.platform !== "win32") return "/usr/bin:/bin";
+	const git = gitForWindows();
+	const system = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32");
+	return [...(git ? [path.join(git, "usr", "bin"), path.join(git, "cmd")] : []), system].join(";");
+}
+
+/** What else a program needs on Windows to start at all. Nothing elsewhere. */
+export const helperBase = (): NodeJS.ProcessEnv => (process.platform === "win32" ? { SystemRoot: process.env.SystemRoot, TEMP: os.tmpdir(), TMP: os.tmpdir() } : {});
+
 /** Names of environment variables that look like they hold a credential. The ssh agent's socket is an address, not one. */
 const SECRET_NAME = /KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH/i;
 const secretName = (k: string) => SECRET_NAME.test(k) && k !== "SSH_AUTH_SOCK";
@@ -577,7 +631,7 @@ const secretName = (k: string) => SECRET_NAME.test(k) && k !== "SSH_AUTH_SOCK";
  * a credential by its name is still left out, and so is what belongs to the daemon.
  */
 export function shellEnv(agent: AgentConfig, roots: Roots, sessionEnv: NodeJS.ProcessEnv, wide = false): NodeJS.ProcessEnv {
-	const keep = ["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "USER", "LOGNAME", "SHELL"];
+	const keep = ["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "USER", "LOGNAME", "SHELL", ...(process.platform === "win32" ? ["SystemRoot", "windir", "PATHEXT", "ComSpec", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS", "USERNAME"] : [])];
 	const env: NodeJS.ProcessEnv = {};
 	if (wide) {
 		for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !secretName(k) && !/^(PI|PINE)_/.test(k)) env[k] = v;
@@ -591,6 +645,11 @@ export function shellEnv(agent: AgentConfig, roots: Roots, sessionEnv: NodeJS.Pr
 	env.HOME = roots.sandboxHome;
 	env.TMPDIR = path.join(roots.sandboxHome, "tmp");
 	env.GIT_CONFIG_GLOBAL = path.join(roots.sandboxHome, ".gitconfig");
+	if (process.platform === "win32") {
+		// Windows' own programs and Git's bash look for temp here, not in TMPDIR.
+		env.TMP = env.TEMP = env.TMPDIR;
+		env.USERPROFILE = roots.sandboxHome;
+	}
 	if (process.platform === "darwin") {
 		// Apple's libraries ask the system for the user's home, not the environment. Told this, they
 		// take the agent's, and their caches and settings land where it may write.
@@ -745,6 +804,20 @@ export const timingSafeEqual = (a: string, b: string) => {
 	return crypto.timingSafeEqual(ha, hb);
 };
 
+/**
+ * Windows has no mode bits: who else a file is open to is in its permissions. Undefined when it
+ * is the owner's alone (with the system's and the administrators', as everything in a profile is).
+ */
+function openTo(p: string): string | undefined {
+	if (!fs.existsSync(p)) return undefined;
+	try {
+		const acl = execFileSync(path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "icacls.exe"), [p], { encoding: "utf8", timeout: 10_000, windowsHide: true });
+		return /\b(Everyone|BUILTIN\\Users|Authenticated Users|NT AUTHORITY\\INTERACTIVE)\b/i.exec(acl)?.[1];
+	} catch {
+		return undefined;
+	}
+}
+
 /** Things about a configuration that weaken its defences. Shown by `pine check` and at startup. */
 export function audit(cfg: PineConfig): string[] {
 	const out: string[] = [];
@@ -756,11 +829,18 @@ export function audit(cfg: PineConfig): string[] {
 		}
 	};
 	for (const f of [".env", "auth.json", "models.json", "pine.json"]) {
+		if (process.platform === "win32") {
+			const who = openTo(path.join(cfg.home, f));
+			if (who) out.push(`${f} is readable by ${who}; run: icacls "${path.join(cfg.home, f)}" /inheritance:r /grant:r "%USERNAME%:F"`);
+			continue;
+		}
 		const m = mode(path.join(cfg.home, f));
 		if (m !== undefined && m & 0o077) out.push(`${f} is readable by other users (mode ${m.toString(8)}); run: chmod 600 ${path.join(cfg.home, f)}`);
 	}
 	if (!sandboxAvailable()) out.push(`no sandbox on this machine: ${sandboxMissing()}. An agent in auto or bypass mode works as everywhere, with your rights. An agent set to safe mode gets no shell, runs that events from outside start get none either, and command sources do not run`);
-	const homeMode = mode(cfg.home);
+	const homeOpen = process.platform === "win32" ? openTo(cfg.home) : undefined;
+	if (homeOpen) out.push(`pine's home is open to ${homeOpen}; move it into your user folder, or run: icacls "${cfg.home}" /inheritance:r /grant:r "%USERNAME%:(OI)(CI)F"`);
+	const homeMode = process.platform === "win32" ? undefined : mode(cfg.home);
 	if (homeMode !== undefined && homeMode & 0o077) out.push(`pine's home is open to other users (mode ${homeMode.toString(8)}); run: chmod 700 ${cfg.home}`);
 	for (const a of Object.values(cfg.agents)) {
 		const tools = a.tools ?? ["read", "bash", "edit", "write"];
@@ -770,7 +850,7 @@ export function audit(cfg: PineConfig): string[] {
 		if (level === "bypass") out.push(`agent ${a.id}: bypass mode. It never asks, and its shell reaches your whole account and the network${cfg.security.bypassWhenTainted ? ", even after it has read outside content (security.bypassWhenTainted)" : " (it asks again once a session has read outside content)"}`);
 		// The main agent works in auto mode unless told otherwise; that is how pine comes, and not a note. Another agent does by somebody's choice.
 		if (level === "auto" && a.level === "auto" && a.id !== mainAgentId(cfg) && tools.includes("bash")) out.push(`agent ${a.id}: auto mode. Its shell and file tools reach your whole account and the network in your own conversations, without a sandbox; what is critical is checked, and after outside content what reaches out, sends or changes its memory`);
-		if (a.trustWorkspace) out.push(`agent ${a.id}: trustWorkspace is on; code in ${a.workspace}/.pi/extensions runs inside the daemon`);
+		if (a.trustWorkspace) out.push(`agent ${a.id}: trustWorkspace is on; code in ${path.join(a.workspace, ".pi", "extensions")} runs inside the daemon`);
 		if (isInside(realish(a.workspace), realish(cfg.home))) out.push(`agent ${a.id}: the workspace contains pine's home directory`);
 		if (a.untrusted && a.untrusted.tools.some((t) => ["bash", "write", "edit"].includes(t))) out.push(`agent ${a.id}: runs triggered by untrusted events may use ${a.untrusted.tools.filter((t) => ["bash", "write", "edit"].includes(t)).join(", ")}`);
 	}

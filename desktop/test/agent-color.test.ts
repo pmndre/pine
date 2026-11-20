@@ -46,7 +46,14 @@ async function avatarsAre(want: string, why: string): Promise<void> {
 
 const menu = (name: string) => app.evaluate(({ BrowserWindow }: any, n: string) => BrowserWindow.getAllWindows()[0].webContents.send("pine:menu", n), name);
 
-const kept = (): string | undefined => JSON.parse(fs.readFileSync(agentFile(), "utf8")).color;
+/** The color the agent's file keeps; a file read while the daemon writes it is not one yet. */
+const kept = (): string | undefined => {
+	try {
+		return JSON.parse(fs.readFileSync(agentFile(), "utf8")).color;
+	} catch {
+		return "(being written)";
+	}
+};
 /** Waits until the agent's file keeps that color (none: undefined): a pick is saved at once, with no button to press. */
 async function keeps(want: string | undefined, why: string): Promise<void> {
 	for (let i = 0; i < 100 && kept() !== want; i++) await new Promise((r) => setTimeout(r, 30));

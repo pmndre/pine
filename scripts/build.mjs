@@ -15,10 +15,11 @@ execFileSync(process.execPath, [path.join(root, "node_modules", "typescript", "b
 for (const name of ["README.md", "LICENSE", "docs", "examples"]) fs.cpSync(path.join(root, name), path.join(out, name), { recursive: true });
 // The README's screenshots are shown from the repository; they need not travel with every install.
 fs.rmSync(path.join(out, "docs", "images"), { recursive: true, force: true });
-// The helper of the app control server is built from its source on the Mac it runs on.
-fs.copyFileSync(path.join(root, "mcp", "computer.swift"), path.join(out, "mcp", "computer.swift"));
-fs.copyFileSync(path.join(root, "src", "tui", "voice.swift"), path.join(out, "src", "tui", "voice.swift"));
-fs.copyFileSync(path.join(root, "src", "sources", "system.swift"), path.join(out, "src", "sources", "system.swift"));
+// pine's helpers are built from their sources on the computer they run on (Swift on a Mac, C# on
+// Windows) or run as they are (Python on Linux): their sources travel with the package.
+for (const dir of ["mcp", "src", path.join("src", "tui"), path.join("src", "sources")]) {
+	for (const name of fs.readdirSync(path.join(root, dir))) if (/\.(swift|cs|py)$/.test(name)) fs.copyFileSync(path.join(root, dir, name), path.join(out, dir, name));
+}
 fs.mkdirSync(path.join(out, "bin"), { recursive: true });
 fs.copyFileSync(path.join(root, "bin", "pine.js"), path.join(out, "bin", "pine.js"));
 fs.chmodSync(path.join(out, "bin", "pine.js"), 0o755);

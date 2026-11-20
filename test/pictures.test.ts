@@ -541,7 +541,7 @@ test("sound: the line shows the levels as bars that follow the clock while it pl
 	assert.equal(plain(bare.render(100)[0]), " ‖ pause · ♪ odd one · 0:00   ▸ open in player");
 });
 
-test("tui: a sound an answer points at is played when it arrives, by the system's player; pause and play go on where it was", async (t) => {
+test("tui: a sound an answer points at is played when it arrives, by the system's player; pause and play go on where it was", { skip: process.platform === "win32" && "the stand-in player is found and held with ps and SIGSTOP, which Windows does not have" }, async (t) => {
 	const { execFileSync } = await import("node:child_process");
 	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-sound-test-")));
 	t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -551,7 +551,11 @@ test("tui: a sound an answer points at is played when it arrives, by the system'
 	const script = path.join(dir, "player.mjs");
 	fs.writeFileSync(script, `import fs from "node:fs";\nconst [log, ms, ...rest] = process.argv.slice(2);\nconst file = rest.pop();\nfs.appendFileSync(log, [process.pid, rest[0] ?? "-", file, fs.statSync(file).size].join(" ") + "\\n");\nsetTimeout(() => {}, Number(ms));\n`);
 	const played = () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim().split("\n").map((l) => l.split(" ")) : []);
-	const state = (pid: string) => execFileSync("/bin/sh", ["-c", `ps -o state= -p ${Number(pid)} || true`], { encoding: "utf8" }).trim();
+	// Whether a stand-in player is still there, found by its script: the number it noted is its own
+	// only where it shares the system's process numbers (on Linux it runs in a sandbox with its own).
+	// A process that has ended and was not reaped yet ("Z") is gone too.
+	const states = () => execFileSync("/bin/sh", ["-c", "ps -A -o state=,command="], { encoding: "utf8" }).split("\n").map((l) => /^\s*(\S+)\s+(.*)$/.exec(l)).filter((m) => m && m[2].startsWith(process.execPath) && m[2].includes(script)).map((m) => m![1][0]).filter((c) => c !== "Z");
+	const playing = () => states().length > 0;
 	const seeking = { command: [process.execPath, script, log, "900"], from: (s: number) => [s.toFixed(1)] };
 	const opened: string[] = [];
 	const h = await harness({ pine: { main: "main", http: { port: 0 } }, agents: { main: {} } });
@@ -592,7 +596,7 @@ test("tui: a sound an answer points at is played when it arrives, by the system'
 	await sleep(300);
 	clickWord("‖ pause");
 	await sees(`▶ play  ${FLAT}  ♪ hello world · 0:00 / 0:02`);
-	await until(() => state(played()[0][0]) === "", 3000, "the player to be gone");
+	await until(() => !playing(), 3000, "the player to be gone");
 	await sleep(1100);
 	assert.ok(line().includes(`▶ play  ${FLAT}  ♪ hello world · 0:00 / 0:02`), "the pause outlasts the player's own time, and nothing moves");
 	clickWord("▶ play");
@@ -612,7 +616,7 @@ test("tui: a sound an answer points at is played when it arrives, by the system'
 
 	// Closing the UI ends what is playing.
 	await app.stop();
-	await until(() => state(played()[2][0]) === "", 3000, "the player to be gone");
+	await until(() => !playing(), 3000, "the player to be gone");
 
 	// A player that cannot start in the middle is held at a pause and let go again. And a sound from
 	// earlier in the conversation waits for a click: opening the conversation plays nothing.
@@ -629,9 +633,9 @@ test("tui: a sound an answer points at is played when it arrives, by the system'
 	await until(() => played().length === 4, 3000, "the player to start");
 	assert.equal(played()[3][1], "-", "it is given the file alone");
 	click2("‖ pause");
-	await until(() => state(played()[3][0]).startsWith("T"), 3000, "the player to be held");
+	await until(() => states()[0] === "T", 3000, "the player to be held");
 	click2("▶ play");
-	await until(() => /^[SR]/.test(state(played()[3][0])), 3000, "the player to go on");
+	await until(() => /^[SR]/.test(states()[0] ?? ""), 3000, "the player to go on");
 	assert.equal(played().length, 4, "the same player");
 	await again.stop();
 	await h.close();

@@ -321,6 +321,19 @@ export function verbs(command: string): string[] {
  * need not be, because the sandbox decides what the command reaches. It is only how pine knows
  * whom to ask before the command fails.
  */
+/**
+ * A path of Windows as an agent's shell there (Git's bash) may write it: C:\\x, C:/x, or /c/x,
+ * which is Git's bash's name for the same. As a path of Windows, or undefined for anything else.
+ */
+export function windowsPath(text: string): string | undefined {
+	const msys = /^\/([A-Za-z])(\/.*)?$/.exec(text);
+	if (msys) return `${msys[1].toUpperCase()}:\\${(msys[2] ?? "").slice(1).replace(/\//g, "\\")}`;
+	if (/^[A-Za-z]:[\\/]/.test(text) || /^\\\\[^\\]/.test(text)) return text.replace(/\//g, "\\");
+	return undefined;
+}
+
+const WINDOWS = process.platform === "win32";
+
 export function reaches(command: string, where: { cwd: string; shellHome: string; ownerHome: string }): Reach[] {
 	const out: Reach[] = [];
 	for (const simple of words(command.length > 20_000 ? command.slice(0, 20_000) : command)) {
@@ -333,6 +346,17 @@ export function reaches(command: string, where: { cwd: string; shellHome: string
 			if (!w.redirect && w === args[first]) continue;
 			// "--output=/a/b" names /a/b.
 			let text = w.redirect ? w.text : (/^--?[A-Za-z][\w-]*=(.+)$/.exec(w.text)?.[1] ?? w.text);
+			// Windows: a drive's path (C:\\x, C:/x, /c/x) is read with Windows' rules.
+			const win = WINDOWS ? windowsPath(text) : undefined;
+			if (win) {
+				const parts = win.split("\\");
+				const cut = parts.findIndex((p) => /[*?[{$`]/.test(p));
+				const rest = (cut < 0 ? parts : parts.slice(0, cut)).join("\\");
+				// The root of a drive alone is as "/" is: nothing in particular.
+				if (/^[A-Za-z]:\\?$/.test(rest)) continue;
+				named.push({ reach: { path: path.normalize(rest).replace(/(.)\\+$/, "$1"), write: w.redirect || WRITES_ALL.has(verb), text: w.text }, redirect: w.redirect });
+				continue;
+			}
 			let home = false;
 			const tilde = /^(~|\$HOME|\$\{HOME\})(\/|$)/.exec(text);
 			if (tilde) {

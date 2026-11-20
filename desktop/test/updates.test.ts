@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
-import { ahead, lookForUpdate, RELEASES } from "../electron/updates.ts";
+import { ahead, appFile, lookForUpdate, RELEASES } from "../electron/updates.ts";
 
 /** What the stand-in answers next: a status and a body. */
 let answer: { status: number; body: string } = { status: 200, body: "{}" };
@@ -38,18 +38,18 @@ test("updates: a release is ahead of a lower version and of its own previews, an
 
 test("updates: a newer release is said with a link to its page on GitHub, whatever the answer calls its address", async () => {
 	release("v0.40.0");
-	assert.deepEqual(await lookForUpdate("0.39.1", "arm64", at), { status: "newer", mine: "0.39.1", version: "0.40.0", url: `${RELEASES}/tag/v0.40.0` });
+	assert.deepEqual(await lookForUpdate("0.39.1", "arm64", at, "darwin"), { status: "newer", mine: "0.39.1", version: "0.40.0", url: `${RELEASES}/tag/v0.40.0` });
 	assert.match(RELEASES, /^https:\/\/github\.com\/pmndre\/pine\/releases$/);
 	// A preview of that release gets it too; the release itself, and what is ahead of it, do not.
-	assert.equal((await lookForUpdate("0.40.0-next.2", "x64", at)).status, "newer");
-	assert.deepEqual(await lookForUpdate("0.40.0", "arm64", at), { status: "latest", mine: "0.40.0" });
-	assert.equal((await lookForUpdate("0.41.0-next.1", "arm64", at)).status, "latest");
+	assert.equal((await lookForUpdate("0.40.0-next.2", "x64", at, "darwin")).status, "newer");
+	assert.deepEqual(await lookForUpdate("0.40.0", "arm64", at, "darwin"), { status: "latest", mine: "0.40.0" });
+	assert.equal((await lookForUpdate("0.41.0-next.1", "arm64", at, "darwin")).status, "latest");
 });
 
 test("updates: the question says who asks and nothing about this computer", async () => {
 	release("v0.40.0");
 	asked.length = 0;
-	await lookForUpdate("0.39.1", "arm64", at);
+	await lookForUpdate("0.39.1", "arm64", at, "darwin");
 	assert.equal(asked.length, 1);
 	assert.equal(asked[0].url, "/repos/pmndre/pine/releases/latest");
 	assert.equal(asked[0].agent, "Pine");
@@ -60,31 +60,46 @@ test("updates: the question says who asks and nothing about this computer", asyn
 test("updates: a release counts once the app for this kind of Mac is attached", async () => {
 	// pine is published some minutes before its disk images are, and a release whose app could not be built has none.
 	release("v0.40.0", []);
-	assert.equal((await lookForUpdate("0.39.1", "arm64", at)).status, "latest");
+	assert.equal((await lookForUpdate("0.39.1", "arm64", at, "darwin")).status, "latest");
 	release("v0.40.0", ["Pine-0.40.0-x64.dmg"]);
-	assert.equal((await lookForUpdate("0.39.1", "arm64", at)).status, "latest");
-	assert.equal((await lookForUpdate("0.39.1", "x64", at)).status, "newer");
+	assert.equal((await lookForUpdate("0.39.1", "arm64", at, "darwin")).status, "latest");
+	assert.equal((await lookForUpdate("0.39.1", "x64", at, "darwin")).status, "newer");
 	// An image of another release under this one's name is not this release's app.
 	release("v0.40.0", ["Pine-0.39.0-arm64.dmg"]);
-	assert.equal((await lookForUpdate("0.39.1", "arm64", at)).status, "latest");
+	assert.equal((await lookForUpdate("0.39.1", "arm64", at, "darwin")).status, "latest");
+});
+
+test("updates: on Linux the AppImage counts and on Windows the installer, each for its processor; a disk image counts for neither", async () => {
+	assert.deepEqual(["darwin", "linux", "win32", "freebsd"].map((p) => appFile("0.40.0", "x64", p)), ["Pine-0.40.0-x64.dmg", "Pine-0.40.0-x64.AppImage", "Pine-0.40.0-x64-setup.exe", undefined]);
+	release("v0.40.0", ["Pine-0.40.0-arm64.dmg", "Pine-0.40.0-x64.dmg"]);
+	assert.equal((await lookForUpdate("0.39.1", "x64", at, "linux")).status, "latest");
+	assert.equal((await lookForUpdate("0.39.1", "x64", at, "win32")).status, "latest");
+	release("v0.40.0", ["Pine-0.40.0-x64.AppImage", "Pine-0.40.0-x64.deb", "Pine-0.40.0-arm64-setup.exe"]);
+	assert.deepEqual(await lookForUpdate("0.39.1", "x64", at, "linux"), { status: "newer", mine: "0.39.1", version: "0.40.0", url: `${RELEASES}/tag/v0.40.0` });
+	assert.equal((await lookForUpdate("0.39.1", "arm64", at, "linux")).status, "latest");
+	assert.equal((await lookForUpdate("0.39.1", "arm64", at, "win32")).status, "newer");
+	assert.equal((await lookForUpdate("0.39.1", "x64", at, "win32")).status, "latest");
+	assert.equal((await lookForUpdate("0.39.1", "x64", at, "darwin")).status, "latest");
+	// A system the app is not made for has no app to wait for.
+	assert.equal((await lookForUpdate("0.39.1", "x64", at, "freebsd")).status, "latest");
 });
 
 test("updates: an answer that is no release says nothing, and none of its words are passed on", async () => {
 	for (const tag of ['v1.0.0"><script>alert(1)</script>', "v1.0.0/../../../evil", "1.0.0", "v1.0", "v1.0.0-next.1", "latest", "v1.0.0\nSet-Cookie: x", "v999999.0.0"]) {
 		release(tag);
-		assert.deepEqual(await lookForUpdate("0.39.1", "arm64", at), { status: "unknown", mine: "0.39.1" }, tag);
+		assert.deepEqual(await lookForUpdate("0.39.1", "arm64", at, "darwin"), { status: "unknown", mine: "0.39.1" }, tag);
 	}
 	answer = { status: 200, body: JSON.stringify({ tag_name: 7, assets: "none" }) };
-	assert.equal((await lookForUpdate("0.39.1", "arm64", at)).status, "unknown");
+	assert.equal((await lookForUpdate("0.39.1", "arm64", at, "darwin")).status, "unknown");
 	answer = { status: 200, body: JSON.stringify({ tag_name: "v1.0.0", assets: [null, 3, { name: 4 }] }) };
-	assert.equal((await lookForUpdate("0.39.1", "arm64", at)).status, "latest");
+	assert.equal((await lookForUpdate("0.39.1", "arm64", at, "darwin")).status, "latest");
 	answer = { status: 200, body: "<html>not json" };
-	assert.equal((await lookForUpdate("0.39.1", "arm64", at)).status, "unknown");
+	assert.equal((await lookForUpdate("0.39.1", "arm64", at, "darwin")).status, "unknown");
 	// Asked too often, or no such repository.
 	answer = { status: 403, body: JSON.stringify({ tag_name: "v1.0.0", message: "API rate limit exceeded" }) };
-	assert.equal((await lookForUpdate("0.39.1", "arm64", at)).status, "unknown");
+	assert.equal((await lookForUpdate("0.39.1", "arm64", at, "darwin")).status, "unknown");
 	answer = { status: 404, body: JSON.stringify({ message: "Not Found" }) };
-	assert.equal((await lookForUpdate("0.39.1", "arm64", at)).status, "unknown");
+	assert.equal((await lookForUpdate("0.39.1", "arm64", at, "darwin")).status, "unknown");
 });
 
 test("updates: nobody answering is not an error", async () => {
@@ -92,5 +107,5 @@ test("updates: nobody answering is not an error", async () => {
 	await new Promise<void>((r) => gone.listen(0, "127.0.0.1", r));
 	const port = (gone.address() as AddressInfo).port;
 	await new Promise((r) => gone.close(r));
-	assert.deepEqual(await lookForUpdate("0.39.1", "arm64", `http://127.0.0.1:${port}/latest`), { status: "unknown", mine: "0.39.1" });
+	assert.deepEqual(await lookForUpdate("0.39.1", "arm64", `http://127.0.0.1:${port}/latest`, "darwin"), { status: "unknown", mine: "0.39.1" });
 });

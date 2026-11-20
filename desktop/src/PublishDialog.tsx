@@ -7,6 +7,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Pulse } from "@/components/pulse";
 import { Textarea } from "@/components/ui/textarea";
 import { store } from "./model.ts";
+import { shortcut } from "./text.ts";
 
 /** What is wrong with a topic, if anything. The old one-line form split at the first space, so a topic never had one. */
 function topicError(topic: string): string | undefined {
@@ -87,7 +88,7 @@ export function PublishDialog({ topic: firstTopic = "", payload: firstPayload = 
 					</FieldGroup>
 					<DialogFooter>
 						<Button type="button" variant="outline" onClick={close}>Cancel</Button>
-						<Button type="submit" disabled={sending}>{sending ? <Pulse label="Loading" data-icon="inline-start" /> : null}Publish <Kbd>⌘↩</Kbd></Button>
+						<Button type="submit" disabled={sending}>{sending ? <Pulse label="Loading" data-icon="inline-start" /> : null}Publish <Kbd>{shortcut("⌘↩")}</Kbd></Button>
 					</DialogFooter>
 				</form>
 			</DialogContent>

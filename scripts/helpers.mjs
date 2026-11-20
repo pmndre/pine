@@ -25,9 +25,36 @@ if (!tree || !fs.existsSync(path.join(tree, "package.json"))) {
 	console.error("usage: node scripts/helpers.mjs <pine folder>");
 	process.exit(2);
 }
+// Windows: the C# helpers, built with the compiler Windows carries, as each is built on first use.
+if (process.platform === "win32") {
+	const { buildCsharp } = await import("../src/csharp.ts");
+	const { buildSystemWindows } = await import("../src/sources/system.ts");
+	const { buildVoiceWindows } = await import("../src/tui/voice.ts");
+	const { windowsHelper } = await import("../mcp/computer.ts");
+	const into = (source) => {
+		const dir = path.join(tree, path.dirname(source), "prebuilt");
+		fs.mkdirSync(dir, { recursive: true });
+		return { from: path.join(tree, source), dir };
+	};
+	try {
+		const system = into("src/sources/system.cs");
+		const voice = into("src/tui/voice.cs");
+		const computer = into("mcp/computer.cs");
+		const built = [
+			buildSystemWindows(system.dir, system.from),
+			buildVoiceWindows(voice.dir, { source: voice.from }),
+			await windowsHelper((_source, prefix, what, refs) => buildCsharp(computer.from, prefix, what, refs, { dir: computer.dir })),
+		];
+		for (const file of built) console.log(path.relative(tree, file));
+	} catch (e) {
+		console.error(e.message);
+		process.exitCode = 1;
+	}
+	process.exit();
+}
 if (process.platform !== "darwin") {
-	console.error("The helpers are Swift programs for macOS: they are built on a Mac.");
-	process.exit(1);
+	console.error("The helpers are built on a Mac (Swift) or on Windows (C#). On Linux they are pine's own code and need no build.");
+	process.exit(process.platform === "linux" ? 0 : 1);
 }
 
 const run = (file, args, ms) =>

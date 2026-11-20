@@ -5,8 +5,8 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { audit, globMatch, matchesToolPattern, sandboxAvailable } from "../src/security.ts";
-import { harness, MCP_STUB, mockMsg, notesOf, sleep, textOf, until, refused, toolRefused } from "./support/harness.ts";
+import { audit, globMatch, matchesToolPattern, sandboxAvailable, sandboxKind } from "../src/security.ts";
+import { assertPrivate, harness, MCP_STUB, mockMsg, notesOf, refused, sleep, textOf, toolRefused, until } from "./support/harness.ts";
 
 const owner = { trust: "owner" as const };
 const bash = (...commands: string[]) => mockMsg([{ tools: commands.map((command) => ({ name: "bash", args: { command } })) }]);
@@ -91,7 +91,7 @@ test("with the network granted, a command reaches addresses but not other progra
 	await h.close();
 });
 
-test("file tools are jailed to the workspace, symlinks included", async () => {
+test("file tools are jailed to the workspace, symlinks included", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const h = await harness({ agents: { main: { agent: { tools: ["read", "write", "edit", "grep", "find", "ls"], sandbox: { sharedTmp: false } }, files: { "ok.txt": "fine\n" } } } });
 	fs.symlinkSync("/", path.join(h.workspace("main"), "rootlink"));
 	fs.symlinkSync(h.home, path.join(h.workspace("main"), "homelink"));
@@ -213,7 +213,7 @@ test("a run started by an outside event gets a reduced tool set and its own sess
 	await h.close();
 });
 
-test("trust is inherited: work handed on by an untrusted run stays untrusted", async () => {
+test("trust is inherited: work handed on by an untrusted run stays untrusted", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const h = await harness({
 		pine: { main: "main", routes: [{ on: "hook/in", agent: "main" }] },
 		agents: { main: { agent: { untrusted: { tools: ["read"], delegates: ["gonzo"] } } }, gonzo: {} },
@@ -296,9 +296,10 @@ test("after outside content an agent keeps its own memory and instructions, and 
 					{ name: "write", args: { path: "MEMORY.md", content: "LEARNED\n" } },
 					{ name: "write", args: { path: ".pi/extensions/x.ts", content: "EVIL" } },
 					{ name: "write", args: { path: "sub/CLAUDE.md", content: "EVIL" } },
-					{ name: "bash", args: { command: "echo MORE | tee -a MEMORY.md; echo EVIL | tee CLAUDE.md; echo fine | tee notes.md" } },
 				],
 			},
+			// A step of its own: calls of one step run side by side, and this one appends to what the write above made.
+			{ tools: [{ name: "bash", args: { command: "echo MORE | tee -a MEMORY.md; echo EVIL | tee CLAUDE.md; echo fine | tee notes.md" } }] },
 		]),
 		...owner,
 	});
@@ -308,7 +309,8 @@ test("after outside content an agent keeps its own memory and instructions, and 
 	assert.equal(asked.length, 0);
 	// What somebody else would read as instructions is not written: the file tools refuse it, and the sandbox refuses the command.
 	assert.ok(/holds agent instructions/.test(out[2]) && /holds agent instructions/.test(out[3]), out.join(" | "));
-	assert.ok(refused.test(out[4]) && out[4].includes("fine"), out[4]);
+	// (On Linux a file that did not exist cannot be forbidden, only taken away again after the command: see the check below.)
+	assert.ok((sandboxKind() === "linux" || refused.test(out[4])) && out[4].includes("fine"), out[4]);
 	assert.ok(!fs.existsSync(path.join(ws, "CLAUDE.md")) && !fs.existsSync(path.join(ws, ".pi")) && !fs.existsSync(path.join(ws, "sub", "CLAUDE.md")));
 	// A run that an event from outside started writes none of them, although its profile has the tool.
 	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "write", args: { path: "MEMORY.md", content: "EVIL" } }, { name: "write", args: { path: "AGENTS.md", content: "EVIL" } }, { name: "write", args: { path: "TOOLS.md", content: "EVIL" } }] }]), trust: "untrusted" } as any);
@@ -418,7 +420,7 @@ test("control API: token, no browsers, signed webhooks, bounded bodies", async (
 	assert.equal(await status("/events", { method: "POST", headers: { ...auth, "content-type": "text/plain" }, body: "{}" }), 415);
 	assert.equal(await status("/events", { method: "POST", headers: { ...auth, ...json }, body: JSON.stringify({ topic: "x", payload: "y".repeat(1100000) }) }), 413);
 	assert.equal(await status("/agents/nobody/prompt", { method: "POST", headers: { ...auth, ...json }, body: JSON.stringify({ prompt: "x" }) }), 400);
-	assert.equal(fs.statSync(path.join(h.home, "data", "http-token")).mode & 0o777, 0o600);
+	assertPrivate(path.join(h.home, "data", "http-token"), 0o600);
 
 	const answer: any = await (await fetch(`${base}/agents/main/prompt`, { method: "POST", headers: { ...auth, ...json }, body: JSON.stringify({ prompt: "via api" }) })).json();
 	assert.equal(answer.text, "ECHO[via api]");
@@ -439,7 +441,7 @@ test("control API: token, no browsers, signed webhooks, bounded bodies", async (
 	await h.close();
 });
 
-test("tool patterns and the configuration audit", async () => {
+test("tool patterns and the configuration audit", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	assert.ok(globMatch("mcp__mqtt__*", "mcp__mqtt__publish") && !globMatch("mcp__mqtt__*", "mcp__web__fetch"));
 	assert.ok(matchesToolPattern(["bash:*rm *"], "bash", "sudo rm -rf x") && !matchesToolPattern(["bash:*rm *"], "bash", "echo format"));
 	assert.ok(matchesToolPattern(["publish_event:out/mqtt/*"], "publish_event", "out/mqtt/door") && !matchesToolPattern(["publish_event:out/mqtt/*"], "publish_event", "out/telegram/main"));
@@ -450,7 +452,7 @@ test("tool patterns and the configuration audit", async () => {
 	});
 	const { loadConfig } = await import("../src/config.ts");
 	const notes = audit(loadConfig(h.home)).join("\n");
-	for (const expected of ["agent main: trustWorkspace is on", "untrusted events may use bash", "agent net: shell has network access", "http listens on 0.0.0.0", 'hook "open" has no secret', 'route "route0" treats events on mqtt/# as coming from you', "pine.json is readable by other users"]) assert.ok(notes.includes(expected), `missing: ${expected}\n${notes}`);
+	for (const expected of ["agent main: trustWorkspace is on", "untrusted events may use bash", "agent net: shell has network access", "http listens on 0.0.0.0", 'hook "open" has no secret', 'route "route0" treats events on mqtt/# as coming from you', ...(process.platform === "win32" ? [] : ["pine.json is readable by other users"])]) assert.ok(notes.includes(expected), `missing: ${expected}\n${notes}`);
 	await sleep(1);
 	await h.close();
 });
@@ -474,7 +476,7 @@ test("agents cannot read each other's workspaces, and odd session names cannot e
 	await h.close();
 });
 
-test("a tainted session needs approval to hand work to an agent that can reach the internet", async () => {
+test("a tainted session needs approval to hand work to an agent that can reach the internet", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const h = await harness({
 		pine: { main: "main", mcp: { web: { pine: "web", agents: ["scout"] } }, security: { approvalTimeout: "100ms" } },
 		agents: { main: { agent: { mcp: { feed } } }, scout: {}, gonzo: {} },
@@ -491,7 +493,7 @@ test("a tainted session needs approval to hand work to an agent that can reach t
 	await h.close();
 });
 
-test("the policy gate is still in place after a session reloads its instructions", async () => {
+test("the policy gate is still in place after a session reloads its instructions", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const h = await harness({ agents: { main: { agent: { bashDeny: ["sudo"] }, files: { "AGENTS.md": "V1\n" } } } });
 	const probe = mockMsg([{ tools: [{ name: "bash", args: { command: "sudo ls" } }, { name: "read", args: { path: "/etc/hosts" } }] }]);
 	await h.pine.agents.run({ agent: "main", prompt: probe, session: "new", ...owner });

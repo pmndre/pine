@@ -95,7 +95,7 @@ than its interval, so that sources set to the same interval do not all fire toge
 | A 3D printer | `mqtt` | Bambu printers are their own broker; OctoPrint and Klipper publish through an MQTT plug-in. |
 | An Arduino, an ESP32 on USB, a smart meter's P1 cable, a GPS | `serial` | The device under `/dev`. |
 | "Is my phone home", a TV switched on | `presence` | The device's fixed address on your network. |
-| This Mac: lock, sleep, battery, network, disks | `system` | Nothing to set up. |
+| This computer: lock, sleep, battery, network, disks | `system` | Nothing to set up. |
 | A log file, Docker, Kubernetes, journald | `command` with `follow` | `tail -F`, `docker events`, `kubectl get -w`, `journalctl -f`. |
 | PostgreSQL, Redis, NATS, Kafka, RabbitMQ | `command` with `follow` | The system's command line client, printing one line per message. |
 | Anything with a command that prints its state | `command` | Run again and again; a change is the event. |
@@ -1859,8 +1859,9 @@ with `nss-mdns`); an IP address always works.
 
 This computer: it reports when it goes to sleep and wakes, when its screen is locked and
 unlocked, when it changes between mains and battery or runs low, when its network comes and
-goes, when a disk is plugged in or taken out, and when an app you named starts or quits. On a
-Mac only, so far.
+goes, when a disk is plugged in or taken out, and when an app you named starts or quits. On
+macOS, Linux and Windows, with the same events; what one system does not tell is left out there
+(see "system on Linux" and "system on Windows" below).
 
 > When I unlock the Mac in the morning, tell me what happened overnight.
 
@@ -1871,19 +1872,19 @@ Mac only, so far.
 | Option | Default | |
 |---|---|---|
 | `watch` | all five | What to report: `"sleep"`, `"lock"`, `"power"`, `"network"`, `"volumes"`. |
-| `apps` | none | Apps whose start and end are reported, by name or bundle id: `["Xcode", "us.zoom.xos"]`. Without it no app is reported. |
+| `apps` | none | Apps whose start and end are reported. On a Mac by name or bundle id: `["Xcode", "us.zoom.xos"]`; on Windows by program name, as the Details tab of the Task Manager shows it, with or without `.exe`: `["Zoom", "Teams"]`. Not on Linux. Without it no app is reported. |
 | `battery` | `20` | Report `battery-low` once when the charge falls to this many percent while on battery. |
 
 | Event | | `watch` |
 |---|---|---|
 | `sleeping`, `woke` | `{}` | `sleep`: the computer goes to sleep, and is awake again. |
-| `display-off`, `display-on` | `{}` | `sleep`: the screens go dark, and light up again. |
+| `display-off`, `display-on` | `{}` | `sleep`: the screens go dark, and light up again. Not on Linux. |
 | `locked`, `unlocked` | `{}` | `lock`: the screen lock. |
 | `power` | `{ on, percent? }` | `power`: the supply changed. `on` is `"ac"`, `"battery"` or `"ups"`. |
 | `battery-low` | `{ percent }` | `power`: once per discharge, said again only after it was charged. |
 | `network` | `{ online, via? }` | `network`: the connection came, went, or changed its way (`"wifi"`, `"ethernet"`, `"cellular"`, `"other"`). |
 | `mounted`, `unmounted` | `{ name, path? }` | `volumes`: a disk, a memory card, a disk image, a network share. |
-| `app-started`, `app-quit` | `{ app, bundle? }` | Only for the apps on `apps`. |
+| `app-started`, `app-quit` | `{ app, bundle? }` | Only for the apps on `apps`. Not on Linux. |
 
 | What it is for | How |
 |---|---|
@@ -1897,20 +1898,54 @@ How things are when the source starts (on mains or battery, online or not) is th
 point and is not reported; only what changes afterwards is. The charge moves all day and is no
 event: `power` is reported when the supply changes, and carries the charge it had then.
 
-The system tells a small helper program, which pine builds from its own source with `swiftc`
-the first time the source starts (a few seconds, and Apple's command line developer tools have
-to be installed: `xcode-select --install`). The helper lies in the source's folder in pine's
-data folder, where no agent can write, gets none of pine's environment, and only repeats what
-the system says. A pine that came with the Pine app carries the helper built, inside the app,
-and builds nothing. It needs no permission from you: none of this is behind a privacy grant.
+The system tells a small helper program of pine's, which only repeats what the system says.
+It gets none of pine's environment, and no agent can change it: it is pine's own code, or built
+from it into the source's folder in pine's data folder, where no agent can write. It needs no
+permission from you: none of this is behind a privacy grant.
+
+On a Mac pine builds the helper from its own source with `swiftc` the first time the source
+starts (a few seconds, and Apple's command line developer tools have to be installed:
+`xcode-select --install`). A pine that came with the Pine app carries the helper built, inside
+the app, and builds nothing.
 
 What it does not report: the name of the Wi-Fi network (macOS gives that only to an app with
 access to your location), other apps' notifications, and what you type or look at. A disk's
 name is text from outside like a file name, so these events are outside content unless you
 mark the source as your own.
 
-On Linux and Windows a `system` source cannot be set up. What a command can tell there
-(`upower`, `nmcli monitor`, `udevadm monitor`) the `command` type reports.
+### system on Linux
+
+The helper is a small program of pine's in JavaScript, run by the Node pine runs on; nothing is
+built. It listens on D-Bus's system bus through `gdbus` (the package `libglib2.0-bin` on Debian
+and Ubuntu, `glib2` elsewhere):
+
+| | What it hears |
+|---|---|
+| Sleep | `sleeping` and `woke`, from systemd-logind. There is no `display-off` or `display-on`: no service tells that for every desktop. |
+| The lock | `locked` and `unlocked`, of your own sessions, as the desktop tells logind (GNOME, KDE Plasma and most others do; a bare window manager with a locker of its own may not). |
+| Power | UPower (the package `upower`, there on every desktop). |
+| The network | NetworkManager, or systemd-networkd on a server. Online is connected beyond the local network. |
+| Disks | The kernel's table of mounts, read every two seconds: what is mounted under `/media`, `/run/media` and `/mnt`, and network shares (`cifs`, `nfs`, `sshfs`) anywhere. |
+
+`apps` is refused: Linux has no clean way to hear apps start and quit. Where something is
+missing (no system bus in a container, no UPower on a server) the source still runs, and its
+status says what it cannot hear and why: `cannot hear power: UPower is not running`. A service
+that starts later is heard from then on.
+
+### system on Windows
+
+pine builds the helper from its own source with the C# compiler every Windows carries (.NET
+Framework 4) the first time the source starts, in a few seconds. Sleep and wake, the screens,
+the lock, the battery and disks are what Windows tells a window of the helper's that is never
+shown; the network is an interface that is up and has a gateway (`wifi`, `ethernet`,
+`cellular`, `other`). `ups` is not told apart from mains. Apps are the programs running in your
+own session, looked at every two seconds: `app-started` when the first process of a name
+starts, `app-quit` when the last one ends, so a browser of thirty processes is one app. Their
+`app` is the program's name without `.exe`, and there is no `bundle`. A disk is named by its
+label, or by its letter (`E:`) when it has none, and its `path` is the drive (`E:\`).
+
+On Windows, pine in WSL is a Linux: there the Linux helper runs, and hears what WSL's Linux
+has, which is little (no lock, no battery).
 
 ## What there is no type for
 

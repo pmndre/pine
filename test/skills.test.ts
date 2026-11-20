@@ -40,11 +40,11 @@ test("skills: an agent writes one down for a conversation, for itself, or (the m
 
 	// In a conversation: just that conversation, without a question, and written by pine where the agent can read but not write.
 	await run("books", "april", [call("add_skill", invoices)]);
-	assert.match(h.toolResults().at(-1)!, new RegExp(`^Added the skill "invoices" for this conversation; it is removed when this conversation is removed\\. It is at ${dirs.local.replace(/\./g, "\\.")}/invoices/SKILL\\.md\\. From your next message on`));
+	assert.match(h.toolResults().at(-1)!, new RegExp(`^Added the skill "invoices" for this conversation; it is removed when this conversation is removed\\. It is at ${path.join(dirs.local, "invoices", "SKILL.md").replace(/[.\\]/g, "\\$&")}\\. From your next message on`));
 	assert.equal(asked.length, 0);
 	assert.equal(fs.readFileSync(path.join(dirs.local, "invoices", "SKILL.md"), "utf8"), `---\nname: invoices\ndescription: "File an invoice: where it goes and what to note. Use when a PDF invoice arrives."\n---\n\n1. Read the total.\n2. Move it to \`books/2026/\`.\n`);
 	assert.deepEqual(await look("books", "april"), ["invoices", "tone"]);
-	assert.match(h.system(h.mock.state.requests.at(-1)), /<description>File an invoice: where it goes and what to note\. Use when a PDF invoice arrives\.<\/description>\s*<location>[^<]*conversations\/april\/skills\/invoices\/SKILL\.md<\/location>/);
+	assert.match(h.system(h.mock.state.requests.at(-1)), /<description>File an invoice: where it goes and what to note\. Use when a PDF invoice arrives\.<\/description>\s*<location>[^<]*conversations[\\/]april[\\/]skills[\\/]invoices[\\/]SKILL\.md<\/location>/);
 	assert.deepEqual(await look("books", "may"), ["tone"], "another conversation of the same agent does not have it");
 	assert.deepEqual(await look("books"), ["tone"]);
 	assert.deepEqual(await look("main"), ["tone"]);
@@ -89,7 +89,7 @@ test("skills: an agent writes one down for a conversation, for itself, or (the m
 	// For all agents: the main agent, always with a question, with the files it names copied along.
 	await run("main", undefined, [call("add_skill", { name: "letter", description: "Typeset a letter as the owner likes it.", instructions: "Run `./render.sh`; the layout is in notes/layout.md.", files: "kit", scope: "global" }), call("add_skill", { ...invoices, name: "ledger", scope: "global" }), call("add_skill", { ...invoices, name: "leak", files: "bad", scope: "global" })]);
 	const [made, taken, linked] = h.toolResults().slice(-3);
-	assert.match(made, /^Added the skill "letter" for all agents\. It is at .*\/skills\/letter\/SKILL\.md, with 2 files beside it\./);
+	assert.match(made, /^Added the skill "letter" for all agents\. It is at .*[\\/]skills[\\/]letter[\\/]SKILL\.md, with 2 files beside it\./);
 	assert.match(taken, /a skill named "ledger" exists already \(an agent's own\)/, "a name an agent already uses is not taken for everyone");
 	assert.match(linked, /is a link; a skill carries files, not links/);
 	assert.match(asked.at(-1).summary, /^add the skill "letter" for ALL agents\nTypeset a letter as the owner likes it\.\nWith 2 files from kit\nInstructions:\nRun/);
@@ -120,7 +120,7 @@ test("skills: an agent writes one down for a conversation, for itself, or (the m
 	// Taking one away: one's own without a question, the owner's not at all, one for everyone only by the main agent.
 	await run("books", "april", [call("remove_skill", { name: "tone" }), call("remove_skill", { name: "letter" }), call("remove_skill", { name: "nope" })]);
 	const kept = h.toolResults().slice(-3);
-	assert.match(kept[0], /"tone" was put there by your owner \(.*house-rules\/tone\) and is theirs to remove/);
+	assert.match(kept[0], /"tone" was put there by your owner \(.*house-rules[\\/]tone\) and is theirs to remove/);
 	assert.match(kept[1], /Only the main agent \(main\) can remove a skill for all agents/);
 	assert.match(kept[2], /there is no skill called "nope"\. Yours: invoices \(local\), ledger \(agent\), letter \(all agents\), tone \(all agents\)$/);
 	await run("main", undefined, [call("remove_skill", { name: "letter" })]);

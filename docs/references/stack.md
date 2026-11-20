@@ -116,7 +116,9 @@ Not verified yet, in rough order of importance:
    written, none was run), Podman, and the terminal UI in a real Linux terminal (only through
    the suite's fake terminal). With the network
    granted, Linux still lets a command reach socket files in the temp folders, which macOS
-   refuses. There is no sandbox
-   on other systems; the shell tool is withheld there.
+   refuses. The Test workflow (`.github/workflows/test.yml`) runs the suite on Ubuntu 24.04 for
+   x64 and arm64 with the sandbox set up by `pine init`, on macOS and on Windows. On Windows
+   pine has no sandbox (docs/adr/0004-three-systems.md): its tests run in `auto` mode there, and
+   the ones about the sandbox skip themselves.
 7. **Not built:** a Slack source, a web dashboard, voice. Slack would be a source type like
    `telegram`: one that talks and can send.

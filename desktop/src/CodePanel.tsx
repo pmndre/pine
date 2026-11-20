@@ -47,6 +47,9 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
+/** What a file's place is shown in, by the name the system gives its file manager. */
+const SHOW_IN: Record<string, string> = { darwin: "Show in the Finder", win32: "Show in Explorer", linux: "Show in Files" };
+
 // ---- the editor ------------------------------------------------------------------------------------
 
 // The editor says what a token is and what it looks like. The colors are tokens of index.css
@@ -394,7 +397,7 @@ function FileView({ tab, file, close }: { tab: Tab; file: string; close: () => v
 				</AlertDialog>
 				<PathCrumbs path={file}>{dirty ? <span className="text-warn"> ●</span> : null}</PathCrumbs>
 				{disk.data?.truncated ? <Badge variant="outline">too large to edit</Badge> : null}
-				{root && !store.remote ? <HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => void bridge.reveal(`${root}/${file}`)} aria-label="Show in the Finder"><ExternalLinkIcon /></Button>} /><TooltipContent>Show in the Finder</TooltipContent></HoverTooltip> : null}
+				{root && !store.remote ? <HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => void bridge.reveal(`${root}/${file}`)} aria-label={SHOW_IN[store.platform] ?? SHOW_IN.darwin}><ExternalLinkIcon /></Button>} /><TooltipContent>{SHOW_IN[store.platform] ?? SHOW_IN.darwin}</TooltipContent></HoverTooltip> : null}
 				{kind || disk.data?.binary ? null : <Button variant={dirty ? "default" : "ghost"} size="xs" disabled={!dirty || saving} onClick={() => void save()}><SaveIcon data-icon="inline-start" />Save</Button>}
 			</div>
 			{changedOnDisk ? (

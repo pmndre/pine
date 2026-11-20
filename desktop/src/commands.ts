@@ -134,7 +134,7 @@ export const COMMANDS: Command[] = [
 		},
 	},
 	{
-		name: "voice", title: "Dictate the message", about: "Say the message instead of typing it; the words are recognised on this Mac", hint: "[language, for example de-DE]", keys: "⌃R", chat: true,
+		name: "voice", title: "Dictate the message", about: "Say the message instead of typing it; the words are recognised on this computer itself", hint: "[language, for example de-DE]", keys: "⌃R", chat: true,
 		run: (args) => {
 			if (args.trim()) store.voiceLanguage = args.trim();
 			return store.command("voice");

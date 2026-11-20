@@ -421,7 +421,7 @@ earlier command started.
 ## Bundled: computer
 
 Operating the apps on the Mac pine runs on: reading a window as an outline, pressing its
-controls, clicking in a picture of it, typing. macOS only.
+controls, clicking in a picture of it, typing. On macOS, Windows, and Linux with X11 ([computer.md](computer.md)).
 
 ```json
 "computer": { "pine": "computer" }

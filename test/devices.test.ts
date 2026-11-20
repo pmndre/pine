@@ -164,7 +164,7 @@ test("modbus: a list of values that cannot work is refused with what to give ins
 
 // ---- serial ---------------------------------------------------------------------------------------
 
-test("serial: only a serial port is read; lines come out of bytes clean and whole", () => {
+test("serial: only a serial port is read; lines come out of bytes clean and whole", { skip: process.platform === "win32" && "a serial port cannot be read on Windows yet" }, () => {
 	const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pine-serial-")), "ttyUSB0");
 	fs.writeFileSync(file, "x");
 	assert.throws(() => portOf(file), /is not a device: a serial port lies under \/dev/);
@@ -227,7 +227,7 @@ test("serial: what a device prints arrives line by line; a device that is gone i
 	assert.deepEqual([...new Set(gone)], ["waiting"]);
 });
 
-test("serial: a source whose device is unplugged says so and stays", async () => {
+test("serial: a source whose device is unplugged says so and stays", { skip: process.platform === "win32" && "a serial port cannot be read on Windows yet" }, async () => {
 	portTiming.retryMs = 40;
 	const h = await harness({ pine: { sources: { meter: { type: "serial", port: "/dev/cu.pine-test-none", baud: 115200, start: "always" }, odd: { type: "serial", port: "/dev/null", start: "always" } } }, agents: { main: {} } });
 	await until(() => /waiting for cu\.pine-test-none: it is not there \(unplugged\?\)/.test(infoOf(h, "meter").status ?? ""), 4000, "the status");
@@ -529,8 +529,8 @@ test("devices by asking: each type says what it will do, refuses what cannot wor
 		/counted from 0, up to 65535/,
 		/"http:\/\/192\.168\.1\.60" is not an address\. A Modbus device's looks like 192\.168\.1\.60/,
 		/"every" must be at least "2s"/,
-		/is not a device: a serial port lies under \/dev/,
-		/is not a serial port by its name/,
+		process.platform === "win32" ? /cannot be read on Windows yet/ : /is not a device: a serial port lies under \/dev/,
+		process.platform === "win32" ? /cannot be read on Windows yet/ : /is not a serial port by its name/,
 		/is not an address\. A camera's looks like 192\.168\.1\.40/,
 		/"8\.8\.8\.8" is not an address on your owner's own network/,
 		/needs "hosts" \(devices by address[\s\S]*or "services"/,

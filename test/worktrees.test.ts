@@ -213,12 +213,15 @@ test("worktrees: a conversation in one commits on its branch and reaches nothing
 
 	// What is not its own: the main checkout, the repository's configuration and hooks, another
 	// branch, its own pointer to the git folder.
+	// Writing a repository's configuration is a critical action and is put to the owner: here the
+	// owner says yes, and what keeps it out is the sandbox.
+	h.pine.bus.subscribe("approval/requested", (e) => void h.pine.approvals.decide((e.payload as any).id, true, "test"));
 	const before = { main: git("rev-parse", "main"), config: fs.readFileSync(path.join(dir, ".git", "config"), "utf8"), pointer: fs.readFileSync(path.join(made.path, ".git"), "utf8") };
 	await run("fix", [
 		{
 			tools: [
 				bash(`echo x > ${dir}/a.txt`),
-				bash(`echo "[core]" >> ${dir}/.git/config`),
+				bash(`echo "[core]" | tee -a ${dir}/.git/config`),
 				bash(`mkdir -p ${dir}/.git/hooks; echo x > ${dir}/.git/hooks/post-checkout`),
 				bash("git update-ref refs/heads/main HEAD"),
 				bash(`echo "gitdir: /tmp" > ${made.path}/.git`),

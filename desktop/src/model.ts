@@ -9,7 +9,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
 import { type AgentInfo, api, type Approval, type Conversation, type GoalInfo, type GroupList, media, type WorktreeMade, type PineEvent, type Program, type Stats, type Task, type Todo, type TranscriptEntry } from "./api.ts";
 import { bridge, type Prefs, type ServiceState, type Update } from "./bridge.ts";
-import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, MODES, oneLine, plural, short, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
+import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, MODES, oneLine, plural, short, shortcut, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
 import { runnable } from "./runnable.ts";
 import { applyLook, cleanLook, type ThemeEntry } from "./theme.ts";
 
@@ -860,7 +860,7 @@ export class Store extends Model {
 		const code = await bridge.browserInstall().catch(() => 1);
 		this.browserFetching = false;
 		await this.checkBrowser();
-		if (this.browser) this.flash("The browser of the web tools is on this Mac now.", "good");
+		if (this.browser) this.flash(`The browser of the web tools is on ${this.platform === "darwin" ? "this Mac" : "this computer"} now.`, "good");
 		else this.flash(code === 0 ? "The browser is still not there. What was said is shown in Settings > App." : "The browser could not be fetched. What was said is shown in Settings > App; try again when you are online.", "bad", 8000);
 		this.touch();
 	}
@@ -1445,7 +1445,7 @@ export class Store extends Model {
 			if (steered === undefined) (mine.task = task), mine.v++;
 			if (steered !== undefined) {
 				tab.awaiting = tab.awaiting.filter((p) => p !== text);
-				this.flash("Given to the agent while it works. ⌥↩ makes a message wait its turn instead.", "muted", 3000);
+				this.flash(`Given to the agent while it works. ${shortcut("⌥↩")} makes a message wait its turn instead.`, "muted", 3000);
 			} else if (busy) this.flash("It waits its turn: it is answered when the work that is running is done.", "muted", 3000);
 		} catch (e) {
 			tab.awaiting = tab.awaiting.filter((p) => p !== text);
@@ -1871,7 +1871,7 @@ export class Store extends Model {
 		const tab = this.active;
 		const chat = tab?.kind === "chat" ? tab : undefined;
 		// A folder opened with the app from the Finder is this computer's.
-		if (name.startsWith("folder:")) return this.remote ? this.flash(`That folder is on this computer, and the app uses the pine on ${this.remote}. Use this Mac's pine to open it.`, "warn", 7000) : this.openFolder(name.slice(7));
+		if (name.startsWith("folder:")) return this.remote ? this.flash(`That folder is on this computer, and the app uses the pine on ${this.remote}. Use ${this.platform === "darwin" ? "this Mac" : "this computer"}'s pine to open it.`, "warn", 7000) : this.openFolder(name.slice(7));
 		if (name.startsWith("focus:")) return this.activate(this.tabs.find((t) => t.key === name.slice(6)));
 		if (name.startsWith("tab-")) return this.activate(this.tabs[Number(name.slice(4)) - 1]);
 		if (name.startsWith("code-")) {

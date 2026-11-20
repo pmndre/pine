@@ -1,0 +1,194 @@
+name: Test
+
+# pine's tests on every system it runs on, on every pull request and every push to next.
+#
+# pine: the type check and `npm test` on Linux (x64 and arm64), macOS and Windows. On Linux the
+# sandbox is set up first the way an owner sets it up, with `pine init` (bubblewrap, and the
+# AppArmor rule Ubuntu 24.04 needs), so that the tests that run commands in the sandbox run there
+# and are not skipped. On Windows pine has no sandbox yet: those tests skip themselves, each with
+# the reason why.
+#
+# The Pine app (desktop/): its tests drive the real app through its window, on macOS and on Linux
+# under a virtual screen. They run when the app or the parts of pine it talks to change.
+
+on:
+  pull_request:
+  push:
+    branches: [next]
+
+permissions:
+  contents: read
+
+# One run at a time for a branch, and a run that has started is finished: the Windows job takes
+# longer than the time between two pushes, and would otherwise never be seen to the end. (A run
+# that waits is replaced by the next push's.)
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pine:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      # The files as they are in the repository, with the line ends they have there (git on
+      # Windows would otherwise turn them into CRLF, which the tests that read pine's own docs see).
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run check
+      - name: Set up the sandbox as pine init does
+        if: runner.os == 'Linux'
+        env:
+          PINE_HOME: ${{ runner.temp }}/pine-home
+          PINE_SKIP_DOWNLOADS: "1"
+        run: node src/cli.ts init --yes
+      - name: Say which sandbox the tests get
+        shell: bash
+        run: |
+          node --input-type=module -e 'import { sandboxKind, sandboxMissing } from "./src/security.ts"; console.log(`sandbox: ${sandboxKind() ?? "none"} on ${process.platform} ${sandboxMissing()}`)'
+      # A test that hangs fails after three minutes, instead of holding the job until its own limit.
+      # The runners are slower than a computer at a desk: the tests' waits are four times as long.
+      - run: node --test --test-force-exit --test-timeout=180000 "test/*.test.ts"
+        env:
+          PINE_TEST_PATIENCE: "4"
+
+  desktop-changed:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.filter.outputs.changed }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: filter
+        shell: bash
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A new branch or a forced push has no usable "before": then everything counts as changed.
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then echo "changed=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if git diff --name-only "$BASE" HEAD | grep -Eq '^(desktop/|src/(http|owner|service|remote|csharp)\.ts$|scripts/helpers\.mjs$|\.github/workflows/test\.yml$)'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  desktop:
+    needs: desktop-changed
+    if: needs.desktop-changed.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: What Linux needs to build node-pty and to show a window
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 xvfb
+          # Electron's own sandbox makes a user namespace, which Ubuntu 24.04 allows only to
+          # programs with an AppArmor rule. A test runner has no reason to keep that restriction.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: npm ci
+      - name: Set up the sandbox as pine init does
+        if: runner.os == 'Linux'
+        env:
+          PINE_HOME: ${{ runner.temp }}/pine-home
+          PINE_SKIP_DOWNLOADS: "1"
+        run: node src/cli.ts init --yes
+      - run: npm ci
+        working-directory: desktop
+      # The app runs pine on the owner's Node, found by the login shell's PATH: on a runner that is an
+      # older one than the job's. PINE_NODE names the job's.
+      - run: echo "PINE_NODE=$(command -v node)" >> "$GITHUB_ENV"
+      - run: npm run check
+        working-directory: desktop
+      - name: The app's tests
+        if: runner.os == 'macOS'
+        run: npm run desktop:test
+        env:
+          PINE_TEST_PATIENCE: "4"
+      - name: The app's tests, on a virtual screen
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run desktop:test
+        env:
+          PINE_TEST_PATIENCE: "4"
+
+  # The Pine app packed for Linux and Windows as a release packs it (unsigned, the app's folder
+  # alone), and started once from there: whether it runs on the pine and the Node it carries.
+  pack:
+    needs: desktop-changed
+    if: needs.desktop-changed.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: What node-pty is built with, and a screen
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 xvfb
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: npm ci && npm ci --prefix desktop
+        shell: bash
+      - name: Pack
+        run: node desktop/scripts/pack.mjs --dir
+        env:
+          PINE_VERSION: "9.8.7"
+      - name: Start it once (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node desktop/scripts/smoke.mjs
+      - name: Start it once (Windows)
+        if: runner.os == 'Windows'
+        run: node desktop/scripts/smoke.mjs
+      # What a release's code signing checks on every file it signs (desktop/signpath/): the product's
+      # name and the release's version. And the installer made from a folder packed before, as the
+      # release makes it from the signed one.
+      - name: The installer, and what the files say they are (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          PINE_VERSION: "9.8.7"
+        run: |
+          node desktop/scripts/pack.mjs --prepackaged desktop/release/win-unpacked --arch x64
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $files = @("desktop\release\Pine-9.8.7-x64-setup.exe", "desktop\release\win-unpacked\Pine.exe") + (Get-ChildItem -Recurse -Path desktop\release\win-unpacked\resources\pine -Filter "pine-*.exe" | Where-Object { $_.FullName -match "\\prebuilt\\" } | ForEach-Object { $_.FullName })
+          if ($files.Count -ne 5) { "expected the installer, Pine.exe and three helpers, found: $files"; exit 1 }
+          foreach ($f in $files) {
+            $v = (Get-Item -LiteralPath $f).VersionInfo
+            "$f : $($v.ProductName) $($v.ProductVersion)"
+            if ($v.ProductName -ne "Pine" -or $v.ProductVersion -ne "9.8.7") { exit 1 }
+          }

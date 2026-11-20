@@ -45,3 +45,6 @@ Thumbs.db
 
 # The package made for npm (npm run build)
 build/
+
+# Helpers pine builds beside their sources on first use (src/prebuilt.ts)
+src/prebuilt/

@@ -268,7 +268,7 @@ test("source types: the main agent brings in a new kind of source, with the owne
 	assert.equal(made.status, "done");
 	const dialog = asked[before];
 	assert.equal(dialog.tool, "add_source_type");
-	assert.match(dialog.summary, new RegExp(`^register the source type "blinker" from ${path.join(ws, "types", "blinker.ts").replace(/\./g, "\\.")} \\(16 lines\\)\\nThis is a program\\. Once registered it runs inside pine itself, with your rights and outside any sandbox`));
+	assert.match(dialog.summary, new RegExp(`^register the source type "blinker" from ${path.join(ws, "types", "blinker.ts").replace(/[.\\]/g, "\\$&")} \\(16 lines\\)\\nThis is a program\\. Once registered it runs inside pine itself, with your rights and outside any sandbox`));
 	assert.match(dialog.summary, /It uses: node:fs\.\n/);
 	assert.match(h.toolResults(h.mock.state.requests.at(-2)).at(-1)!, /Registered the source type "blinker": a test light: reports a blink\. Options: word \(required\): what it blinks; key \(a secret: name it in "ask" if one is needed\): its key\./);
 	assert.match(h.toolResults().at(-2)!, /it will not blink no/);

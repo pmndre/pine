@@ -1,20 +1,32 @@
-// Dictating a message: the terminal UI's side of voice input.
+// Dictating a message: the terminal UI's side of voice input, which the Pine app uses too.
 //
-// The words are recognised on the owner's own Mac by the system's speech recognition, through a
-// small helper (voice.swift) that this file builds with `swiftc` on first use and keeps. Nothing
-// is sent anywhere, and nothing of this runs in the daemon: the microphone is where the owner
-// sits, which is where the UI runs.
+// The words are recognised on the owner's own computer, and nothing is sent anywhere. Nothing of
+// this runs in the daemon: the microphone is where the owner sits, which is where the UI runs.
+// Each system has its own recogniser, behind a helper that speaks the same lines of JSON:
 //
-// On a system that is not macOS there is no such recognition to use. Then nothing is built and
-// nothing is started: `voiceTools()` says why in a sentence, and the UI shows that sentence.
+// - macOS: the system's speech recognition, through voice.swift, which this file builds with
+//   `swiftc` on first use and keeps.
+// - Windows: the system's desktop speech recogniser (System.Speech), through voice.cs, built with
+//   the C# compiler every Windows carries (src/csharp.ts) on first use and kept.
+// - Linux: whisper.cpp's whisper-cli and a model the owner installed, fed by the system's sound
+//   recorder, through voice-whisper.ts (voice-linux.ts). Nothing is built or downloaded.
+//
+// Where a piece is missing, nothing is built and nothing is started: `voiceTools()` says why in a
+// sentence, and the UI shows that sentence.
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { buildCsharp, csc, frameworkDir } from "../csharp.ts";
 import { prebuilt } from "../prebuilt.ts";
+import { type Look, linuxVoice } from "./voice-linux.ts";
 
 export const VOICE_SOURCE = path.join(import.meta.dirname, "voice.swift");
+/** The helper's source on Windows. */
+export const VOICE_CS = path.join(import.meta.dirname, "voice.cs");
+/** The helper on Linux, run with Node. */
+export const VOICE_LINUX = path.join(import.meta.dirname, `voice-whisper${import.meta.filename.endsWith(".ts") ? ".ts" : ".js"}`);
 
 /**
  * What the helper says when the system asks the owner whether it may listen. A program without
@@ -30,7 +42,8 @@ const INFO = `<?xml version="1.0" encoding="UTF-8"?>
 </dict></plist>
 `;
 
-export const NOT_HERE = "Voice input needs a Mac: it uses the speech recognition that macOS has on the device. On this system pine works as before, by typing.";
+export const NOT_HERE = "Voice input needs macOS, Windows or Linux, which recognise speech on the device. On this system pine works as before, by typing.";
+export const NO_CSC = "Voice input on Windows needs the C# compiler of .NET Framework 4 (csc.exe), once, to build its helper, and this Windows has none. It comes with Windows: turn on .NET Framework 4.8 Advanced Services in \"Turn Windows features on or off\", then try again.";
 export const NO_COMPILER = "Voice input needs Apple's command line developer tools, once, to build its helper, and they are not installed on this Mac. Install them by typing this into a terminal: xcode-select --install (macOS then shows a window to confirm). Then try again.";
 
 type Run = (file: string, args: string[], ms: number) => Promise<{ code: number; stdout: string; stderr: string }>;
@@ -79,11 +92,62 @@ export interface VoiceTools {
 	program(): Promise<string[]>;
 }
 
-/** Voice input as this system has it: the helper on a Mac, a sentence everywhere else. */
-export function voiceTools(platform: string = process.platform, dir = path.join(os.homedir(), "Library", "Caches", "pine-voice")): VoiceTools {
-	if (platform !== "darwin") return { unavailable: NOT_HERE, program: () => Promise.reject(new Error(NOT_HERE)) };
+/** System.Speech.dll of .NET Framework 4, for the compiler: beside it, in its WPF folder, or in the assembly cache. */
+export function speechAssembly(): string {
+	const fw = frameworkDir();
+	const root = process.env.SystemRoot ?? process.env.windir ?? "C:\\Windows";
+	const cache = path.join(root, "Microsoft.NET", "assembly", "GAC_MSIL", "System.Speech");
+	const cached = (() => {
+		try {
+			return fs.readdirSync(cache).filter((d) => d.startsWith("v4.0_")).map((d) => path.join(cache, d, "System.Speech.dll"));
+		} catch {
+			return [];
+		}
+	})();
+	return [...(fw ? [path.join(fw, "System.Speech.dll"), path.join(fw, "WPF", "System.Speech.dll")] : []), ...cached].find((f) => fs.existsSync(f)) ?? "System.Speech.dll";
+}
+
+/** The helper on Windows, built from voice.cs into `dir` the first time (or the one the Pine app carries). Throws a sentence for the owner. */
+export function buildVoiceWindows(dir: string, opts: { compiler?: string; source?: string } = {}): string {
+	return buildCsharp(opts.source ?? VOICE_CS, "pine-voice", "voice input", [speechAssembly()], { dir, compiler: opts.compiler });
+}
+
+export interface VoiceOptions {
+	/** Windows: the C# compiler; null: there is none. Default: the one Windows carries. */
+	compiler?: string | null;
+	/** Linux: the Node that runs the helper (the Pine app's main process is not one). Default: this one. */
+	node?: string;
+	/** Linux: the helper's file. Default: the one beside this file. */
+	helper?: string;
+	/** Linux: what the search for the recorder, whisper.cpp and the model sees. Default: this computer. */
+	look?: Look;
+}
+
+const defaultDir = (platform: string) =>
+	platform === "win32" ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "pine-voice") : path.join(os.homedir(), "Library", "Caches", "pine-voice");
+
+/**
+ * Voice input as this system has it: the helper on a Mac and on Windows, whisper.cpp on Linux
+ * when the owner installed it, and a sentence wherever a piece is missing. `dir` is where a
+ * helper that is built goes.
+ */
+export function voiceTools(platform: string = process.platform, dir = defaultDir(platform), opts: VoiceOptions = {}): VoiceTools {
+	const none = (why: string): VoiceTools => ({ unavailable: why, program: () => Promise.reject(new Error(why)) });
 	let built: Promise<string> | undefined;
-	return { program: async () => [await (built ??= buildVoice(dir).catch((e) => ((built = undefined), Promise.reject(e))))] };
+	const once = (build: () => Promise<string>) => async () => [await (built ??= build().catch((e) => ((built = undefined), Promise.reject(e))))];
+	if (platform === "darwin") return { program: once(() => buildVoice(dir)) };
+	if (platform === "win32") {
+		const compiler = opts.compiler === undefined ? csc() : opts.compiler;
+		if (!compiler) return none(NO_CSC);
+		return { program: once(async () => buildVoiceWindows(dir, { compiler })) };
+	}
+	if (platform === "linux") {
+		const found = linuxVoice(opts.look);
+		if (found.missing) return none(found.missing);
+		const command = [opts.node ?? process.execPath, opts.helper ?? VOICE_LINUX, "--recorder", found.recorder!, "--whisper", found.whisper!, "--model", found.model!];
+		return { program: async () => command };
+	}
+	return none(NOT_HERE);
 }
 
 export interface Heard {
@@ -111,7 +175,7 @@ export class Listening {
 		this.heard = heard;
 		let child: ChildProcess;
 		try {
-			child = spawn(command[0], [...command.slice(1), ...(language ? ["--locale", language] : [])], { stdio: ["pipe", "pipe", "ignore"] });
+			child = spawn(command[0], [...command.slice(1), ...(language ? ["--locale", language] : [])], { stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
 		} catch (e) {
 			this.end(undefined, `voice input could not be started (${e instanceof Error ? e.message : String(e)})`);
 			return;

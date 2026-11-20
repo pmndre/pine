@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { Denials, type DenialTools, fromOutput, gather, reaches, sortDenials } from "../src/access.ts";
+import { Denials, type DenialTools, fromOutput, gather, reaches, sortDenials, windowsPath } from "../src/access.ts";
 import { rootsFor, sandboxAvailable, sandboxProfile } from "../src/security.ts";
 import { harness, MCP_STUB, mockMsg, notesOf } from "./support/harness.ts";
 
@@ -37,7 +37,15 @@ const runner = (h: Awaited<ReturnType<typeof harness>>, session = "work", trust:
 	return h.toolResults().slice(-tools.length);
 };
 
-test("access: the paths a command names are read from its text, with what it writes", () => {
+test("access: a path of Windows is read as Git's bash writes it there: C:\\x, C:/x and /c/x", () => {
+	assert.equal(windowsPath("C:\\Users\\me\\.pine/.env"), "C:\\Users\\me\\.pine\\.env");
+	assert.equal(windowsPath("C:/Users/me"), "C:\\Users\\me");
+	assert.equal(windowsPath("/c/Users/me/.pine"), "C:\\Users\\me\\.pine");
+	assert.equal(windowsPath("/d"), "D:\\");
+	for (const not of ["/etc/hosts", "/tmp/x", "relative/x", "~/x", "-C"]) assert.equal(windowsPath(not), undefined, not);
+});
+
+test("access: the paths a command names are read from its text, with what it writes", { skip: process.platform === "win32" && "what a command names is read as a POSIX shell's paths; Windows paths there are not read yet" }, () => {
 	const where = { cwd: "/w/space", shellHome: "/pine/sandbox/a", ownerHome: "/Users/o" };
 	const of = (command: string) => reaches(command, where).map((r) => `${r.write ? "write" : "read"} ${r.path}${r.owner ? ` (owner: ${r.owner})` : ""}`);
 	assert.deepEqual(of("cat /Users/o/notes/a.txt"), ["read /Users/o/notes/a.txt"]);
@@ -58,7 +66,7 @@ test("access: the paths a command names are read from its text, with what it wri
 	assert.deepEqual(of("cat /Users/o/a; echo x >> /Users/o/a"), ["write /Users/o/a"]);
 });
 
-test("access: the system's reports and a failed command's words are sorted into paths, network and services", () => {
+test("access: the system's reports and a failed command's words are sorted into paths, network and services", { skip: process.platform === "win32" && "what a command names is read as a POSIX shell's paths; Windows paths there are not read yet" }, () => {
 	const d = (op: string, target: string) => ({ process: "p", op, target });
 	const sorted = sortDenials([
 		d("file-read-data", "/Users/o/a"),
@@ -193,7 +201,7 @@ function standIn(h: Awaited<ReturnType<typeof harness>>, reads = true) {
 	return { reports };
 }
 
-test("access: the log is read while commands run and a little longer, and again for the next one", async (t) => {
+test("access: the log is read while commands run and a little longer, and again for the next one", { skip: process.platform === "win32" && "the stand-in for the system's log is a shell script" }, async (t) => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pine-denials-"));
 	const { tools, reports } = standInTools(dir);
 	const d = new Denials(quiet, tools, 60);

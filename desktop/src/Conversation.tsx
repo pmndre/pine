@@ -35,7 +35,7 @@ import { bridge } from "./bridge.ts";
 import { Composer } from "./Composer.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
 import { type Item, type Part, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
-import { childKind, clock, count, MODES, oneLine, plural, short, speedText, tilde, took } from "./text.ts";
+import { childKind, clock, count, MODES, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
 
 /** A note's tone is information (a warning, a failure), so it colors the note's icon. */
@@ -508,7 +508,7 @@ function Checkpoint({ tab }: { tab: Tab }) {
 					<TooltipTrigger render={<Button size="xs" variant="outline" onClick={() => void store.undo(tab, false)} />}>Take back</TooltipTrigger>
 					<TooltipContent>
 						Its files are restored, the conversation forgets it, its text returns to the input
-						<Kbd>⇧⌘Z</Kbd>
+						<Kbd>{shortcut("⇧⌘Z")}</Kbd>
 					</TooltipContent>
 				</HoverTooltip>
 			</MarkerContent>
@@ -574,7 +574,7 @@ function Welcome({ tab }: { tab: Tab }) {
 					<Button variant="outline" size="xs" onClick={() => say("What can you do for me, and what are you set up with?")}>What can you do?</Button>
 					<Button variant="outline" size="xs" onClick={() => store.openSettings("agents", tab.agent)}><SettingsIcon data-icon="inline-start" />Agent settings</Button>
 					<Button variant="outline" size="xs" onClick={() => void store.pickFolder(tab)}><FolderIcon data-icon="inline-start" />Give it a folder</Button>
-					<Button variant="outline" size="xs" onClick={() => void store.command("palette")}><CommandIcon data-icon="inline-start" />Commands <Kbd>⌘K</Kbd></Button>
+					<Button variant="outline" size="xs" onClick={() => void store.command("palette")}><CommandIcon data-icon="inline-start" />Commands <Kbd>{shortcut("⌘K")}</Kbd></Button>
 				</div>
 			</EmptyContent>
 		</Empty>
@@ -645,11 +645,11 @@ function FindBar({ root, close, initial }: { root: () => HTMLElement | null; clo
 				{query ? <InputGroupText>{count ? `${at + 1} of ${count}` : "nothing"}</InputGroupText> : null}
 				<HoverTooltip>
 					<TooltipTrigger render={<InputGroupButton size="icon-xs" onClick={() => step(-1)} aria-label="Earlier" />}><ArrowUpIcon /></TooltipTrigger>
-					<TooltipContent>Earlier<Kbd>↩</Kbd></TooltipContent>
+					<TooltipContent>Earlier<Kbd>{shortcut("↩")}</Kbd></TooltipContent>
 				</HoverTooltip>
 				<HoverTooltip>
 					<TooltipTrigger render={<InputGroupButton size="icon-xs" onClick={() => step(1)} aria-label="Later" />}><ChevronDownIcon /></TooltipTrigger>
-					<TooltipContent>Later<Kbd>⇧↩</Kbd></TooltipContent>
+					<TooltipContent>Later<Kbd>{shortcut("⇧↩")}</Kbd></TooltipContent>
 				</HoverTooltip>
 				<HoverTooltip>
 					<TooltipTrigger render={<InputGroupButton size="icon-xs" onClick={close} aria-label="Close" />}><XIcon /></TooltipTrigger>

@@ -1,7 +1,7 @@
 // Settings: everything about pine that is otherwise a command in a shell or a sentence to the
 // main agent. Each page asks the daemon what there is and tells it what to change; the daemon
 // checks every change as it checks the main agent's, and nothing here writes a file itself.
-import { AudioLinesIcon, BookIcon, LaptopIcon, ServerIcon, CheckIcon, ChevronRightIcon, ChevronLeftIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PencilIcon, PlugIcon, PlusIcon, RotateCwIcon, SettingsIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { AudioLinesIcon, BookIcon, LaptopIcon, ServerIcon, TerminalSquareIcon, CheckIcon, ChevronRightIcon, ChevronLeftIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PencilIcon, PlugIcon, PlusIcon, RotateCwIcon, SettingsIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,7 @@ import { type AgentDetail, api, type LoginState, type Route, type Setting, type 
 import { bridge } from "./bridge.ts";
 import { Editor } from "./CodePanel.tsx";
 import { store, useModel } from "./model.ts";
-import { ago, errText, MODES, plural, REASONING, short, tilde } from "./text.ts";
+import { ago, errText, MODES, newApp, plural, REASONING, short, tilde } from "./text.ts";
 import type { DialogRootActions } from "@base-ui/react/dialog";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block";
@@ -2063,6 +2063,39 @@ export function MachineList() {
 	const state = s.service;
 	const key = s.keyToTrust;
 	const here = s.platform === "darwin" ? "This Mac" : "This computer";
+	// WSL on Windows: the distributions this computer has, and what the app says when it brings pine into one.
+	const [distros, setDistros] = useState<string[]>([]);
+	const [installed, setInstalled] = useState<{ distro: string; sandbox: string }>();
+	const [installing, setInstalling] = useState<string>();
+	useEffect(() => {
+		// (A bridge without WSL, or a stand-in, may answer with anything: only a list of names counts.)
+		if (s.local)
+			Promise.resolve(bridge.wslDistros?.())
+				.then((d) => setDistros(Array.isArray(d) ? d.filter((x): x is string => typeof x === "string") : []))
+				.catch(() => setDistros([]));
+	}, [s.local]);
+	const addWsl = async (d: string) => {
+		setError(undefined);
+		try {
+			s.prefs = await bridge.addHost(`wsl:${d}`);
+			s.touch();
+		} catch (e) {
+			setError(errText(e));
+		}
+	};
+	const install = async (d: string) => {
+		setError(undefined);
+		setInstalling(d);
+		try {
+			const r = await bridge.wslInstall!(d);
+			setInstalled({ distro: d, sandbox: r.sandbox });
+			void bridge.retry();
+		} catch (e) {
+			setError(errText(e));
+		} finally {
+			setInstalling(undefined);
+		}
+	};
 	const add = async () => {
 		setError(undefined);
 		try {
@@ -2089,21 +2122,26 @@ export function MachineList() {
 	};
 	const row = (h: string | undefined) => (
 		<Item key={h ?? ""} variant="outline" data-environment={h ?? "local"}>
-			<ItemMedia variant="icon">{h ? <ServerIcon /> : <LaptopIcon />}</ItemMedia>
+			<ItemMedia variant="icon">{h?.startsWith("wsl:") ? <TerminalSquareIcon /> : h ? <ServerIcon /> : <LaptopIcon />}</ItemMedia>
 			{/* The text asks for 20rem before it shares its line: where the buttons would leave it less (a phone, the Gate, the four of a machine in error), the Item wraps them onto a line of their own. */}
 			<ItemContent className="min-w-0 flex-[1_1_20rem]">
 				{/* A long host (a Tailscale Funnel name and its port) wraps where it breaks naturally, and the badge goes onto the next line: neither spills out of the row. `flex` again after `line-clamp-none`, which sets `display: block`. */}
 				<ItemTitle className="name line-clamp-none flex w-full min-w-0 flex-wrap">
-					<span className={cn("min-w-0 wrap-anywhere", h && "font-mono")}>{h ? <Breakable host={h} /> : here}</span>
+					<span className={cn("min-w-0 wrap-anywhere", h && !h.startsWith("wsl:") && "font-mono")}>{h?.startsWith("wsl:") ? `${h.slice(4)} (WSL)` : h ? <Breakable host={h} /> : here}</span>
 					{status(h)}
 				</ItemTitle>
 				<ItemDescription className="line-clamp-none wrap-anywhere">
-					{state.host === h && state.status === "error" ? state.message : h ? <>The pine on <Breakable host={h} />, over SSH.</> : "The pine on this computer: the one that runs, or one this app starts."}
+					{state.host === h && state.status === "error" ? state.message : h?.startsWith("wsl:") ? `The pine in ${h.slice(4)}, a Linux of WSL on this computer, where pine has its sandbox.` : h ? <>The pine on <Breakable host={h} />, over SSH.</> : "The pine on this computer: the one that runs, or one this app starts."}
 				</ItemDescription>
 				{key && key.host === h ? <ItemDescription className="line-clamp-none font-mono text-xs break-all select-text" data-slot="host-key-fingerprint">{key.fingerprint}</ItemDescription> : null}
 			</ItemContent>
 			<ItemActions>
 				{key && key.host === h ? <Button size="xs" data-slot="trust-host-key" onClick={() => void s.trustHostKey(key)}>Trust this key</Button> : null}
+				{h?.startsWith("wsl:") && state.host === h && state.status === "error" && /is not installed in/.test(state.message ?? "") && bridge.wslInstall ? (
+					<Button size="xs" data-slot="wsl-install" disabled={installing === h.slice(4)} onClick={() => void install(h.slice(4))}>
+						{installing === h.slice(4) ? <Pulse label="Installing" data-icon="inline-start" /> : null}Bring pine in
+					</Button>
+				) : null}
 				{state.host === h && state.status === "error" ? <Button variant="outline" size="xs" onClick={() => void bridge.retry()}>Try again</Button> : null}
 				{state.host === h ? null : <Button variant="outline" size="xs" onClick={() => void s.useMachine(h)}>Use</Button>}
 				{state.host === h && s.canDisconnect ? <Button variant="outline" size="xs" data-slot="disconnect" onClick={() => void s.disconnect()}>Disconnect</Button> : null}
@@ -2118,6 +2156,32 @@ export function MachineList() {
 				{s.local ? row(undefined) : null}
 				{s.prefs.hosts.map(row)}
 			</ItemGroup>
+			{installed ? (
+				<Alert data-slot="wsl-installed">
+					<InfoIcon />
+					<AlertDescription>
+						<p>pine is in {installed.distro}, with a home. Its sandbox needs bubblewrap there, which takes the password of your user in {installed.distro}: run this once in a terminal of Windows, and answer its question.</p>
+						<p className="font-mono text-xs select-text">{installed.sandbox}</p>
+					</AlertDescription>
+				</Alert>
+			) : null}
+			{distros.filter((d) => !s.prefs.hosts.includes(`wsl:${d}`)).length ? (
+				<FieldSet data-slot="wsl-distros">
+					<FieldLegend>WSL on this computer</FieldLegend>
+					<FieldDescription>A Linux of WSL runs pine with its sandbox, which pine on Windows itself does not have yet.</FieldDescription>
+					<ItemGroup>
+						{distros
+							.filter((d) => !s.prefs.hosts.includes(`wsl:${d}`))
+							.map((d) => (
+								<Item key={d} variant="outline" data-environment={`wsl:${d}`}>
+									<ItemMedia variant="icon"><TerminalSquareIcon /></ItemMedia>
+									<ItemContent><ItemTitle>{d}</ItemTitle></ItemContent>
+									<ItemActions><Button variant="outline" size="xs" onClick={() => void addWsl(d)}><PlusIcon data-icon="inline-start" />Add</Button></ItemActions>
+								</Item>
+							))}
+					</ItemGroup>
+				</FieldSet>
+			) : null}
 			{s.local ? null : <DeviceKey />}
 			<FieldSet>
 				<FieldLegend>Add a machine</FieldLegend>
@@ -2170,7 +2234,7 @@ function AppPage() {
 	const service = s.service.status === "ready" ? s.service : undefined;
 	const newer = s.update?.status === "newer" ? s.update : undefined;
 	// `pine` for a terminal: what the shell has, as the app's main process sees it.
-	const [command, setCommand] = useState<{ state: "none" | "here" | "other" | "unavailable"; why?: string; text: string }>();
+	const [command, setCommand] = useState<{ state: "none" | "here" | "other" | "unavailable"; why?: string; managed?: boolean; text: string }>();
 	// Under a bridge with no local machine (`s.local`), what only this computer has is neither asked nor shown:
 	// its home folder, Keep running, Restart, the pine command, the browser build, the Electron version.
 	const local = s.local;
@@ -2193,7 +2257,7 @@ function AppPage() {
 									Pine {s.versions.app}
 									{newer ? <Badge variant="outline">{newer.version} is available</Badge> : s.update?.status === "latest" ? <Badge>the latest version</Badge> : null}
 								</FieldTitle>
-								<FieldDescription>{newer ? "The new app is a disk image on the release's page on GitHub: download it and put the app in place of this one. Your pine home stays as it is." : "The app does not update itself. It asks GitHub for pine's last release, and says so when that is newer."}</FieldDescription>
+								<FieldDescription>{newer ? `The new app is ${newApp().what} on the release's page on GitHub: ${newApp().how}. Your pine home stays as it is.` : "The app does not update itself. It asks GitHub for pine's last release, and says so when that is newer."}</FieldDescription>
 							</FieldContent>
 							<div className="flex items-center gap-1.5">
 								{newer ? <Button variant="outline" size="xs" onClick={() => void bridge.open(newer.url)}><ExternalLinkIcon data-icon="inline-start" />Release page</Button> : null}
@@ -2205,7 +2269,7 @@ function AppPage() {
 						<Field orientation="horizontal">
 							<FieldContent>
 								<FieldLabel htmlFor={`${field}-updates`}>Look for a newer version at the start</FieldLabel>
-								<FieldDescription>One question to GitHub each time the app starts. It says nothing about this Mac or your pine.</FieldDescription>
+								<FieldDescription>One question to GitHub each time the app starts. It says nothing about {s.platform === "darwin" ? "this Mac" : "this computer"} or your pine.</FieldDescription>
 							</FieldContent>
 							<div className="flex items-center gap-1.5">
 								<Switch id={`${field}-updates`} checked={s.prefs.updates} onCheckedChange={(updates) => void set({ updates })} />
@@ -2260,7 +2324,7 @@ function AppPage() {
 								</FieldTitle>
 								<FieldDescription>{command.text}</FieldDescription>
 							</FieldContent>
-							{command.state === "none" || command.state === "here" ? (
+							{(command.state === "none" || command.state === "here") && !command.managed ? (
 								<div className="flex items-center gap-1.5">
 									{command.state === "none" ? <Button variant="outline" size="xs" onClick={() => void bridge.command("install").then(setCommand)}>Set up</Button> : <Button variant="outline" size="xs" onClick={() => void bridge.command("remove").then(setCommand)}>Remove</Button>}
 								</div>
@@ -2272,7 +2336,7 @@ function AppPage() {
 							<FieldContent>
 								<FieldTitle>
 									Browser for the web tools
-									<Badge variant={s.browser ? "default" : "outline"}>{s.browser ? "on this Mac" : "not on this Mac"}</Badge>
+									<Badge variant={s.browser ? "default" : "outline"}>{`${s.browser ? "on" : "not on"} ${s.platform === "darwin" ? "this Mac" : "this computer"}`}</Badge>
 								</FieldTitle>
 								<FieldDescription>{s.browser ? "The browser your agents open pages with, in the build this pine drives." : "Each version of pine drives a browser build of its own, and this one's is not here: it was never fetched, or it is the build of an older pine. About 600 MB, once. Until then the browser tools do not work; web search and reading a page do."}</FieldDescription>
 								{!s.browser && s.initLines.length ? (

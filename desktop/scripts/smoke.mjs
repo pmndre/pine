@@ -1,7 +1,8 @@
 // Starts a packed app on a pine home of its own and looks whether it comes up with the pine it
-// carries inside, on the Node it carries, and whether `pine` for a terminal and the built helpers
-// are what pine finds. For checking what `npm run pack` made.
-//   node scripts/smoke.mjs [release/mac-arm64/Pine.app]
+// carries inside, on the Node it carries, and whether `pine` for a terminal and (on a Mac) the
+// built helpers are what pine finds. For checking what `npm run pack` made, on the system it was
+// made for.
+//   node scripts/smoke.mjs [release/mac-arm64/Pine.app | release/linux-unpacked | release/win-unpacked]
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -11,12 +12,31 @@ import { chromium } from "playwright-core";
 import { startMock } from "../../baseline/tests/mock.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
-const appDir = path.resolve(process.argv[2] ?? path.join(root, "release", process.arch === "arm64" ? "mac-arm64" : "mac", "Pine.app"));
+const system = process.platform;
+const mac = system === "darwin";
+const windows = system === "win32";
+/** Where pack.mjs puts the app for this system and processor, and how its folder is laid out. */
+const LAYOUT = {
+	darwin: { packed: path.join(process.arch === "arm64" ? "mac-arm64" : "mac", "Pine.app"), copy: "Pine.app", binary: "Pine.app/Contents/MacOS/Pine", resources: "Pine.app/Contents/Resources", node: "node/bin/node" },
+	linux: { packed: process.arch === "arm64" ? "linux-arm64-unpacked" : "linux-unpacked", copy: "Pine", binary: "Pine/pine-desktop", resources: "Pine/resources", node: "node/bin/node" },
+	win32: { packed: process.arch === "arm64" ? "win-arm64-unpacked" : "win-unpacked", copy: "Pine", binary: "Pine/Pine.exe", resources: "Pine/resources", node: "node/node.exe" },
+}[system];
+if (!LAYOUT) throw new Error(`The app is made for a Mac, Linux and Windows, not for ${system}.`);
+const appDir = path.resolve(process.argv[2] ?? path.join(root, "release", LAYOUT.packed));
 // Tried from a folder of its own: inside the checkout, a pine that lacks what it depends on would
 // find it in the checkout's own node_modules and seem whole.
 const away = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-smoke-app-")));
-fs.cpSync(appDir, path.join(away, "Pine.app"), { recursive: true, verbatimSymlinks: true });
-const binary = path.join(away, "Pine.app", "Contents", "MacOS", "Pine");
+fs.cpSync(appDir, path.join(away, LAYOUT.copy), { recursive: true, verbatimSymlinks: true });
+const binary = path.join(away, LAYOUT.binary);
+/** Whether a process runs whose command line holds all of these words. */
+function running(...words) {
+	if (windows) {
+		const said = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine } | Where-Object { $_ }"], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024, windowsHide: true });
+		return said.split(/\r?\n/).some((l) => words.every((w) => l.includes(w)));
+	}
+	return execFileSync("/bin/ps", ["-A", "-o", "command="], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\n").some((l) => words.every((w) => l.includes(w)));
+}
+const here = mac ? "this Mac" : "this computer";
 const write = (file, content) => (fs.mkdirSync(path.dirname(file), { recursive: true }), fs.writeFileSync(file, content));
 const freePort = () => new Promise((resolve) => {
 	const s = net.createServer();
@@ -39,8 +59,8 @@ const port = await freePort();
 const env = { ...process.env, PINE_HOME: home, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_DESKTOP_RELEASES: "" };
 delete env.PINE_CLI;
 delete env.PINE_NODE;
-const resources = path.join(away, "Pine.app", "Contents", "Resources");
-const ownNode = path.join(resources, "node", "bin", "node");
+const resources = path.join(away, LAYOUT.resources);
+const ownNode = path.join(resources, LAYOUT.node);
 /** What the app carries beside pine (not in one packed with --no-pine, or for another system). */
 const whole = fs.existsSync(ownNode);
 const child = spawn(binary, [`--remote-debugging-port=${port}`], { env, stdio: "ignore" });
@@ -67,7 +87,7 @@ try {
 	// it will be asked: then it is waited for and answered with "Not now".
 	const over = await page.evaluate(() => window.pine.call("GET", "/overview"));
 	if (over?.data?.browser === false) {
-		await page.waitForSelector("[data-slot=dialog-title] >> text=The browser for the web tools is not on this Mac", { timeout: 30_000 });
+		await page.waitForSelector(`[data-slot=dialog-title] >> text=The browser for the web tools is not on ${here}`, { timeout: 30_000 });
 		await page.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" }).click();
 		await page.waitForSelector("[data-slot=dialog-content]", { state: "detached", timeout: 15_000 });
 	}
@@ -82,7 +102,7 @@ try {
 	if (shown !== "visible") throw new Error("the app's window never showed");
 	// The terminal: node-pty is the one native module of the app's own, and outside the archive.
 	const printed = await page.evaluate(
-		() =>
+		(typed) =>
 			new Promise((resolve, reject) => {
 				let out = "";
 				const stop = window.pine.onTermData((id, data) => {
@@ -91,18 +111,21 @@ try {
 					if (/smoke-\d+/.test(out)) (stop(), void window.pine.termClose("smoke:term"), resolve(/smoke-\d+/.exec(out)[0]));
 				});
 				setTimeout(() => (stop(), reject(new Error(`the terminal printed: ${JSON.stringify(out.slice(-400))}`))), 15_000);
-				window.pine.termOpen("smoke:term", undefined, 80, 24).then(() => window.pine.termWrite("smoke:term", "echo smoke-$((40+2))\r"), reject);
+				window.pine.termOpen("smoke:term", undefined, 80, 24).then(() => window.pine.termWrite("smoke:term", typed), reject);
 			}),
+		// PowerShell on Windows; the owner's POSIX shell elsewhere.
+		windows ? 'Write-Output "smoke-$(40+2)"\r' : "echo smoke-$((40+2))\r",
 	);
 	if (printed !== "smoke-42") throw new Error(`the terminal printed ${printed}`);
 	// A block run as its Run button runs it, in the owner's own shell with their startup files and pine's hooks: it says how it went.
 	const report = await page.evaluate(
-		() =>
+		(block) =>
 			new Promise((resolve, reject) => {
 				const stop = window.pine.onTermRun((id, r) => id === "smoke:run" && r.state === "ended" && (stop(), void window.pine.termClose("smoke:run"), resolve(r)));
 				setTimeout(() => (stop(), reject(new Error("the run never said that it had ended"))), 20_000);
-				window.pine.termOpen("smoke:run", undefined, 80, 24).then(() => window.pine.termRun("smoke:run", "echo ran-$((6*7)); false")).then((r) => r.reports || reject(new Error("this shell does not report")), reject);
+				window.pine.termOpen("smoke:run", undefined, 80, 24).then(() => window.pine.termRun("smoke:run", block)).then((r) => r.reports || reject(new Error("this shell does not report")), reject);
 			}),
+		windows ? 'Write-Output "ran-$(6*7)"; cmd /c exit 1' : "echo ran-$((6*7)); false",
 	);
 	if (report.code !== 1 || !/ran-42/.test(report.output)) throw new Error(`the run reported ${JSON.stringify(report)}`);
 	console.log("ok: a terminal runs in the app's own node-pty, and a block run in the owner's shell says how it ended");
@@ -110,21 +133,22 @@ try {
 	if (Number(process.env.PINE_SMOKE_HOLD) > 0) await new Promise((r) => setTimeout(r, Number(process.env.PINE_SMOKE_HOLD) * 1000));
 	if (from !== "the app") throw new Error(`the app used the pine of "${from}", not the one it carries`);
 	if (whole) {
-		// The daemon runs on the app's Node, whatever Node this Mac has.
-		let daemon = "";
-		try {
-			daemon = execFileSync("/usr/bin/pgrep", ["-f", `${ownNode} .*pine.js service`], { encoding: "utf8" }).trim();
-		} catch {
-			// pgrep ends with 1 when nothing matches
+		// The daemon runs on the app's Node, whatever Node this computer has.
+		if (!running(ownNode, "pine.js", "service")) throw new Error("the daemon does not run on the Node the app carries");
+		// `pine` in a terminal, with nothing of this computer's on the PATH: through a link, as the app sets it up; on
+		// Windows the launcher in the folder the installer puts into the PATH, run as a terminal there runs it.
+		let said;
+		if (windows) {
+			const system32 = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32");
+			said = execFileSync(`"${path.join(resources, "bin", "pine.cmd")}" version`, { encoding: "utf8", shell: true, env: { PATH: system32, SystemRoot: process.env.SystemRoot ?? "C:\\Windows", USERPROFILE: home, HOME: home, PINE_HOME: home } }).trim();
+		} else {
+			const link = path.join(home, "bin-link");
+			fs.symlinkSync(path.join(resources, "bin", "pine"), link);
+			said = execFileSync(link, ["version"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: home, PINE_HOME: home } }).trim();
 		}
-		if (!daemon) throw new Error("the daemon does not run on the Node the app carries");
-		// `pine` in a terminal: through a link, as the app sets it up, with nothing of this Mac's on the PATH.
-		const link = path.join(home, "bin-link");
-		fs.symlinkSync(path.join(resources, "bin", "pine"), link);
-		const said = execFileSync(link, ["version"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: home, PINE_HOME: home } }).trim();
-		if (!/\d+\.\d+\.\d+/.test(said)) throw new Error(`"pine version" through a link said: ${said.slice(0, 200)}`);
-		// The helpers: pine's own build functions hand back the ones the app carries and compile nothing.
-		const found = execFileSync(ownNode, ["--input-type=module", "-e", `
+		if (!/\d+\.\d+\.\d+/.test(said)) throw new Error(`"pine version" through the launcher said: ${said.slice(0, 200)}`);
+		// The helpers, a Mac's only: pine's own build functions hand back the ones the app carries and compile nothing.
+		const found = !mac ? [] : execFileSync(ownNode, ["--input-type=module", "-e", `
 			const [root, dir] = process.argv.slice(1);
 			const at = (f) => import(root + "/" + f);
 			console.log(await (await at("src/tui/voice.js")).buildVoice(dir));
@@ -132,14 +156,14 @@ try {
 			console.log(await (await at("src/sources/system.js")).buildHelper(dir));
 		`, path.join(resources, "pine"), path.join(home, "built-here")], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: home } }).trim().split("\n");
 		const stray = found.filter((f) => !f.startsWith(path.join(resources, "pine") + path.sep));
-		if (found.length !== 3 || stray.length) throw new Error(`pine did not find the helpers the app carries: ${found.join(", ")}`);
+		if ((mac && found.length !== 3) || stray.length) throw new Error(`pine did not find the helpers the app carries: ${found.join(", ")}`);
 		for (const f of found) execFileSync("/usr/bin/codesign", ["--verify", "--strict", f]);
-		console.log(`ok: the daemon runs on the app's Node; ${said} through a link; the three helpers are the app's`);
+		console.log(`ok: the daemon runs on the app's Node; ${said} through ${windows ? "pine.cmd" : "a link"}${mac ? "; the three helpers are the app's" : ""}`);
 		// Settings > App says what `pine` in a terminal is. (Only looked at: nothing is set up from here.)
 		await page.locator("[data-slot=sidebar-footer]").getByRole("button", { name: "Settings" }).click();
 		await page.click("[role=navigation] [data-sidebar=menu-button] >> text=App");
 		const row = (await page.textContent("[data-slot=field]:has-text('pine in a terminal')", { timeout: 15_000 })) ?? "";
-		if (!/pine in a terminal/.test(row) || !/(Not set up|is the pine of this app|another pine|Move Pine)/.test(row)) throw new Error(`Settings > App says about the command: ${row.slice(0, 300)}`);
+		if (!/pine in a terminal/.test(row) || !/(Not set up|is the pine of this app|another pine|Move Pine|Start Pine from the AppImage)/.test(row)) throw new Error(`Settings > App says about the command: ${row.slice(0, 300)}`);
 		console.log(`ok: Settings > App: ${row.replace(/\s+/g, " ").trim()}`);
 		if (process.argv[3]) await page.screenshot({ path: process.argv[3].replace(/(\.\w+)?$/, "-app$1") });
 	}
@@ -150,8 +174,14 @@ try {
 	child.kill("SIGTERM");
 	await new Promise((r) => child.once("close", r));
 	await mock.close?.();
-	fs.rmSync(home, { recursive: true, force: true });
-	fs.rmSync(away, { recursive: true, force: true });
+	// (Windows keeps the files of a program that just ended locked for a moment: tried again, and a folder it still holds is left.)
+	for (const dir of [home, away]) {
+		try {
+			fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+		} catch (e) {
+			console.log(`left ${dir} (${e.code})`);
+		}
+	}
 }
 if (failed) {
 	console.error(`failed: ${failed.message}`);

@@ -128,6 +128,14 @@
 	--spacing-window-buttons: max(env(titlebar-area-x, 0px), calc(var(--spacing) * 2));
 }
 
+/* Room for the system's window controls at the end of a bar along the top (`pr-window-controls`): on Windows and
+   Linux they lie over the top right of the page (main.ts sets titleBarOverlay there too). The title bar area is what
+   is left of the window's width beside them, so the room is what lies right of it: none on a Mac (its buttons are at
+   the start), in full screen and in an ordinary browser, where the bar keeps the scale's 2 of its own. */
+@theme inline {
+	--spacing-window-controls: max(calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)), calc(var(--spacing) * 2));
+}
+
 /* shadcn's tokens, set from pine's own colors (above). They only point at pine's names, so one place holds each
    color. The font is the system's, as it always was. */
 @theme inline {

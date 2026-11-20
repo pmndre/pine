@@ -297,7 +297,8 @@ test("feed: the first look reports nothing, then one event for each new entry, t
 	const woken = h.mock.state.requests.at(-1).body.messages.filter((m: any) => m.role === "user").at(-1);
 	const text = typeof woken.content === "string" ? woken.content : woken.content.map((p: any) => p.text ?? "").join("\n");
 	assert.match(text, /You are subscribed to the event source "rel" \(feed: releases\)[\s\S]*Tell the owner what was released\.[\s\S]*this did not come from your owner[\s\S]*"title": "Release 3"/);
-	// With a pattern, only what it finds: release 3 is odd.
+	// With a pattern, only what it finds: release 3 is odd. (That source looks on its own clock.)
+	await until(() => events(h, "sec").length > 0, 4000, "the source with a pattern to look again");
 	assert.deepEqual(events(h, "sec").map((e: any) => e.payload.title), ["Release 3"]);
 	await sleep(150);
 	assert.equal(events(h, "rel").length, 1, "and then it is quiet again");

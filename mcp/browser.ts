@@ -234,7 +234,8 @@ export async function startGuardProxy(o: GuardOptions, log: (line: string) => vo
  */
 export function inlineFiles(text: string, scratch: string, limit = 24_000): string {
 	const root = fs.realpathSync(scratch);
-	return text.replace(/\[([^\]\n]+)\]\((\/[^)\s#]+)(#[^)\s]*)?\)/g, (whole, label, file) => {
+	// A file's path, as Playwright writes it: /… or, on Windows, C:\….
+	return text.replace(/\[([^\]\n]+)\]\(((?:\/|[A-Za-z]:\\)[^)\s#]+)(#[^)\s]*)?\)/g, (whole, label, file) => {
 		try {
 			const real = fs.realpathSync(file);
 			if (!real.startsWith(root + path.sep)) return whole;
@@ -724,7 +725,8 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 			(framing ??= between(async () => {
 				if (page === undefined) return undefined;
 				const msg = await ask("tools/call", { name: "browser_take_screenshot", arguments: { type: "jpeg", filename: shot } }, 10_000);
-				const file = failure(msg) ? undefined : textOf(msg).match(/\]\((\/[^)\s#]+)\)/)?.[1];
+				// The file's path, /… or, on Windows, C:\….
+				const file = failure(msg) ? undefined : textOf(msg).match(/\]\(((?:\/|[A-Za-z]:[\\/])[^)\s#]+)\)/)?.[1];
 				if (!file) return undefined;
 				try {
 					// Only a picture this server asked for, where it asked for it.

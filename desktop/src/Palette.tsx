@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { COMMANDS } from "./commands.ts";
 import { useNamedLine } from "./lists.tsx";
 import { store, useModel } from "./model.ts";
-import { ago, fuzzy } from "./text.ts";
+import { ago, fuzzy, shortcut } from "./text.ts";
 
 export function Palette() {
 	const s = store;
@@ -71,7 +71,7 @@ export function Palette() {
 									<CommandItem key={r.id} value={r.id} onSelect={() => run(r)}>
 										<span className="max-w-3/5 flex-none truncate">{r.label}</span>
 										{r.about ? <span className="min-w-0 truncate text-xs text-muted-foreground">{r.about}</span> : null}
-										{r.keys ? <CommandShortcut>{r.keys}</CommandShortcut> : null}
+										{r.keys ? <CommandShortcut>{shortcut(r.keys)}</CommandShortcut> : null}
 									</CommandItem>
 								))}
 							</CommandGroup>
