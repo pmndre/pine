@@ -116,11 +116,14 @@ be installed, and it gives your shell the `pine` command. From a checkout:
 npm run desktop
 ```
 
-On an Android phone or an iPhone, the Pine app shows the pine of another machine, over SSH (your
-Mac, a server) or paired with the Pine app by QR code: the same page, with its own SSH key and no
-pine on the phone. Each release
-has it as an APK; the IPA to sideload with your own Apple ID is built by hand for now
-([mobile.md](docs/references/mobile.md)).
+On an Android phone, an iPhone or an iPad, the Pine app shows the pine of another machine, over
+SSH (your Mac, a server) or paired with the Pine app by QR code: the same page, with its own SSH
+key and no pine on the phone. On an iPhone or an iPad, install it from TestFlight: open the
+TestFlight link on the [latest release's page](https://github.com/pmndre/pine/releases/latest) on
+the device, and every later release comes as an update. Each release also has it as an APK for
+Android; the IPA to sideload with your own Apple ID instead is built by hand for now
+([mobile.md](docs/references/mobile.md)). The app collects nothing
+([privacy policy](docs/privacy.md)).
 
 To get a newer version later, with whatever it needs:
 
@@ -182,7 +185,8 @@ Start at [docs/SKILL.md](docs/SKILL.md); it indexes everything.
 | Use the terminal UI                                                                     | [tui.md](docs/references/tui.md)                             |
 | Use the desktop app (macOS): conversations, an editor, and a settings panel in one window; browser access for a phone paired by QR code, with a relay server (TURN) of your own where mobile data cannot connect directly | [desktop.md](docs/references/desktop.md)                     |
 | Write a view: a script of your own that draws all of pine in the Pine app's panel, what it is told and what it cannot do | [views.md](docs/references/views.md) |
-| Use pine from an Android phone or an iPhone, over SSH or paired with the Pine app by QR code | [mobile.md](docs/references/mobile.md)                       |
+| Use pine from an Android phone, an iPhone or an iPad, over SSH or paired with the Pine app by QR code; TestFlight or sideloading | [mobile.md](docs/references/mobile.md)                       |
+| Know what the phone app collects (nothing)                                              | [privacy.md](docs/privacy.md)                                |
 | Use your pine from a web browser on any computer, over SSH or paired with the Pine app by QR code, with nothing installed | [web.md](docs/references/web.md)                             |
 | Work on a project: `pine .`, the code pane with git changes, files and tool output, `/undo` | [coding.md](docs/references/coding.md)                       |
 | Let an agent make a web page you click in, as its user interface, and be woken by what you press | [interfaces.md](docs/references/interfaces.md)               |

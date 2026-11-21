@@ -33,10 +33,31 @@ name: Release
 # Without any of them no APK is built, and the job says so; with only some of them it fails. Keep
 # that key: Android installs an update only over an app signed with the same key.
 #
-# The iOS app (mobile/) is not built here for now: its core's tests do not pass on GitHub's Xcode 27
-# preview image. Its IPA is made by hand on a Mac (npm run ipa in mobile/).
+# The unsigned iOS app (mobile/) is not built here for now: its core's tests do not pass on GitHub's
+# Xcode 27 preview image. Its IPA is made by hand on a Mac (npm run ipa in mobile/): not signed,
+# since whoever installs it signs it with their own Apple ID (AltStore, Sideloadly). Its version is
+# the release's and its build number versionCode * 1000 + 999, the one its TestFlight build gets
+# (iosVersion in mobile/scripts/version-code.ts).
 #
-# The apps of a release (the disk images and the APK) can be built again by hand, without publishing
+# Every release from main and every preview from next also puts the iOS app on TestFlight
+# (mobile/scripts/upload.ts): signed by the maintainer's Apple team with automatic signing
+# (Apple's cloud-managed certificate, no certificate or profile stored), uploaded to App Store
+# Connect, then for a release added to the external group "Public" (the public link) and submitted
+# to Beta App Review, for a preview added to the internal group "Maintainers"
+# (mobile/scripts/testflight.ts). That needs three secrets, in an environment named "testflight"
+# restricted to the branches main and next, so that the secrets of "release" stay main's alone:
+#   ASC_KEY        an App Store Connect API key with the Admin role (cloud-managed signing needs it): the text of its .p8 file
+#   ASC_KEY_ID     that key's ID
+#   ASC_ISSUER_ID  the issuer ID shown above the keys
+# and two variables (Settings > Secrets and variables > Actions > Variables), which say whose app it is:
+#   IOS_TEAM_ID    the Apple Developer team that signs it (ten capitals and digits, under Membership details)
+#   IOS_BUNDLE_ID  the app's bundle id on that team; when it is not set, the project's own, dev.pmndre.pine
+# Another maintainer's team takes over by changing those two variables and the three secrets, with
+# no commit. Without the three secrets and IOS_TEAM_ID nothing is uploaded, the job passes and its
+# summary says so; with only some of them it fails. No other job waits for it. A repository variable TESTFLIGHT_LINK (the public link, not a
+# secret), when set, is written into the notes of each release from main.
+#
+# The apps of a release (the disk images, the APK and the TestFlight build) can be built again by hand, without publishing
 # anything: Actions > Release > Run workflow, from main, with the release's version (gh workflow run
 # release.yml -f version=0.38.0). They are built from that release's tag and attached to that
 # release, in place of what is there.
@@ -89,6 +110,7 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           GH_TOKEN: ${{ github.token }}
+          TESTFLIGHT_LINK: ${{ vars.TESTFLIGHT_LINK }}
 
   # The Pine app of a release, once for each kind of Mac, on a runner of that kind: the app is
   # started there before it is uploaded.
@@ -314,3 +336,95 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - if: always()
         run: rm -f "$RUNNER_TEMP/release.jks"
+
+  # The iOS app on TestFlight (mobile/scripts/upload.ts): signed by the maintainer's Apple team,
+  # uploaded to App Store Connect and distributed by mobile/scripts/testflight.ts. A release from
+  # main goes to the external group with the public link and to Beta App Review, a preview from next
+  # to the internal group. Nothing waits for it: a failed upload holds back neither npm nor the
+  # other apps.
+  testflight:
+    needs: release
+    # After every release and every preview (a commit that says [skip release] gives no version), or
+    # by hand for a release there already is. A build App Store Connect has already is not uploaded
+    # again, and is distributed as it is.
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.release.outputs.version != '')
+    concurrency:
+      group: testflight-${{ github.ref_name }}
+      cancel-in-progress: false
+    # The image with Xcode 27 (a preview of GitHub's): the app's packages are held at versions that
+    # compile on it (swift-collections), and the images up to macos-26 stop at Xcode 26.
+    runs-on: xcode-27
+    environment: testflight
+    env:
+      VERSION: ${{ inputs.version || needs.release.outputs.version }}
+    steps:
+      - id: key
+        # Only whether each secret and the team variable is there: their values go to the upload step alone.
+        env:
+          HAS_ASC_KEY: ${{ secrets.ASC_KEY != '' }}
+          HAS_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID != '' }}
+          HAS_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID != '' }}
+          HAS_IOS_TEAM_ID: ${{ vars.IOS_TEAM_ID != '' }}
+        run: |
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-next\.[0-9]+)?$'; then
+            echo "::error::\"$VERSION\" is not the version of a release (like 0.38.0) or of a preview (like 0.38.0-next.4)."
+            exit 1
+          fi
+          missing=""
+          for name in ASC_KEY ASC_KEY_ID ASC_ISSUER_ID IOS_TEAM_ID; do
+            if [ "$(printenv "HAS_$name")" != "true" ]; then missing="$missing $name"; fi
+          done
+          if [ "$(echo $missing | wc -w)" -eq 4 ]; then
+            echo "::notice::The iOS app was not uploaded to TestFlight: there is no App Store Connect key and no signing team yet (see the top of release.yml)."
+            echo "Nothing was uploaded to TestFlight: the environment \"testflight\" has no App Store Connect key (ASC_KEY, ASC_KEY_ID, ASC_ISSUER_ID) and the repository no variable IOS_TEAM_ID." >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "$missing" ]; then
+            echo "::error::The iOS app cannot be signed for TestFlight: these are missing (secrets of the environment \"testflight\", or the variable IOS_TEAM_ID):$missing"
+            exit 1
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.key.outputs.ready == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # By hand: the version's own commit, whose subject is the build's "What to Test".
+          ref: ${{ inputs.version && format('v{0}', inputs.version) || github.sha }}
+          persist-credentials: false
+      - if: steps.key.outputs.ready == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - if: steps.key.outputs.ready == 'true'
+        name: Use Xcode 27, not a beta
+        # App Store Connect refuses an upload built with a beta Xcode ("Unsupported SDK or Xcode
+        # version"), so a beta on the runner is passed over.
+        run: |
+          xcode="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | grep -viE 'beta|_rc' | sort -V | tail -1)"
+          if [ -z "$xcode" ]; then
+            echo "::error::This runner has no released Xcode 27, which App Store Connect requires for an upload: $(ls -d /Applications/Xcode_*.app | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+          DEVELOPER_DIR="$xcode/Contents/Developer" xcodebuild -version
+      - if: steps.key.outputs.ready == 'true'
+        run: npm ci && npm ci --prefix desktop && npm ci --prefix mobile
+      - if: steps.key.outputs.ready == 'true'
+        name: Check and test the mobile package
+        # The bridge, the configuration and both builds of the page: a build is uploaded only from what
+        # passes. The iOS core's swift test is not run here for now: it does not pass on this image.
+        run: npm run check --prefix mobile && npm test --prefix mobile
+      - if: steps.key.outputs.ready == 'true'
+        name: Sign, upload and distribute
+        # The script writes the key into a folder of its own under RUNNER_TEMP and removes it when it
+        # ends; xcodebuild and testflight.ts are given that file, never its content.
+        run: node mobile/scripts/upload.ts --version "$VERSION"
+        env:
+          TMPDIR: ${{ runner.temp }}
+          ASC_KEY: ${{ secrets.ASC_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          IOS_TEAM_ID: ${{ vars.IOS_TEAM_ID }}
+          IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
+      - if: always()
+        run: rm -rf "$RUNNER_TEMP"/pine-asc-*

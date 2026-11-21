@@ -20,10 +20,11 @@ to change the code.
 | `npm run dev:preview` (in `desktop/`) | The app's page in an ordinary browser on a throwaway pine; `dev:preview:home` on `~/.pine`, whose daemon it never stops. Each checkout has ports of its own, from its path (`desktop/scripts/launch-json.mjs`), and `.claude/launch.json` is written with them by `npm install` in `desktop/` (it is not in git). After pulling, or when the preview pane lists no `desktop-preview`, run `node desktop/scripts/launch-json.mjs` (or `npm install` in `desktop/`). A preview and `npm run dev` end with whatever started them (`desktop/scripts/leash.mjs`). |
 | `npm run storybook` (in `desktop/`) | Storybook for the parts of the app's page, at port 6006: a story sits beside the file of what it shows (`desktop/src/<File>.stories.tsx`, `desktop/src/components/<name>.stories.tsx`: `desktop/src/ApprovalDialog.stories.tsx`, `desktop/src/components/printed.stories.tsx`, `desktop/src/components/logo.stories.tsx`); `npm run build-storybook` builds it. Chromatic publishes the stories on every pull request and every push to `next`, whose build is accepted as the baseline (`.github/workflows/chromatic.yml`, secret `CHROMATIC_PROJECT_TOKEN`), each in light and dark at a phone's width (360) and the window's (1280) through its modes (`desktop/.storybook/modes.ts`), so no dark or phone twin of a story is written. Add or update a story when you change a part in `desktop/src/components/` (outside `ui/`, which is stock). |
 | `npm run desktop:pack` | `desktop/release/mac-arm64/Pine.app` (`mac/` on Intel), with the package of `npm run build` and its dependencies, the Node it runs on, pine's helpers built (`scripts/helpers.mjs`) and `pine` for a terminal inside, signed with the hardened runtime. `node desktop/scripts/smoke.mjs` starts that app from a folder of its own and checks that it runs on the pine and the Node it carries. Run both when you change `desktop/scripts/`, a helper's build function, `src/prebuilt.ts`, a native module of browser access (`ssh2`, `node-datachannel`) or `desktop/electron/service.ts`, and the smoke test also after a change to the page's markup that it finds the page by (`data-slot` names): no workflow runs it. |
-| `npm test`, `npm run check` (in `mobile/`) | The mobile app's bridge and both builds of its page (Android, iOS) under `node:test`, and its type check against the desktop page's `Bridge`. `npm install` in `mobile/` once. Run both when you change `mobile/src`, the page's bridge (`desktop/src/bridge.ts`) or what the page reads from it. The `android` job of the Release workflow runs both before it builds the APK; run them yourself before you build the IPA by hand. |
+| `npm test`, `npm run check` (in `mobile/`) | The mobile app's bridge and both builds of its page (Android, iOS) under `node:test`, and its type check against the desktop page's `Bridge`. `npm install` in `mobile/` once. Run both when you change `mobile/src`, the page's bridge (`desktop/src/bridge.ts`) or what the page reads from it. The `android` job of the Release workflow runs both before it builds the APK, and the `testflight` job before it builds the signed app; run them yourself before you build the IPA by hand. |
 | `npm run test:core` (in `mobile/`) | The native plugin's Kotlin core on the JVM: an SSH server in the test (Apache MINA sshd) and a stand-in daemon, and for a paired computer the Pine app's real access host under Node (`mobile/test/support/access-host.ts`, so it needs Node and `npm install` in `desktop/`), with libdatachannel's JVM binding behind the core's `WebRtc` interface. Run it when you change `mobile/core/`, `mobile/cases/`, `src/remote.ts` or `desktop/electron/access/`. |
 | `swift test` (in `mobile/ios-core/`) | The iOS plugin's Swift core on the Mac: a real OpenSSH `sshd` started by the test on a loopback port and a stand-in daemon, the same cases as the Kotlin core (`mobile/cases/`), and for a paired computer the same access host helper (Node and `npm install` in `desktop/`). Apple silicon only: libdatachannel's xcframework has no Intel slice for macOS. Run it when you change `mobile/ios-core/`, `mobile/cases/`, `src/remote.ts` or `desktop/electron/access/`. No workflow runs it for now. |
-| `npm run ipa`, `npm run smoke:ios`, `npm run ios:run` (in `mobile/`) | The IPA of a release, not signed (`scripts/ipa.ts`: `npm run ipa -- <version>`, written to `ios/App/output/`, checked unsigned and arm64); the iOS app from end to end on a simulator of its own without a window, against the Android smoke run's test SSH server, and paired with the real access host behind a TLS front whose authority the run adds to that simulator (`--pairing-only` for that alone); and the app opened in the Simulator app, by hand. The smoke test is the test of the web view's hardening in `PineViewController.swift` and `PinePlugin.swift`, of pairing by a pasted link and by a `pine:` address, of the return from the background and of the key kept in the Keychain: run it before a release that changes `mobile/` or upgrades Capacitor. No workflow runs it. They need Xcode 27 with an iOS simulator runtime, and the smoke run a JDK as `npm run smoke` does. |
+| `npm run ipa`, `npm run smoke:ios`, `npm run ios:run` (in `mobile/`) | The IPA of a release or a preview, not signed (`scripts/ipa.ts`: `npm run ipa -- <version>`, a preview's `X.Y.Z-next.N` too, written to `ios/App/output/Pine-<version>.ipa` with the full version in its name, checked unsigned and arm64; the signed build for TestFlight is `npm run testflight`'s, below); the iOS app from end to end on a simulator of its own without a window, against the Android smoke run's test SSH server, and paired with the real access host behind a TLS front whose authority the run adds to that simulator (`--pairing-only` for that alone); and the app opened in the Simulator app, by hand. The smoke test is the test of the web view's hardening in `PineViewController.swift` and `PinePlugin.swift`, of pairing by a pasted link and by a `pine:` address, of the return from the background and of the key kept in the Keychain: run it before a release that changes `mobile/` or upgrades Capacitor. No workflow runs it. They need Xcode 27 with an iOS simulator runtime, and the smoke run a JDK as `npm run smoke` does. |
+| `npm run testflight` (in `mobile/`) | The iOS app signed by the maintainer's Apple team and put on TestFlight (`scripts/upload.ts`): `npm run testflight -- --version <X.Y.Z or X.Y.Z-next.N> --key <AuthKey.p8> --key-id <id> --issuer-id <uuid> --team <team id> [--bundle-id <id>]` (or `IOS_TEAM_ID` and `IOS_BUNDLE_ID` in the environment; the bundle id is `dev.pmndre.pine` by default). It archives with automatic signing and the App Store Connect API key, the team and the bundle id on the command line only, uploads, and puts the build into its TestFlight group (`distribute()` of `scripts/testflight.ts`). The Release workflow's job `testflight` runs it; the maintainer can run it on a Mac of their own. Without any part of the key and no team it uploads nothing and says so; with only some of the four it fails. The key needs the Admin role. See Releases. |
 | `npm run apk`, `npm run apk:release`, `npm run smoke` (in `mobile/`) | A debug APK; a release APK (signed when `ANDROID_KEYSTORE_FILE` and the three other variables of the release job name a key, versioned by `PINE_VERSION` and `PINE_VERSION_CODE`); and the app from end to end on an emulator without a window, against a test SSH server of its own running the real `pine service`, and paired with the real access host behind a TLS front whose authority only the debug build trusts (`-PpineSmokeAuthority`; `--transport-only` for the libwebrtc check, `--pairing-only` for that and pairing). The smoke test is the test of the WebView's hardening in `PinePlugin.kt`, of libwebrtc (`LibWebRtcTest`, the only test of it), of pairing by a pasted link and by an App Link, and of the back button and the app's return from the background: run it before a release that changes `mobile/` or upgrades Capacitor. No workflow runs it. The Gradle commands need the Android SDK (`ANDROID_HOME`, default `~/Library/Android/sdk`) and a JDK of 21 or later: `JAVA_HOME`, default Android Studio's (`/Applications/Android Studio.app/Contents/jbr/Contents/Home`), since a Mac has no `java` on its PATH by default. |
 | `npm test`, `npm run check`, `npm run build` (in `web/`) | The web client: the web bridge as the page calls it, in Node with a stand-in for SSH, and its SSH core in headless Chrome for Testing against a `sshd` of the test's own on a loopback port, and peer to peer with the Pine app's real access host (`desktop/electron/access/`), so it needs `npm install` in `desktop/` too; its type check; and its build into `web/dist` (the bridge's document, and the desktop page built for the browser under `page/`). `npm install` in `web/` once. Run them when you change `web/`, `desktop/electron/access/`, the page's bridge (`desktop/src/bridge.ts`) or what the page reads from it. |
 | `npm test`, `npm run check` (in `web/relay/`) | The relay Worker's fetch handler with a stand-in TCP server on a loopback port, the meeting module and its routes, and its type check. `npm install` in `web/relay/` once. Besides the default configuration the Worker has one environment, `official` (the project's service: relay and meeting service side by side), deployed with `npx wrangler deploy --env official`; a deployment of one's own with the meeting service uses it under a name of its own (`--name`). `npm run dev` there serves the deployment (relay and `web/dist`) under `wrangler dev`; `npx wrangler deploy` there deploys it, by hand only: no workflow changes the live version. A pull request that changes one of the paths listed in `.github/workflows/web-preview.yml` (`web/` and every input of the page's build) runs `.github/workflows/web-preview.yml`: the gates of `web/` and `web/relay/` and the build, then `wrangler versions upload --preview-alias pr-<number>`, whose address it posts on the pull request in one comment that each push updates. A push to `next` or `main` that changes one of those paths runs it too and uploads under the alias `next` or `main` (`https://next-pine-relay.<account>.workers.dev`), its address in the run's summary. The secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`) are in the environment `web-preview`, which a fork's pull request never reaches, and are given to the upload step alone; without them the job passes and says nothing was deployed. Those aliases are previews like a pull request's: the live version is never changed by a workflow. |
@@ -190,8 +191,11 @@ mobile/             the Android and iOS app (Capacitor; a package of its own, no
                     and the smoke runs; its line protocol is at its top.
                     `vite build` makes Android's page, `vite build --mode ios` the iOS one (WebKit, its own policy).
                     scripts/ runs Gradle (`gradle.mjs`), derives the release's versionCode (`version-code.ts`),
-                    drives the emulator (`smoke.mjs`) and the simulator (`smoke-ios.mjs`), and makes the IPA (`ipa.ts`).
-                    docs/references/mobile.md describes it; docs/adr/0001-mobile-app.md and 0002-ios-app.md say why it is so
+                    drives the emulator (`smoke.mjs`) and the simulator (`smoke-ios.mjs`), makes the IPA (`ipa.ts`; its
+                    build number is `iosVersion` in `version-code.ts`), builds the signed app and uploads it
+                    (`upload.ts`), and puts an uploaded build on TestFlight (`testflight.ts`, the App Store
+                    Connect API with Node's own modules, tested on a stand-in API).
+                    docs/references/mobile.md describes it; docs/adr/0001-mobile-app.md, 0002-ios-app.md and 0005-ios-testflight.md say why it is so
                     (and 0004-browser-access.md for pairing)
 web/                the web client (a package of its own, not part of what goes to npm): the desktop page in a
                     browser, for the owner's own pine over SSH, or the Pine app's pine on a computer paired by QR code, no daemon in
@@ -855,19 +859,74 @@ armeabi-v7a alone, stripped by the NDK `mobile/android/variables.gradle` pins, a
 when one still carries `.debug_info`. Before the APK is built the job runs `npm run check` and `npm test` in `mobile/`. The
 smoke test is not run there (`npm run smoke`, on a computer of your own, with an emulator).
 
-A release from `main` does not get the iOS app for now: the job that built it was taken out of
+A release from `main` does not get the unsigned IPA for now: the job that built it was taken out of
 `release.yml` because the core's `swift test` did not pass on GitHub's `xcode-27` preview image.
 The IPA is made by hand on a Mac (`npm run ipa -- <version>` in `mobile/`): not signed,
 `Pine-<version>.ipa`, which whoever installs it signs with their own Apple ID (AltStore,
-Sideloadly; docs/adr/0002-ios-app.md). Nothing about Apple signing is ever stored in the
-repository or its secrets. Run `npm run check` and `npm test` in `mobile/` and `swift test` in
+Sideloadly; docs/adr/0002-ios-app.md). Nothing about Apple signing is stored in the repository;
+the TestFlight build's key is a secret of the environment `testflight` (below). Run `npm run check` and `npm test` in `mobile/` and `swift test` in
 `mobile/ios-core/` before building it. `scripts/ipa.ts` archives for devices with code signing
 off and the packages at their committed versions (`-onlyUsePackageVersionsFromResolvedFile`:
 swift-collections is held where it compiles on Xcode 27), sets `CFBundleShortVersionString` to
-the version and `CFBundleVersion` to Android's versionCode, and fails unless nothing inside the
+the version (`X.Y.Z`) and `CFBundleVersion` to the iOS build number (below), and fails unless nothing inside the
 IPA is signed (the vendor's signature on the embedded `OpenSSL.framework`, which libdatachannel
 needs, is taken off), the app binary is arm64, and libdatachannel and OpenSSL are inside. The
 smoke test is `npm run smoke:ios`, on a Mac of your own.
+
+The iOS app goes to TestFlight, signed by the maintainer's Apple team
+(docs/adr/0005-ios-testflight.md). Whose team and which bundle id are no part of the code: they
+are the repository variables `IOS_TEAM_ID` and `IOS_BUNDLE_ID` (`dev.pmndre.pine` when it is not
+set), so another maintainer's team takes over by changing those two variables and the three
+secrets below, with no commit. The sideloaded IPA and the Android app stay `dev.pmndre.pine`. The job
+`testflight` in `release.yml`, for every push to `main` and to `next` and for
+`workflow_dispatch`, runs `npm run testflight` in `mobile/` (`mobile/scripts/upload.ts`). The same
+script runs on the maintainer's Mac: `npm run testflight -- --version <X.Y.Z or X.Y.Z-next.N>
+--key <AuthKey.p8> --key-id <id> --issuer-id <uuid> --team <team id>`. It archives the same app with automatic
+signing and the API key (`-allowProvisioningUpdates`, `DEVELOPMENT_TEAM` and
+`PRODUCT_BUNDLE_IDENTIFIER` on the command line only,
+never in the project, so the unsigned and simulator builds are unchanged) and Apple's
+cloud-managed certificate: no `.p12`, no profile, no fastlane. It exports for App Store Connect
+with destination `upload` and keeps the build number (`manageAppVersionAndBuildNumber` false), so
+a rebuild of a tag is reported as uploaded already. Then, in the same process, it calls
+`distribute()` of `mobile/scripts/testflight.ts` (Node's own modules, a JWT signed ES256; tested
+in `mobile/test/testflight.test.ts` against a stand-in API), which talks to the App Store Connect
+API: it waits for the build to be processed, sets "What to Test" to the release's commit
+subject, and puts a release from `main` into the external group `Public` (the one with the public
+link) and submits it to Beta App Review, a preview from `next` into the internal group
+`Maintainers`, with no review. A build already in its group or already submitted is no error.
+`testflight.ts` keeps a command line of its own, to distribute a build that was uploaded already
+by hand. Signing takes four values, the key's three and the team: without any of them
+`upload.ts` uploads nothing and says so; with only some it fails. The job runs in the environment `testflight`, whose deployment branches are `main` and
+`next`, with three secrets: `ASC_KEY` (the content of the App Store Connect API key's `.p8` file,
+role Admin, which cloud-managed signing needs; App Manager is not enough), `ASC_KEY_ID` and
+`ASC_ISSUER_ID`, and is given the variables `IOS_TEAM_ID` and `IOS_BUNDLE_ID`. Its first step only
+looks whether the three secrets and `IOS_TEAM_ID` exist; only the upload step is given them, and
+the key is written into a temporary folder that a last step removes whatever happened. Without
+any of the four the job passes and says that nothing was uploaded; with only some it fails.
+npm, the Mac app and the Android app never wait for it. Before it builds, the job runs `npm run
+check` and `npm test` in `mobile/`; it does not run `swift test`, for the reason above.
+The environment `release` stays restricted to `main`. The public link is the repository variable
+`TESTFLIGHT_LINK`: `scripts/release.mjs` puts it at the top of the notes of a release from `main`
+(never of a preview), and leaves it out unless it is `https://testflight.apple.com/join/<code>`.
+No address of it is written into the code or the docs.
+What App Store Connect must have once, by hand: the app record for `dev.pmndre.pine`, an
+external group named exactly `Public` with its public link on, an internal group named exactly
+`Maintainers` (the names are `EXTERNAL_GROUP` and `INTERNAL_GROUP` in `testflight.ts`), the beta
+review information, and the beta agreement accepted, without which a submission fails with
+`BETA_CONTRACT_MISSING`.
+The iOS build number (`CFBundleVersion`, the same for the unsigned IPA and the TestFlight build,
+`iosVersion` in `mobile/scripts/version-code.ts`, tested in `mobile/test/version.test.ts`)
+is Android's versionCode × 1000 + N, where N is the `N` of a preview `X.Y.Z-next.N` (1 to 998)
+and 999 for the release `X.Y.Z`, so that a release sorts after all its previews and a rebuild of
+a tag is the same build; Android's versionCode is unchanged. The app declares
+`ITSAppUsesNonExemptEncryption` false and `UIRequiredDeviceCapabilities` arm64 in its
+Info.plist, carries a privacy manifest (`mobile/ios/App/App/PrivacyInfo.xcprivacy`: UserDefaults,
+reason `CA92.1`, no tracking, no collected data; an API of Apple's required-reason list that the
+app comes to use is declared there too, or App Store Connect refuses the upload), and has `docs/privacy.md` as
+its privacy policy ("Data Not Collected"). Signing and upload have no test without the key: they
+are verified on the maintainer's Mac and by the first push to `next`. A TestFlight install and a
+sideloaded one are signed by different teams and so hold different Keychain keys: the manual says
+so (`docs/references/mobile.md`).
 
 Publishing needs no stored secret: on npmjs.com the package names this repository and
 `release.yml` as a trusted publisher. A repository secret `NPM_TOKEN` is used instead if one exists.

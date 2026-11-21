@@ -1,21 +1,22 @@
 // The iOS app of a release as an unsigned IPA, the file a person sideloads with AltStore or
-// Sideloadly, which sign it with their own Apple ID when they install it. Nothing here signs: pine
-// has no Apple certificate, profile or account, and wants none.
-//   node scripts/ipa.ts [version]      (npm run ipa -- 0.38.0)
+// Sideloadly, which sign it with their own Apple ID when they install it. Nothing here signs: the
+// signed build for TestFlight is scripts/upload.ts's.
+//   node scripts/ipa.ts [version]      (npm run ipa -- 0.38.0, or a preview: 0.38.0-next.4)
 // Builds the page for iOS and syncs it (npm run sync:ios), archives the app for devices with code
-// signing off, its version the release's and its build number Android's versionCode
-// (scripts/version-code.ts), and writes ios/App/output/Pine-<version>.ipa. Then checks what it
-// wrote: nothing inside is signed at all (the app, and each embedded framework, whose vendor's
-// signature is taken off), every binary is arm64, the WebRTC library and its OpenSSL are there, its
-// versions are the ones asked for. Without a version it is 0.0.0, build 1. Needs Xcode with the iOS SDK; the Release workflow
-// runs it on a runner with Xcode 27.
+// signing off, its version X.Y.Z and its build number the one a signed build of the same version
+// gets (iosVersion in scripts/version-code.ts: versionCode * 1000 + N, 999 for a release), and
+// writes ios/App/output/Pine-<version>.ipa. Then checks what it wrote: nothing inside is signed at
+// all (the app, and each embedded framework, whose vendor's signature is taken off), every binary
+// is arm64, the WebRTC library and its OpenSSL are there, its versions are the ones asked for.
+// Without a version it is 0.0.0, build 1. Needs Xcode 27 with the iOS SDK; no workflow runs it for
+// now (the release's ios job is out until the core's tests pass on GitHub's Xcode 27 image).
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { versionCode } from "./version-code.ts";
+import { iosVersion } from "./version-code.ts";
 
 const version = process.argv[2] ?? "0.0.0";
-const code = version === "0.0.0" ? 1 : versionCode(version);
+const { short, build: code } = version === "0.0.0" ? { short: version, build: 1 } : iosVersion(version);
 const mobile = path.resolve(import.meta.dirname, "..");
 const build = path.join(mobile, "ios", "App", "build");
 const archive = path.join(build, "App.xcarchive");
@@ -59,7 +60,7 @@ try {
 		"CODE_SIGNING_ALLOWED=NO",
 		"CODE_SIGNING_REQUIRED=NO",
 		"CODE_SIGN_IDENTITY=",
-		`MARKETING_VERSION=${version}`,
+		`MARKETING_VERSION=${short}`,
 		`CURRENT_PROJECT_VERSION=${code}`,
 	]);
 
@@ -104,10 +105,10 @@ try {
 	const plist = path.join(inside, "Info.plist");
 	const shown = read("plutil", ["-extract", "CFBundleShortVersionString", "raw", plist]);
 	const number = read("plutil", ["-extract", "CFBundleVersion", "raw", plist]);
-	if (shown !== version || number !== String(code)) {
-		throw new Error(`the app says version ${shown} (${number}), not ${version} (${code}).`);
+	if (shown !== short || number !== String(code)) {
+		throw new Error(`the app says version ${shown} (${number}), not ${short} (${code}).`);
 	}
-	console.log(`wrote ${ipa}: ${fs.statSync(ipa).size} bytes, nothing signed (the app and ${pieces.length - 1} embedded binaries), arm64, libdatachannel and OpenSSL inside, version ${version} (${code})`);
+	console.log(`wrote ${ipa}: ${fs.statSync(ipa).size} bytes, nothing signed (the app and ${pieces.length - 1} embedded binaries), arm64, libdatachannel and OpenSSL inside, version ${short} (${code})`);
 } catch (e) {
 	console.error((e as Error).message);
 	process.exit(1);

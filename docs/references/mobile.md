@@ -16,14 +16,16 @@ Capacitor around the page of `desktop/`: the same page and the same app on both 
 
 ## Getting it
 
-A release of pine has the Android app attached, next to the Mac disk images:
-<https://github.com/pmndre/pine/releases/latest>. The iPhone app is not attached for now: it is
-built by hand (`npm run ipa`, below), and a release that has one lists it there.
+A release of pine has the Android app attached, next to the Mac disk images, and its page gives
+the TestFlight link for an iPhone or an iPad: <https://github.com/pmndre/pine/releases/latest>.
+The unsigned IPA to sideload is not attached for now: it is built by hand (`npm run ipa`, below),
+and a release that has one lists it there.
 
-| File | For |
+| What | For |
 |---|---|
 | `Pine-<version>.apk` | A phone or tablet with Android 8 or later |
-| `Pine-<version>.ipa` | An iPhone with iOS 17 or later |
+| The TestFlight link | An iPhone or an iPad with iOS 17 or later: the easy way, nothing but the phone (see "On an iPhone, from TestFlight") |
+| `Pine-<version>.ipa` | An iPhone or an iPad with iOS 17 or later, sideloaded with your own Apple ID (see "On an iPhone, sideloaded") |
 
 ### On Android
 
@@ -32,9 +34,26 @@ Files) may install apps: allow it. The app is signed with pine's release key, so
 version installs over this one and keeps your machines and your key. There is no Play Store
 version yet.
 
-### On an iPhone
+### On an iPhone, from TestFlight
 
-There is no App Store or TestFlight version. The IPA is not signed: you sign it with your own
+TestFlight is Apple's app for trying apps before the App Store. Pine is there, signed by pine's
+maintainer, for anybody with the public link. You install the app on the iPhone itself, without
+a computer or a cable, with no certificate to trust, no Developer Mode and no renewal every 7 days.
+
+1. On the iPhone or iPad, open the TestFlight link from the page of the latest release (or from
+   pine's README).
+2. Install TestFlight from the App Store when the page asks for it, then come back to the link.
+3. Tap Accept, then Install.
+
+Every later release comes as an update in TestFlight, which says what changed in it ("What to
+Test"). A release reaches TestFlight after Apple's review of that build, which can take a day
+after the release appears on GitHub. A TestFlight build stops opening 90 days after it was
+uploaded; a newer release replaces it before then. An update keeps your machines and your key.
+There is no App Store version.
+
+### On an iPhone, sideloaded
+
+For whoever prefers to sign the app themselves. The IPA is not signed: you sign it with your own
 Apple ID as you install it, with a sideloading tool on a computer. A free Apple ID will do; nobody
 else's developer account is involved.
 
@@ -148,6 +167,12 @@ The first screen tells why, with the computer's name where the table says "Studi
 | Your computer refused this phone | Refuse was pressed, or the four digits were not the same. Add the device again |
 | The computer that answered is not the one this pairing link names | Nothing was trusted. Add the device again at the computer |
 
+The same happens between TestFlight and a sideloaded install, in either direction: the
+TestFlight app is signed by pine's maintainer, a sideloaded one by your own Apple ID, so the two
+never read each other's key. After the switch, copy the new key from Settings > Environments into
+`authorized_keys` on each machine, and trust each machine's host key again. An update within
+TestFlight keeps the key.
+
 ## Adding a machine
 
 Settings > Environments, under "Add a machine" (on the first screen, behind the link under
@@ -228,7 +253,7 @@ SSH connection, and the daemon takes requests for its own loopback only.
 | This computer's things | No "This Mac", no home folder, no restart of pine, no `pine` command, no terminal or Run button, no dictation, no folder picker, no app updates (a new APK from the release instead) |
 | Notifications while closed | None yet. When the app comes back it reconnects and shows what waited. Telegram is the way to be told while the app is closed ([source-types.md](source-types.md)) |
 | Your SSH setup | No `~/.ssh/config` names, no ssh-agent, no jump hosts, no password, no imported key |
-| The App Store | The iPhone app is sideloaded (see "On an iPhone"): there is no App Store or TestFlight version |
+| The App Store | The iPhone app comes from TestFlight or is sideloaded (see "Getting it"): there is no App Store version |
 
 The Android back button closes the open dialog, sheet or menu, and otherwise leaves the app. An
 iPhone has no back button: close a sheet with its own button.
@@ -247,6 +272,15 @@ is careful about"). On the phone:
 | `ACCESS_NETWORK_STATE` | On Android two permissions are asked for: the network, and this one, to read which networks the phone has. Google's libwebrtc reads them to find a way to a paired computer, and cannot run without it. Android grants it at install and never asks you; it reads and changes nothing. No camera, no microphone, nothing else. On an iPhone only the local network is asked for |
 | The page stays the app | It loads nothing from the web, cannot be taken to another address, opens no window and is given no permission. A link opens in your browser, `http` and `https` only. A photo is attached through the system's file chooser |
 | Pictures, video and sound | Answered by the native part from the daemon, under the Mac app's rules: fixed addresses only, never SVG. On iOS they come through a scheme of the app's own (`pine-media:`), the only origin the page's policy allows for them |
+
+## Privacy
+
+The app collects no data about you. It sends nothing to pine's maintainer, to Apple beyond what iOS itself
+does for any app, or to anybody else: no analytics, no crash reports, no account, no advertising
+identifier. What it keeps stays on the phone: the machines you added and their host keys, and the
+phone's SSH key. What it shows comes from the pine of the machine you added, over SSH, and goes
+nowhere else. The TestFlight version is the same app. Pine's privacy policy says it in full:
+[privacy.md](../privacy.md).
 
 ## Building it
 
@@ -287,7 +321,7 @@ Components).
 | `npm run sync:ios` | Builds the page for iOS (WebKit, media on `pine-media:`) and copies it into `ios/` |
 | `npm run ios` | A debug build for the simulator, in `ios/DerivedData` |
 | `npm run ios:run` | Builds the app and opens it in the Simulator app |
-| `npm run ipa` | The IPA of a release, not signed, in `ios/App/output/Pine-<version>.ipa` (`npm run ipa -- 0.38.0`; 0.0.0 without a version). It fails unless the app inside is unsigned and arm64 |
+| `npm run ipa` | The IPA of a release or a preview, not signed, in `ios/App/output/Pine-<version>.ipa` (`npm run ipa -- 0.38.0`, or a preview's `0.38.0-next.4`, whose file keeps the full version; 0.0.0 without a version). It fails unless nothing inside is signed and every binary is arm64. The TestFlight build is the same app, signed and uploaded by `npm run testflight` (see "In a release") |
 | `npm run smoke:ios` | Builds the app and a test that runs inside it, starts a simulator of its own without a window, and drives the page against a test machine on the Mac's loopback. It is the test of the web view's hardening (the page's policy, no camera, microphone or motion sensors, no file access, the media scheme's rules and ranges, no window, no navigation away), of the page inside the safe area with and without the keyboard, of a host key's fingerprint within the screen's width, of the return from the background, of the status bar in a dark theme and a light one, and of the key kept across a relaunch. It also pairs from end to end with the Pine app's real access host, by a pasted link and by a `pine:` address, with a malformed address and an `http` service refused, behind a TLS front whose certificate authority the run adds to the simulator alone (`simctl keychain add-root-cert`). `--pairing-only` runs the pairing alone. Run it before a release that changes `mobile/` or upgrades Capacitor |
 | `swift test` (in `ios-core/`) | The iOS app's Swift core on the Mac, against an OpenSSH `sshd` of the test's own and a stand-in daemon, and against the Pine app's real access host for a paired computer. That part needs Node and `npm install` in `desktop/`. It runs on Apple silicon only: the libdatachannel package has no Intel slice for macOS |
 
@@ -306,6 +340,13 @@ simulator shares the Mac's network, so its loopback is the Mac's, and iOS does n
 local network for it. A simulator build is signed to run locally (Xcode does it, without an
 account): the Keychain refuses an app that is not signed at all.
 
+What App Store Connect reads from the app is in `ios/App/App/`: `Info.plist` says that it uses
+only exempt encryption (`ITSAppUsesNonExemptEncryption`, false: SSH and TLS with standard
+algorithms) and needs arm64, which every device with iOS 17 has; `PrivacyInfo.xcprivacy`, its
+privacy manifest, declares UserDefaults (reason `CA92.1`), no tracking and no data types (see "Privacy"). A
+change that makes the app use another API of Apple's required-reason list declares it there too,
+or App Store Connect refuses the upload.
+
 ## In a release
 
 The Release workflow (`.github/workflows/release.yml`) builds the release APK for every release
@@ -316,12 +357,43 @@ libwebrtc for the two kinds of processor phones have (arm64-v8a, armeabi-v7a), a
 all; the job fails when a native library in it kept its debug symbols. A debug APK carries all
 four, for emulators.
 
-The release does not build the IPA for now: the core's `swift test` did not pass on GitHub's
-Xcode 27 preview image. On a Mac with Xcode 27, `npm run ipa -- <version>` in `mobile/` makes
-`Pine-<version>.ipa`, whose build number is Android's `versionCode`; run `npm test` there and
+The release does not build the unsigned IPA for now: the core's `swift test` did not pass on
+GitHub's Xcode 27 preview image. On a Mac with Xcode 27, `npm run ipa -- <version>` in `mobile/`
+makes `Pine-<version>.ipa`, whose build number is the TestFlight build's (below); run `npm test` there and
 `swift test` in `mobile/ios-core/` first. The IPA carries libdatachannel inside the app and
 OpenSSL as a framework beside it (about 7 MB in all); the script takes its vendor's signature off
 that framework, so that nothing in the IPA is signed before you sign it.
 
-To build the APK of a release again, run the workflow by hand from `main` with that
-release's version: `gh workflow run release.yml -f version=0.38.0`.
+
+The job `testflight` runs `npm run testflight` (`scripts/upload.ts`), which builds the app
+signed by the maintainer's Apple team and uploads it to App Store Connect, for every release from
+`main` and every preview from `next`:
+
+| Channel | Where the build goes |
+|---|---|
+| A release from `main` | The external TestFlight group `Public`, the one with the public link, and Apple's Beta App Review |
+| A preview from `next` | The internal group `Maintainers`, the maintainer's own devices, with no review |
+
+Its "What to Test" is the release's commit subject. Before it builds, the job checks and tests
+`mobile/` (`swift test` is not run there, for the reason above). It takes the App Store Connect API key from
+the environment `testflight` (a key with the Admin role, which cloud-managed signing needs), and
+the signing team and the bundle id from the repository variables `IOS_TEAM_ID` and
+`IOS_BUNDLE_ID` (`dev.pmndre.pine` when it is not set): neither is in the code, so another
+maintainer's team takes over by changing those two variables and the three secrets, with no
+commit. The sideloaded IPA and the Android app stay `dev.pmndre.pine`. Without the key and the
+team the job uploads nothing and says so (with only some of them it fails), and the rest of the release is unaffected. After
+the upload, in the same run, `scripts/testflight.ts` puts the build into its group through the App
+Store Connect API. The maintainer can run the same on a Mac: `npm run testflight -- --version
+<X.Y.Z or X.Y.Z-next.N> --key <AuthKey.p8> --key-id <id> --issuer-id <uuid> --team <team id>`
+(`--bundle-id` for another bundle id). It needs, once, in App Store Connect: an external group named
+exactly `Public` with its public link on, an internal group named exactly `Maintainers`, and the
+beta agreement accepted (without it a review submission fails with `BETA_CONTRACT_MISSING`).
+
+The unsigned IPA and the TestFlight build carry the release's version as `CFBundleShortVersionString` (`X.Y.Z`) and the same
+build number (`CFBundleVersion`): Android's `versionCode` × 1000, plus `N` for a preview
+`X.Y.Z-next.N` and 999 for the release, so that a release comes after all its previews.
+
+To build the APK and the TestFlight build of a release again, run the workflow by hand from `main` with that
+release's version: `gh workflow run release.yml -f version=0.38.0`. `npm run testflight` keeps
+the build number it was given, so a build App Store Connect already has is reported as uploaded
+already.

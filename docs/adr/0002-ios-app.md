@@ -1,6 +1,8 @@
 # 0002: The Pine app on iOS
 
-Status: accepted
+Status: accepted. Superseded in part by ADR 0005 ([0005-ios-testflight.md](0005-ios-testflight.md)):
+the iOS app is also signed and distributed through TestFlight by the maintainer's own Apple team.
+Sideloading the unsigned IPA stays as this record describes it.
 
 ## Context
 
