@@ -61,7 +61,9 @@ export function Gate() {
 		const code = await bridge.init().catch(() => 1);
 		s.initRunning = false;
 		s.touch();
-		if (code === 0) await bridge.retry();
+		// What needs an administrator (Linux) is printed above, for a terminal: it stays in view until Try again.
+		if (code === "administrator") s.flash("Part of it needs an administrator: run what is shown above in a terminal, then Try again.", "warn", 15000);
+		else if (code === 0) await bridge.retry();
 		else s.flash("pine init did not finish. What it said is shown above.", "bad");
 	};
 	const host = state.host;

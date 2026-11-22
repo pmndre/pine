@@ -66,7 +66,7 @@ web tools drive. It asks for each where it is missing.
 
 | What the app finds | What it does |
 |---|---|
-| No pine home | It offers to set pine up (`pine init`): the example home is copied, and the browser is fetched (about 600 MB, once) |
+| No pine home | It offers to set pine up (`pine init`): the example home is copied, and the browser is fetched (about 600 MB, once). On Linux `pine init` also sets up the sandbox, which needs an administrator (bubblewrap, and on some systems a rule for AppArmor): the app runs none of that. The commands are shown, to be run in a terminal, and then **Try again**. Until they have run, pine works without the sandbox |
 | Nothing to answer with | A conversation in which nothing was said yet says why and has a button to Settings > Models; that page lists everyone it holds for. Two reasons are found without sending anything: nobody is signed in to the provider, or it is `dev/claude-haiku`, what the example home starts with (Claude through the `claude` command of Claude Code, on the subscription Claude Code is signed in to), on a Mac that has no such command |
 | A sign-in in Settings > Models | A Claude, ChatGPT or Copilot subscription is signed in to through the browser (**Sign in**), any provider with an API key. Nothing switches by itself, so the dialog then offers **Choose the model your agents run on**, from what the sign-in brought. The page keeps that choice (`defaults.model`) with **Change** |
 | The browser is not there in the build this pine drives | Each version of pine drives a browser build of its own. A home that an older pine set up, or a new app in place of an old one, has the old build or none. The app asks once for each version of pine whether to fetch it, and Settings > App shows whether it is there, with **Fetch it** (`pine browser-install`, run by the app's pine). Until then the browser tools do not work; web search and reading a page do |
@@ -816,6 +816,7 @@ desktop/
                    .claude/launch.json), leash.mjs (a preview or `dev` ends with its starter)
   test/            the app from end to end, driven through its real window; command.test.ts,
                    updates.test.ts, daemon.test.ts, preview.test.ts and fds.test.ts need no window.
+                   setup.test.ts starts the app on a stand-in for pine with no home yet.
                    support/: the build a test starts (app.ts), and a daemon of the test's own
                    told from another run's by its token (daemon.ts)
 ```

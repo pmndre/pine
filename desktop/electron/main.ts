@@ -555,8 +555,19 @@ function wire(): void {
 	});
 	handle("pine:init", async () => {
 		launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
-		const args = ["init", ...(prefs.home ? [prefs.home] : []), "--yes"];
-		return runPine(launch, args, (line) => send("pine:init-line", line), process.env.PINE_SKIP_DOWNLOADS ? { PINE_SKIP_DOWNLOADS: "1" } : {});
+		// On Linux pine init sets up the sandbox as administrator after --yes: sudo would ask out of sight (in the terminal
+		// the app was started from, if any, or nowhere), or, with a password it still knows there, install packages unseen.
+		// Without --yes pine says what it would run and runs nothing, and the owner runs it in a terminal (Gate in src/App.tsx).
+		// --yes does nothing else, on any system.
+		const linux = process.platform === "linux";
+		const args = ["init", ...(prefs.home ? [prefs.home] : []), ...(linux ? [] : ["--yes"])];
+		let leftToOwner = false;
+		const code = await runPine(launch, args, (line) => {
+			// pine's words for it (src/sandbox-setup.ts).
+			if (linux && line.includes("Nobody is here to say yes")) leftToOwner = true;
+			send("pine:init-line", line);
+		}, process.env.PINE_SKIP_DOWNLOADS ? { PINE_SKIP_DOWNLOADS: "1" } : {});
+		return code === 0 && leftToOwner ? "administrator" : code;
 	});
 	// The browser the web tools drive, fetched by the pine the app runs: each pine wants the build
 	// of its own Playwright, and a home that was set up by another pine has an older one.

@@ -238,6 +238,7 @@ export async function setUpSandbox(io: SetupIo): Promise<boolean> {
 	io.out(`pine can set ${steps.length === 1 ? "this" : "it"} up. It would ${machine.root ? "run" : "run as administrator (sudo asks for your password)"}:\n${steps.map((s) => `  ${shown(s, machine.root)}`).join("\n")}`);
 	const go = io.yes ? true : await io.confirm("Set it up now?");
 	if (!go) {
+		// The Pine app looks for "Nobody is here to say yes" (desktop/electron/main.ts): it runs pine init without --yes on Linux.
 		io.out(`${go === undefined ? "Nobody is here to say yes" : "Not set up"}. Run "pine init --yes" to do it, or pine init again in a terminal.${plan.ok ? "" : ` ${noShell}`}`);
 		return plan.ok;
 	}

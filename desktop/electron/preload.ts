@@ -16,7 +16,8 @@ const bridge = {
 	/** Whether there is a newer app: what the start found, or with `again` what GitHub says now. Nothing where nobody is asked. */
 	update: (again?: boolean) => ipcRenderer.invoke("pine:update", again),
 	restart: () => ipcRenderer.invoke("pine:restart"),
-	init: () => ipcRenderer.invoke("pine:init"),
+	/** `pine init`: its exit code, or "administrator" when it set up everything but what an administrator has to run (Linux), which it printed. */
+	init: (): Promise<number | "administrator"> => ipcRenderer.invoke("pine:init"),
 	/** Fetch the browser build this pine drives (`pine browser-install`); what it prints comes as init lines. */
 	browserInstall: () => ipcRenderer.invoke("pine:browser"),
 	prefs: (change: Record<string, unknown>) => ipcRenderer.invoke("pine:prefs", change),
