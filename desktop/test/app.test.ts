@@ -679,6 +679,32 @@ test("off a Mac, where the window shows no menu bar, the bar's menu button opens
 	assert.ok(Math.abs(popped.x - box.x) <= 1 && Math.abs(popped.y - (box.y + box.height)) <= 1, JSON.stringify({ popped, box }));
 });
 
+test("no key in the menus does two things, and the window closes as on a Mac: by its own button, ⌘W/Ctrl+W being Close Tab", async () => {
+	const items: Array<{ label: string; key: string }> = await app.evaluate(({ Menu }: any) => {
+		const out: Array<{ label: string; key: string }> = [];
+		const walk = (list: any[]) => {
+			for (const i of list) {
+				const key = i.accelerator ?? i.getDefaultRoleAccelerator?.();
+				if (key) out.push({ label: i.label || i.role, key: String(key) });
+				if (i.submenu) walk(i.submenu.items);
+			}
+		};
+		walk(Menu.getApplicationMenu().items);
+		return out;
+	});
+	// A key as the system reads it: CmdOrCtrl is ⌘ on a Mac and Ctrl elsewhere, and the order of the modifiers says nothing.
+	const mac = process.platform === "darwin";
+	const word: Record<string, string> = { commandorcontrol: mac ? "cmd" : "ctrl", cmdorctrl: mac ? "cmd" : "ctrl", command: "cmd", cmd: "cmd", control: "ctrl", ctrl: "ctrl", option: "alt", alt: "alt", shift: "shift", super: "cmd", meta: "cmd" };
+	const as = (key: string) => key.split("+").map((p) => word[p.toLowerCase()] ?? p.toLowerCase()).sort().join("+");
+	const owners = new Map<string, string[]>();
+	for (const i of items) owners.set(as(i.key), [...(owners.get(as(i.key)) ?? []), i.label]);
+	// Electron's Redo and pine's Take Back Last Message share ⇧⌘Z on a Mac too: that is left as it is there.
+	const twice = [...owners].filter(([key, who]) => who.length > 1 && !(key === as("Shift+CmdOrCtrl+Z") && who.length === 2 && who.includes("Redo") && who.includes("Take Back Last Message")));
+	assert.deepEqual(twice, [], `keys that do two things: ${JSON.stringify(twice)}`);
+	assert.deepEqual(owners.get(as("CmdOrCtrl+W")), ["Close Tab"]);
+	assert.ok(!items.some((i) => i.label === "Close"), "a menu item closes the window");
+});
+
 test("a click into the composer draws no ring and no brighter border: it looks as it did before", async () => {
 	const look = () =>
 		page.$eval("[data-slot=composer] [data-slot=input-group]", (el: Element) => {

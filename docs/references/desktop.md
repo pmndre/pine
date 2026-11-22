@@ -115,8 +115,10 @@ npm install
 npm start
 ```
 
-`npm run dev` is the same with the page reloading as you edit it. To make an app that can be
-put into Applications:
+`npm run dev` is the same with the page reloading as you edit it. An app started from a checkout has
+View › Reload and View › Toggle Developer Tools, which a packed app does not have: `⌘R` and `⌥⌘I`
+on a Mac, `F5` and `Ctrl+Alt+I` elsewhere (`Ctrl+R` is Dictate Message there, and `Ctrl+Shift+I` the
+panel's Agent view). To make an app that can be put into Applications:
 
 ```bash
 npm run pack
@@ -210,7 +212,9 @@ pine packed into the app; the `pine` of your shell.
 | Notifications | A system notification when an agent is done, stops with an error, needs your approval or asks you something while the window is not in front. The words are pine's own ("main is done"), never the agent's |
 
 Closing the window does not quit the app on a Mac: it, and a daemon it started, stay until
-you quit (`⌘Q`). On Linux and Windows closing the window quits the app. A daemon the app
+you quit (`⌘Q`). On Linux and Windows closing the window quits the app. On every system the window
+closes with its own button: `⌘W` (`Ctrl+W`) closes a tab, never the window, and the Window menu has
+Minimise and Zoom only. A daemon the app
 started that stops answering is started again; one it started is stopped by closing its input,
 so that it closes its database before it ends, on every system.
 

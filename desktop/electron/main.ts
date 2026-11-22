@@ -493,7 +493,10 @@ function buildMenu(): void {
 				{ role: "zoomOut" },
 				{ type: "separator" },
 				{ role: "togglefullscreen" },
-				...(app.isPackaged ? [] : [{ type: "separator" as const }, { role: "reload" as const }, { role: "toggleDevTools" as const }]),
+				// From a checkout only. The developer tools have the Mac's key everywhere (⌥⌘I, Ctrl+Alt+I): Electron's own elsewhere,
+				// Ctrl+Shift+I, is the Agent view's above. Reload is ⌘R on a Mac, beside Dictate's ⌃R; elsewhere both would be
+				// Ctrl+R, which stays Dictate's, and Reload is F5.
+				...(app.isPackaged ? [] : [{ type: "separator" as const }, { role: "reload" as const, ...(isMac ? {} : { accelerator: "F5" }) }, { role: "toggleDevTools" as const, accelerator: "CmdOrCtrl+Alt+I" }]),
 			],
 		},
 		{
@@ -520,7 +523,9 @@ function buildMenu(): void {
 				...Array.from({ length: 9 }, (_, i) => item(`Tab ${i + 1}`, `tab-${i + 1}`, `CmdOrCtrl+${i + 1}`, { visible: false, acceleratorWorksWhenHidden: true })),
 			],
 		},
-		{ role: "windowMenu" },
+		// The Mac's Window menu has no Close, and ⌘W closes the tab. Electron's elsewhere has Close on Ctrl+W, Close Tab's key:
+		// there it is the Mac's, and the window closes with its own button, as with the red one.
+		isMac ? { role: "windowMenu" } : { label: "Window", submenu: [{ role: "minimize" }, { role: "zoom" }] },
 		{ role: "help", submenu: [item("Keys and Commands", "help"), ...(RELEASE_API && !isMac ? [item("Check for Updates…", "updates")] : []), { label: "pine on GitHub", click: () => openOutside("https://github.com/pmndre/pine") }] },
 	];
 	Menu.setApplicationMenu(Menu.buildFromTemplate(template));
