@@ -304,7 +304,8 @@ export class Terminals {
 		// D: a command has ended.
 		shell.busy = false;
 		if (!run?.started) return;
-		run.code = mark.code;
+		// Another integration may mark after pine's hooks, and one that says no code (a bare D) does not wipe the one known.
+		if (mark.code !== undefined || run.code === undefined) run.code = mark.code;
 		clearTimeout(run.timers.settle);
 		run.timers.settle = setTimeout(() => shell.run === run && this.ended(id, shell, run.code), SETTLE_MS);
 	}

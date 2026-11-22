@@ -187,7 +187,10 @@ export class MarkReader {
 		let at = 0;
 		for (const m of text.matchAll(MARK)) {
 			if (m.index! > at) out.push(text.slice(at, m.index));
-			const code = m[2] !== undefined && /^\d{1,3}$/.test(m[2]) ? Number(m[2]) : undefined;
+			// Another shell integration marks too, with more after the code: WezTerm's, which its package puts into every
+			// login shell (/etc/profile.d/wezterm.sh), writes `D;<code>;aid=<pid>`.
+			const first = m[2]?.split(";")[0];
+			const code = first !== undefined && /^\d{1,3}$/.test(first) ? Number(first) : undefined;
 			out.push({ kind: m[1] as Mark["kind"], code });
 			at = m.index! + m[0].length;
 		}
