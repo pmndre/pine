@@ -84,6 +84,8 @@ function standIn(): Bridge {
 		notify: async () => {},
 		badge: async () => {},
 		contextMenu: async () => undefined,
+		// The preview has no menus of the app's: its menu button opens nothing.
+		appMenu: async () => undefined,
 		command: async () => ({ state: "unavailable", text: "" }),
 		voiceStart: async () => {
 			throw new Error("Dictation is in the Pine app only.");

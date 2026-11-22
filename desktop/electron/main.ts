@@ -317,7 +317,8 @@ function createWindow(): void {
 		show: false,
 		title: "Pine",
 		// Off a Mac the page reaches the top too, and the system draws its window controls over its top right
-		// (in the theme's colors, refreshBackground). Its menus are then not shown, and their keys still work.
+		// (in the theme's colors, refreshBackground). Its menus are then not shown: their keys still work, and the
+		// page's menu button opens them (pine:app-menu).
 		titleBarStyle: isMac ? "hiddenInset" : "hidden",
 		trafficLightPosition: { x: 16, y: 16 },
 		// Gives the page where the window buttons are (env(titlebar-area-x) and -width, 0 in full screen), so the bars make room for them by themselves.
@@ -723,6 +724,12 @@ function wire(): void {
 	handle("pine:term-run", (id: string, code: string) => terminals.run(String(id), code));
 	handle("pine:term-resize", (id: string, cols: number, rows: number) => terminals.resize(String(id), cols, rows));
 	handle("pine:term-close", (id: string) => terminals.close(String(id)));
+	// Off a Mac the window shows no menu bar (createWindow): the page's menu button opens the menus at its place, given in the page's pixels.
+	handle("pine:app-menu", (x: number, y: number) => {
+		if (!win || win.isDestroyed() || isMac) return;
+		const zoom = win.webContents.getZoomFactor();
+		Menu.getApplicationMenu()?.popup({ window: win, x: Math.round((Number(x) || 0) * zoom), y: Math.round((Number(y) || 0) * zoom) });
+	});
 	// An item with `checked` is one of a set of choices (the side bar's "Sort by"), drawn with the system's mark.
 	handle("pine:context-menu", (items: Array<{ id: string; label: string; enabled?: boolean; separator?: boolean; danger?: boolean; checked?: boolean }>) => {
 		return new Promise<string | undefined>((resolve) => {

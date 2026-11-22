@@ -343,8 +343,9 @@ far right the browser.
 
 On Linux and Windows the window has no title bar of the system's: the bar of tabs reaches the
 top, as on a Mac, and the system draws its window controls (minimise, maximise, close) over its
-right end, in the theme's colors; the bar keeps room for them. The menus are not shown there:
-everything in them is in the palette (`Ctrl+K`), and their keys work. The keys are the Mac's
+right end, in the theme's colors; the bar keeps room for them. There is no menu bar there: the
+menu button (☰) at the right end of the bar opens the same menus, their keys work, and the
+palette (`Ctrl+K`) has their commands too. The keys are the Mac's
 with `Ctrl` for `⌘`, written the system's way: `⌘T` is `Ctrl+T`, `⇧⌘T` `Ctrl+Shift+T`, `⌥⌘B`
 `Ctrl+Alt+B`, and the app says them so in its tooltips, menus and the palette. Where this manual
 says `⌘`, read `Ctrl` there. A folder dropped on the app's icon, or given to it in a terminal
@@ -484,7 +485,7 @@ daemon's doing. What differs is how it is drawn and reached.
 |---|---|
 | Pictures, video, sound | A picture an answer points at is shown as it is; a click enlarges it. A video gets the system's own player controls, with sound. A sound is a line of its own, with bars, that plays by itself when its answer arrives: see "A sound in an answer" below |
 | Files from the Finder | Files put on the input with the mouse are attached to the next message (up to 10 files of 20 MB each); a folder put there is opened for the conversation, as with `/folder`. A folder put on the app's icon in the Dock opens a conversation that works in it, as `pine <folder>` does |
-| Menus and keys | Everything is in the menu bar, with its key |
+| Menus and keys | Everything is in the menu bar, with its key (off a Mac, in the menu button ☰ at the right end of the bar) |
 | Notifications | See the settings above. The app's icon carries the number of conversations that wait for you |
 | Find | `⌘F` marks what you look for in the conversation |
 | Themes | Any VS Code color theme, chosen in Settings > App: the window, code in answers, diffs and the editor, and the terminal all follow it. See "Themes" |

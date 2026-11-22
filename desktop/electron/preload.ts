@@ -32,6 +32,8 @@ const bridge = {
 	notify: (title: string, body: string, tab?: string) => ipcRenderer.invoke("pine:notify", title, body, tab),
 	badge: (count: number) => ipcRenderer.invoke("pine:badge", count),
 	contextMenu: (items: unknown[]) => ipcRenderer.invoke("pine:context-menu", items),
+	/** The app's menus, opened at a place of the page: where the window shows no menu bar (off a Mac). */
+	appMenu: (x: number, y: number) => ipcRenderer.invoke("pine:app-menu", x, y),
 	/** `pine` for a terminal: what the shell has; with "install" or "remove", after doing that. */
 	command: (action?: "install" | "remove") => ipcRenderer.invoke("pine:command", action),
 	voiceStart: (language?: string) => ipcRenderer.invoke("pine:voice-start", language),

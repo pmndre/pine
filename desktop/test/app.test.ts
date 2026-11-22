@@ -657,6 +657,28 @@ test("the bar along the top keeps room for the window's buttons where the system
 	}
 });
 
+test("off a Mac, where the window shows no menu bar, the bar's menu button opens the app's menus below itself; a Mac has none", async () => {
+	const button = page.locator("header [data-slot=app-menu]");
+	if (process.platform === "darwin") {
+		assert.equal(await button.count(), 0);
+		return;
+	}
+	// The menu a system draws cannot be read from the page: where it was asked to open, and with what, is noted instead.
+	await app.evaluate(({ Menu }: any) => {
+		const m = Menu.getApplicationMenu();
+		(globalThis as any).popped = undefined;
+		m.popup = (o: any) => ((globalThis as any).popped = { x: o.x, y: o.y, menus: m.items.map((i: any) => i.label) });
+	});
+	const box = (await button.boundingBox())!;
+	await button.click();
+	for (let i = 0; i < 50 && !(await app.evaluate(() => (globalThis as any).popped)); i++) await new Promise((r) => setTimeout(r, 50));
+	const popped = await app.evaluate(() => (globalThis as any).popped);
+	await app.evaluate(({ Menu }: any) => delete Menu.getApplicationMenu().popup);
+	assert.ok(popped, "the button opened no menu");
+	assert.deepEqual(popped.menus, ["File", "Edit", "View", "Conversation", "Window", "Help"]);
+	assert.ok(Math.abs(popped.x - box.x) <= 1 && Math.abs(popped.y - (box.y + box.height)) <= 1, JSON.stringify({ popped, box }));
+});
+
 test("a click into the composer draws no ring and no brighter border: it looks as it did before", async () => {
 	const look = () =>
 		page.$eval("[data-slot=composer] [data-slot=input-group]", (el: Element) => {

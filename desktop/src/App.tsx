@@ -1,7 +1,7 @@
 // The window: the list of agents and conversations at the side, the tabs along the top, one
 // conversation in the middle with its panel, and whatever lies over them for a moment (a list
 // to pick from, a question, the palette).
-import { ArrowUpIcon, AudioLinesIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronsUpDownIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, GlobeIcon, ListIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, Trash2Icon, UnplugIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, AudioLinesIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronsUpDownIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, GlobeIcon, ListIcon, MenuIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, Trash2Icon, UnplugIcon, XIcon } from "lucide-react";
 import { useMediaQuery } from "usehooks-ts";
 import { Toggle } from "@/components/ui/toggle";
 import { Badge } from "@/components/ui/badge";
@@ -653,6 +653,16 @@ export function TitleBar() {
 			<span className="min-w-0 flex-1" />
 			<BesideToggle which="code" label="Side panel: the agent, its files, changes, output and what is running" keys="⌥⌘B" icon={<PanelRightIcon />} />
 			<BesideToggle which="aside" label="Browser: the page the agent works in" keys="⇧⌘B" icon={<GlobeIcon />} />
+			{/* Off a Mac the window shows no menu bar (electron/main.ts): its menus open from here, beside the system's window controls. */}
+			{s.platform !== "darwin" && bridge.appMenu ? (
+				<HoverTooltip>
+					<TooltipTrigger render={<Button variant="ghost" size="icon" className="app-no-drag" data-slot="app-menu" aria-label="Menu" onClick={(e) => {
+						const at = e.currentTarget.getBoundingClientRect();
+						void bridge.appMenu?.(at.left, at.bottom);
+					}} />}><MenuIcon /></TooltipTrigger>
+					<TooltipContent>Menu</TooltipContent>
+				</HoverTooltip>
+			) : null}
 		</header>
 	);
 }
