@@ -679,6 +679,32 @@ test("off a Mac, where the window shows no menu bar, the bar's menu button opens
 	assert.ok(Math.abs(popped.x - box.x) <= 1 && Math.abs(popped.y - (box.y + box.height)) <= 1, JSON.stringify({ popped, box }));
 });
 
+test("off a Mac the window's controls stay as tall as the bar when the page is zoomed in and out", { skip: process.platform === "darwin" && "a Mac's buttons lie beside the bar, at a height of their own" }, async () => {
+	const zoom = (label: string) => app.evaluate(({ Menu }: any, l: string) => Menu.getApplicationMenu().items.find((m: any) => m.label === "View").submenu.items.find((i: any) => i.label === l).click(), label);
+	// What the window is told about its controls is noted: under the viewport these tests set, the page's own account of
+	// them (navigator.windowControlsOverlay) no longer follows the window.
+	await app.evaluate(({ BrowserWindow }: any) => {
+		const w = BrowserWindow.getAllWindows()[0];
+		const own = w.setTitleBarOverlay.bind(w);
+		(globalThis as any).overlay = undefined;
+		w.setTitleBarOverlay = (o: any) => (((globalThis as any).overlay = o), own(o));
+	});
+	const bar = await page.$eval("header:has([data-toggle=code])", (h: Element) => h.getBoundingClientRect().height);
+	try {
+		for (const step of ["Zoom In", "Zoom In", "Zoom Out", "Zoom Out", "Zoom Out", "Actual Size"]) {
+			await app.evaluate(() => ((globalThis as any).overlay = undefined));
+			await zoom(step);
+			for (let i = 0; i < 20 && !(await app.evaluate(() => (globalThis as any).overlay)); i++) await new Promise((r) => setTimeout(r, 50));
+			const told = await app.evaluate(({ BrowserWindow }: any) => ({ height: (globalThis as any).overlay?.height, zoom: BrowserWindow.getAllWindows()[0].webContents.getZoomFactor() }));
+			// The window counts in its own pixels: the page's times its zoom.
+			assert.ok(told.height !== undefined && Math.abs(told.height - bar * told.zoom) <= 1, `after ${step}: the controls are ${told.height}px tall, the bar ${bar}px at a zoom of ${told.zoom}`);
+		}
+	} finally {
+		await zoom("Actual Size");
+		await app.evaluate(({ BrowserWindow }: any) => delete BrowserWindow.getAllWindows()[0].setTitleBarOverlay);
+	}
+});
+
 test("no key in the menus does two things, and the window closes as on a Mac: by its own button, ⌘W/Ctrl+W being Close Tab", async () => {
 	const items: Array<{ label: string; key: string }> = await app.evaluate(({ Menu }: any) => {
 		const out: Array<{ label: string; key: string }> = [];

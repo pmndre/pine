@@ -115,22 +115,35 @@ function windowBackground(): string {
 }
 
 /**
- * How tall the bar along the top of the page is (h-11 at the page's 15px, index.css): off a Mac the
- * system draws its window controls over the page at its top right (titleBarOverlay), as tall as it.
+ * How tall the bar along the top of the page is in the page's pixels (h-11 at the page's 15px, index.css): off a
+ * Mac the system draws its window controls over the page at its top right (titleBarOverlay), as tall as it. The
+ * window counts in its own pixels, which are the page's times its zoom.
  */
-const TITLE_BAR = 41;
+const TITLE_BAR = 41.25;
 
 /** The system's window controls off a Mac, in the theme's colors: on the bar's background (the page's `sunk`), drawn in its quieter text. */
-function windowControls(): { color: string; symbolColor: string; height: number } {
+function windowControls(zoom = win && !win.isDestroyed() ? win.webContents.getZoomFactor() : 1): { color: string; symbolColor: string; height: number } {
 	const colors = prefs.look?.colors;
-	return { color: (colors?.sunk ?? "#171922").slice(0, 7), symbolColor: (colors?.["text-muted"] ?? colors?.text ?? "#a6accd").slice(0, 7), height: TITLE_BAR };
+	return { color: (colors?.sunk ?? "#171922").slice(0, 7), symbolColor: (colors?.["text-muted"] ?? colors?.text ?? "#a6accd").slice(0, 7), height: Math.round(TITLE_BAR * zoom) };
+}
+
+/**
+ * Zooms the page by a step as the menu's own roles do (undefined: back to its own size), and off a Mac fits the window's
+ * controls to the bar, which grows and shrinks with the page: taller than it, they would cover the panels' top edge.
+ */
+function zoomBy(step: number | undefined): void {
+	if (!win || win.isDestroyed()) return;
+	const level = step === undefined ? 0 : win.webContents.getZoomLevel() + step;
+	win.webContents.setZoomLevel(level);
+	// (Right after, the window still says the zoom it had. A level is a power of 1.2, as Chromium counts it.)
+	refreshBackground(1.2 ** level);
 }
 
 /** Repaints the window's background (and off a Mac its controls) for the current theme; a no-op before the window exists. */
-function refreshBackground(): void {
+function refreshBackground(zoom?: number): void {
 	if (!win || win.isDestroyed()) return;
 	win.setBackgroundColor(windowBackground());
-	if (!isMac) win.setTitleBarOverlay(windowControls());
+	if (!isMac) win.setTitleBarOverlay(windowControls(zoom));
 }
 
 function savePrefs(): void {
@@ -350,6 +363,8 @@ function createWindow(): void {
 	// Off a Mac the shell's own Ctrl keys reach the shell while the terminal has the keyboard, not the menu (shellKeeps).
 	if (!isMac) win.webContents.on("before-input-event", (_e, input) => win?.webContents.setIgnoreMenuShortcuts(terminalFocused && shellKeeps(input)));
 	win.webContents.on("did-start-loading", () => (terminalFocused = false));
+	// Chromium keeps a page's zoom when it is loaded again: the controls fit the bar at that zoom.
+	if (!isMac) win.webContents.on("did-finish-load", () => refreshBackground());
 	const keep = () => {
 		if (!win || win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
 		prefs.bounds = win.getBounds();
@@ -488,9 +503,14 @@ function buildMenu(): void {
 				item("Toggle Browser", "browser", "CmdOrCtrl+Shift+B"),
 				item("Events", "events", "CmdOrCtrl+Shift+L"),
 				{ type: "separator" },
-				{ role: "resetZoom" },
-				{ role: "zoomIn" },
-				{ role: "zoomOut" },
+				// Off a Mac the window's controls are as tall as the bar, which zooms with the page: they follow it (zoomBy). The keys are the roles' own.
+				...(isMac
+					? [{ role: "resetZoom" as const }, { role: "zoomIn" as const }, { role: "zoomOut" as const }]
+					: [
+							{ label: "Actual Size", accelerator: "CmdOrCtrl+0", click: () => zoomBy(undefined) },
+							{ label: "Zoom In", accelerator: "CmdOrCtrl+Plus", click: () => zoomBy(0.5) },
+							{ label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: () => zoomBy(-0.5) },
+						]),
 				{ type: "separator" },
 				{ role: "togglefullscreen" },
 				// From a checkout only. The developer tools have the Mac's key everywhere (⌥⌘I, Ctrl+Alt+I): Electron's own elsewhere,

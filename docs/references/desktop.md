@@ -347,7 +347,8 @@ far right the browser.
 
 On Linux and Windows the window has no title bar of the system's: the bar of tabs reaches the
 top, as on a Mac, and the system draws its window controls (minimise, maximise, close) over its
-right end, in the theme's colors; the bar keeps room for them. There is no menu bar there: the
+right end, in the theme's colors and as tall as the bar at every zoom (`Ctrl+Plus`, `Ctrl+-`, `Ctrl+0`,
+which the app keeps from one start to the next); the bar keeps room for them. There is no menu bar there: the
 menu button (☰) at the right end of the bar opens the same menus, their keys work, and the
 palette (`Ctrl+K`) has their commands too. The keys are the Mac's
 with `Ctrl` for `⌘`, written the system's way: `⌘T` is `Ctrl+T`, `⇧⌘T` `Ctrl+Shift+T`, `⌥⌘B`
