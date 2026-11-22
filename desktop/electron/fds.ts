@@ -1,29 +1,46 @@
 // What a program the app starts inherits from it besides what it is handed. On Linux, Chromium
 // opens most of its descriptors without close-on-exec (its own launcher closes them in a child it
-// starts), and Node's spawn there hands every descriptor that is not close-on-exec to the child:
-// the daemon would hold the app's sockets, its pipes, its local storage and its shared memory, and
-// hand them on to every command it runs, in its sandbox too (bubblewrap keeps what it inherits
-// open). A daemon that goes on after the app (`keepRunning`) would also hold the pipes of whoever
-// started the app, which then never see it end. macOS spawns with POSIX_SPAWN_CLOEXEC_DEFAULT, and
-// Windows hands on only what is marked to be inherited, so there is nothing to do there.
+// starts), and a child of Node's spawn or of node-pty's fork there keeps every descriptor that is
+// not close-on-exec: the daemon would hold the app's sockets, its pipes, its local storage and its
+// shared memory, and hand them on to every command it runs, in its sandbox too (bubblewrap keeps
+// what it inherits open). So would the owner's shell in the terminal, and whatever it leaves
+// running (tmux, a server started with nohup, an ssh tunnel), and whatever a login profile starts
+// (ssh-agent) when the app asks the login shell for its environment. A daemon that goes on after
+// the app (`keepRunning`) would also hold the pipes of whoever started the app, which then never
+// see it end. macOS spawns with POSIX_SPAWN_CLOEXEC_DEFAULT, and Windows hands on only what is
+// marked to be inherited, so there is nothing to do there.
 import fs from "node:fs";
-import type { StdioOptions } from "node:child_process";
-
-let devNull: number | undefined;
+import path from "node:path";
 
 /**
- * The stdio of a spawn with every other descriptor this process has open replaced by /dev/null
- * in the child, on Linux; `stdio` as it is elsewhere. Pass it as `stdio` to `spawn`.
+ * Closes every descriptor above the three standard ones, then runs its arguments. It runs in the
+ * child itself, after the start: a descriptor another thread of the app opens meanwhile is closed
+ * too. SHLVL goes back to what it was (bash counted itself), and POSIX mode is left before the
+ * program starts: an exported SHELLOPTS would carry it to every bash below.
  */
-export function sealed(stdio: Exclude<StdioOptions, string>): StdioOptions {
-	if (process.platform !== "linux") return stdio;
-	let open: number[];
-	try {
-		open = fs.readdirSync("/proc/self/fd").map(Number).filter((fd) => Number.isInteger(fd) && fd > 2);
-		devNull ??= fs.openSync("/dev/null", "r+");
-	} catch {
-		return stdio;
+const CLOSE_FDS = 'for fd in /proc/$$/fd/*; do fd=${fd##*/}; [ "$fd" -gt 2 ] && eval "exec $fd>&-"; done; SHLVL=$((SHLVL-1)); set +o posix; exec -- "$@"';
+
+/** bash: in its usual places, else on the PATH (NixOS has neither folder). */
+function bash(): string | undefined {
+	for (const file of ["/bin/bash", "/usr/bin/bash", ...String(process.env.PATH ?? "").split(":").filter(Boolean).map((dir) => path.join(dir, "bash"))]) {
+		try {
+			fs.accessSync(file, fs.constants.X_OK);
+			return file;
+		} catch {
+			// not here
+		}
 	}
-	const last = Math.max(stdio.length - 1, ...open);
-	return Array.from({ length: last + 1 }, (_, fd) => (fd < stdio.length ? stdio[fd] : devNull!));
+	return undefined;
+}
+
+/**
+ * A program as the app starts it: on Linux behind bash, which closes the app's descriptors and then
+ * becomes the program (same process, same arguments); as it is elsewhere, or where there is no bash.
+ * For `spawn`, `execFile` and node-pty alike.
+ */
+export function withoutFds(argv: string[], platform: string = process.platform): string[] {
+	if (platform !== "linux") return argv;
+	const shell = bash();
+	// In POSIX mode a non-interactive bash reads no startup file, not even one that BASH_ENV names.
+	return shell ? [shell, "--posix", "-c", CLOSE_FDS, "pine", ...argv] : argv;
 }

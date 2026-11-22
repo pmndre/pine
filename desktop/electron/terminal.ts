@@ -12,6 +12,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import type { IPty } from "node-pty";
+import { withoutFds } from "./fds.ts";
 import { type Mark, MarkReader, withHooks } from "./shell-hooks.ts";
 
 /** How much of what a shell printed is kept for a page that opens it again. */
@@ -212,7 +213,9 @@ export class Terminals {
 		// Another call may have opened it while the environment was being asked for.
 		const raced = this.shells.get(id);
 		if (raced) return { kept: raced.kept, cwd: raced.cwd, fresh: false };
-		const proc = pty.spawn(launch.file, launch.args, { name: "xterm-256color", cols: size(cols, 2, 1000), rows: size(rows, 1, 500), cwd: dir, env: launch.env });
+		// Without the app's open files (fds.ts): node-pty's fork on Linux keeps them, and so would whatever the owner starts in it.
+		const [program, ...argv] = withoutFds([launch.file, ...launch.args]);
+		const proc = pty.spawn(program, argv, { name: "xterm-256color", cols: size(cols, 2, 1000), rows: size(rows, 1, 500), cwd: dir, env: launch.env });
 		const shell: Shell = { pty: proc, kept: "", cwd: dir, marks: launch.marks, reader: new MarkReader(), prompted: false, busy: false, bracketed: false, waiting: [] };
 		this.shells.set(id, shell);
 		proc.onData((data) => {

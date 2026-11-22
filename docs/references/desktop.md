@@ -694,6 +694,7 @@ the agent to write. So:
 | What is heard | Text for the input: never sent by itself |
 | A code block's Run button | Only your click types a block into your terminal, and only a block whose every character shows as itself: an answer cannot run anything by itself, nor hide a part of what it runs. What the agent hears back is that block's output, quoted, and nothing you typed |
 | The window stays the app | It cannot be taken to another address, and opens no further windows |
+| What the app starts | The daemon, `pine init`, the login shell it asks for your environment, and the shell in the terminal get none of the app's open files, sockets and pipes. On Linux a program keeps whatever its parent did not mark to be closed, and Chromium marks little: there each starts behind `bash`, which closes all but the three standard ones and then becomes the program. So nothing you start in the terminal, and nothing a profile leaves running (`ssh-agent`), holds the app's files after it has quit |
 | The agent's browser beside a conversation | A picture, drawn; its address and titles as text. The browser is the agent's own, another program behind pine's guard: the app hands the daemon what you did in the picture (places, keys, an address), and the browser's own server checks each piece before anything is done |
 | What the app itself asks the web | One thing: GitHub, for pine's last release (see "A newer version"). The question carries nothing about this Mac, your pine or the app's version. Of the answer only the release's number is used, and the link you get is made by the app and leads to pine's releases on GitHub, whatever was answered |
 
@@ -759,7 +760,8 @@ desktop/
     preload.ts     the bridge: the short list of things the page may ask the main process for
     service.ts     finds node and pine, runs `pine service`, keeps the daemon it started
     fds.ts         what a program the app starts gets of the app's own open files: on Linux, where
-                   Chromium leaves them open across a start, nothing but its stdio (`sealed`)
+                   Chromium leaves them open across a start, nothing but its stdio: it starts
+                   behind bash, which closes the rest and becomes the program (`withoutFds`)
     command.ts     `pine` for a terminal: the link into the shell's PATH, made and removed (on
                    Windows only looked for: the installer puts it there)
     terminal.ts, shell-hooks.ts  the owner's terminal beside a conversation, and the hooks of zsh,
@@ -808,7 +810,7 @@ desktop/
                    app built once for the run), launch-json.mjs (the checkout's ports and
                    .claude/launch.json), leash.mjs (a preview or `dev` ends with its starter)
   test/            the app from end to end, driven through its real window; command.test.ts,
-                   updates.test.ts, daemon.test.ts and preview.test.ts need no window.
+                   updates.test.ts, daemon.test.ts, preview.test.ts and fds.test.ts need no window.
                    support/: the build a test starts (app.ts), and a daemon of the test's own
                    told from another run's by its token (daemon.ts)
 ```

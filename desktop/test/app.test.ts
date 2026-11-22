@@ -766,6 +766,16 @@ test("a shell block of an answer runs in the conversation's terminal with its bu
 	await page.keyboard.type("echo typed-$((1+1))");
 	await page.keyboard.press("Enter");
 	await terminalShows("typed-2");
+	// On Linux a child keeps whatever its parent did not mark to be closed, and Chromium marks little: the shell holds
+	// none of the app's files, sockets and pipes, only what is its own (bash keeps the terminal at 255 too). (electron/fds.ts)
+	if (process.platform === "linux") {
+		// (Not inside $(…), where bash itself holds the pipe it reads from.)
+		await page.keyboard.type("printf fds-; ls /proc/$$/fd | tr '\\n' ,; echo end");
+		await page.keyboard.press("Enter");
+		await page.waitForFunction(() => /fds-[\d,]+end/.test(document.querySelector("[data-slot=terminal] .xterm-rows")?.textContent ?? ""), undefined, { timeout: 10_000 });
+		const fds = /fds-([\d,]+)end/.exec(await terminalText())![1].split(",").filter(Boolean);
+		assert.deepEqual(fds.filter((fd) => !["0", "1", "2", "255"].includes(fd)), [], `the terminal's shell holds the app's descriptors ${fds.join(", ")}`);
+	}
 	// A block that holds a character that does not show as itself is not typed.
 	await md.locator("[data-run]").nth(1).click();
 	await sees("[data-slot=toast] >> text=does not show as itself (U+202E)");
