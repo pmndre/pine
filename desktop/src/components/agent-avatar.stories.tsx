@@ -28,3 +28,6 @@ export const AgentAvatarPresets: Story = {
 		</div>
 	),
 };
+
+/** While it loads: its own shape, from stock Skeleton blocks. */
+export const AgentAvatarSkeleton: Story = { args: { skeleton: true } as never };

@@ -18,3 +18,6 @@ export const Default: Story = {};
 export const Failed: Story = { args: { text: "$ npm test\n\u001b[31m✖\u001b[0m 1 test failed", failed: true } };
 
 export const Small: Story = { args: { text: lines, sm: true } };
+
+/** While it loads: its own shape, from stock Skeleton blocks. */
+export const PrintedSkeleton: Story = { args: { skeleton: true } as never };

@@ -12,6 +12,7 @@
 import { MusicIcon, PauseIcon, PlayIcon } from "lucide-react";
 import { useEffect, useId, useReducer, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { BANDS, heights, type Levels, Meter, STEP } from "../../../src/tui/levels.ts";
 
@@ -106,7 +107,27 @@ const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.fl
  * its sound again when it was off screen. `bytes`: the sound as bytes, for its bars; without it
  * the line has none. `auto`: see Heard.
  */
-export function Sound({ src, name, id, bytes, auto, className }: { src: string; name: string; id?: string; bytes?: () => Promise<ArrayBuffer>; auto?: Heard; className?: string }) {
+type SoundProps = { src: string; name: string; id?: string; bytes?: () => Promise<ArrayBuffer>; auto?: Heard; className?: string; skeleton?: false };
+
+export function Sound(props: SoundProps | { src?: undefined; name?: undefined; className?: string; /** While the sound is not known yet: its line's shape. */ skeleton: true }) {
+	// The line's hooks must not run for a skeleton, so the two are separate components.
+	if (props.skeleton || props.src === undefined) return <SoundSkeleton className={props.className} />;
+	return <SoundLine {...(props as SoundProps)} />;
+}
+
+/** The play button's square (icon-sm, size-7), a strip as tall as the bars, and a bar for the name. */
+function SoundSkeleton({ className }: { className?: string }) {
+	return (
+		<span data-slot="sound" data-sound="skeleton" className={cn("inline-flex max-w-full items-center gap-2.5 align-middle text-sm", className)}>
+			<Skeleton className="size-7 shrink-0" />
+			{/* BANDS bars of w-1 with gap-px: about w-30. */}
+			<Skeleton className="h-6 w-30 shrink-0" />
+			<Skeleton className="h-4 w-28" />
+		</span>
+	);
+}
+
+function SoundLine({ src, name, id, bytes, auto, className }: SoundProps) {
 	const own = useId();
 	const key = id ?? own;
 	const [, redraw] = useReducer((n: number) => n + 1, 0);

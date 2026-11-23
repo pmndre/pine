@@ -664,7 +664,10 @@ test("an approval is asked in a dialog and answered from it, and so is a questio
 			.getAnimations()
 			.filter((a) => a.effect?.getComputedTiming().iterations === Infinity && a.playState === "running")
 			.map((a) => (a.effect as KeyframeEffect).target as HTMLElement)
-			.filter((el) => el && !getComputedStyle(el).animationTimingFunction.startsWith("steps("))
+			// A Skeleton (stock shadcn, smooth animate-pulse) shows only while content loads for the first time,
+			// never for as long as an agent works, so it is the one element let through.
+			.filter((el) => el && !el.matches("[data-slot=skeleton]"))
+			.filter((el) => !getComputedStyle(el).animationTimingFunction.startsWith("steps("))
 			.map((el) => el.getAttribute("data-slot") ?? el.className.toString().slice(0, 40)),
 	);
 	assert.deepEqual(smooth, [], "no animation runs smoothly forever");

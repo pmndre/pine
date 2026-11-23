@@ -12,3 +12,6 @@ export const QrCode: Story = { args: { value: LINK, label: "QR code of the pairi
 
 /** A short text makes a small code, drawn as large: the modules grow, the quiet zone stays four of them. */
 export const Short: Story = { args: { value: "https://pine.example", label: "QR code of a short address", className: "size-56 rounded-lg" } };
+
+/** While it loads: its own shape, from stock Skeleton blocks. */
+export const QrCodeSkeleton: Story = { args: { skeleton: true, className: "size-56 rounded-lg" } as never };

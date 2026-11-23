@@ -1155,6 +1155,26 @@ text color. Settings keeps to this; other parts of the page are brought to it as
   the cleaning rules (`CLEAN`), the link and the picture. On every upgrade of Streamdown, read its
   defaults again and run the desktop suite: its markdown test fails without each of the three.
 
+### Loading
+
+What loads and has a known final shape shows a Skeleton of that shape while it loads: stock
+shadcn `Skeleton` (`data-slot=skeleton`), with its own smooth `animate-pulse`, never edited. Pulse
+stays for what is at work (a busy agent, an action in flight inside a button or a badge) and for
+what has no known shape yet (the Gate before a host connects), so "working" still reads apart
+from "loading".
+
+- A composition of pine's (`src/components/`, and the ones drawn in a view's own file) takes
+  `skeleton?: boolean`: with it, it draws its own shape from stock `Skeleton` blocks (and
+  `SidebarMenuSkeleton` for a side bar row), at its real size, and reads none of its data, whose
+  props are then optional. A caller writes `<AgentAvatar skeleton />`, not placeholder blocks by
+  hand. Never on a file of `components/ui/`.
+- A skeleton shows on the first load only, while `useLoad` has neither data nor an error. A reload
+  keeps what is shown, and there is no delay before a skeleton appears.
+- Loading is told apart from empty: an empty state shows only once the data is there.
+- Each composition's skeleton is a story of its own beside it (`AgentAvatarSkeleton`).
+- The app test that forbids an animation running smoothly forever while agents work lets
+  `[data-slot=skeleton]` through, and only it: a skeleton lasts only while content first loads.
+
 ### Stories and Chromatic
 
 Buttons, switches, inputs, fields, toggle groups (the segmented controls), selects, the edges that resize

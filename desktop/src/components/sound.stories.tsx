@@ -52,3 +52,6 @@ export const CannotBePlayed: Story = { args: { src: "nothing.wav", name: "gone" 
 
 /** A long name in a narrow place is cut; the control, the bars and the time keep their room. */
 export const Narrow: Story = { args: { name: "the briefing for Monday morning, read aloud, second take", className: "w-72" } };
+
+/** While it loads: its own shape, from stock Skeleton blocks. */
+export const SoundSkeleton: Story = { args: { skeleton: true } as never };
