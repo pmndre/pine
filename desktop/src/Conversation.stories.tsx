@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { Approval } from "./api.ts";
-import { Row } from "./Conversation.tsx";
+import { ConversationSkeleton as ConversationSkeletonView, OwnerTurn, Row, Welcome } from "./Conversation.tsx";
 import { type Item, Tab } from "./model.ts";
 
 // A conversation as the app draws it: each item is a Row, the way the transcript lists them.
@@ -128,3 +128,12 @@ export const PictureLarger: Story = {
 	tags: ["!autodocs"],
 	play: async ({ canvas, userEvent }) => await userEvent.click(canvas.getByRole("button", { name: "okapi.svg" })),
 };
+
+/** A conversation that has not loaded yet: its shape, from stock Skeleton blocks. */
+export const ConversationSkeleton: Story = { args: { items: [] }, render: () => <ConversationSkeletonView /> };
+
+/** The owner's turn while it loads. */
+export const OwnerTurnSkeleton: Story = { args: { items: [] }, render: () => <OwnerTurn skeleton /> };
+
+/** Where a conversation begins, while the agent is not known yet. */
+export const WelcomeSkeleton: Story = { args: { items: [] }, render: () => <Welcome skeleton /> };
