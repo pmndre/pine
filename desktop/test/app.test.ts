@@ -346,6 +346,7 @@ test("a conversation that is loading shows its shape, and the shape goes once wh
 		await sees("[data-slot=conversation-skeleton] [data-slot=skeleton]");
 		assert.equal(await page.$("[data-slot=pulse][aria-label=Loading]"), null, "a loading conversation shows its shape, not the Pulse");
 		assert.equal(await page.$("[data-slot=message-scroller-content]"), null);
+		assert.equal(await page.$("[data-slot=empty]"), null, "no empty state shows before the data is there");
 		await shot("02-loading");
 	} finally {
 		await app.evaluate(() => (globalThis as any).unhold());

@@ -47,14 +47,22 @@ const NO_LINE = "\u0000";
  *   moved off it, and stays unnamed until a key.
  * Returns the Command's `ref` and `defaultValue`.
  */
-export function useNamedLine(redo: unknown, start?: string) {
+export function useNamedLine(redo: unknown, start?: string, ready = true) {
 	const root = useRef<HTMLDivElement | null>(null);
 	const point = (line: Element | null | undefined) => line?.dispatchEvent(new PointerEvent("pointermove", { bubbles: true }));
+	const pointStart = (el: HTMLDivElement) => queueMicrotask(() => point(el.querySelector(start === undefined ? "[cmdk-item]" : `[cmdk-item][data-value="${CSS.escape(start)}"]`) ?? el.querySelector("[cmdk-item]")));
 	const ref = (el: HTMLDivElement | null) => {
 		if (!el || root.current) return;
 		root.current = el;
-		queueMicrotask(() => point(el.querySelector(start === undefined ? "[cmdk-item]" : `[cmdk-item][data-value="${CSS.escape(start)}"]`) ?? el.querySelector("[cmdk-item]")));
+		pointStart(el);
 	};
+	// A list first shown while its lines load (a picker opened before its data came) has no line to
+	// start on when it is put on the page: point at `start` once the lines are there.
+	const wasReady = useRef(ready);
+	useEffect(() => {
+		if (ready && !wasReady.current && root.current) pointStart(root.current);
+		wasReady.current = ready;
+	}, [ready]);
 	const first = useRef(true);
 	useEffect(() => {
 		if (first.current) return void (first.current = false);

@@ -153,6 +153,7 @@ test("the window shows before the tabs are filled, with skeletons in the side ba
 		await page.reload();
 		await sees("[data-slot=tab][data-active]", 20_000);
 		await sees("[data-slot=sidebar] [data-slot=skeleton]");
+		assert.equal(await page.$("[data-slot=empty]"), null, "no empty state shows before the data is there");
 	} finally {
 		await app.evaluate(({ ipcMain }: any) => {
 			const g = globalThis as any;

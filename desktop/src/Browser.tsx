@@ -17,6 +17,7 @@ import { ROOM, store, type Tab, useModel } from "./model.ts";
 import { errText } from "./text.ts";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { HoverTooltip } from "@/components/hover-tooltip";
+import { EmptyView } from "@/components/empty-view";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Pulse } from "@/components/pulse";
@@ -40,6 +41,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 	const canvas = useRef<HTMLCanvasElement>(null);
 	const line = useRef<HTMLInputElement>(null);
 	const [state, setState] = useState<BrowserState>();
+	const [lookError, setLookError] = useState<string>();
 	const [address, setAddress] = useState<string>();
 	const [busy, setBusy] = useState(false);
 	const [drawn, setDrawn] = useState(false);
@@ -59,7 +61,14 @@ export function BrowserView({ tab }: { tab: Tab }) {
 	// Where the browser is: asked while this view is open, and again after the agent used it.
 	useEffect(() => {
 		let over = false;
-		const look = () => void api.browser(tab.agent, tab.session).then((s) => !over && setState(s), () => {});
+		const look = () => void api.browser(tab.agent, tab.session).then(
+			(s) => {
+				if (over) return;
+				setState(s);
+				setLookError(undefined);
+			},
+			(e) => !over && setLookError(errText(e)),
+		);
 		look();
 		const timer = window.setInterval(look, 1500);
 		return () => {
@@ -275,7 +284,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 					{drawn ? null : <BrowserSkeleton className="absolute inset-0" />}
 				</ScrollArea>
 			) : !state ? (
-				<BrowserSkeleton className="min-h-0 flex-1" />
+				lookError ? <EmptyView icon={EyeIcon} title="The browser cannot be reached">{lookError}</EmptyView> : <BrowserSkeleton className="min-h-0 flex-1" />
 			) : (
 				<Empty>
 					<EmptyHeader>
@@ -283,10 +292,10 @@ export function BrowserView({ tab }: { tab: Tab }) {
 							<EyeIcon />
 						</EmptyMedia>
 						<EmptyTitle>No page is open</EmptyTitle>
-						{state ? <EmptyDescription>This is the browser the agent of this conversation works in. A page it opens is shown here as it is, and you can use it too: click, type, log in. Type an address above to open one yourself.</EmptyDescription> : null}
+						<EmptyDescription>This is the browser the agent of this conversation works in. A page it opens is shown here as it is, and you can use it too: click, type, log in. Type an address above to open one yourself.</EmptyDescription>
 					</EmptyHeader>
 					{/* What the conversation's own programs listen on (the code pane's Running): a server the agent started is one click away. */}
-					{state && running.length ? (
+					{running.length ? (
 						<EmptyContent data-offer="running">
 							<EmptyDescription>Running in this conversation</EmptyDescription>
 							{running.map((r) => (

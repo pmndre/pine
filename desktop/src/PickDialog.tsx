@@ -12,7 +12,7 @@ export function PickDialog({ p }: { p: Picker }) {
 	const [query, setQuery] = useState("");
 	const shown = useMemo(() => (query && !p.free ? p.items.map((i) => ({ i, rank: Math.min(...[fuzzy(query, i.label), fuzzy(query, i.about ?? "") + 10].filter((r) => r >= 0), 99) })).filter((x) => x.rank < 99).sort((a, b) => a.rank - b.rank).map((x) => x.i) : p.items), [query, p]);
 	// The list starts on the one in use.
-	const line = useNamedLine(query, p.current);
+	const line = useNamedLine(query, p.current, !p.loading);
 	// A short list is chosen from with the arrows; its field is there for the keyboard and for screen readers, unseen.
 	const typing = !p.loading && (p.free || p.items.length > 7);
 	const list = (

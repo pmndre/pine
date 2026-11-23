@@ -1133,6 +1133,9 @@ function Models() {
 	const connecting = useRef<DialogRootActions>(null);
 	const s = useModel(store);
 	const fallback = useLoad(() => api.settings().then((all) => all.find((x) => x.key === "defaults.model")?.now));
+	// Only the first load shows a skeleton: a reload with no default set keeps what is there.
+	const [fallbackSeen, setFallbackSeen] = useState(false);
+	if (!fallbackSeen && !fallback.loading) setFallbackSeen(true);
 	const stuck = s.agents.filter((a) => a.modelProblem);
 	const reload = () => (providers.reload(), servers.reload(), fallback.reload(), void store.refreshAgents());
 	const mine = new Set((servers.data ?? []).map((x) => x.name));
@@ -1153,7 +1156,7 @@ function Models() {
 				<ModelNotice key={a.id} agent={a.id} model={a.model} problem={a.modelProblem!} />
 			))}
 
-			{fallback.loading && fallback.data === undefined && !fallback.error ? (
+			{!fallbackSeen ? (
 				<Section title="Default model">
 					<ItemGroup><SettingsItemsSkeleton count={1} /></ItemGroup>
 				</Section>
@@ -2325,7 +2328,7 @@ export function ThemePicker() {
 					<FieldDescription className="wrap-anywhere">To add a VS Code color theme, put its .json file into {folder}. The choice is saved in pine, so all Pine apps that use this pine show it.</FieldDescription>
 				</FieldContent>
 				<Control>
-					{s.themes.length ? <Select items={items} value={s.theme} onValueChange={(v) => v && v !== s.theme && void s.setTheme(v)} disabled={!usable.length}>
+					{s.themesRead ? <Select items={items} value={s.theme} onValueChange={(v) => v && v !== s.theme && void s.setTheme(v)} disabled={!usable.length}>
 						<SelectTrigger id={id} className={CONTROL}>
 							<SelectValue />
 						</SelectTrigger>
@@ -2589,11 +2592,12 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 	const service = s.service.status === "ready" ? s.service : undefined;
 	const update = s.updatePhase;
 	// `pine` for a terminal: what the shell has, as the app's main process sees it.
-	const [command, setCommand] = useState<{ state: "none" | "here" | "other" | "unavailable"; why?: string; text: string }>();
+	// (null: the bridge failed to answer, and the field is left out.)
+	const [command, setCommand] = useState<{ state: "none" | "here" | "other" | "unavailable"; why?: string; text: string } | null>();
 	// Under a bridge with no local machine (`s.local`), what only this computer has is neither asked nor shown:
 	// its home folder, Keep running, Restart, the pine command, the browser build, the Electron version.
 	const local = s.local;
-	useEffect(() => void (local && bridge.command().then(setCommand)), [local]);
+	useEffect(() => void (local && bridge.command().then(setCommand, () => setCommand(null))), [local]);
 	// (Looked at again whenever this page is opened: the browser may have been fetched in a terminal.)
 	useEffect(() => void (local && store.checkBrowser()), [local]);
 	// (And the themes: a file may have been put into the folder by hand.)
@@ -2683,7 +2687,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 							<Switch id={`${field}-keep-running`} checked={s.prefs.keepRunning} onCheckedChange={(keepRunning) => void set({ keepRunning })} />
 						</Field>
 					) : null}
-					{local && !command ? <FieldSkeleton data-find="command" /> : null}
+					{local && command === undefined ? <FieldSkeleton data-find="command" /> : null}
 					{local && command && (command.state !== "unavailable" || command.why) ? (
 						<Field orientation="responsive" data-find="command">
 							<FieldContent>
@@ -2700,7 +2704,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 							) : null}
 						</Field>
 					) : null}
-					{local && s.browser === undefined && !s.browserFetching ? <FieldSkeleton data-setting="browser" /> : null}
+					{local && !s.browserChecked && !s.browserFetching ? <FieldSkeleton data-setting="browser" /> : null}
 					{local && (s.browser !== undefined || s.browserFetching) ? (
 						<Field orientation="responsive" data-setting="browser">
 							<FieldContent>

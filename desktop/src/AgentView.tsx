@@ -198,11 +198,11 @@ export function AgentView({ tab }: { tab: Tab }) {
 					}) : <div className={NONE}>No MCP servers.</div>}
 				</AgentSection>
 			}
-			{
+			{detail.data && memory === undefined ? null : (
 				<AgentSection title="What it remembers" {...state(detail)}>
 					{memory ? <Printed sm text={short(memory, 6000)} className="mx-3.5 w-auto" /> : <div className={NONE}>MEMORY.md is empty.</div>}
 				</AgentSection>
-			}
+			)}
 			{detail.data ? <div className={cn(NONE, "pb-4")}>The agent's workspace is {detail.data.workspace}; the Files view shows {tab.folder ? "the folder this conversation works in" : "it"}.</div> : null}
 		</div>
 		</ScrollArea>

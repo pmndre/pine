@@ -405,6 +405,7 @@ function ViewFrame({ id, sel, pick }: { id: string; sel: Sel; pick: (s: Sel) => 
 		let gone = false;
 		setCode(undefined);
 		setError(undefined);
+		setReady(false);
 		api.viewCode(id).then(
 			(r) => !gone && setCode("code" in r ? { code: r.code } : { problem: r.problem }),
 			(e) => !gone && setCode({ problem: e instanceof Error ? e.message : String(e) }),

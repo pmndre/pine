@@ -10,7 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { type Layout, usePanelRef } from "react-resizable-panels";
 import { Field } from "@/components/ui/field";
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { cn } from "cn";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -44,7 +44,7 @@ import { AgentColorPicker, AgentNameInput } from "@/components/agent-identity";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sidebar as SidebarRoot, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupAction, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuAction, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import { Sidebar as SidebarRoot, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupAction, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuAction, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Pulse } from "@/components/pulse";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -276,9 +276,22 @@ function Title({ agent, session }: { agent: string; session: string }) {
 
 type ConversationRowProps = { skeleton?: false; agent: string; c: Conv; depth?: number; inset?: number } | { skeleton: true; agent?: string; c?: Conv; depth?: number; inset?: number };
 
+/**
+ * A side-bar row's shape while it loads: an icon and a label, as the stock menu skeleton draws them, but with a set
+ * width (the stock one picks it at random, which a visual snapshot would see change at every run).
+ */
+function RowSkeleton({ width, className }: { width: string; className?: string }) {
+	return (
+		<div data-slot="row-skeleton" className={cn("flex h-8 items-center gap-2 rounded-md px-2", className)}>
+			<Skeleton className="size-4 rounded-md" />
+			<Skeleton className="h-4 max-w-(--skeleton-width) flex-1" style={{ "--skeleton-width": width } as CSSProperties} />
+		</div>
+	);
+}
+
 /** A conversation's row in the side bar; with `skeleton`, a row of its shape while the conversations load. */
 export function ConversationRow(props: ConversationRowProps) {
-	if (props.skeleton) return <SidebarMenuItem role="none"><SidebarMenuSkeleton showIcon className={INDENT[Math.min((props.depth ?? 0) + (props.inset ?? 0), INDENT.length - 1)]} /></SidebarMenuItem>;
+	if (props.skeleton) return <SidebarMenuItem role="none"><RowSkeleton width={(props.depth ?? 0) % 2 ? "60%" : "75%"} className={INDENT[Math.min((props.depth ?? 0) + (props.inset ?? 0), INDENT.length - 1)]} /></SidebarMenuItem>;
 	return <Row {...props} />;
 }
 
@@ -403,7 +416,7 @@ export function AgentGroup(props: { skeleton?: false; a: AgentInfo } | { skeleto
 	if (props.skeleton)
 		return (
 			<SidebarMenu data-slot="agent-group-skeleton">
-				<SidebarMenuItem><SidebarMenuSkeleton showIcon /></SidebarMenuItem>
+				<SidebarMenuItem><RowSkeleton width="50%" /></SidebarMenuItem>
 				<ConversationRow skeleton depth={1} />
 				<ConversationRow skeleton depth={1} />
 			</SidebarMenu>

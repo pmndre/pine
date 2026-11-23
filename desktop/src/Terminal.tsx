@@ -151,8 +151,8 @@ export function TerminalView({ tab }: { tab: Tab }) {
 				<EmptyView icon={SquareTerminalIcon} title="The terminal did not start">{state.error}</EmptyView>
 			) : (
 				<div className="relative flex min-h-0 flex-1 flex-col bg-background p-1.5" onClick={() => term.current?.focus()}>
-					<div ref={host} data-slot="terminal" className={cn("min-h-0 flex-1", !state.cwd && "invisible")} />
-					{/* xterm.js needs its host laid out from the start: the skeleton lies over it while the shell starts. */}
+					<div ref={host} data-slot="terminal" className={cn("min-h-0 flex-1", !state.cwd && "opacity-0")} />
+					{/* xterm.js needs its host laid out from the start, and focusable (opacity, not visibility): the skeleton lies over it while the shell starts. */}
 					{state.cwd ? null : <TerminalSkeleton className="absolute inset-0" />}
 					{state.ended !== undefined ? (
 						<div className="flex flex-none items-center justify-center gap-2 py-1.5 text-xs text-muted-foreground">
