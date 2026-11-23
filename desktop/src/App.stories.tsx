@@ -3,7 +3,7 @@ import { expect, fn, within } from "storybook/test";
 import { useEffect } from "react";
 import { SidebarFooter, SidebarMenu, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import type { AgentInfo, Conversation } from "./api.ts";
-import { Machines, Sidebar } from "./App.tsx";
+import { AgentGroup, ConversationRow, Machines, Sidebar } from "./App.tsx";
 import { store } from "./model.ts";
 
 // The foot of the side bar, open on its list of machines, without a daemon: the store is set as
@@ -31,8 +31,8 @@ const meta = {
 	parameters: { layout: "padded" },
 	// What a story sets on the store is put back after it: the next story starts from the store as it was.
 	beforeEach: () => {
-		const { local, service, prefs, connected, agents, conversations, groups, busy, folded } = store;
-		return () => void Object.assign(store, { local, service, prefs, connected, agents, conversations, groups, busy, folded });
+		const { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled } = store;
+		return () => void Object.assign(store, { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled });
 	},
 	// Opened, so that the snapshot shows the list of machines.
 	play: async ({ canvas, userEvent }) => await userEvent.click(canvas.getByRole("button", { name: /The pine the app uses/ })),
@@ -95,7 +95,9 @@ function Side({ conversations, working = [] }: { conversations: Record<string, C
 	store.service = { status: "ready", mode: "started here", started: true, home: "~/.pine", version: "0.23.0" } as typeof store.service;
 	store.connected = true;
 	store.agents = AGENTS;
-	store.conversations = new Map(Object.entries(conversations));
+	// Every agent's conversations are loaded, and what was said: no skeleton here.
+	store.conversations = new Map(AGENTS.map((a) => [a.id, conversations[a.id] ?? []]));
+	store.titled = true;
 	store.groups = new Map([["books", { order: "recent", groups: conversations.books?.some((c) => c.group) ? [{ name: "Taxes", conversations: 2 }] : [] }]]);
 	store.busy = new Map(working.map((key) => [key, new Set([1])]));
 	store.folded = new Set();
@@ -141,4 +143,28 @@ export const SomeWithSeveral: Story = {
 		await expect(document.querySelectorAll("[data-slot=collapsible]:has(> ul [data-slot=agent-label])")).toHaveLength(2);
 		await expect(document.querySelectorAll("[data-slot=agent-conversation]")).toHaveLength(1);
 	},
+};
+
+/** A conversation's row in the side bar while the conversations load. */
+export const ConversationRowSkeleton: Story = {
+	args: { local: true },
+	play: async () => {},
+	render: () => (
+		<SidebarProvider className="min-h-0 w-64">
+			<SidebarMenu>
+				<ConversationRow skeleton />
+			</SidebarMenu>
+		</SidebarProvider>
+	),
+};
+
+/** An agent's line and its conversations in the side bar while they load. */
+export const AgentGroupSkeleton: Story = {
+	args: { local: true },
+	play: async () => {},
+	render: () => (
+		<SidebarProvider className="min-h-0 w-64">
+			<AgentGroup skeleton />
+		</SidebarProvider>
+	),
 };

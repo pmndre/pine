@@ -14,6 +14,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Sidebar as SidebarRoot, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider } from "@/components/ui/sidebar";
 import { Pulse } from "@/components/pulse";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "cn";
@@ -143,6 +144,64 @@ function Choose<T extends string>({ id, items, value, onChange }: { id: string; 
 
 // ---- general ----------------------------------------------------------------------------------------
 
+type SettingsItemProps = Omit<ComponentProps<typeof Item>, "title" | "variant" | "size"> &
+	(
+		| { skeleton?: false; title: ReactNode; description?: ReactNode | ReactNode[]; media?: ReactNode; actions?: ReactNode }
+		| { skeleton: true; title?: undefined; description?: undefined; media?: undefined; actions?: undefined }
+	);
+
+/**
+ * The outline row the Settings lists are made of: a title (with its badges), a line or a few below it,
+ * and actions at its end. With `skeleton`, bars of the same shape while its list loads.
+ */
+export function SettingsItem({ skeleton, title, description, media, actions, children, ...rest }: SettingsItemProps) {
+	if (skeleton)
+		return (
+			<Item data-slot="settings-item" variant="outline" size="sm" {...rest}>
+				<ItemContent className="min-w-0 gap-2">
+					<Skeleton className="h-4 w-32" />
+					<Skeleton className="h-3.5 w-3/4" />
+				</ItemContent>
+				<ItemActions><Skeleton className="h-8 w-20" /></ItemActions>
+			</Item>
+		);
+	const lines = Array.isArray(description) ? description : description === undefined ? [] : [description];
+	return (
+		<Item data-slot="settings-item" variant="outline" size="sm" {...rest}>
+			{media ? <ItemMedia>{media}</ItemMedia> : null}
+			<ItemContent className="min-w-0">
+				<ItemTitle>{title}</ItemTitle>
+				{lines.map((line, i) => <ItemDescription key={i}>{line}</ItemDescription>)}
+				{children}
+			</ItemContent>
+			{actions ? <ItemActions>{actions}</ItemActions> : null}
+		</Item>
+	);
+}
+
+/** A group of General's settings while they load: its title and a few rows of bars. */
+function SettingsGroupSkeleton() {
+	return (
+		<section data-slot="settings-group-skeleton" className="flex flex-col gap-3">
+			<div className="flex flex-col gap-1.5">
+				<Skeleton className="h-5 w-40" />
+				<Skeleton className="h-4 w-2/3" />
+			</div>
+			<FieldGroup>
+				{[0, 1, 2].map((i) => (
+					<div key={i} className="flex items-center justify-between gap-4">
+						<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+							<Skeleton className="h-4 w-36" />
+							<Skeleton className="h-3.5 w-3/4" />
+						</div>
+						<Skeleton className="h-8 w-40" />
+					</div>
+				))}
+			</FieldGroup>
+		</section>
+	);
+}
+
 function SettingRow({ s, models, reload }: { s: Setting; models: string[]; reload: () => void }) {
 	const [draft, setDraft] = useState<string>();
 	const id = useId();
@@ -243,6 +302,7 @@ function General() {
 					</div>
 				</Section>
 			) : null}
+			{!overview.data && !overview.error ? <div data-slot="settings-overview-skeleton"><SettingsItem skeleton /></div> : null}
 			{overview.error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{overview.error}</AlertDescription></Alert> : null}
 			{settings.data ? (
 				GROUPS.map((g) => (
@@ -255,7 +315,7 @@ function General() {
 			) : settings.error ? (
 				<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{settings.error}</AlertDescription></Alert>
 			) : (
-				<Pulse label="Loading" className="m-auto" />
+				GROUPS.map((g) => <SettingsGroupSkeleton key={g.prefix} />)
 			)}
 			<p className="text-muted-foreground">Pine {s.versions.app}{s.local ? ` · Electron ${s.versions.electron}` : ""}</p>
 		</Page>

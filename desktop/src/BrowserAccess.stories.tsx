@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 import type { AccessState } from "./bridge.ts";
-import { BrowserAccessView } from "./BrowserAccess.tsx";
+import { BrowserAccessFailed, BrowserAccessSkeleton as AccessSkeleton, BrowserAccessView } from "./BrowserAccess.tsx";
 
 // Settings > Browser access drawn from a state, as the main process tells it: no bridge, the calls
 // are stand-ins, and the clock is fixed so that the time left and "last connected" stay the same.
@@ -134,4 +134,29 @@ export const RelayRefused: Story = {
 /** A device used the code: its name and the four digits its screen shows, with Allow and Refuse. */
 export const PairingRequest: Story = {
 	args: { state: { ...waiting, request: { name: "Chrome on Android", code: "4821" } }, opened: { link: LINK, expires: new Date(NOW + 60_000).toISOString(), asked: true } },
+};
+
+/** While the state loads: its three sections as skeleton. */
+export const BrowserAccessSkeleton: Story = {
+	render: () => (
+		<div className="@container/settings mx-auto flex max-w-3xl flex-col gap-6 px-4 pt-6 pb-16">
+			<AccessSkeleton />
+		</div>
+	),
+	play: async ({ canvasElement }) => {
+		await expect(canvasElement.querySelectorAll("[data-slot=access-skeleton]")).toHaveLength(3);
+		await expect(canvasElement.querySelector("[data-slot=skeleton]")).not.toBeNull();
+	},
+};
+
+/** The state could not be read: the error is said, not a blank page. */
+export const BrowserAccessLoadError: Story = {
+	render: () => (
+		<div className="@container/settings mx-auto flex max-w-3xl flex-col gap-6 px-4 pt-6 pb-16">
+			<BrowserAccessFailed error="The main process did not answer." />
+		</div>
+	),
+	play: async ({ canvasElement }) => {
+		await expect(within(canvasElement).getByText(/did not answer/)).toBeInTheDocument();
+	},
 };

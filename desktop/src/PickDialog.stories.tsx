@@ -23,6 +23,9 @@ export const PickDialog: Story = {
 	},
 };
 
+/** Opened at once while what it lists is asked for: skeleton lines. */
+export const PickDialogLoading: Story = { args: { p: { title: "Model for main", loading: true, items: [], done: () => {} } } };
+
 /** A long list gets a field that narrows it. */
 export const PickDialogTyped: Story = {
 	args: { p: { title: "New conversation with", done: () => {}, items: ["main", "scout", "books", "home", "mail", "notes", "news", "garden"].map((id) => ({ value: id, label: id, about: `the agent ${id}` })) } },
