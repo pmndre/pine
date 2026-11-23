@@ -94,3 +94,5 @@ export function choiceView(doc: Document): ChoiceView {
 		},
 	};
 }
+
+// Throwaway: checks a pull request's preview from end to end. Never merged.
