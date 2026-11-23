@@ -58,7 +58,12 @@ const tag = `v${version}`;
 if (process.env.GITHUB_ACTIONS) {
 	// A release's notes say what changed since the release before it, not since the last preview.
 	const since = !preview && published && attempt("git", ["rev-parse", "--verify", "--quiet", `refs/tags/v${published}`]) ? ["--notes-start-tag", `v${published}`] : [];
-	execFileSync("gh", ["release", "create", tag, "--target", process.env.GITHUB_SHA, "--title", tag, "--generate-notes", ...since, ...(preview ? ["--prerelease"] : [])], { cwd: root, stdio: "inherit" });
+	// A release's notes begin with where iPhone and iPad owners install it, when the repository
+	// variable TESTFLIGHT_LINK names TestFlight's public link. A preview reaches the internal group only.
+	const link = process.env.TESTFLIGHT_LINK?.trim();
+	const testflight = !preview && link && /^https:\/\/testflight\.apple\.com\/join\/[A-Za-z0-9]+$/.test(link) ? ["--notes", `On iPhone and iPad, install Pine with TestFlight: ${link}\n`] : [];
+	if (!preview && link && testflight.length === 0) console.log(`TESTFLIGHT_LINK is not a TestFlight public link (https://testflight.apple.com/join/<code>); the notes leave it out.`);
+	execFileSync("gh", ["release", "create", tag, "--target", process.env.GITHUB_SHA, "--title", tag, ...testflight, "--generate-notes", ...since, ...(preview ? ["--prerelease"] : [])], { cwd: root, stdio: "inherit" });
 	// For the jobs that follow in the workflow: the app is built for a release, with its version.
 	if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\nchannel=${preview ? "next" : "latest"}\n`);
 } else {
