@@ -13,10 +13,12 @@ import { Button } from "@/components/ui/button";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyView } from "@/components/empty-view";
+import { Skeleton } from "@/components/ui/skeleton";
 import { bridge } from "./bridge.ts";
 import { SUB } from "./CodePanel.tsx";
 import { store, type Tab, useModel } from "./model.ts";
 import { errText, tilde } from "./text.ts";
+import { cn } from "@/lib/utils";
 
 /** A color of the page's tokens, as xterm.js takes it: the browser says what any CSS color is in sRGB. */
 function resolved(css: string, fallback: string): string {
@@ -47,6 +49,17 @@ function theme(): ITheme {
 		cursor: token("--term-cursor", token("--code-cursor", "#e4f0fb")),
 		selectionBackground: token("--term-select", "rgba(113, 124, 180, 0.3)"),
 	};
+}
+
+/** A terminal while its shell starts: a few short lines, from stock Skeleton blocks. */
+export function TerminalSkeleton({ className }: { className?: string }) {
+	return (
+		<div data-slot="terminal-skeleton" className={cn("flex flex-col gap-2 bg-background p-3", className)}>
+			<Skeleton className="h-3.5 w-1/2" />
+			<Skeleton className="h-3.5 w-1/3" />
+			<Skeleton className="h-3.5 w-2/5" />
+		</div>
+	);
 }
 
 /** The terminal of the conversation in `tab`. */
@@ -137,8 +150,10 @@ export function TerminalView({ tab }: { tab: Tab }) {
 			{state.error ? (
 				<EmptyView icon={SquareTerminalIcon} title="The terminal did not start">{state.error}</EmptyView>
 			) : (
-				<div className="flex min-h-0 flex-1 flex-col bg-background p-1.5" onClick={() => term.current?.focus()}>
-					<div ref={host} data-slot="terminal" className="min-h-0 flex-1" />
+				<div className="relative flex min-h-0 flex-1 flex-col bg-background p-1.5" onClick={() => term.current?.focus()}>
+					<div ref={host} data-slot="terminal" className={cn("min-h-0 flex-1", !state.cwd && "invisible")} />
+					{/* xterm.js needs its host laid out from the start: the skeleton lies over it while the shell starts. */}
+					{state.cwd ? null : <TerminalSkeleton className="absolute inset-0" />}
 					{state.ended !== undefined ? (
 						<div className="flex flex-none items-center justify-center gap-2 py-1.5 text-xs text-muted-foreground">
 							The shell ended.

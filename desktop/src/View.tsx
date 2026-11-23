@@ -21,6 +21,7 @@ import { AgentAvatar } from "@/components/agent-avatar";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { Pulse } from "@/components/pulse";
 import { SideSheet } from "@/components/side-sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { ViewHappening, ViewTarget } from "../../src/view-kit.ts";
 import { api } from "./api.ts";
@@ -103,6 +104,10 @@ function useNow(ms: number): number {
 }
 
 let seededFor: string | undefined;
+/** The pine whose recent past the world holds: until it is `seededFor`, the feed is loading, not empty. */
+let seededDone: string | undefined;
+/** Whether the world has been seeded for the pine it shows. */
+export const isSeeded = () => seededDone !== undefined && seededDone === seededFor;
 
 /** Fetches what the events do not repeat: recent tasks, open conversations, sources, open questions. The rooms again every few seconds. */
 function useSeed(): void {
@@ -132,6 +137,8 @@ function useSeed(): void {
 			world.seed(tasks as any);
 			world.setSources(sources);
 			world.setAsks(asks);
+			seededDone = which;
+			world.touch();
 		})();
 		// The mode each conversation works in and whether it read outside content come from the daemon's status, which
 		// no event repeats: asked as soon as new work starts, often while work runs, now and then while all is quiet.
@@ -476,12 +483,27 @@ function ViewFrame({ id, sel, pick }: { id: string; sel: Sel; pick: (s: Sel) => 
 	return (
 		<>
 			{code ? <iframe ref={frame} src="view.html" sandbox="allow-scripts" title={`The view ${id}`} data-slot="view-frame" data-ready={ready || undefined} className="absolute inset-0 size-full border-0" /> : null}
+			{ready || error ? null : <ViewFrameSkeleton className="absolute inset-0" />}
 			{error ? (
 				<div data-slot="view-error" className="absolute inset-x-2 bottom-2 rounded-md border border-destructive/40 bg-background/95 px-2 py-1.5 text-xs text-destructive">
 					The view {id} stopped: {error}
 				</div>
 			) : null}
 		</>
+	);
+}
+
+/** A view while its code loads and until it says it is ready: a few blocks, from stock Skeleton. */
+export function ViewFrameSkeleton({ className }: { className?: string }) {
+	return (
+		<div data-slot="view-frame-skeleton" className={cn("grid grid-cols-3 content-start gap-3 bg-background p-4", className)}>
+			<Skeleton className="col-span-3 h-6 w-1/3" />
+			<Skeleton className="h-24" />
+			<Skeleton className="h-24" />
+			<Skeleton className="h-24" />
+			<Skeleton className="col-span-2 h-16" />
+			<Skeleton className="h-16" />
+		</div>
 	);
 }
 
@@ -520,7 +542,7 @@ function Inspector({ sel, pick }: { sel: Sel; pick: (s: Sel) => void }) {
 	return (
 		<ScrollArea data-slot="view-inspector" className="h-44 flex-none sm:h-52">
 			<div className="flex flex-col gap-1.5 p-3 text-xs">
-				{sel?.k === "board" ? <BoardDetail key={`${sel.id}:${sel.task ?? ""}`} id={sel.id} task={sel.task} pick={pick} /> : sel?.k === "job" && w.jobs.get(sel.id) ? <JobDetail j={w.jobs.get(sel.id)!} now={now} pick={pick} /> : sel?.k === "agent" && w.places.get(sel.id) ? <AgentDetail id={sel.id} now={now} pick={pick} /> : <Feed now={now} pick={pick} />}
+				{sel?.k === "board" ? <BoardDetail key={`${sel.id}:${sel.task ?? ""}`} id={sel.id} task={sel.task} pick={pick} /> : sel?.k === "job" && w.jobs.get(sel.id) ? <JobDetail j={w.jobs.get(sel.id)!} now={now} pick={pick} /> : sel?.k === "agent" && w.places.get(sel.id) ? (isSeeded() ? <AgentDetail id={sel.id} now={now} pick={pick} /> : <AgentDetail skeleton />) : <Feed now={now} pick={pick} />}
 			</div>
 		</ScrollArea>
 	);
@@ -535,7 +557,9 @@ function Feed({ now, pick }: { now: number; pick: (s: Sel) => void }) {
 				<span className="font-medium text-muted-foreground">What happened</span>
 				<span className="min-w-0 flex-1 truncate text-end text-faint">click anything to look closer · double-click to open it</span>
 			</div>
-			{lines.length ? (
+			{!lines.length && !isSeeded() ? (
+				[0, 1, 2].map((i) => <JobLine key={i} skeleton />)
+			) : lines.length ? (
 				lines.map((l, i) => (
 					<button key={`${l.at}:${i}`} type="button" disabled={l.job === undefined || !w.jobs.has(l.job)} onClick={() => l.job !== undefined && pick({ k: "job", id: l.job })} className="flex items-baseline gap-2 rounded-sm text-start hover:enabled:bg-accent">
 						<span className="w-8 flex-none text-end text-faint tabular-nums">{ago(now + w.skew - l.at)}</span>
@@ -549,7 +573,28 @@ function Feed({ now, pick }: { now: number; pick: (s: Sel) => void }) {
 	);
 }
 
-function AgentDetail({ id, now, pick }: { id: string; now: number; pick: (s: Sel) => void }) {
+/** What an agent has and does; with `skeleton`, its shape while the world is seeded. */
+export function AgentDetail(props: { id: string; now: number; pick: (s: Sel) => void; skeleton?: false } | { id?: undefined; now?: undefined; pick?: undefined; skeleton: true }) {
+	if (props.skeleton) return <AgentDetailSkeleton />;
+	return <AgentDetailLive {...props} />;
+}
+
+function AgentDetailSkeleton() {
+	return (
+		<div data-slot="agent-detail-skeleton" className="flex flex-col gap-1.5">
+			<div className="flex items-center gap-2">
+				<AgentAvatar skeleton size="sm" />
+				<Skeleton className="h-4 w-24" />
+			</div>
+			<Skeleton className="h-3.5 w-2/3" />
+			<Skeleton className="mt-1 h-3.5 w-16" />
+			<JobLine skeleton />
+			<JobLine skeleton />
+		</div>
+	);
+}
+
+function AgentDetailLive({ id, now, pick }: { id: string; now: number; pick: (s: Sel) => void }) {
 	const w = useWorld();
 	const a = w.places.get(id)!;
 	const working = w.working(id);
@@ -584,7 +629,20 @@ function AgentDetail({ id, now, pick }: { id: string; now: number; pick: (s: Sel
 	);
 }
 
-function JobLine({ j, now, pick }: { j: Job; now: number; pick: (s: Sel) => void }) {
+/** One piece of work on a line; with `skeleton`, a line's shape while the world is seeded. */
+export function JobLine(props: { j: Job; now: number; pick: (s: Sel) => void; skeleton?: false } | { j?: undefined; now?: undefined; pick?: undefined; skeleton: true }) {
+	if (props.skeleton)
+		return (
+			<div data-slot="job-line-skeleton" className="flex items-center gap-1.5 py-0.5">
+				<Skeleton className="size-3.5 flex-none rounded-sm" />
+				<Skeleton className="h-3.5 flex-1" />
+				<Skeleton className="h-3.5 w-12 flex-none" />
+			</div>
+		);
+	return <JobLineLive {...props} />;
+}
+
+function JobLineLive({ j, now, pick }: { j: Job; now: number; pick: (s: Sel) => void }) {
 	const w = useWorld();
 	const end = j.finished ?? now + w.skew;
 	return (
