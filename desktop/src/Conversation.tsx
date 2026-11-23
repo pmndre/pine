@@ -806,14 +806,14 @@ function ContextUsage({ tab, percent }: { tab: Tab; percent: number }) {
  * What lies above a conversation or a task, oldest first: the conversations a branch was made from, one after another; for
  * a task, the conversation it was done for and the task that started it. Each opens with a click.
  */
-function above(tab: Tab): Array<{ key: string; label: string; title: string; open: () => void }> {
+function above(tab: Tab): Array<{ key: string; label: string; known: boolean; title: string; open: () => void }> {
 	const list = store.conversations.get(tab.agent) ?? [];
-	const conv = (session: string) => ({ key: `c:${session}`, label: store.titleOf(tab.agent, session), title: `Open the conversation ${session}`, open: () => void store.openTab(tab.agent, session) });
+	const conv = (session: string) => ({ key: `c:${session}`, label: store.titleOf(tab.agent, session), known: store.titleKnown(tab.agent, session), title: `Open the conversation ${session}`, open: () => void store.openTab(tab.agent, session) });
 	if (tab.kind === "task") {
 		const out = list.some((c) => c.session === tab.session) ? [conv(tab.session)] : [];
 		if (tab.parent !== undefined) {
 			const parent = tab.parent;
-			out.push({ key: `t:${parent}`, label: `task #${parent}`, title: `Open task #${parent}, which started this one`, open: () => void store.openTask(parent) });
+			out.push({ key: `t:${parent}`, label: `task #${parent}`, known: true, title: `Open task #${parent}, which started this one`, open: () => void store.openTask(parent) });
 		}
 		return out;
 	}
@@ -853,15 +853,15 @@ function ConvHead({ tab }: { tab: Tab }) {
 					{above(tab).map((c) => (
 						<Fragment key={c.key}>
 							<BreadcrumbItem className="min-w-0">
-								<BreadcrumbLink render={<button type="button" />} className="truncate" title={c.title} onClick={c.open}>{c.label}</BreadcrumbLink>
+								<BreadcrumbLink render={<button type="button" />} className="truncate" title={c.title} onClick={c.open}>{c.known ? c.label : <Skeleton data-slot="title-skeleton" className="inline-block h-3 w-24 align-middle" />}</BreadcrumbLink>
 							</BreadcrumbItem>
 							<BreadcrumbSeparator />
 						</Fragment>
 					))}
 					<BreadcrumbItem className="min-w-0">
-						{chat && !tab.loaded && store.titleOf(tab.agent, tab.session) === "new conversation" ? (
-							// Not known before the conversation loads: a bar in its place, at the line's height.
-							<Skeleton data-slot="conversation-title-skeleton" className="h-3 w-28" />
+						{chat && !store.titleKnown(tab.agent, tab.session) ? (
+							// Not known yet: a bar in its place, at the line's height, as in the sidebar and the tabs.
+							<Skeleton data-slot="title-skeleton" className="h-3 w-28" />
 						) : (
 							<BreadcrumbPage className="truncate" title={chat ? `conversation ${tab.session}` : undefined}>{chat ? store.titleOf(tab.agent, tab.session) : `task #${tab.task}`}</BreadcrumbPage>
 						)}

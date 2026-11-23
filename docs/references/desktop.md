@@ -1168,10 +1168,16 @@ from "loading".
   `SidebarMenuSkeleton` for a side bar row), at its real size, and reads none of its data, whose
   props are then optional. A caller writes `<AgentAvatar skeleton />`, not placeholder blocks by
   hand. Never on a file of `components/ui/`.
+- A view that loads its own data (Browser, Terminal, BrowserAccess, the view's frame, the
+  conversation body) draws its own exported `<View>Skeleton` (`BrowserSkeleton`,
+  `ViewFrameSkeleton`, `ConversationSkeleton`) in place of its body; the `skeleton` prop is for the
+  compositions a caller places.
 - A skeleton shows on the first load only, while `useLoad` has neither data nor an error. A reload
   keeps what is shown, and there is no delay before a skeleton appears.
 - Loading is told apart from empty: an empty state shows only once the data is there.
-- Each composition's skeleton is a story of its own beside it (`AgentAvatarSkeleton`).
+- Each composition's or view's skeleton is a story of its own beside it, `<Name>Skeleton`
+  (`AgentAvatarSkeleton`, `BrowserSkeleton`); a dialog that loads its list inside its own frame
+  names that state `<Name>Loading` (`PickDialogLoading`, `PaletteLoading`).
 - The app test that forbids an animation running smoothly forever while agents work lets
   `[data-slot=skeleton]` through, and only it: a skeleton lasts only while content first loads.
 

@@ -1,20 +1,19 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
-import { AgentDetail, JobLine, ViewFrameSkeleton } from "./View.tsx";
+import { AgentDetail, JobLine, ViewFrameSkeleton as Frame } from "./View.tsx";
 
 // The view's parts while the world is seeded and the view's code loads: no daemon, no frame.
 const meta = {
-	component: ViewFrameSkeleton,
-} satisfies Meta<typeof ViewFrameSkeleton>;
+	component: Frame,
+} satisfies Meta<typeof Frame>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** The view's frame until the view says it is ready. */
-export const ViewFrameSkeletonStory: Story = {
-	name: "ViewFrameSkeleton",
+export const ViewFrameSkeleton: Story = {
 	render: () => (
 		<div className="relative h-80">
-			<ViewFrameSkeleton className="absolute inset-0" />
+			<Frame className="absolute inset-0" />
 		</div>
 	),
 	play: async ({ canvasElement }) => {
