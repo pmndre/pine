@@ -179,6 +179,29 @@ export function SettingsItem({ skeleton, title, description, media, actions, chi
 	);
 }
 
+/** A select whose options are still loading: its place, pending, rather than a partial list. */
+function SelectPending({ id }: { id?: string }) {
+	return <Skeleton id={id} data-pending="" className={cn(CONTROL, "h-8")} />;
+}
+
+/** A field of Settings whose value comes late: its title and line as bars, holding its place. */
+function FieldSkeleton(props: ComponentProps<"div">) {
+	return (
+		<Field orientation="responsive" {...props}>
+			<FieldContent className="min-w-0 gap-2">
+				<Skeleton className="h-4 w-36" />
+				<Skeleton className="h-3.5 w-3/4" />
+			</FieldContent>
+			<Skeleton className="h-8 w-24" />
+		</Field>
+	);
+}
+
+/** A Settings list on its first load: a few skeleton rows in place of its items. */
+function SettingsItemsSkeleton({ count = 3 }: { count?: number }) {
+	return Array.from({ length: count }, (_, i) => <SettingsItem key={i} skeleton />);
+}
+
 /** A group of General's settings while they load: its title and a few rows of bars. */
 function SettingsGroupSkeleton() {
 	return (
@@ -202,7 +225,7 @@ function SettingsGroupSkeleton() {
 	);
 }
 
-function SettingRow({ s, models, reload }: { s: Setting; models: string[]; reload: () => void }) {
+function SettingRow({ s, models, reload }: { s: Setting; models?: string[]; reload: () => void }) {
 	const [draft, setDraft] = useState<string>();
 	const id = useId();
 	const name = s.title ?? s.key;
@@ -221,10 +244,11 @@ function SettingRow({ s, models, reload }: { s: Setting; models: string[]; reloa
 	const unset = /^not set/.test(s.now) || s.now === "none";
 	let control: ReactNode;
 	if (k === "boolean") control = <Switch id={id} checked={s.now === "true"} onCheckedChange={(on) => void set(on)} />;
+	else if (k === "model" && !models) control = <SelectPending id={id} />;
 	else if (k === "model" || (typeof k === "object" && "one" in k)) {
 		const items =
 			k === "model"
-				? [{ value: "", label: unset ? s.now.replace(/^not set \((.+)\)$/, "$1") : "pine's default" },...(!unset && !models.includes(s.now) ? [s.now] : []).concat(models).map((m) => ({ value: m, label: m }))]
+				? [{ value: "", label: unset ? s.now.replace(/^not set \((.+)\)$/, "$1") : "pine's default" },...(!unset && !models!.includes(s.now) ? [s.now] : []).concat(models!).map((m) => ({ value: m, label: m }))]
 				: [...(k.one.includes(s.now) ? [] : [{ value: "", label: s.now }]), ...k.one.map((v) => ({ value: v, label: v }))];
 		const value = k === "model" ? (unset ? "" : s.now) : k.one.includes(s.now) ? s.now : "";
 		control = (
@@ -308,7 +332,7 @@ function General() {
 				GROUPS.map((g) => (
 					<Section key={g.prefix} title={g.title} about={g.about}>
 						<FieldGroup>
-							{settings.data!.filter((x) => x.key.startsWith(g.prefix)).map((x) => <SettingRow key={x.key} s={x} models={models.data ?? []} reload={settings.reload} />)}
+							{settings.data!.filter((x) => x.key.startsWith(g.prefix)).map((x) => <SettingRow key={x.key} s={x} models={models.data ?? (models.error ? [] : undefined)} reload={settings.reload} />)}
 						</FieldGroup>
 					</Section>
 				))
@@ -408,6 +432,34 @@ function AgentHeading({ id, color }: { id: string; color?: string }) {
 	);
 }
 
+/** An agent's page on its first load: its heading, a group of fields and the files' editor, as bars. */
+function AgentPageSkeleton() {
+	return (
+		<div data-slot="agent-page-skeleton" className="flex flex-col gap-6">
+			<div className="flex items-center gap-3">
+				<Skeleton className="size-10 rounded-full" />
+				<Skeleton className="h-6 w-40" />
+			</div>
+			<SettingsGroupSkeleton />
+			<FilesSkeleton />
+		</div>
+	);
+}
+
+/** A set of file tabs over an editor, on its first load. */
+function FilesSkeleton() {
+	return (
+		<div data-slot="files-skeleton" className="flex flex-col gap-2">
+			<div className="flex gap-2">
+				<Skeleton className="h-8 w-28" />
+				<Skeleton className="h-8 w-24" />
+				<Skeleton className="h-8 w-24" />
+			</div>
+			<Skeleton className="h-72 w-full" />
+		</div>
+	);
+}
+
 function AgentPage({ id, back }: { id: string; back: () => void }) {
 	const detail = useLoad(() => api.agentDetail(id), [id]);
 	const models = useLoad(() => api.models());
@@ -421,7 +473,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 	if (!d)
 		return (
 			<Page title={id} back={{ label: "Agents", onClick: back }}>
-				{detail.error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{detail.error}</AlertDescription></Alert> : <Pulse label="Loading" className="m-auto" />}
+				{detail.error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{detail.error}</AlertDescription></Alert> : <AgentPageSkeleton />}
 			</Page>
 		);
 	const now = <K extends keyof AgentDetail>(key: K): AgentDetail[K] => (key in change ? (change[key as string] as AgentDetail[K]) : d[key]);
@@ -497,7 +549,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 							<FieldLabel htmlFor={`${field}-model`}>Model</FieldLabel>
 							<FieldDescription>The model this agent thinks with.</FieldDescription>
 						</FieldContent>
-						{select(`${field}-model`, modelItems, (change.model as string) ?? d.model ?? "", (v) => put("model", v || "default"))}
+						{models.data || models.error ? select(`${field}-model`, modelItems, (change.model as string) ?? d.model ?? "", (v) => put("model", v || "default")) : <SelectPending id={`${field}-model`} />}
 					</Field>
 					<Field orientation="responsive" data-find="agent-reasoning">
 						<FieldContent className="min-w-0">
@@ -713,7 +765,8 @@ export function NewAgent({ close, made }: { close: () => void; made: (id: string
 						</Field>
 						<Field>
 							<FieldLabel htmlFor={`${field}-model`}>Model</FieldLabel>
-							<Select items={modelItems} value={f.model} onValueChange={(model) => setF({ ...f, model: model ?? "" })}>
+							{models.data || models.error ? (
+								<Select items={modelItems} value={f.model} onValueChange={(model) => setF({ ...f, model: model ?? "" })}>
 								<SelectTrigger id={`${field}-model`}>
 									<SelectValue />
 								</SelectTrigger>
@@ -727,6 +780,7 @@ export function NewAgent({ close, made }: { close: () => void; made: (id: string
 									</SelectGroup>
 								</SelectContent>
 							</Select>
+							) : <SelectPending id={`${field}-model`} />}
 						</Field>
 					</FieldGroup>
 				</ScrollArea>
@@ -1080,7 +1134,11 @@ function Models() {
 				<ModelNotice key={a.id} agent={a.id} model={a.model} problem={a.modelProblem!} />
 			))}
 
-			{anyModel ? (
+			{fallback.loading && fallback.data === undefined && !fallback.error ? (
+				<Section title="Default model">
+					<ItemGroup><SettingsItemsSkeleton count={1} /></ItemGroup>
+				</Section>
+			) : anyModel ? (
 				<Section title="Default model">
 					<FieldGroup>
 						<Field orientation="responsive" data-setting="fallback-model">
@@ -1109,7 +1167,7 @@ function Models() {
 					) : providers.error ? (
 						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{providers.error}</AlertDescription></Alert>
 					) : (
-						<Pulse label="Loading" className="m-auto" />
+						<SettingsItemsSkeleton />
 					)}
 				</ItemGroup>
 				{providers.data && !q && more > 0 ? <p className="text-muted-foreground">{plural(more, "more provider")} with an API key or an account. Search to find one.</p> : null}
@@ -1134,7 +1192,9 @@ function Models() {
 					</div>
 				) : servers.error ? (
 					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{servers.error}</AlertDescription></Alert>
-				) : null}
+				) : servers.data ? null : (
+					<ItemGroup><SettingsItemsSkeleton count={1} /></ItemGroup>
+				)}
 			</Section>
 		</Page>
 	);
@@ -1258,15 +1318,15 @@ function Mcp() {
 					{servers.data ? (
 						servers.data.length ? (
 							servers.data.map((x) => {
-								const state = !x.enabled ? "turned off" : (states.data?.[x.name] ?? (states.loading ? "…" : x.remote ? "unknown" : "local"));
+								const state = !x.enabled ? "turned off" : (states.data?.[x.name] ?? (states.loading ? undefined : x.remote ? "unknown" : "local"));
 								const agent = x.scope === "global" ? undefined : x.scope;
-								const tone = /connected|ok|local|authenticated/i.test(state) ? "good" : /needs|error|fail|unauth/i.test(state) ? "warn" : undefined;
+								const tone = state === undefined ? undefined : /connected|ok|local|authenticated/i.test(state) ? "good" : /needs|error|fail|unauth/i.test(state) ? "warn" : undefined;
 								return (
 									<Item key={`${x.scope}:${x.name}`} variant="outline" size="sm" data-find={`mcp:${x.scope}:${x.name}`}>
 										<ItemContent className="min-w-0">
 											<ItemTitle>
 												{x.name}
-												<Badge variant={tone === "good" ? "default" : tone === "warn" ? "outline" : "secondary"}>{state}</Badge>
+												{state === undefined ? <Skeleton className="h-5 w-16 rounded-full" /> : <Badge variant={tone === "good" ? "default" : tone === "warn" ? "outline" : "secondary"}>{state}</Badge>}
 												<Badge variant="secondary" className="h-auto max-w-full whitespace-normal">{x.scope === "global" ? "all agents" : x.session ? `${x.scope}, one conversation (${x.session})` : x.scope}</Badge>
 												{x.taints ? <Badge variant="outline">brings in outside content</Badge> : null}
 												{x.approve !== "never" ? <Badge variant="secondary">asks first: {x.approve}</Badge> : null}
@@ -1297,7 +1357,7 @@ function Mcp() {
 					) : servers.error ? (
 						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{servers.error}</AlertDescription></Alert>
 					) : (
-						<Pulse label="Loading" className="m-auto" />
+						<SettingsItemsSkeleton />
 					)}
 				</ItemGroup>
 				{out ? (
@@ -1414,7 +1474,7 @@ function Skills() {
 				) : skills.error ? (
 					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{skills.error}</AlertDescription></Alert>
 				) : (
-					<Pulse label="Loading" className="m-auto" />
+					<SettingsItemsSkeleton />
 				)}
 			</ItemGroup>
 		</Page>
@@ -1722,7 +1782,7 @@ function Sources() {
 				) : sources.error ? (
 					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{sources.error}</AlertDescription></Alert>
 				) : (
-					<Pulse label="Loading" className="m-auto" />
+					<SettingsItemsSkeleton />
 				)}
 			</ItemGroup>
 		</Section>
@@ -1907,7 +1967,7 @@ export function Schedules() {
 				) : list.error ? (
 					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
 				) : (
-					<Pulse label="Loading" className="m-auto" />
+					<SettingsItemsSkeleton />
 				)}
 			</ItemGroup>
 		</Section>
@@ -2041,7 +2101,8 @@ export function NewRoute({ made, does: first = "wake" }: { made: () => void; doe
 									</Field>
 									<Field>
 										<FieldLabel htmlFor={`${field}-model`}>Model</FieldLabel>
-										<Select items={modelItems} value={f.call_model} onValueChange={(m) => setF({ ...f, call_model: m ?? "" })}>
+										{models.data || models.error ? (
+											<Select items={modelItems} value={f.call_model} onValueChange={(m) => setF({ ...f, call_model: m ?? "" })}>
 											<SelectTrigger id={`${field}-model`}>
 												<SelectValue />
 											</SelectTrigger>
@@ -2053,6 +2114,7 @@ export function NewRoute({ made, does: first = "wake" }: { made: () => void; doe
 												</SelectGroup>
 											</SelectContent>
 										</Select>
+							) : <SelectPending id={`${field}-model`} />}
 									</Field>
 									<Field>
 										<FieldLabel htmlFor={`${field}-answer`}>Publish the answer as</FieldLabel>
@@ -2133,7 +2195,7 @@ export function Routes() {
 				) : list.error ? (
 					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
 				) : (
-					<Pulse label="Loading" className="m-auto" />
+					<SettingsItemsSkeleton />
 				)}
 			</ItemGroup>
 		</Section>
@@ -2188,7 +2250,7 @@ function SharedInstructions() {
 			) : files.error ? (
 				<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{files.error}</AlertDescription></Alert>
 			) : (
-				<Pulse label="Loading" className="m-auto" />
+				<FilesSkeleton />
 			)}
 			{changed.length ? (
 				<div data-slot="unsaved" className="sticky bottom-4 z-10 flex items-center gap-2 rounded-lg border bg-popover py-2 ps-4 pe-2 text-popover-foreground shadow-lg">
@@ -2234,7 +2296,7 @@ export function ThemePicker() {
 					<FieldDescription className="wrap-anywhere">To add a VS Code color theme, put its .json file into {folder}. The choice is saved in pine, so all Pine apps that use this pine show it.</FieldDescription>
 				</FieldContent>
 				<Control>
-					<Select items={items} value={s.theme} onValueChange={(v) => v && v !== s.theme && void s.setTheme(v)} disabled={!usable.length}>
+					{s.themes.length ? <Select items={items} value={s.theme} onValueChange={(v) => v && v !== s.theme && void s.setTheme(v)} disabled={!usable.length}>
 						<SelectTrigger id={id} className={CONTROL}>
 							<SelectValue />
 						</SelectTrigger>
@@ -2256,7 +2318,7 @@ export function ThemePicker() {
 								) : null;
 							})}
 						</SelectContent>
-					</Select>
+					</Select> : <SelectPending id={id} />}
 				</Control>
 			</Field>
 			{broken.length ? (
@@ -2278,9 +2340,14 @@ export function ThemePicker() {
  * on a machine. Nothing under a bridge that has none (the desktop app uses the owner's ssh).
  */
 function DeviceKey() {
-	const [key, setKey] = useState<{ key: string; copy: () => Promise<void>; share: () => Promise<void> }>();
+	// Undefined while it is asked, null when the bridge has none.
+	const [key, setKey] = useState<{ key: string; copy: () => Promise<void>; share: () => Promise<void> } | null>();
 	// (Asked by its answer: Storybook's stand-in answers every name with a function that gives no key.)
-	useEffect(() => void (typeof bridge.deviceKey === "function" && Promise.resolve(bridge.deviceKey()).then((k) => typeof k?.key === "string" && setKey(k), () => undefined)), []);
+	useEffect(() => {
+		if (typeof bridge.deviceKey !== "function") return setKey(null);
+		Promise.resolve(bridge.deviceKey()).then((k) => setKey(typeof k?.key === "string" ? k : null), () => setKey(null));
+	}, []);
+	if (key === undefined) return <SettingsItem skeleton data-slot="device-key-skeleton" />;
 	if (!key) return null;
 	return (
 		<Item variant="outline" size="sm" data-slot="device-key">
@@ -2584,6 +2651,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 							<Switch id={`${field}-keep-running`} checked={s.prefs.keepRunning} onCheckedChange={(keepRunning) => void set({ keepRunning })} />
 						</Field>
 					) : null}
+					{local && !command ? <FieldSkeleton data-find="command" /> : null}
 					{local && command && (command.state !== "unavailable" || command.why) ? (
 						<Field orientation="responsive" data-find="command">
 							<FieldContent>
@@ -2600,6 +2668,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 							) : null}
 						</Field>
 					) : null}
+					{local && s.browser === undefined && !s.browserFetching ? <FieldSkeleton data-setting="browser" /> : null}
 					{local && (s.browser !== undefined || s.browserFetching) ? (
 						<Field orientation="responsive" data-setting="browser">
 							<FieldContent>

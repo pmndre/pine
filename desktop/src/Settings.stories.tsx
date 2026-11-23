@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, within } from "storybook/test";
+import { expect, fn, waitFor, within } from "storybook/test";
 import type { AgentDetail, AgentInfo, McpServer, Overview, Route, Schedule, Setting } from "./api.ts";
 import { store } from "./model.ts";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -415,5 +415,71 @@ export const SettingsItemSkeleton: Story = {
 	render: () => <SettingsItem skeleton />,
 	play: async ({ canvasElement }) => {
 		await expect(canvasElement.querySelector("[data-slot=settings-item] [data-slot=skeleton]")).not.toBeNull();
+	},
+};
+
+/** Nothing the page asks for answers: it stays on its first load, drawn as skeletons, with no Pulse and no "…". */
+function neverAnswers(section: string, agent?: string): Story {
+	return {
+		args: { section, agent },
+		beforeEach: () => {
+			const call = window.pine.call;
+			window.pine.call = () => new Promise(() => {});
+			return () => void (window.pine.call = call);
+		},
+		play: async ({ canvasElement }) => {
+			const page = canvasElement.querySelector("[data-slot=settings-page]")!;
+			await expect(page.querySelectorAll("[data-slot=skeleton]").length).toBeGreaterThan(0);
+			await expect(page.querySelectorAll("[data-slot=pulse]")).toHaveLength(0);
+			// A value still to come is a bar, never an element that says only "…".
+			await expect([...page.querySelectorAll("*")].filter((x) => x.textContent?.trim() === "…")).toHaveLength(0);
+		},
+	};
+}
+
+/** Models on its first load: the fallback model, the providers and the own servers as skeleton rows. */
+export const ModelsLoading = neverAnswers("models");
+/** MCP servers on their first load. */
+export const McpLoading = neverAnswers("mcp");
+/** Skills on their first load. */
+export const SkillsLoading = neverAnswers("skills");
+/** Events on their first load: sources, schedules and routes as skeleton rows. */
+export const EventsLoading = neverAnswers("events");
+/** One agent's page on its first load: its heading, fields and editor as skeletons. */
+export const AgentPageLoading = neverAnswers("agents", "scout");
+/** The shared instructions on their first load. */
+export const InstructionsLoading = neverAnswers("instructions");
+
+/** Only some addresses never answer: the rest of the page is drawn, and what waits on them is pending. */
+function withholding(section: string, urls: string[]) {
+	return {
+		args: { section },
+		beforeEach: () => {
+			const call = window.pine.call;
+			window.pine.call = (method, url) => (urls.includes(url) ? new Promise(() => {}) : call(method, url));
+			return () => void (window.pine.call = call);
+		},
+	} satisfies Story;
+}
+
+/** MCP servers listed while their states are still asked: each state badge is a bar, not "…". */
+export const McpStatesLoading: Story = {
+	...withholding("mcp", ["/mcp/states"]),
+	play: async ({ canvasElement }) => {
+		await within(canvasElement).findByText("linear");
+		const rows = canvasElement.querySelectorAll("[data-find^='mcp:']");
+		await expect(rows.length).toBe(mcp.length);
+		// The server turned off says so; the others wait on their state.
+		await expect(canvasElement.querySelectorAll("[data-find^='mcp:'] [data-slot=skeleton]")).toHaveLength(mcp.filter((x) => x.enabled).length);
+	},
+};
+
+/** General with its settings drawn while the models are still asked: the model select is pending, not a list of one. */
+export const GeneralModelsLoading: Story = {
+	...withholding("general", ["/models"]),
+	play: async ({ canvasElement }) => {
+		const row = await waitFor(() => canvasElement.querySelector('[data-setting-key="defaults.model"]') ?? Promise.reject(new Error("no model row")));
+		await expect(row.querySelector("[data-pending]")).not.toBeNull();
+		await expect(row.querySelector("[data-slot=select-trigger]")).toBeNull();
 	},
 };
