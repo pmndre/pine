@@ -321,6 +321,41 @@ test("a message is answered, with the turn's work folded into a line", async () 
 	await shot("02-answer");
 });
 
+test("a conversation that is loading shows its shape, and the shape goes once what was said is there", async () => {
+	// The answer to the history is held back by the test, in the app's main process, until it lets it go.
+	await app.evaluate(({ ipcMain }: any) => {
+		const g = globalThis as any;
+		const call = ipcMain._invokeHandlers.get("pine:call");
+		g.held = [];
+		ipcMain.removeHandler("pine:call");
+		ipcMain.handle("pine:call", (e: unknown, method: string, url: string, body?: unknown) => {
+			if (!/^\/tasks\?.*session=/.test(url)) return call(e, method, url, body);
+			return new Promise((done) => g.held.push(() => done(call(e, method, url, body))));
+		});
+		g.unhold = () => {
+			ipcMain.removeHandler("pine:call");
+			ipcMain.handle("pine:call", call);
+			for (const go of g.held.splice(0)) go();
+		};
+	});
+	// A conversation opened anew, here scout's from the side bar, asks for its history.
+	const scout = page.locator("[data-slot=sidebar-menu-item]:has([data-slot=agent-label])", { has: page.locator("[data-slot=agent-label] > :first-child", { hasText: /^scout$/ }) });
+	try {
+		await scout.locator("[data-slot=agent-label]").click();
+		await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=scout");
+		await sees("[data-slot=conversation-skeleton] [data-slot=skeleton]");
+		assert.equal(await page.$("[data-slot=pulse][aria-label=Loading]"), null, "a loading conversation shows its shape, not the Pulse");
+		assert.equal(await page.$("[data-slot=message-scroller-content]"), null);
+		await shot("02-loading");
+	} finally {
+		await app.evaluate(() => (globalThis as any).unhold());
+	}
+	await sees("[data-slot=message-scroller-content]");
+	assert.equal(await page.$("[data-slot=conversation-skeleton]"), null);
+	await page.click("[data-slot=tab][data-active] button[aria-label='Close this tab']");
+	await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=main");
+});
+
 test("a model is chosen from its picker with the keyboard alone, and focus goes back to the chip", async () => {
 	const chip = "[data-slot=composer] button[aria-label^='Model:']";
 	const focused = () => page.evaluate((s: string) => document.activeElement === document.querySelector(s), chip);

@@ -8,6 +8,7 @@ import { store, useModel } from "./model.ts";
 import { ago, fuzzy } from "./text.ts";
 import { goTo, useSettingsIndex } from "./Settings.tsx";
 import { search } from "./settings-index.ts";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function Palette() {
 	const s = store;
@@ -29,7 +30,9 @@ export function Palette() {
 		for (const host of [...(s.local ? [undefined] : []), ...s.prefs.hosts]) if (host !== s.service.host) rows.push({ id: `e:${host ?? ""}`, group: "Environments", label: `Use the pine on ${host ? s.nameOf(host) : `this ${computerWord(s.platform)}`}`, run: () => void s.useMachine(host) });
 		return rows;
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [s.titles]);
+	}, [s.titles, s.titled, [...s.conversations.values()].reduce((n, c) => n + c.length, s.conversations.size)]);
+	// Until every agent's conversations and what was said are in, a query that fits nothing may yet fit one of them.
+	const loading = !s.titled || s.agents.some((a) => !s.conversations.has(a.id));
 	// What fits by its name comes first; then the conversations in which the words were said; then
 	// what only fits by its description, and last what fits by letters in order.
 	const shown = useMemo(() => {
@@ -75,14 +78,22 @@ export function Palette() {
 							<CommandGroup key={`${n}:${g.name}`} heading={g.name}>
 								{g.rows.map((r) => (
 									<CommandItem key={r.id} value={r.id} onSelect={() => run(r)}>
-										<span className="max-w-3/5 flex-none truncate">{r.label}</span>
+										<span className="max-w-3/5 flex-none truncate">{r.conv && !s.titleKnown(r.conv.agent, r.conv.session) ? <>{r.conv.agent} · <Skeleton className="inline-block h-3 w-24 align-middle" /></> : r.label}</span>
 										{r.about ? <span className="min-w-0 truncate text-xs text-muted-foreground">{r.about}</span> : null}
 										{r.keys ? <CommandShortcut>{r.keys}</CommandShortcut> : null}
 									</CommandItem>
 								))}
 							</CommandGroup>
 						))}
-						<CommandEmpty>Nothing fits.</CommandEmpty>
+						{loading ? (
+							shown.length ? null : (
+								<div aria-busy="true" aria-label="Loading conversations" className="flex flex-col gap-1 p-1">
+									{["w-1/2", "w-2/3", "w-2/5"].map((w) => <div key={w} className="flex h-8 items-center px-2"><Skeleton className={`h-4 ${w}`} /></div>)}
+								</div>
+							)
+						) : (
+							<CommandEmpty>Nothing fits.</CommandEmpty>
+						)}
 					</CommandList>
 				</Command>
 			</DialogContent>

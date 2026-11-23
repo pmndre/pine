@@ -149,6 +149,8 @@ export class Tab extends Model {
 	/** The worktree it works in, if it has one: its branch and what it was made from. */
 	worktree?: { branch: string; base: string };
 	programs: Program[] = [];
+	/** Whether `programs` has been read once, so an empty list is told apart from one not read yet. */
+	programsRead = false;
 	/** The boards this conversation can use, its own first, and a count that rises when one of them changed. */
 	boards: BoardBrief[] = [];
 	boardTick = 0;
@@ -165,6 +167,9 @@ export class Tab extends Model {
 	// the event log
 	log: PineEvent[] = [];
 	logFilter = "";
+	/** Whether the log's first fetch is still out (Events draws skeleton lines), and why it failed when it did. */
+	logLoading = false;
+	logError?: string;
 
 	// the panel beside it
 	codeTick = 0;
@@ -223,7 +228,8 @@ const worktreeNote = (made: WorktreeMade) =>
 /** Where the app's update of a newer release stands (`Store.updatePhase`), with what a view of it says. */
 export type UpdatePhase = { phase: "waiting" | "ready" | "downloading" | "link"; version: string; mine: string; url: string; reason?: string };
 
-export type Picker = { title: string; items: Array<{ value: string; label: string; about?: string; tone?: Tone }>; current?: string; done: (value: string | undefined) => void; placeholder?: string; free?: boolean };
+/** `loading`: the dialog is open while what it lists is still asked for, and draws skeleton lines. */
+export type Picker = { title: string; loading?: boolean; items: Array<{ value: string; label: string; about?: string; tone?: Tone }>; current?: string; done: (value: string | undefined) => void; placeholder?: string; free?: boolean };
 
 /** The app as a whole. */
 export class Store extends Model {
@@ -300,6 +306,8 @@ export class Store extends Model {
 	/** What was said lately, in every conversation: for finding one by its words, and for naming one that has no name of its own. */
 	said: Task[] = [];
 	titles = new Map<string, string>();
+	/** Whether what was said has been loaded once, so that the titles drawn from it are known. */
+	titled = false;
 	private saidAt = 0;
 	private saidLater?: number;
 	/** A conversation that is to open with something looked for in it. */
@@ -785,6 +793,7 @@ export class Store extends Model {
 		this.updateWhenDone = false;
 		this.said = [];
 		this.titles = new Map();
+		this.titled = false;
 		this.saidAt = 0;
 		this.asking = undefined;
 		this.asked = new Set();
@@ -897,10 +906,12 @@ export class Store extends Model {
 		this.active = undefined;
 		this.opened = false;
 		const again = saved.tabs.filter((t) => this.agents.some((a) => a.id === t.agent));
+		// The window shows once the agents and the tabs are known: the tabs are filled behind it, the one in front first.
+		// Each fill reads its own conversation and writes its own tab only, so the others are filled side by side.
 		this.restoring = true;
 		try {
-			if (!again.length) await this.openTab(first.id, "main");
-			for (const t of again) await this.openTab(t.agent, t.session, false);
+			if (!again.length) await this.openTab(first.id, "main", false, false);
+			for (const t of again) await this.openTab(t.agent, t.session, false, false);
 			const chats = this.tabs.filter((t) => t.kind === "chat");
 			this.activate(chats[again.length ? Math.min(saved.active, chats.length - 1) : 0] ?? this.tabs[0]);
 		} finally {
@@ -909,6 +920,12 @@ export class Store extends Model {
 		}
 		this.code = saved.code === true;
 		this.saveTabs();
+		const front = this.active as Tab | undefined;
+		const rest = this.tabs.filter((t) => t !== front && t.kind === "chat");
+		void (async () => {
+			if (front?.kind === "chat") await this.fill(front);
+			await Promise.all(rest.map((t) => this.fill(t)));
+		})();
 		void this.refreshTaints();
 		void this.refreshConversations();
 		void this.refreshSaid(true);
@@ -1022,6 +1039,7 @@ export class Store extends Model {
 			if (!titles.has(key) && t.kind === "prompt" && t.prompt.trim()) titles.set(key, short(oneLine(t.prompt), 48));
 		}
 		this.titles = titles;
+		this.titled = true;
 		this.touch();
 	}
 
@@ -1029,6 +1047,14 @@ export class Store extends Model {
 	 * What a conversation is called. One the owner or an agent named keeps its name; one that was
 	 * only started (its name is a stamp like "s1x2y3z") is called by how it began.
 	 */
+	/** Whether a conversation's title is known: one called by how it began is not, until what was said is loaded. */
+	titleKnown(agent: string, session: string): boolean {
+		if (this.titled || session === "main") return true;
+		const branch = /^(s[0-9a-z]{6,10})-branch(?:-(\d+))?$/.exec(session);
+		if (branch) return this.titleKnown(agent, branch[1]);
+		return !/^s[0-9a-z]{6,10}$/.test(session);
+	}
+
 	titleOf(agent: string, session: string): string {
 		if (session === "main") return "main conversation";
 		// A branch of a conversation that has no name of its own is called after that one's title.
@@ -1185,11 +1211,13 @@ export class Store extends Model {
 	 * agent's model cannot answer.
 	 */
 	async chooseDefaultModel(among?: string[]): Promise<void> {
-		const models = among?.length ? among : await this.attempt(() => api.models());
-		if (!models) return;
+		const title = "Model for all agents without a model of their own";
+		const loaded = await this.loadPick(title, async () => ({ models: among?.length ? among : await api.models(), settings: await api.settings() }));
+		if (!loaded) return;
+		const { models } = loaded;
 		if (!models.length) return this.connectModel();
-		const now = (await this.attempt(() => api.settings()))?.find((x) => x.key === "defaults.model")?.now;
-		const model = await this.pick({ title: "Model for all agents without a model of their own", items: models.map((m) => ({ value: m, label: m })), current: now, placeholder: "Search models" });
+		const now = loaded.settings.find((x) => x.key === "defaults.model")?.now;
+		const model = await this.pick({ title, items: models.map((m) => ({ value: m, label: m })), current: now, placeholder: "Search models" });
 		if (!model || model === now) return;
 		if (!(await this.attempt(() => api.setSetting("defaults.model", model)))) return;
 		await this.refreshAgents();
@@ -1208,6 +1236,22 @@ export class Store extends Model {
 		const done = await this.attempt(() => api.emit(topic, payload));
 		if (done) this.flash(`Published event #${done.id} on ${topic}.`);
 		return Boolean(done);
+	}
+
+	/**
+	 * Open a picker at once, drawing skeleton lines, while `load` asks for what it will list. Undefined
+	 * when the owner closed it meanwhile or the load failed (said in a flash); the caller then `pick`s
+	 * with the data, which takes the same dialog's place.
+	 */
+	async loadPick<T>(title: string, load: () => Promise<T>): Promise<T | undefined> {
+		let closed = false;
+		const mine: Picker = { title, items: [], loading: true, done: () => ((closed = true), (this.picker = undefined), this.touch()) };
+		this.picker = mine;
+		this.touch();
+		const data = await this.attempt(load);
+		if (this.picker === mine) this.picker = undefined;
+		this.touch();
+		return closed ? undefined : data;
 	}
 
 	pick(p: Omit<Picker, "done">): Promise<string | undefined> {
@@ -1286,7 +1330,8 @@ export class Store extends Model {
 		this.tabsSaved = api.saveTabs(chats.map((t) => ({ agent: t.agent, session: t.session })), Math.max(0, chats.indexOf(this.active!)), this.code).catch(() => {});
 	}
 
-	async openTab(agent: string, session: string, front = true): Promise<void> {
+	/** Opens a tab on a conversation; `filled` false leaves what it holds to be asked for by the caller (the start). */
+	async openTab(agent: string, session: string, front = true, filled = true): Promise<void> {
 		const existing = this.tabs.find((t) => t.kind === "chat" && t.agent === agent && t.session === session);
 		if (existing) return front ? this.activate(existing) : undefined;
 		if (!this.agent(agent)) this.agents = await this.askAgents().catch(() => this.agents);
@@ -1301,6 +1346,7 @@ export class Store extends Model {
 			this.saveTabs();
 			this.touch();
 		}
+		if (!filled) return;
 		await this.fill(tab);
 		void this.refreshConversations(agent);
 	}
@@ -1367,15 +1413,23 @@ export class Store extends Model {
 	async openTask(id: number): Promise<void> {
 		const existing = this.tabs.find((t) => t.kind === "task" && t.task === id);
 		if (existing) return this.activate(existing);
-		const data = await this.attempt(() => api.transcript(id));
-		if (!data) return;
-		const { task, entries } = data;
-		const tab = new Tab("task", task.agent, task.session);
+		// The tab is in front at once, unfilled (its conversation draws a skeleton), and goes if the task cannot be read.
+		const tab = new Tab("task", "", "");
 		tab.task = id;
-		tab.parent = task.parent;
-		tab.baseDepth = task.depth;
 		tab.roots.add(id);
 		this.tabs.push(tab);
+		this.activate(tab);
+		const data = await this.attempt(() => api.transcript(id));
+		if (!data) {
+			if (this.tabs.includes(tab)) this.closeTab(tab);
+			return;
+		}
+		if (!this.tabs.includes(tab)) return;
+		const { task, entries } = data;
+		tab.agent = task.agent;
+		tab.session = task.session;
+		tab.parent = task.parent;
+		tab.baseDepth = task.depth;
 		const who = task.kind === "subagent" ? `sub-agent of ${task.agent}` : task.kind === "delegate" ? `${task.agent}, on a task from ${task.meta.chain?.at(-1) ?? "another agent"}` : task.agent;
 		const live = task.status === "running" || task.status === "pending";
 		tab.note(`${who} · task #${id}${task.parent !== undefined ? ` · started by task #${task.parent}` : ""} · ${task.status}`, "muted", { lines: [{ text: "This tab shows the work and takes no messages." }] });
@@ -1389,7 +1443,8 @@ export class Store extends Model {
 			tab.startedAt = task.started ?? Date.now();
 		} else tab.add({ t: "divider", text: taskSummary(task.status, task.meta.stats, task.error) });
 		tab.loaded = true;
-		this.activate(tab);
+		tab.touch();
+		this.touch();
 	}
 
 	async openEvents(): Promise<void> {
@@ -1398,11 +1453,30 @@ export class Store extends Model {
 			tab = new Tab("events", "events", "");
 			tab.loaded = true;
 			this.tabs.push(tab);
-			tab.log = (await api.events(undefined, 300).catch(() => [] as PineEvent[])).reverse().filter((e) => !/\/(delta|thinking|message)$/.test(e.topic));
-			// The log comes newest first from the daemon; here the newest is at the bottom.
-			if (tab.log.length > 1 && tab.log[0].id > tab.log[tab.log.length - 1].id) tab.log.reverse();
+			// The tab is in front at once; its lines come when the daemon answers.
+			this.activate(tab);
+			await this.fillEvents(tab);
+			return;
 		}
 		this.activate(tab);
+	}
+
+	/** Ask the daemon for the log's last events: what came live meanwhile stays after them. */
+	async fillEvents(tab: Tab): Promise<void> {
+		tab.logLoading = true;
+		tab.logError = undefined;
+		tab.touch();
+		try {
+			const past = (await api.events(undefined, 300)).reverse().filter((e) => !/\/(delta|thinking|message)$/.test(e.topic));
+			// The log comes newest first from the daemon; here the newest is at the bottom.
+			if (past.length > 1 && past[0].id > past[past.length - 1].id) past.reverse();
+			const seen = new Set(past.map((e) => e.id));
+			tab.log = [...past, ...tab.log.filter((e) => !seen.has(e.id))];
+		} catch (e) {
+			tab.logError = errText(e);
+		}
+		tab.logLoading = false;
+		tab.touch();
 	}
 
 	/**
@@ -1654,7 +1728,7 @@ export class Store extends Model {
 	/** What can be done with a conversation's worktree: merge it, bring its base in, discard it; or make one. */
 	async worktreeMenu(tab: Tab): Promise<void> {
 		if (tab.kind !== "chat") return;
-		const w = (await this.attempt(() => api.worktree(tab.agent, tab.session)))?.worktree;
+		const w = (await this.loadPick(`Worktree of ${tab.agent} · ${tab.session}`, () => api.worktree(tab.agent, tab.session)))?.worktree;
 		if (w === undefined) return;
 		if (!w) {
 			const make = await this.pick({ title: "Work in a worktree?", items: [{ value: "make", label: "Make a worktree of this folder", about: "A separate checkout of the repository, on a branch pine/<name>: other conversations' files are not touched, and you merge it back when it is done." }, { value: "no", label: "Cancel" }] });
@@ -1762,8 +1836,9 @@ export class Store extends Model {
 		if (!t || t.kind !== "chat" || this.service.status !== "ready") return;
 		const list = await api.programs(t.agent, t.session).catch(() => undefined);
 		if (!list) return;
-		const changed = list.length !== t.programs.length || list.some((p, i) => p.id !== t.programs[i]?.id);
+		const changed = !t.programsRead || list.length !== t.programs.length || list.some((p, i) => p.id !== t.programs[i]?.id);
 		t.programs = list;
+		t.programsRead = true;
 		if (changed || list.length) t.touch();
 	}
 
@@ -1882,8 +1957,9 @@ export class Store extends Model {
 
 	async pickModel(tab: Tab): Promise<void> {
 		const info = this.agent(tab.agent);
-		const models = await this.attempt(() => api.models());
-		if (!info || !models) return;
+		if (!info) return;
+		const models = await this.loadPick(`Model for ${tab.agent}`, () => api.models());
+		if (!models) return;
 		if (!models.length) return this.connectModel();
 		const model = await this.pick({ title: `Model for ${tab.agent}`, items: models.map((m) => ({ value: m, label: m })), current: info.model, placeholder: "Search models" });
 		if (!model || model === info.model) return;

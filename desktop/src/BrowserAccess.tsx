@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { QrCode } from "@/components/qr-code";
 import { EmptyView } from "@/components/empty-view";
@@ -281,12 +282,45 @@ export function BrowserAccessView({ state, opened, now, platform, actions }: { s
 	);
 }
 
+/** The section while its state loads: its three sections, each a title and the shape of its rows, from stock Skeleton blocks. */
+export function BrowserAccessSkeleton() {
+	return (
+		<>
+			{[3, 1, 3].map((rows, i) => (
+				<section key={i} data-slot="access-skeleton" className="flex flex-col gap-3">
+					<Skeleton className="h-5 w-40" />
+					{Array.from({ length: rows }, (_, r) => (
+						<div key={r} className="flex items-center gap-4">
+							<div className="flex flex-1 flex-col gap-1.5">
+								<Skeleton className="h-4 w-1/3" />
+								<Skeleton className="h-4 w-2/3" />
+							</div>
+							<Skeleton className="h-5 w-9 rounded-full" />
+						</div>
+					))}
+				</section>
+			))}
+		</>
+	);
+}
+
+/** The state could not be read: what went wrong, where the section would be. */
+export function BrowserAccessFailed({ error }: { error: string }) {
+	return (
+		<Alert variant="destructive" data-slot="access-load-error">
+			<TriangleAlertIcon />
+			<AlertDescription>Browser access could not be read: {error}</AlertDescription>
+		</Alert>
+	);
+}
+
 /** Whether an answer of the bridge is a state of browser access (Storybook's stand-in answers every call with a function). */
 const isState = (s: unknown): s is AccessState => typeof s === "object" && s !== null && Array.isArray((s as AccessState).devices);
 
 /** The section in the app: the state from the bridge, told again on every change; the calls made through it. */
 export function BrowserAccess() {
 	const [state, setState] = useState<AccessState>();
+	const [loadError, setLoadError] = useState<string>();
 	const [opened, setOpened] = useState<Opened>();
 	const [now, setNow] = useState(Date.now);
 	useInterval(() => setNow(Date.now()), opened || state?.devices.length ? 1000 : null);
@@ -297,11 +331,11 @@ export function BrowserAccess() {
 			if (s.request) setOpened((o) => (o && !o.asked ? { ...o, asked: true } : o));
 		};
 		const stop = bridge.onAccess?.(told);
-		void Promise.resolve(bridge.access?.()).then((s) => isState(s) && setState(s), (e: unknown) => store.flash(errText(e), "bad"));
+		void Promise.resolve(bridge.access?.()).then((s) => isState(s) && setState(s), (e: unknown) => setLoadError(errText(e)));
 		return () => void (typeof stop === "function" && stop());
 	}, []);
 
-	if (!state) return null;
+	if (!state) return loadError ? <BrowserAccessFailed error={loadError} /> : <BrowserAccessSkeleton />;
 	const actions: AccessActions = {
 		async set(change) {
 			setState(await bridge.setAccess!(change));

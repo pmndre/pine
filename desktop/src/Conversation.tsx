@@ -11,6 +11,7 @@ import { Attachment, AttachmentContent, AttachmentGroup, AttachmentMedia, Attach
 import { AgentAvatar } from "@/components/agent-avatar";
 import { ModelNotice } from "@/components/model-notice";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
@@ -254,7 +255,15 @@ function Work({ item }: { item: Extract<Item, { t: "work" }> }) {
 
 /** The owner's turn (or a task's prompt): a bubble on the owner's side, with the files it brought. */
 /** A message of the owner's. With `menu`, a right click on it offers to branch from it. */
-export function OwnerTurn({ text, from, files, menu }: { text: string; from?: string; files?: string[]; menu?: () => void }) {
+export function OwnerTurn({ text, from, files, menu, skeleton }: { text?: string; from?: string; files?: string[]; menu?: () => void; /** While the conversation loads: a bubble's shape on the owner's side, from stock Skeleton. */ skeleton?: boolean }) {
+	if (skeleton)
+		return (
+			<Message align="end" data-item="user-skeleton">
+				<MessageContent>
+					<Skeleton className="h-9 w-56 rounded-2xl" />
+				</MessageContent>
+			</Message>
+		);
 	return (
 		<Message align="end" data-item="user" onContextMenu={menu ? (e) => (e.preventDefault(), menu()) : undefined}>
 			<MessageContent>
@@ -566,14 +575,44 @@ function Letter({ tab }: { tab: Tab }) {
 }
 
 /** Where a conversation with an agent begins: who it is, what it runs on and reaches, and what it has. It introduces itself when you first write to it. */
-function Welcome({ tab }: { tab: Tab }) {
+export function Welcome({ tab, skeleton }: { tab?: Tab; /** While the agent is not known yet: its avatar, name, line and badges as stock Skeleton blocks. */ skeleton?: boolean }) {
+	if (skeleton || !tab)
+		return (
+			<Empty data-slot="welcome-skeleton">
+				<EmptyHeader>
+					<EmptyMedia>
+						<AgentAvatar skeleton size="lg" />
+					</EmptyMedia>
+					<Skeleton className="h-6 w-24" />
+					<Skeleton className="h-4 w-48" />
+				</EmptyHeader>
+				<EmptyContent>
+					<WelcomeBadgesSkeleton />
+				</EmptyContent>
+			</Empty>
+		);
+	return <WelcomeCard tab={tab} />;
+}
+
+/** The count badges' places, at a badge's height (h-5), held while the agent's detail loads, so that nothing moves when it lands. */
+function WelcomeBadgesSkeleton({ count = 3 }: { count?: number }) {
+	return (
+		<>
+			{Array.from({ length: count }, (_, i) => <Skeleton key={i} className="h-5 w-20 rounded-4xl" />)}
+		</>
+	);
+}
+
+function WelcomeCard({ tab }: { tab: Tab }) {
 	useModel(store);
 	const info = store.agent(tab.agent);
 	const [has, setHas] = useState<AgentDetail>();
+	// Whether the detail was asked for and answered (or refused), so the badges' places are held until then.
+	const [asked, setAsked] = useState<string>();
 	useEffect(() => {
 		let live = true;
 		// (An older pine does not say; the line is then left out.)
-		api.agentDetail(tab.agent).then((d) => live && setHas(d), () => {});
+		api.agentDetail(tab.agent).then((d) => live && (setHas(d), setAsked(tab.agent)), () => live && setAsked(tab.agent));
 		return () => {
 			live = false;
 		};
@@ -599,7 +638,7 @@ function Welcome({ tab }: { tab: Tab }) {
 					<HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}><ShieldIcon data-icon="inline-start" /><b>{info?.mode}</b>{info?.mode === "auto" || info?.mode === "bypass" ? "your account, no sandbox" : "in a sandbox"}</TooltipTrigger><TooltipContent>{mode?.about ?? "How much it asks and how far it reaches"}</TooltipContent></HoverTooltip>
 					{info?.main ? <HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}>administers pine</TooltipTrigger><TooltipContent>It creates and changes the other agents and pine's settings when you ask it to</TooltipContent></HoverTooltip> : null}
 					{info?.delegates.length ? <HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}>hands work to <b>{info.delegates.includes("*") ? (info.main ? "all other agents" : `all agents except ${store.agents.find((a) => a.main)?.id ?? "the main one"}`) : info.delegates.join(", ")}</b></TooltipTrigger><TooltipContent>Agents it can hand work to</TooltipContent></HoverTooltip> : null}
-					{counts.filter(([, n]) => n > 0).map(([what, n]) => <Badge variant="outline" key={what}><b>{n}</b>{n === 1 ? what : `${what}s`}</Badge>)}
+					{asked === tab.agent ? counts.filter(([, n]) => n > 0).map(([what, n]) => <Badge variant="outline" key={what}><b>{n}</b>{n === 1 ? what : `${what}s`}</Badge>) : <WelcomeBadgesSkeleton count={2} />}
 				</div>
 				{info?.modelProblem ? <ModelNotice agent={tab.agent} model={info.model} problem={info.modelProblem} onModels={() => store.openSettings("models")} /> : null}
 				{/* The way on to what the card only names: the agent's own page, where its model, mode, tools and instructions are changed. */}
@@ -820,7 +859,12 @@ function ConvHead({ tab }: { tab: Tab }) {
 						</Fragment>
 					))}
 					<BreadcrumbItem className="min-w-0">
-						<BreadcrumbPage className="truncate" title={chat ? `conversation ${tab.session}` : undefined}>{chat ? store.titleOf(tab.agent, tab.session) : `task #${tab.task}`}</BreadcrumbPage>
+						{chat && !tab.loaded && store.titleOf(tab.agent, tab.session) === "new conversation" ? (
+							// Not known before the conversation loads: a bar in its place, at the line's height.
+							<Skeleton data-slot="conversation-title-skeleton" className="h-3 w-28" />
+						) : (
+							<BreadcrumbPage className="truncate" title={chat ? `conversation ${tab.session}` : undefined}>{chat ? store.titleOf(tab.agent, tab.session) : `task #${tab.task}`}</BreadcrumbPage>
+						)}
 					</BreadcrumbItem>
 					{where ? (
 						<>
@@ -833,6 +877,27 @@ function ConvHead({ tab }: { tab: Tab }) {
 			{chat && store.pins.has(tab.key) ? <StarIcon size={12} className="text-faint" /> : null}
 			<span className="min-w-0 flex-1" />
 			{tab.context !== undefined ? <ContextUsage tab={tab} percent={tab.context} /> : null}
+		</div>
+	);
+}
+
+/**
+ * A conversation that has not loaded yet: its shape, the owner's bubble on the right, a trace line
+ * and the lines of an answer, from stock Skeleton blocks in the column the conversation is drawn in.
+ */
+export function ConversationSkeleton() {
+	return (
+		<div data-slot="conversation-skeleton" aria-busy className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-3.5 overflow-hidden px-7 pt-7 pb-2">
+			<OwnerTurn skeleton />
+			<div className="flex items-center gap-2">
+				<Skeleton className="size-3 rounded-full" />
+				<Skeleton className="h-3 w-40" />
+			</div>
+			<div className="flex flex-col gap-2">
+				<Skeleton className="h-4 w-full" />
+				<Skeleton className="h-4 w-11/12" />
+				<Skeleton className="h-4 w-2/3" />
+			</div>
 		</div>
 	);
 }
@@ -879,7 +944,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 			<ConvHead tab={tab} />
 			{finding && loaded ? <FindBar key={looked ?? ""} initial={looked} root={() => scroller.current} close={() => (setFinding(false), setLooked(undefined))} /> : null}
 			{!loaded ? (
-				<Pulse label="Loading" className="m-auto" />
+				<ConversationSkeleton />
 			) : (
 				// Message Scroller follows what arrives while the reader is at the end, holds still when
 				// they went up, and brings them back with its button. A tab opens at its end.

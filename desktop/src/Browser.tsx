@@ -20,6 +20,7 @@ import { HoverTooltip } from "@/components/hover-tooltip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Pulse } from "@/components/pulse";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 type Op = Record<string, unknown> & { do: string };
@@ -271,15 +272,17 @@ export function BrowserView({ tab }: { tab: Tab }) {
 							else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) (e.preventDefault(), act({ do: "text", text: e.key }, 90));
 						}}
 					/>
-					{drawn ? null : <div className="absolute inset-0 grid place-items-center"><Pulse label="Loading" /></div>}
+					{drawn ? null : <BrowserSkeleton className="absolute inset-0" />}
 				</ScrollArea>
+			) : !state ? (
+				<BrowserSkeleton className="min-h-0 flex-1" />
 			) : (
 				<Empty>
 					<EmptyHeader>
 						<EmptyMedia variant="icon">
 							<EyeIcon />
 						</EmptyMedia>
-						<EmptyTitle>{state ? "No page is open" : "Looking for the browser…"}</EmptyTitle>
+						<EmptyTitle>No page is open</EmptyTitle>
 						{state ? <EmptyDescription>This is the browser the agent of this conversation works in. A page it opens is shown here as it is, and you can use it too: click, type, log in. Type an address above to open one yourself.</EmptyDescription> : null}
 					</EmptyHeader>
 					{/* What the conversation's own programs listen on (the code pane's Running): a server the agent started is one click away. */}
@@ -309,6 +312,20 @@ export function BrowserView({ tab }: { tab: Tab }) {
 				</Empty>
 			)}
 			{open ? <div className="flex flex-none items-center gap-1.5 border-t border-line-soft px-2.5 py-1 text-xs text-faint"><ShieldIcon size={11} /><span className="truncate">The agent's browser, behind pine's guard. What you do here, the agent sees when it next looks.</span></div> : null}
+		</div>
+	);
+}
+
+/** A page while it loads: a header bar, a title and lines of text, from stock Skeleton blocks. Shown while the browser is looked for and before the first picture. */
+export function BrowserSkeleton({ className }: { className?: string }) {
+	return (
+		<div data-slot="browser-skeleton" className={cn("flex flex-col gap-3 bg-background p-4", className)}>
+			<Skeleton className="h-8 w-full" />
+			<Skeleton className="mt-2 h-6 w-2/3" />
+			<Skeleton className="h-4 w-full" />
+			<Skeleton className="h-4 w-5/6" />
+			<Skeleton className="h-4 w-3/4" />
+			<Skeleton className="mt-2 h-32 w-full" />
 		</div>
 	);
 }

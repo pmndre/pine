@@ -139,6 +139,32 @@ test("the side bar is the agents: one made elsewhere appears, a group folds away
 	await page.click("[data-slot=tab][data-active] button[aria-label='Close this tab']");
 });
 
+test("the window shows before the tabs are filled, with skeletons in the side bar until its conversations are known", async () => {
+	// What the tabs hold (their history), the conversations of each agent and what was said are held back in the main process until released.
+	await app.evaluate(({ ipcMain }: any) => {
+		const g = globalThis as any;
+		const real = ipcMain._invokeHandlers.get("pine:call");
+		g.held = [];
+		g.realCall = real;
+		ipcMain.removeHandler("pine:call");
+		ipcMain.handle("pine:call", (e: unknown, method: string, url: string, body?: unknown) => (/\/(history|sessions|tasks)\b/.test(url) ? new Promise((r) => g.held.push(() => r(real(e, method, url, body)))) : real(e, method, url, body)));
+	});
+	try {
+		await page.reload();
+		await sees("[data-slot=tab][data-active]", 20_000);
+		await sees("[data-slot=sidebar] [data-slot=skeleton]");
+	} finally {
+		await app.evaluate(({ ipcMain }: any) => {
+			const g = globalThis as any;
+			ipcMain.removeHandler("pine:call");
+			ipcMain.handle("pine:call", g.realCall);
+			for (const go of g.held) go();
+		});
+	}
+	await page.waitForSelector("[data-slot=sidebar] [data-slot=skeleton]", { state: "detached", timeout: 20_000 });
+	await sees("[data-slot=agent-label] >> text=main");
+});
+
 test("a conversation is opened from the side bar with the keyboard alone, and a group folds from it", async () => {
 	const group = page.locator("[data-slot=collapsible]:has([data-slot=agent-label])", { has: page.locator("[data-slot=agent-label] > :first-child", { hasText: /^scout$/ }) });
 	const fold = group.locator("[data-slot=collapsible-trigger]");
