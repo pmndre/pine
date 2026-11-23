@@ -3,7 +3,7 @@ import { expect, fn, within } from "storybook/test";
 import type { AgentDetail, AgentInfo, McpServer, Overview, Route, Schedule, Setting } from "./api.ts";
 import { store } from "./model.ts";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { NewRoute, NewSchedule, Routes, Schedules, Settings, ThemePicker } from "./Settings.tsx";
+import { NewRoute, NewSchedule, Routes, Schedules, Settings, SettingsItem, ThemePicker } from "./Settings.tsx";
 import { THEMES } from "../.storybook/themes.ts";
 import type { ThemeEntry } from "./theme.ts";
 
@@ -146,6 +146,22 @@ type Story = StoryObj<typeof meta>;
 
 /** pine's own settings: the version and home, a note on the setup, and a control of each kind. */
 export const General: Story = { args: { section: "general" } };
+
+/** General while pine has not answered yet: a skeleton card for the overview and skeleton groups for the settings, no Pulse. */
+export const GeneralLoading: Story = {
+	args: { section: "general" },
+	beforeEach: () => {
+		const call = window.pine.call;
+		// The overview and the settings never answer: the page stays on its first load.
+		window.pine.call = (method, url) => (url === "/overview" || url === "/settings" ? new Promise(() => {}) : call(method, url));
+		return () => void (window.pine.call = call);
+	},
+	play: async ({ canvasElement }) => {
+		await expect(canvasElement.querySelector("[data-slot=settings-overview-skeleton]")).not.toBeNull();
+		await expect(canvasElement.querySelectorAll("[data-slot=settings-group-skeleton]").length).toBeGreaterThan(0);
+		await expect(canvasElement.querySelectorAll("[data-slot=settings-page] [data-slot=pulse]")).toHaveLength(0);
+	},
+};
 
 /** The list of agents, each a row to open: main, its mode, its model and workspace. */
 export const Agents: Story = { args: { section: "agents" } };
@@ -385,4 +401,19 @@ export const AccessNotOfferedWithoutBridgeCalls: Story = {
 		return () => void delete (window.pine as Partial<typeof window.pine>).access;
 	},
 	play: async ({ canvasElement }) => await generalInstead(canvasElement),
+};
+
+/** The outline row of the Settings lists: a title with its badges, lines below it, and actions. */
+export const SettingsItemDefault: Story = {
+	args: { section: "general" },
+	render: () => <SettingsItem title="linear" description={["https://mcp.linear.app/mcp", "for main"]} actions={<span>Sign in</span>} />,
+};
+
+/** The same row while its list loads: a bar for the title, bars for the lines, a block for the actions. */
+export const SettingsItemSkeleton: Story = {
+	args: { section: "general" },
+	render: () => <SettingsItem skeleton />,
+	play: async ({ canvasElement }) => {
+		await expect(canvasElement.querySelector("[data-slot=settings-item] [data-slot=skeleton]")).not.toBeNull();
+	},
 };
