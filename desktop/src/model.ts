@@ -300,6 +300,8 @@ export class Store extends Model {
 	/** What was said lately, in every conversation: for finding one by its words, and for naming one that has no name of its own. */
 	said: Task[] = [];
 	titles = new Map<string, string>();
+	/** Whether what was said has been loaded once, so that the titles drawn from it are known. */
+	titled = false;
 	private saidAt = 0;
 	private saidLater?: number;
 	/** A conversation that is to open with something looked for in it. */
@@ -785,6 +787,7 @@ export class Store extends Model {
 		this.updateWhenDone = false;
 		this.said = [];
 		this.titles = new Map();
+		this.titled = false;
 		this.saidAt = 0;
 		this.asking = undefined;
 		this.asked = new Set();
@@ -897,10 +900,12 @@ export class Store extends Model {
 		this.active = undefined;
 		this.opened = false;
 		const again = saved.tabs.filter((t) => this.agents.some((a) => a.id === t.agent));
+		// The window shows once the agents and the tabs are known: the tabs are filled behind it, the one in front first.
+		// Each fill reads its own conversation and writes its own tab only, so the others are filled side by side.
 		this.restoring = true;
 		try {
-			if (!again.length) await this.openTab(first.id, "main");
-			for (const t of again) await this.openTab(t.agent, t.session, false);
+			if (!again.length) await this.openTab(first.id, "main", false, false);
+			for (const t of again) await this.openTab(t.agent, t.session, false, false);
 			const chats = this.tabs.filter((t) => t.kind === "chat");
 			this.activate(chats[again.length ? Math.min(saved.active, chats.length - 1) : 0] ?? this.tabs[0]);
 		} finally {
@@ -909,6 +914,12 @@ export class Store extends Model {
 		}
 		this.code = saved.code === true;
 		this.saveTabs();
+		const front = this.active as Tab | undefined;
+		const rest = this.tabs.filter((t) => t !== front && t.kind === "chat");
+		void (async () => {
+			if (front?.kind === "chat") await this.fill(front);
+			await Promise.all(rest.map((t) => this.fill(t)));
+		})();
 		void this.refreshTaints();
 		void this.refreshConversations();
 		void this.refreshSaid(true);
@@ -1022,6 +1033,7 @@ export class Store extends Model {
 			if (!titles.has(key) && t.kind === "prompt" && t.prompt.trim()) titles.set(key, short(oneLine(t.prompt), 48));
 		}
 		this.titles = titles;
+		this.titled = true;
 		this.touch();
 	}
 
@@ -1029,6 +1041,14 @@ export class Store extends Model {
 	 * What a conversation is called. One the owner or an agent named keeps its name; one that was
 	 * only started (its name is a stamp like "s1x2y3z") is called by how it began.
 	 */
+	/** Whether a conversation's title is known: one called by how it began is not, until what was said is loaded. */
+	titleKnown(agent: string, session: string): boolean {
+		if (this.titled || session === "main") return true;
+		const branch = /^(s[0-9a-z]{6,10})-branch(?:-(\d+))?$/.exec(session);
+		if (branch) return this.titleKnown(agent, branch[1]);
+		return !/^s[0-9a-z]{6,10}$/.test(session);
+	}
+
 	titleOf(agent: string, session: string): string {
 		if (session === "main") return "main conversation";
 		// A branch of a conversation that has no name of its own is called after that one's title.
@@ -1286,7 +1306,8 @@ export class Store extends Model {
 		this.tabsSaved = api.saveTabs(chats.map((t) => ({ agent: t.agent, session: t.session })), Math.max(0, chats.indexOf(this.active!)), this.code).catch(() => {});
 	}
 
-	async openTab(agent: string, session: string, front = true): Promise<void> {
+	/** Opens a tab on a conversation; `filled` false leaves what it holds to be asked for by the caller (the start). */
+	async openTab(agent: string, session: string, front = true, filled = true): Promise<void> {
 		const existing = this.tabs.find((t) => t.kind === "chat" && t.agent === agent && t.session === session);
 		if (existing) return front ? this.activate(existing) : undefined;
 		if (!this.agent(agent)) this.agents = await this.askAgents().catch(() => this.agents);
@@ -1301,6 +1322,7 @@ export class Store extends Model {
 			this.saveTabs();
 			this.touch();
 		}
+		if (!filled) return;
 		await this.fill(tab);
 		void this.refreshConversations(agent);
 	}

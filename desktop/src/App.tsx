@@ -43,7 +43,8 @@ import { AgentAvatar } from "@/components/agent-avatar";
 import { AgentColorPicker, AgentNameInput } from "@/components/agent-identity";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Kbd } from "@/components/ui/kbd";
-import { Sidebar as SidebarRoot, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupAction, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuAction, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Sidebar as SidebarRoot, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupAction, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuAction, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Pulse } from "@/components/pulse";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -267,7 +268,21 @@ async function conversationPicked(agent: string, c: Conv, picked: string | undef
 	}
 }
 
-function ConversationRow({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth?: number; inset?: number }) {
+/** A title that is not known yet (what was said is not loaded): a bar of a title's size in its place. */
+function Title({ agent, session }: { agent: string; session: string }) {
+	const s = store;
+	return s.titleKnown(agent, session) ? <>{s.titleOf(agent, session)}</> : <Skeleton data-slot="title-skeleton" className="inline-block h-3 w-24 align-middle" />;
+}
+
+type ConversationRowProps = { skeleton?: false; agent: string; c: Conv; depth?: number; inset?: number } | { skeleton: true; agent?: string; c?: Conv; depth?: number; inset?: number };
+
+/** A conversation's row in the side bar; with `skeleton`, a row of its shape while the conversations load. */
+export function ConversationRow(props: ConversationRowProps) {
+	if (props.skeleton) return <SidebarMenuItem role="none"><SidebarMenuSkeleton showIcon className={INDENT[Math.min((props.depth ?? 0) + (props.inset ?? 0), INDENT.length - 1)]} /></SidebarMenuItem>;
+	return <Row {...props} />;
+}
+
+function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth?: number; inset?: number }) {
 	const s = store;
 	// A conversation is moved with its branches: a branch shown under its original is not moved by itself.
 	const movable = depth === 0 && !c.session.endsWith("~u");
@@ -290,7 +305,7 @@ function ConversationRow({ agent, c, depth = 0, inset = 0 }: { agent: string; c:
 		>
 			<SidebarMenuButton isActive={on} onClick={() => setOpenMobile(false)} className={cn(INDENT[Math.min(depth + inset, INDENT.length - 1)], c.tasks && "pr-16 group-has-data-[sidebar=menu-action]/menu-item:pr-16")} render={<ListboxItem value={c.session} label={s.titleOf(agent, c.session)} title={`${agent} · ${c.session} · ${kept}${c.branch ? ` · a branch of ${c.branch.from}` : ""}${c.worktree ? ` · in the worktree ${c.worktree.branch} of ${c.worktree.repo}` : c.folder ? ` · works in ${c.folder}` : ""}`} />}>
 				<span className="grid h-4 w-6 flex-none place-items-center">{tab?.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Pulse /> : tab?.unread ? <Badge className="size-2 p-0" /> : main || c.pinned ? <StarIcon className="text-faint" /> : depth || c.worktree ? <GitBranchIcon className="text-faint" /> : c.folder ? <FolderIcon className="text-faint" /> : <MessageSquareIcon className="text-faint" />}</span>
-				<span className="min-w-0 flex-1">{s.titleOf(agent, c.session)}</span>
+				<span className="min-w-0 flex-1"><Title agent={agent} session={c.session} /></span>
 			</SidebarMenuButton>
 			{/* The badge is drawn over the button, so the button keeps the room for the time (stock pr-8 fits an action alone; the same selector as stock, so it takes the place of its pr-8). */}
 			{c.tasks ? <SidebarMenuBadge className={cn(!main && "group-hover/menu-item:hidden")}>{ago(c.last).replace(" ago", "")}</SidebarMenuBadge> : null}
@@ -383,7 +398,20 @@ function ConversationGroup({ agent, name, rows }: { agent: string; name: string;
 	);
 }
 
-function AgentGroup({ a }: { a: AgentInfo }) {
+/** An agent's line in the side bar with its conversations; with `skeleton`, its shape while they load. */
+export function AgentGroup(props: { skeleton?: false; a: AgentInfo } | { skeleton: true; a?: AgentInfo }) {
+	if (props.skeleton)
+		return (
+			<SidebarMenu data-slot="agent-group-skeleton">
+				<SidebarMenuItem><SidebarMenuSkeleton showIcon /></SidebarMenuItem>
+				<ConversationRow skeleton depth={1} />
+				<ConversationRow skeleton depth={1} />
+			</SidebarMenu>
+		);
+	return <Group a={props.a} />;
+}
+
+function Group({ a }: { a: AgentInfo }) {
 	const s = store;
 	const folded = s.folded.has(a.id);
 	const list = s.conversations.get(a.id) ?? [];
@@ -540,7 +568,7 @@ export function Sidebar() {
 					<SidebarGroup>
 						<SidebarGroupLabel>Agents</SidebarGroupLabel>
 						<HoverTooltip><TooltipTrigger render={<SidebarGroupAction className="app-no-drag" onClick={() => ((s.newAgent = true), s.touch())} aria-label="New agent" />}><PlusIcon /></TooltipTrigger><TooltipContent>New agent</TooltipContent></HoverTooltip>
-						<SidebarGroupContent className="flex flex-col gap-1">{s.agents.map((a) => <AgentGroup key={a.id} a={a} />)}</SidebarGroupContent>
+						<SidebarGroupContent className="flex flex-col gap-1">{s.agents.map((a) => (s.conversations.has(a.id) ? <AgentGroup key={a.id} a={a} /> : <AgentGroup key={a.id} skeleton />))}</SidebarGroupContent>
 					</SidebarGroup>
 				</ScrollArea>
 			</SidebarContent>
@@ -663,7 +691,7 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 						{tab.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : tab.busy ? <Pulse /> : tab.unread ? <Badge className="size-2 p-0" /> : tab.kind === "events" ? <AudioLinesIcon size={12} /> : tab.kind === "settings" ? <SettingsIcon size={12} /> : tab.kind === "task" ? <ListIcon size={12} /> : <AgentAvatar agent={{ id: tab.agent, color: s.agent(tab.agent)?.color, main: s.agent(tab.agent)?.main }} size="sm" />}
 					</span>
 					<span data-slot="tab-name" className="truncate">
-						{tab.kind === "events" ? "Events" : tab.kind === "settings" ? "Settings" : tab.kind === "task" ? <><b className="font-medium">{tab.agent}</b> #{tab.task}</> : tab.session === "main" ? <b className="font-medium">{tab.agent}</b> : <><b className="font-medium">{tab.agent}</b> · {s.titleOf(tab.agent, tab.session)}</>}
+						{tab.kind === "events" ? "Events" : tab.kind === "settings" ? "Settings" : tab.kind === "task" ? <><b className="font-medium">{tab.agent}</b> #{tab.task}</> : tab.session === "main" ? <b className="font-medium">{tab.agent}</b> : <><b className="font-medium">{tab.agent}</b> · <Title agent={tab.agent} session={tab.session} /></>}
 					</span>
 					{kept && tab.session !== "main" ? <StarIcon size={10} className="flex-none text-warn" /> : null}
 					<Button variant="ghost" size="icon-xs" aria-label="Close this tab" className={cn(!on && "opacity-0 group-hover/tab:opacity-100")} onClick={(e) => (e.stopPropagation(), s.closeTab(tab))}><XIcon /></Button>
