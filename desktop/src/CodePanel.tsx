@@ -42,6 +42,7 @@ import { EmptyView } from "@/components/empty-view";
 import { useLoad } from "./use-load.ts";
 import { TerminalView } from "./Terminal.tsx";
 import { Pulse } from "@/components/pulse";
+import { Skeleton } from "@/components/ui/skeleton";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
@@ -211,9 +212,54 @@ function PathCrumbs({ path, children }: { path: string; children?: React.ReactNo
 	);
 }
 
+function ChangeRowSkeleton() {
+	return (
+		<div data-slot="change-row-skeleton" className={rowClass()} aria-hidden>
+			<Skeleton className="h-3.5 w-3.5 flex-none" />
+			<Skeleton className="h-3.5 w-24" />
+			<Skeleton className="h-3.5 min-w-0 flex-1" />
+			<Skeleton className="h-3.5 w-8" />
+		</div>
+	);
+}
+
+/** A few line bars where a diff, a file or a list is read. */
+function LinesSkeleton({ rows = 6 }: { rows?: number }) {
+	return (
+		<div data-slot="lines-skeleton" className="flex flex-col gap-2 p-3" aria-hidden>
+			{Array.from({ length: rows }, (_, i) => <Skeleton key={i} className="h-3.5" style={{ width: `${[85, 60, 75, 40, 90, 55][i % 6]}%` }} />)}
+		</div>
+	);
+}
+
+/** One row of the file tree: a folder (open or not) or a file with its size, indented by its depth. */
+export function DirRow(props: { name: string; dir: boolean; size: number; depth: number; open?: boolean; active?: boolean; skeleton?: false } | { name?: undefined; dir?: undefined; size?: undefined; depth: number; open?: undefined; active?: undefined; /** While a folder is read: a row of its shape. */ skeleton: true }) {
+	const indent = { paddingLeft: `calc(var(--spacing) * ${2.5 + props.depth * 3.5})` };
+	if (props.skeleton || props.name === undefined)
+		return (
+			<div data-slot="dir-row-skeleton" className={rowClass()} style={indent} aria-hidden>
+				<span className="w-3 flex-none" />
+				<Skeleton className="size-3.5 flex-none" />
+				<Skeleton className="h-3.5 w-28" />
+			</div>
+		);
+	const { name, dir, size: bytes, open, active } = props;
+	return (
+		<TreeItemLabel className={rowClass(active)} style={indent}>
+			{dir ? (open ? <ChevronDownIcon className="size-3 text-faint" /> : <ChevronRightIcon className="size-3 text-faint" />) : <span className="w-3 flex-none" />}
+			{dir ? <FolderIcon className="size-3.5 text-faint" /> : <FileIcon className="size-3.5 text-faint" />}
+			<span className="min-w-0 flex-1 truncate">{name}</span>
+			{!dir ? <span className="text-faint">{size(bytes)}</span> : null}
+		</TreeItemLabel>
+	);
+}
+
 // ---- its views -------------------------------------------------------------------------------------
 
-function ChangeRow({ c }: { c: Change }) {
+/** One changed file in a list: its status, name, folder and lines added and removed. */
+export function ChangeRow(props: { c: Change; skeleton?: false } | { c?: undefined; /** While the list loads: a row of its shape. */ skeleton: true }) {
+	if (props.skeleton || !props.c) return <ChangeRowSkeleton />;
+	const c = props.c;
 	const at = c.path.lastIndexOf("/");
 	return (
 		<ListboxItem value={c.path} label={c.path.slice(at + 1)} className={rowClass()} title={c.path}>
@@ -240,8 +286,8 @@ function Changes({ tab, turn, openFile }: { tab: Tab; turn: boolean; openFile: (
 		const prefix = top && root && root !== top && root.startsWith(`${top}/`) ? `${root.slice(top.length + 1)}/` : "";
 		return prefix && p.startsWith(prefix) ? p.slice(prefix.length) : p;
 	};
-	if (list.error) return <EmptyView icon={turn ? Undo2Icon : GitBranchIcon} title={turn ? "Nothing to show" : "No changes to show"}>{turn ? "No message of yours in this conversation changed a file that pine records." : list.error}</EmptyView>;
-	if (!data) return <Pulse label="Loading" className="m-auto" />;
+	if (list.error) return <EmptyView icon={turn ? Undo2Icon : GitBranchIcon} title={turn ? "The last message cannot be read" : "No changes to show"}>{list.error}</EmptyView>;
+	if (!data) return <div className="flex flex-col">{Array.from({ length: 5 }, (_, i) => <ChangeRow key={i} skeleton />)}</div>;
 	if (!turn && !data.repo) return <EmptyView icon={GitBranchIcon} title="Not a git repository">The folder this conversation works in has no git history, so there are no changes to show. The files are in the Files view.</EmptyView>;
 	if (file)
 		return (
@@ -251,7 +297,7 @@ function Changes({ tab, turn, openFile }: { tab: Tab; turn: boolean; openFile: (
 					<PathCrumbs path={file} />
 					<Button variant="ghost" size="xs" onClick={() => openFile(inFolder(file))}><PencilIcon data-icon="inline-start" />Edit</Button>
 				</div>
-				<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">{diff.data ? <><Diff text={diff.data.diff || "No difference."} />{diff.data.truncated ? <p className="px-3 py-2.5 text-xs text-muted-foreground select-text">… the rest of this diff is too long to show.</p> : null}</> : diff.error ? <EmptyView icon={GitBranchIcon} title="This diff cannot be shown">{diff.error}</EmptyView> : <Pulse label="Loading" className="m-auto" />}</div><ScrollBar orientation="horizontal" /></ScrollArea>
+				<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">{diff.data ? <><Diff text={diff.data.diff || "No difference."} />{diff.data.truncated ? <p className="px-3 py-2.5 text-xs text-muted-foreground select-text">… the rest of this diff is too long to show.</p> : null}</> : diff.error ? <EmptyView icon={GitBranchIcon} title="This diff cannot be shown">{diff.error}</EmptyView> : <LinesSkeleton />}</div><ScrollBar orientation="horizontal" /></ScrollArea>
 			</>
 		);
 	return (
@@ -296,7 +342,6 @@ function FileTree({ tab, pick, tick }: { tab: Tab; pick: (file: string) => void;
 		<>
 			{failed ? <EmptyView icon={FolderIcon} title="This folder cannot be read">{failed}</EmptyView> : null}
 			{entries && !entries.length ? <EmptyView icon={FolderIcon} title="This folder is empty" /> : null}
-			{entries || failed ? null : <Pulse label="Loading" className="m-auto" />}
 			<Tree aria-label="Files" className="outline-none" expanded={[...state.open]} onExpandedChange={(open) => ((state.open = new Set(open)), redraw((n) => n + 1))} expandOnPress onAction={(full) => !isDir(full) && pick(full)}>
 				<Dir tab={tab} dir="" depth={0} tick={tick} onLoad={() => redraw((n) => n + 1)} />
 			</Tree>
@@ -317,8 +362,9 @@ function Dir({ tab, dir, depth, tick, onLoad }: { tab: Tab; dir: string; depth: 
 	}, [read.loading, read.data, read.error]);
 	const failed = state.failed.get(dir);
 	if (failed && dir) return <p className="py-2.5 pr-3 text-xs wrap-anywhere text-faint select-text" style={{ paddingLeft: `calc(var(--spacing) * ${2.5 + depth * 3.5})` }}>{failed}</p>;
+	if (failed !== undefined) return null;
 	const entries = state.dirs.get(dir);
-	if (!entries) return null;
+	if (!entries) return <>{Array.from({ length: dir ? 2 : 6 }, (_, i) => <DirRow key={i} depth={depth} skeleton />)}</>;
 	return (
 		<>
 			{entries.map((e) => {
@@ -326,12 +372,7 @@ function Dir({ tab, dir, depth, tick, onLoad }: { tab: Tab; dir: string; depth: 
 				const open = state.open.has(full);
 				return (
 					<TreeItem key={full} value={full} label={e.name} branch={e.dir} className={TREE_ITEM}>
-						<TreeItemLabel className={rowClass(state.file === full)} style={{ paddingLeft: `calc(var(--spacing) * ${2.5 + depth * 3.5})` }}>
-							{e.dir ? (open ? <ChevronDownIcon className="size-3 text-faint" /> : <ChevronRightIcon className="size-3 text-faint" />) : <span className="w-3 flex-none" />}
-							{e.dir ? <FolderIcon className="size-3.5 text-faint" /> : <FileIcon className="size-3.5 text-faint" />}
-							<span className="min-w-0 flex-1 truncate">{e.name}</span>
-							{!e.dir ? <span className="text-faint">{size(e.size)}</span> : null}
-						</TreeItemLabel>
+						<DirRow name={e.name} dir={e.dir} size={e.size} depth={depth} open={open} active={state.file === full} />
 						{e.dir ? <TreeGroup>{open ? <Dir tab={tab} dir={full} depth={depth + 1} tick={tick} onLoad={onLoad} /> : null}</TreeGroup> : null}
 					</TreeItem>
 				);
@@ -419,7 +460,7 @@ function FileView({ tab, file, close }: { tab: Tab; file: string; close: () => v
 				) : disk.error ? (
 					<EmptyView icon={FileIcon} title="This file cannot be shown">{disk.error}</EmptyView>
 				) : !disk.data ? (
-					<Pulse label="Loading" className="m-auto" />
+					<LinesSkeleton rows={12} />
 				) : (
 					<EmptyView icon={FileIcon} title="A binary file">{size(disk.data.size)}. It is not shown as text.</EmptyView>
 				)}
@@ -470,7 +511,7 @@ function Output({ tab }: { tab: Tab }) {
 		return out;
 	}, [tab.key, tab.codeTick]);
 	const [open, setOpen] = useState<string>();
-	if (!calls.data) return calls.error ? <EmptyView icon={SquareTerminalIcon} title="The tool calls cannot be read">{calls.error}</EmptyView> : <Pulse label="Loading" className="m-auto" />;
+	if (!calls.data) return calls.error ? <EmptyView icon={SquareTerminalIcon} title="The tool calls cannot be read">{calls.error}</EmptyView> : <div className="flex flex-col">{Array.from({ length: 5 }, (_, i) => <ChangeRow key={i} skeleton />)}</div>;
 	if (!calls.data.length) return <EmptyView icon={SquareTerminalIcon} title="No tool calls yet">What the agent's commands and tools print appears here.</EmptyView>;
 	const shown = calls.data.find((c) => `${c.task}:${c.n}` === open);
 	if (shown)
@@ -505,6 +546,7 @@ function Output({ tab }: { tab: Tab }) {
 
 /** What the conversation's commands left running, and the way to stop each. */
 function Running({ tab }: { tab: Tab }) {
+	if (!tab.programsRead) return <LinesSkeleton rows={3} />;
 	if (!tab.programs.length) return <EmptyView icon={PlayIcon} title="Nothing is running">A dev server or a watcher the agent starts keeps running after the agent is done. It is listed here, and stopped from here.</EmptyView>;
 	return (
 		<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">
