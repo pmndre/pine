@@ -149,6 +149,8 @@ export class Tab extends Model {
 	/** The worktree it works in, if it has one: its branch and what it was made from. */
 	worktree?: { branch: string; base: string };
 	programs: Program[] = [];
+	/** Whether `programs` has been read once, so an empty list is told apart from one not read yet. */
+	programsRead = false;
 	/** The boards this conversation can use, its own first, and a count that rises when one of them changed. */
 	boards: BoardBrief[] = [];
 	boardTick = 0;
@@ -1762,8 +1764,9 @@ export class Store extends Model {
 		if (!t || t.kind !== "chat" || this.service.status !== "ready") return;
 		const list = await api.programs(t.agent, t.session).catch(() => undefined);
 		if (!list) return;
-		const changed = list.length !== t.programs.length || list.some((p, i) => p.id !== t.programs[i]?.id);
+		const changed = !t.programsRead || list.length !== t.programs.length || list.some((p, i) => p.id !== t.programs[i]?.id);
 		t.programs = list;
+		t.programsRead = true;
 		if (changed || list.length) t.touch();
 	}
 
