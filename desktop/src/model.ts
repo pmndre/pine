@@ -167,6 +167,9 @@ export class Tab extends Model {
 	// the event log
 	log: PineEvent[] = [];
 	logFilter = "";
+	/** Whether the log's first fetch is still out (Events draws skeleton lines), and why it failed when it did. */
+	logLoading = false;
+	logError?: string;
 
 	// the panel beside it
 	codeTick = 0;
@@ -225,7 +228,8 @@ const worktreeNote = (made: WorktreeMade) =>
 /** Where the app's update of a newer release stands (`Store.updatePhase`), with what a view of it says. */
 export type UpdatePhase = { phase: "waiting" | "ready" | "downloading" | "link"; version: string; mine: string; url: string; reason?: string };
 
-export type Picker = { title: string; items: Array<{ value: string; label: string; about?: string; tone?: Tone }>; current?: string; done: (value: string | undefined) => void; placeholder?: string; free?: boolean };
+/** `loading`: the dialog is open while what it lists is still asked for, and draws skeleton lines. */
+export type Picker = { title: string; loading?: boolean; items: Array<{ value: string; label: string; about?: string; tone?: Tone }>; current?: string; done: (value: string | undefined) => void; placeholder?: string; free?: boolean };
 
 /** The app as a whole. */
 export class Store extends Model {
@@ -1207,11 +1211,13 @@ export class Store extends Model {
 	 * agent's model cannot answer.
 	 */
 	async chooseDefaultModel(among?: string[]): Promise<void> {
-		const models = among?.length ? among : await this.attempt(() => api.models());
-		if (!models) return;
+		const title = "Model for all agents without a model of their own";
+		const loaded = await this.loadPick(title, async () => ({ models: among?.length ? among : await api.models(), settings: await api.settings() }));
+		if (!loaded) return;
+		const { models } = loaded;
 		if (!models.length) return this.connectModel();
-		const now = (await this.attempt(() => api.settings()))?.find((x) => x.key === "defaults.model")?.now;
-		const model = await this.pick({ title: "Model for all agents without a model of their own", items: models.map((m) => ({ value: m, label: m })), current: now, placeholder: "Search models" });
+		const now = loaded.settings.find((x) => x.key === "defaults.model")?.now;
+		const model = await this.pick({ title, items: models.map((m) => ({ value: m, label: m })), current: now, placeholder: "Search models" });
 		if (!model || model === now) return;
 		if (!(await this.attempt(() => api.setSetting("defaults.model", model)))) return;
 		await this.refreshAgents();
@@ -1230,6 +1236,22 @@ export class Store extends Model {
 		const done = await this.attempt(() => api.emit(topic, payload));
 		if (done) this.flash(`Published event #${done.id} on ${topic}.`);
 		return Boolean(done);
+	}
+
+	/**
+	 * Open a picker at once, drawing skeleton lines, while `load` asks for what it will list. Undefined
+	 * when the owner closed it meanwhile or the load failed (said in a flash); the caller then `pick`s
+	 * with the data, which takes the same dialog's place.
+	 */
+	async loadPick<T>(title: string, load: () => Promise<T>): Promise<T | undefined> {
+		let closed = false;
+		const mine: Picker = { title, items: [], loading: true, done: () => ((closed = true), (this.picker = undefined), this.touch()) };
+		this.picker = mine;
+		this.touch();
+		const data = await this.attempt(load);
+		if (this.picker === mine) this.picker = undefined;
+		this.touch();
+		return closed ? undefined : data;
 	}
 
 	pick(p: Omit<Picker, "done">): Promise<string | undefined> {
@@ -1391,15 +1413,23 @@ export class Store extends Model {
 	async openTask(id: number): Promise<void> {
 		const existing = this.tabs.find((t) => t.kind === "task" && t.task === id);
 		if (existing) return this.activate(existing);
-		const data = await this.attempt(() => api.transcript(id));
-		if (!data) return;
-		const { task, entries } = data;
-		const tab = new Tab("task", task.agent, task.session);
+		// The tab is in front at once, unfilled (its conversation draws a skeleton), and goes if the task cannot be read.
+		const tab = new Tab("task", "", "");
 		tab.task = id;
-		tab.parent = task.parent;
-		tab.baseDepth = task.depth;
 		tab.roots.add(id);
 		this.tabs.push(tab);
+		this.activate(tab);
+		const data = await this.attempt(() => api.transcript(id));
+		if (!data) {
+			if (this.tabs.includes(tab)) this.closeTab(tab);
+			return;
+		}
+		if (!this.tabs.includes(tab)) return;
+		const { task, entries } = data;
+		tab.agent = task.agent;
+		tab.session = task.session;
+		tab.parent = task.parent;
+		tab.baseDepth = task.depth;
 		const who = task.kind === "subagent" ? `sub-agent of ${task.agent}` : task.kind === "delegate" ? `${task.agent}, on a task from ${task.meta.chain?.at(-1) ?? "another agent"}` : task.agent;
 		const live = task.status === "running" || task.status === "pending";
 		tab.note(`${who} · task #${id}${task.parent !== undefined ? ` · started by task #${task.parent}` : ""} · ${task.status}`, "muted", { lines: [{ text: "This tab shows the work and takes no messages." }] });
@@ -1413,7 +1443,8 @@ export class Store extends Model {
 			tab.startedAt = task.started ?? Date.now();
 		} else tab.add({ t: "divider", text: taskSummary(task.status, task.meta.stats, task.error) });
 		tab.loaded = true;
-		this.activate(tab);
+		tab.touch();
+		this.touch();
 	}
 
 	async openEvents(): Promise<void> {
@@ -1422,11 +1453,30 @@ export class Store extends Model {
 			tab = new Tab("events", "events", "");
 			tab.loaded = true;
 			this.tabs.push(tab);
-			tab.log = (await api.events(undefined, 300).catch(() => [] as PineEvent[])).reverse().filter((e) => !/\/(delta|thinking|message)$/.test(e.topic));
-			// The log comes newest first from the daemon; here the newest is at the bottom.
-			if (tab.log.length > 1 && tab.log[0].id > tab.log[tab.log.length - 1].id) tab.log.reverse();
+			// The tab is in front at once; its lines come when the daemon answers.
+			this.activate(tab);
+			await this.fillEvents(tab);
+			return;
 		}
 		this.activate(tab);
+	}
+
+	/** Ask the daemon for the log's last events: what came live meanwhile stays after them. */
+	async fillEvents(tab: Tab): Promise<void> {
+		tab.logLoading = true;
+		tab.logError = undefined;
+		tab.touch();
+		try {
+			const past = (await api.events(undefined, 300)).reverse().filter((e) => !/\/(delta|thinking|message)$/.test(e.topic));
+			// The log comes newest first from the daemon; here the newest is at the bottom.
+			if (past.length > 1 && past[0].id > past[past.length - 1].id) past.reverse();
+			const seen = new Set(past.map((e) => e.id));
+			tab.log = [...past, ...tab.log.filter((e) => !seen.has(e.id))];
+		} catch (e) {
+			tab.logError = errText(e);
+		}
+		tab.logLoading = false;
+		tab.touch();
 	}
 
 	/**
@@ -1678,7 +1728,7 @@ export class Store extends Model {
 	/** What can be done with a conversation's worktree: merge it, bring its base in, discard it; or make one. */
 	async worktreeMenu(tab: Tab): Promise<void> {
 		if (tab.kind !== "chat") return;
-		const w = (await this.attempt(() => api.worktree(tab.agent, tab.session)))?.worktree;
+		const w = (await this.loadPick(`Worktree of ${tab.agent} · ${tab.session}`, () => api.worktree(tab.agent, tab.session)))?.worktree;
 		if (w === undefined) return;
 		if (!w) {
 			const make = await this.pick({ title: "Work in a worktree?", items: [{ value: "make", label: "Make a worktree of this folder", about: "A separate checkout of the repository, on a branch pine/<name>: other conversations' files are not touched, and you merge it back when it is done." }, { value: "no", label: "Cancel" }] });
@@ -1907,8 +1957,9 @@ export class Store extends Model {
 
 	async pickModel(tab: Tab): Promise<void> {
 		const info = this.agent(tab.agent);
-		const models = await this.attempt(() => api.models());
-		if (!info || !models) return;
+		if (!info) return;
+		const models = await this.loadPick(`Model for ${tab.agent}`, () => api.models());
+		if (!models) return;
 		if (!models.length) return this.connectModel();
 		const model = await this.pick({ title: `Model for ${tab.agent}`, items: models.map((m) => ({ value: m, label: m })), current: info.model, placeholder: "Search models" });
 		if (!model || model === info.model) return;
