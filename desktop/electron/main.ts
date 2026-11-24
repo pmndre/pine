@@ -378,7 +378,14 @@ function olderThan(s: Service, host: string | undefined): string | undefined {
 }
 
 /** The agents' browsers: for this computer's pine only, whose browser servers can reach it. */
-const browsers = new BrowserHost(() => targetWindow((w) => !w.host)?.win);
+const browsers = new BrowserHost((win) => {
+	const osFocused = BrowserWindow.getFocusedWindow();
+	if (osFocused) return osFocused === win;
+	for (const entry of windows.values()) {
+		if (entry.win === win) return entry.focused;
+	}
+	return false;
+});
 
 /** The owner's terminal of each conversation (terminal.ts): their own shell, which ends with the app. */
 // A block run with a Run button reports how it went to the page, which tells the conversation through the daemon.
@@ -622,6 +629,7 @@ async function letGo(s: Service | undefined): Promise<void> {
 async function use(entry: WindowEntry, host: string | undefined): Promise<void> {
 	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list: add it in Settings > Environments.");
 	if (host === entry.host && entry.service) return;
+	if (host !== undefined) browsers.detachWindow(entry.win);
 	const previousHost = entry.host;
 	entry.host = host;
 	entry.layout = { ...entry.layout, tabs: [], active: 0, noTab: false };
@@ -1269,10 +1277,10 @@ function wire(): void {
 		const place = b && fine(b.x, 20_000) && fine(b.y, 20_000) && fine(b.width, 20_000) && fine(b.height, 20_000) && b.width >= 1 && b.height >= 1 ? { x: b.x, y: b.y, width: b.width, height: b.height } : undefined;
 		const zoom = caller.win.webContents.getZoomFactor();
 		const scaled = place && { x: Math.round(place.x * zoom), y: Math.round(place.y * zoom), width: Math.round(place.width * zoom), height: Math.round(place.height * zoom) };
-		return browsers.show(typeof key === "string" && !caller.service?.host ? key : undefined, fine(index, 99) ? index : 0, scaled);
+		return browsers.show(caller.win, typeof key === "string" && !caller.service?.host ? key : undefined, fine(index, 99) ? index : 0, scaled);
 	});
-	handle("pine:browser-focus", () => browsers.focus());
-	handle("pine:browser-picture", () => browsers.picture());
+	handle("pine:browser-focus", (caller) => browsers.focus(caller.win));
+	handle("pine:browser-picture", (caller) => browsers.picture(caller.win));
 	handle("pine:retry", (caller) => startWindowService(caller));
 	handle("pine:update", (_caller, again?: boolean) => update(again === true));
 	handle("pine:install-update", () => installUpdate());

@@ -56,27 +56,44 @@ interface Room {
 	ses: Session;
 }
 
+interface ShownView {
+	view: WebContentsView;
+	key: string;
+	bounds: Bounds;
+}
+
 export interface Bounds {
+	/** Left offset in window coordinates. */
 	x: number;
+	/** Top offset in window coordinates. */
 	y: number;
+	/** Width in window coordinates. */
 	width: number;
+	/** Height in window coordinates. */
 	height: number;
 }
 
+/**
+ * Hosts conversation agent browsers (`WebContentsView` tabs) inside Pine's local desktop windows.
+ */
 export class BrowserHost {
 	private readonly token = crypto.randomBytes(32).toString("hex");
 	private readonly rooms = new Map<string, Room>();
 	private server?: WebSocketServer;
 	private port = 0;
-	private shown?: { view: WebContentsView; key: string };
-	/** The last place the panel had: a tab that is made while nothing is shown is laid out for it. */
+	private readonly shownByWindow = new Map<BrowserWindow, ShownView>();
+	private readonly watchedWindows = new WeakSet<BrowserWindow>();
+	/** The last place a panel had: a tab that is made while nothing is shown is laid out for it. */
 	private room: Bounds = { x: 0, y: 0, width: 560, height: 800 };
 	private n = 0;
 
-	private readonly window: () => BrowserWindow | undefined;
+	private readonly isFocused: (win: BrowserWindow) => boolean;
 
-	constructor(window: () => BrowserWindow | undefined) {
-		this.window = window;
+	/**
+	 * @param isFocused Predicate reporting whether `win` currently has window focus.
+	 */
+	constructor(isFocused: (win: BrowserWindow) => boolean = (w) => w.isFocused()) {
+		this.isFocused = isFocused;
 	}
 
 	/** Where a browser server connects, with the word: for the daemon alone, which hands it to its browser servers. */
@@ -84,6 +101,7 @@ export class BrowserHost {
 		return this.port ? `ws://127.0.0.1:${this.port}/${this.token}` : undefined;
 	}
 
+	/** Starts the loopback CDP WebSocket server if not already listening. */
 	async start(): Promise<void> {
 		if (this.server) return;
 		const server = new WebSocketServer({ host: "127.0.0.1", port: 0, maxPayload: 64 * 1024 * 1024 });
@@ -93,43 +111,97 @@ export class BrowserHost {
 		this.port = (server.address() as { port: number }).port;
 	}
 
-	/** Whether a conversation's browser is here, with a page: the panel shows it instead of pictures. */
+	/**
+	 * Whether a conversation's browser is here, with a page: the panel shows it instead of pictures.
+	 * @param key Conversation room key (`agent:session`).
+	 */
 	has(key: string): boolean {
 		return (this.rooms.get(key)?.tabs.length ?? 0) > 0;
 	}
 
-	/**
-	 * The page says where the panel is and which tab is in front (the browser server's order, which
-	 * is the order the tabs were made in). Nothing: the panel is closed, covered or shows something else.
-	 */
-	show(key: string | undefined, index: number, bounds: Bounds | undefined): boolean {
-		const win = this.window();
-		const tab = key !== undefined && bounds ? this.rooms.get(key)?.tabs[index] : undefined;
-		if (this.shown && (this.shown.view !== tab?.view || !win)) {
-			win?.contentView.removeChildView(this.shown.view);
-			this.shown = undefined;
+	private pruneDestroyedWindows(): void {
+		for (const win of this.shownByWindow.keys()) {
+			if (win.isDestroyed()) this.shownByWindow.delete(win);
 		}
-		if (!tab || !win || !bounds) return false;
+	}
+
+	/**
+	 * Detaches any browser tab currently laid over `win` without closing the underlying browser tab.
+	 * @param win Target desktop window.
+	 */
+	detachWindow(win: BrowserWindow): void {
+		const current = this.shownByWindow.get(win);
+		if (!current) return;
+		if (!win.isDestroyed()) win.contentView.removeChildView(current.view);
+		this.shownByWindow.delete(win);
+	}
+
+	/**
+	 * The page says where the panel is in `win` and which tab is in front (the browser server's order, which
+	 * is the order the tabs were made in). Nothing: the panel is closed, covered or shows something else.
+	 * @param win Calling desktop window.
+	 * @param key Conversation room key (`agent:session`), or `undefined` to hide.
+	 * @param index Active tab index in the room.
+	 * @param bounds Panel rectangle in window coordinates, or `undefined` to hide.
+	 */
+	show(win: BrowserWindow | undefined, key: string | undefined, index: number, bounds: Bounds | undefined): boolean {
+		this.pruneDestroyedWindows();
+		const current = win ? this.shownByWindow.get(win) : undefined;
+		const tab = win && !win.isDestroyed() && key !== undefined && bounds ? this.rooms.get(key)?.tabs[index] : undefined;
+		if (current && (win!.isDestroyed() || current.view !== tab?.view)) {
+			if (!win!.isDestroyed()) win!.contentView.removeChildView(current.view);
+			this.shownByWindow.delete(win!);
+		}
+		if (!win || win.isDestroyed() || !tab || !bounds) return false;
+		for (const [otherWin, otherShown] of this.shownByWindow) {
+			if (otherWin === win || otherShown.view !== tab.view) continue;
+			if (this.isFocused(win) && !this.isFocused(otherWin)) {
+				otherWin.contentView.removeChildView(tab.view);
+				this.shownByWindow.delete(otherWin);
+			} else {
+				return false;
+			}
+		}
+		if (!this.watchedWindows.has(win)) {
+			this.watchedWindows.add(win);
+			win.on("close", () => this.detachWindow(win));
+			win.on("closed", () => this.shownByWindow.delete(win));
+		}
 		this.room = bounds;
-		if (!this.shown) win.contentView.addChildView(tab.view);
-		this.shown = { view: tab.view, key: key! };
-		tab.view.setBounds(bounds);
+		const already = this.shownByWindow.get(win);
+		if (!already) {
+			win.contentView.addChildView(tab.view);
+			this.shownByWindow.set(win, { view: tab.view, key: key!, bounds });
+			tab.view.setBounds(bounds);
+		} else if (already.bounds.x !== bounds.x || already.bounds.y !== bounds.y || already.bounds.width !== bounds.width || already.bounds.height !== bounds.height) {
+			already.bounds = bounds;
+			already.key = key!;
+			tab.view.setBounds(bounds);
+		}
 		return true;
 	}
 
-	/** The tab in front as a still picture (a data: address of a JPEG), for while the app's own menus lie over its place. */
-	async picture(): Promise<string | undefined> {
-		const wc = this.shown?.view.webContents;
+	/**
+	 * The tab in front of `win` as a still picture (a `data:` address of a JPEG), for while the app's own menus lie over its place.
+	 * @param win Calling desktop window.
+	 */
+	async picture(win: BrowserWindow | undefined): Promise<string | undefined> {
+		const wc = win ? this.shownByWindow.get(win)?.view.webContents : undefined;
 		if (!wc || wc.isDestroyed()) return undefined;
 		const image = await wc.capturePage().catch(() => undefined);
 		return image && !image.isEmpty() ? `data:image/jpeg;base64,${image.toJPEG(85).toString("base64")}` : undefined;
 	}
 
-	/** Puts the keys into the tab in front, after a click on the panel's own frame around it. */
-	focus(): void {
-		this.shown?.view.webContents.focus();
+	/**
+	 * Puts the keys into the tab in front of `win`, after a click on the panel's own frame around it.
+	 * @param win Calling desktop window.
+	 */
+	focus(win: BrowserWindow | undefined): void {
+		const wc = win ? this.shownByWindow.get(win)?.view.webContents : undefined;
+		if (wc && !wc.isDestroyed()) wc.focus();
 	}
 
+	/** Closes every hosted room and stops the WebSocket server. */
 	close(): void {
 		for (const room of this.rooms.values()) this.drop(room);
 		this.server?.close();
@@ -230,9 +302,11 @@ export class BrowserHost {
 		if (at < 0) return;
 		room.tabs.splice(at, 1);
 		for (const [s, t] of room.inner) if (t === tab) room.inner.delete(s);
-		if (this.shown?.view === tab.view) {
-			this.window()?.contentView.removeChildView(tab.view);
-			this.shown = undefined;
+		for (const [win, shown] of this.shownByWindow) {
+			if (shown.view === tab.view) {
+				if (!win.isDestroyed()) win.contentView.removeChildView(tab.view);
+				this.shownByWindow.delete(win);
+			}
 		}
 		this.send(room, { method: "Target.detachedFromTarget", params: { sessionId: tab.session, targetId: tab.id } });
 		this.send(room, { method: "Target.targetDestroyed", params: { targetId: tab.id } });
@@ -291,8 +365,11 @@ export class BrowserHost {
 					const tab = room.tabs.find((t) => t.id === m.params?.targetId);
 					return reply({ targetInfo: tab ? this.info(tab) : { targetId: "browser", type: "browser", title: "", url: "", attached: true, canAccessOpener: false } });
 				}
-				case "Browser.getWindowForTarget":
-					return reply({ windowId: 1, bounds: { left: 0, top: 0, width: this.room.width, height: this.room.height, windowState: "normal" } });
+				case "Browser.getWindowForTarget": {
+					const tab = room.tabs.find((t) => t.id === m.params?.targetId) ?? room.tabs[0];
+					const bounds = tab ? tab.view.getBounds() : this.room;
+					return reply({ windowId: 1, bounds: { left: 0, top: 0, width: bounds.width || this.room.width, height: bounds.height || this.room.height, windowState: "normal" } });
+				}
 				case "Target.createTarget": {
 					const url = typeof m.params?.url === "string" && goes(m.params.url) ? m.params.url : "about:blank";
 					return reply({ targetId: (await this.openTab(room, url)).id });
