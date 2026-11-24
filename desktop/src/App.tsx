@@ -20,6 +20,7 @@ import { bridge } from "./bridge.ts";
 import { CODE_KEY, CodePanel } from "./CodePanel.tsx";
 import { COMMANDS } from "./commands.ts";
 import { TabMenu, type TabMenuAction } from "@/components/tab-menu";
+import { contextMenu } from "@/components/page-menu";
 import { Conversation } from "./Conversation.tsx";
 import { Events } from "./Events.tsx";
 import { type Beside, ROOM, store, type Tab, type UpdatePhase, useModel, useSignal } from "./model.ts";
@@ -306,7 +307,7 @@ function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth
 	const tab = s.tabs.find((t) => t.kind === "chat" && t.agent === agent && t.session === c.session);
 	const main = c.session === "main";
 	const { setOpenMobile } = useSidebar();
-	const menu = async () => conversationPicked(agent, c, await bridge.contextMenu(conversationItems(c, movable)));
+	const menu = async () => conversationPicked(agent, c, await contextMenu(conversationItems(c, movable)));
 	const kept = main ? "the agent's own, always kept" : c.pinned ? "pinned" : c.group ? `kept in the group ${c.group}` : c.open ? "open in a tab" : c.expires ? `goes ${until(c.expires)}` : "kept";
 	const working = tab?.busy || s.isBusy(agent, c.session);
 	const on = Boolean(tab && tab === s.active);
@@ -382,7 +383,7 @@ function ConversationGroup({ agent, name, rows }: { agent: string; name: string;
 	const unread = tabs.some((t) => t.unread);
 	const count = rows.filter((c) => c.session !== "main" || c.tasks).length;
 	const menu = async () => {
-		const picked = await bridge.contextMenu([
+		const picked = await contextMenu([
 			{ id: "new", label: `New Conversation in ${name}` },
 			{ id: "sep", label: "", separator: true },
 			{ id: "rename", label: "Rename…" },
@@ -470,7 +471,7 @@ function Group({ a }: { a: AgentInfo }) {
 	const menu = async () => {
 		// On a line that is a conversation too, what that conversation's own row would offer comes first. One conversation is not sorted.
 		const own = only ? conversationItems(only, true).filter((i) => !("separator" in i)) : [];
-		const picked = await bridge.contextMenu([
+		const picked = await contextMenu([
 			...(own.length ? [...own, { id: "sep-own", label: "", separator: true }] : []),
 			{ id: "new", label: `New conversation with ${a.id}` },
 			{ id: "folder", label: `Open a folder with ${a.id}…` },

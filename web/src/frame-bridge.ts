@@ -76,7 +76,6 @@ export function frameBridge(parent: Target, self: MessageSource): FrameBridge {
 		openApp: () => ask("openApp"),
 		saveText: (name: string, text: string) => ask("saveText", name, text),
 		// What only the desktop app has, refused or done nothing.
-		contextMenu: async () => undefined,
 		reveal: async () => {},
 		notify: async () => {},
 		badge: async () => {},

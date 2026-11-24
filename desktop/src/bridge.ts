@@ -167,7 +167,7 @@ export type WindowCalls = "newWindow" | "closeWindow" | "windowLayout" | "onOpen
  * The bridge as the page sees it: the preload script's, or a stand-in of the same shape (the
  * preview's, the mobile app's, the web client's).
  */
-export type PageBridge = Omit<Bridge, "state" | "mediaBase" | "termFocus" | "wslDistros" | "wslInstall" | "appMenu" | AccessCalls | UpdateCalls | BrowserCalls | WindowCalls> & Partial<Pick<Bridge, AccessCalls | UpdateCalls | BrowserCalls | WindowCalls>> & {
+export type PageBridge = Omit<Bridge, "state" | "mediaBase" | "termFocus" | "wslDistros" | "wslInstall" | "appMenu" | "contextMenu" | AccessCalls | UpdateCalls | BrowserCalls | WindowCalls> & Partial<Pick<Bridge, AccessCalls | UpdateCalls | BrowserCalls | WindowCalls>> & {
 	state: () => Promise<AppState>;
 	onPrefs?: (fn: (prefs: Prefs) => void) => () => void;
 	/** WSL on Windows: its distributions, and the pine the app carries brought into one. The desktop app's only. */
@@ -183,6 +183,7 @@ export type PageBridge = Omit<Bridge, "state" | "mediaBase" | "termFocus" | "wsl
 	 * Mac): the title bar's menu button opens them. The others leave it out, and the page draws no button.
 	 */
 	appMenu?: Bridge["appMenu"];
+	contextMenu?: Bridge["contextMenu"];
 	/**
 	 * Where the daemon's pictures, video and sound are fetched from, set by a bridge whose page
 	 * fetches them from another address than the app's scheme (the mobile app's, on its own origin; the web client's, whose page asks its bridge for the bytes).

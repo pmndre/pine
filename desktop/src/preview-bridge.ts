@@ -10,7 +10,7 @@ import { cleanLook } from "./theme.ts";
 
 if (import.meta.env.DEV && __PINE_PREVIEW__ && !window.pine) window.pine = standIn();
 
-function standIn(): Omit<Bridge, "mediaBase" | AccessCalls | UpdateCalls | BrowserCalls | WindowCalls> {
+function standIn(): Omit<Bridge, "mediaBase" | AccessCalls | UpdateCalls | BrowserCalls | WindowCalls | "contextMenu"> {
 	type Listener = (...args: any[]) => void;
 	const listeners = { service: new Set<Listener>(), events: new Set<Listener>(), connection: new Set<Listener>() };
 	const on = (set: Set<Listener>) => (fn: Listener) => (set.add(fn), () => void set.delete(fn));
@@ -84,7 +84,6 @@ function standIn(): Omit<Bridge, "mediaBase" | AccessCalls | UpdateCalls | Brows
 		reveal: async () => {},
 		notify: async () => {},
 		badge: async () => {},
-		contextMenu: async () => undefined,
 		// The preview has no menus of the app's: its menu button opens nothing.
 		appMenu: async () => undefined,
 		command: async () => ({ state: "unavailable", text: "" }),

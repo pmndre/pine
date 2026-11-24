@@ -204,9 +204,11 @@ browser in the side panel, an answer of a real model) is seen on `desktop-previe
 
 The preview's server stands where the app's main process stands: it holds the daemon's token
 and makes every call for the page, with the same checks, and it answers only the page on the
-same computer. What only the app can do does nothing in a browser: menus, system
+same computer. What only the app can do does nothing in a browser: the app's menus, system
 notifications, the dock badge, dictation, update checks, `pine` for a terminal, restarting
-pine, setting pine up. To open a folder for a conversation you type its path.
+pine, setting pine up. A right click's menu (a conversation's, a group's, an agent's, one of
+your messages') is drawn by the page itself at the pointer, with the same entries, as it is in
+the web client. To open a folder for a conversation you type its path.
 
 ## The daemon: started or reused
 
@@ -1160,7 +1162,9 @@ desktop/
                    what a tool or a program printed, a Code Block that follows its end; sound.tsx:
                    a sound's line, its player and its bars, measured with src/tui/levels.ts), and pine's
                    own small parts (logo.tsx: the logo; empty-view.tsx: a view with nothing in it;
-                   agent-avatar.tsx: an agent's initial on the stock avatar, in its own color; pine's mark for the main agent);
+                   agent-avatar.tsx: an agent's initial on the stock avatar, in its own color; pine's mark for the main agent;
+                   page-menu.tsx: a right click's menu, the system's through the bridge where it has one,
+                   else stock Dropdown Menu at the pointer);
                    no part there only renames or bundles a stock one
     use-load.ts    loading what a view shows
     lists.tsx      the look of a row of the tree of files and of the lists to open a row from,
@@ -1213,7 +1217,11 @@ desktop/
   client gives; without it the page shows no Disconnect. Others are given by one bridge only:
   `renameHost` and `openApp` by the web client; `pair`, `stopPairing`, `onPairLink`, `nearby` and
   `pairNearby` by the mobile app (pairing); browser access, the app's own update and its browser
-  by the desktop app alone. Absent, the page is the desktop's as before. A change of the page is checked in all three: `npm run check`
+  by the desktop app alone. `contextMenu` (a right click's menu drawn by the system) is given by
+  the desktop app and the mobile app (which shows none yet); the preview and the web client leave it
+  out, and the page draws the menu itself (`contextMenu` in `src/components/page-menu.tsx`: the same
+  entries, ids, separators and choices, at the pointer; the id picked, or nothing when dismissed).
+  Absent, the page is the desktop's as before. A change of the page is checked in all three: `npm run check`
   in `desktop/`, in `mobile/` and in `web/`.
 - What the daemon can do is added to the control API (`src/http.ts`, `src/owner.ts`) with a
   test there, then to `api.ts`. The app never does a daemon's work itself.
