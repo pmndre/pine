@@ -133,7 +133,6 @@ export const PictureLarger: Story = {
 	play: async ({ canvas, userEvent }) => await userEvent.click(canvas.getByRole("button", { name: "okapi.svg" })),
 };
 
-/** A conversation that has not loaded yet: its shape, from stock Skeleton blocks. */
 const quoted: Made[] = [
 	{ t: "answer", task: 1, agent: "main", live: false, text: "The build passed on the second run. The first failed because the cache held an old copy of the lockfile.\n\nClearing the cache before the install keeps it from happening again." },
 	{ t: "user", text: "> The first failed because the cache held an old copy of the lockfile.\n\n> Clearing the cache\n\nCan you do that in the workflow?", task: 2 },
@@ -143,6 +142,7 @@ const quoted: Made[] = [
 /** Quotes sent with a message stay badges at the top of its bubble: a click goes back to where they were taken from. */
 export const Quoted: Story = { args: { items: quoted } };
 
+/** A conversation that has not loaded yet: its shape, from stock Skeleton blocks. */
 export const ConversationSkeleton: Story = { args: { items: [] }, render: () => <ConversationSkeletonView /> };
 
 /** The owner's turn while it loads. */

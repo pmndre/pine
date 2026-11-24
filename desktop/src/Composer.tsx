@@ -22,7 +22,6 @@ import { type Attachment, REASONING_ABOUT, store, type Tab, useModel, useSignal 
 import { baseName, MODES, size, tilde } from "./text.ts";
 
 const MAX_FILE = 20 * 1024 * 1024;
-
 const MAX_FILES = 10;
 
 const toBase64 = (buf: ArrayBuffer) => {
