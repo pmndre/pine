@@ -29,20 +29,20 @@ const rightClick: Story["play"] = async ({ canvas, userEvent }) => {
 	await userEvent.pointer({ keys: "[MouseRight]", target, coords: { clientX: at.left + 8, clientY: at.bottom - 4 } });
 };
 
-/** A conversation that is not pinned, with tabs on both sides: every entry can be chosen, and Pin is offered. */
+/** A conversation that is not pinned, with tabs on both sides: every entry can be chosen, and Move to New Window and Pin are offered. */
 export const Conversation: Story = {
-	args: { trigger: tab("scout", "the landing page"), pin: "pin", onAction: fn() },
+	args: { trigger: tab("scout", "the landing page"), pin: "pin", move: true, onAction: fn() },
 	play: rightClick,
 };
 
-/** A pinned conversation in the last tab: Unpin is offered, and there is nothing to its right to close. */
+/** A pinned conversation in the last tab: Move to New Window and Unpin are offered, and there is nothing to its right to close. */
 export const PinnedLast: Story = {
-	args: { trigger: tab("scout", "release notes"), pin: "unpin", right: false, onAction: fn() },
+	args: { trigger: tab("scout", "release notes"), pin: "unpin", move: true, right: false, onAction: fn() },
 	play: rightClick,
 };
 
-/** An agent's main conversation, the only tab: it can be closed, and Pin is there but cannot be chosen, since main always stays. */
+/** An agent's main conversation, the only tab: it can be closed or moved, and Pin is there but cannot be chosen, since main always stays. */
 export const MainAlone: Story = {
-	args: { trigger: tab("scout"), pin: "main", others: false, right: false, onAction: fn() },
+	args: { trigger: tab("scout"), pin: "main", move: true, others: false, right: false, onAction: fn() },
 	play: rightClick,
 };

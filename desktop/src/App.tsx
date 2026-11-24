@@ -161,6 +161,7 @@ function ConversationRow({ agent, c, depth = 0, inset = 0 }: { agent: string; c:
 	const menu = async () => {
 		const picked = await bridge.contextMenu([
 			{ id: "open", label: "Open" },
+			{ id: "open-window", label: "Open in New Window" },
 			...(c.tasks ? [{ id: "branch", label: "Branch" }] : []),
 			...(c.tasks && c.folder ? [{ id: "branch-worktree", label: "Branch into a Worktree" }] : []),
 			...(c.worktree ? [{ id: "worktree", label: "Worktree…" }] : []),
@@ -170,6 +171,7 @@ function ConversationRow({ agent, c, depth = 0, inset = 0 }: { agent: string; c:
 			main ? { id: "reset", label: "Start over…" } : { id: "remove", label: "Remove…" },
 		]);
 		if (picked === "open") await s.openTab(agent, c.session);
+		if (picked === "open-window") await s.openInNewWindow(agent, c.session);
 		if (picked === "move") await s.askMoveToGroup(agent, c.session, c.group);
 		if (picked === "branch" || picked === "branch-worktree") await s.branch(agent, c.session, undefined, picked === "branch-worktree");
 		if (picked === "worktree") {
@@ -596,14 +598,17 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 	}, [on]);
 	const act = (action: TabMenuAction) => {
 		if (action === "close") return s.closeTab(tab);
+		if (action === "move") return void s.moveToNewWindow(tab);
 		if (action === "pin" || action === "unpin") return void s.pin(tab, action === "pin");
 		s.closeTabs(action, tab);
 	};
+	const tabMime = `application/x-pine-tab-${s.windowId}`;
 	// The least width is what the tab holds besides its name (the avatar, the gaps, the close button) and a few letters of the
 	// name: narrower, what does not shrink spills over the next tab. Past that, the row scrolls.
 	return (
 		<TabMenu
 			pin={tab.kind !== "chat" ? undefined : tab.session === "main" ? "main" : kept ? "unpin" : "pin"}
+			move={tab.kind === "chat"}
 			others={s.tabs.length > 1}
 			right={index < s.tabs.length - 1}
 			onAction={act}
@@ -614,10 +619,20 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 					data-active={on || undefined}
 					className={cn("group/tab relative flex h-8 max-w-55 min-w-28 flex-initial items-center gap-2 rounded-md pr-1.5 pl-2.5 app-no-drag", on ? "bg-background text-foreground ring-1 ring-border" : "text-muted-foreground hover:bg-accent hover:text-foreground", drop && "before:absolute before:inset-y-1 before:-left-0.5 before:w-0.5 before:rounded-full before:bg-primary")}
 					draggable
-					onDragStart={(e) => (e.dataTransfer.setData("application/x-pine-tab", String(index)), (e.dataTransfer.effectAllowed = "move"))}
-					onDragOver={(e) => e.dataTransfer.types.includes("application/x-pine-tab") && (e.preventDefault(), setDrop(true))}
+					onDragStart={(e) => (e.dataTransfer.setData("application/x-pine-tab", JSON.stringify({ windowId: s.windowId, index })), e.dataTransfer.setData(tabMime, String(index)), (e.dataTransfer.effectAllowed = "move"))}
+					onDragOver={(e) => e.dataTransfer.types.includes(tabMime) && (e.preventDefault(), setDrop(true))}
 					onDragLeave={() => setDrop(false)}
-					onDrop={(e) => (setDrop(false), s.moveTab(Number(e.dataTransfer.getData("application/x-pine-tab")), index))}
+					onDrop={(e) => {
+						setDrop(false);
+						const raw = e.dataTransfer.getData("application/x-pine-tab");
+						if (!raw) return;
+						try {
+							const parsed = JSON.parse(raw) as { windowId?: unknown; index?: unknown };
+							if (parsed && parsed.windowId === s.windowId && typeof parsed.index === "number") s.moveTab(parsed.index, index);
+						} catch {
+							// cross-window or unrecognized drag payload: safe no-op
+						}
+					}}
 					onClick={() => s.activate(tab)}
 					onAuxClick={(e) => e.button === 1 && s.closeTab(tab)}
 					title={tab.kind === "chat" ? `${tab.agent} · ${tab.session}${tab.folder ? ` · ${tab.folder}` : ""}` : tab.kind === "task" ? `task #${tab.task}` : tab.kind}
