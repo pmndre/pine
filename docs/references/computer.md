@@ -133,9 +133,12 @@ there), and keys are sent to that app's process and to no other, after it was br
 front: if the owner clicks into another window while the agent types, the rest of the text
 does not end up there.
 
-pine does not click, type or press in **the app pine itself runs in** (the terminal app the
-daemon was started from): that is where the owner answers pine's questions. Looking at it is
-allowed. To run a command, an agent uses its own shell.
+pine does not click, type or press in **the app pine itself runs in** (the Pine app when it
+started pine, else the terminal app the daemon was started from), nor in **the Pine app**
+wherever it runs, also when it uses a pine it did not start (one started in a terminal, or one
+that was kept running after the app quit). That is where the owner answers pine's questions.
+Looking at it is allowed. To run a command, an agent uses its own shell. `apps` marks these as
+"pine runs in it" and "the Pine app".
 
 There is no list of forbidden apps. An app that can run commands or show files (a terminal, the
 Finder, an editor) reaches everything the owner reaches, including what the sandbox keeps from
@@ -144,8 +147,8 @@ the agent's shell. The yes for such an app is the owner's decision to make.
 ## What macOS has to be told, once
 
 macOS lets a program operate other apps only when the owner has allowed it, per app that asks.
-What asks here is the app pine runs in: the terminal app the daemon was started from (Terminal,
-iTerm, Ghostty, an editor's terminal).
+What asks here is the app pine runs in: the Pine app when it started pine, else the terminal app
+the daemon was started from (Terminal, iTerm, Ghostty, an editor's terminal).
 
 | Grant | Needed for | Where |
 |---|---|---|
@@ -200,7 +203,7 @@ Under `options` of the server's entry.
 | "pine is building its helper" | The first use; try again in a moment |
 | "That reference does not exist any more" | The window changed since the snapshot: take a new `app_snapshot` |
 | "At that position is ..., not ..." | Another app's window is where the click would land: take a new `app_screenshot`, or name that app |
-| "... is the app pine itself runs in" | pine does not act in its own terminal app |
+| "... is the app pine itself runs in", "... is the Pine app" | pine does not act where its own questions are answered: the app it runs in, and the Pine app |
 | "... could not be brought to the front" | Something holds the screen: a system dialog, an app in full screen |
 | "not approved" | The owner said no to that app in this conversation |
 | "Not done: you are in plan mode" | The agent's mode is `plan`: it may look at apps and acts in none. The owner switches the mode when the plan is to be carried out |

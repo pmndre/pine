@@ -26,13 +26,13 @@ PINE of course also handles regular chat, coding, tasks and orchestration. Agent
 - **Self-discovery:** A built-in BM25 manual tool lets agents look up any API or internal detail on demand, without carrying docs in context.
 - **A CLI that feels like a desktop app:** Tabs, buttons, scroll regions, inline images and video, and drag-and-drop with thumbnails. Works in Kitty-protocol terminals like Ghostty, with fallbacks for older ones.
 - **Built in:** Computer use (macOS), web browsing, coding tools, diffs and git, undo, plan mode, goals (`/goal` keeps an agent working until it is done) and swarms (`/swarm` has an agent lead a job that its sub-agents work through on a board, with the result checked).
-- **Orchestration:** Agents can delegate, create sub-agents in parallel. A pinned tab simply persists an agent and its task. Name it, give it instructions, chat with it or subscribe it to events.
+- **Orchestration:** Agents can delegate, create sub-agents in parallel, and share a board of tasks so that no two do the same thing. A pinned tab simply persists an agent and its task. Name it, give it instructions, chat with it or subscribe it to events.
 
 > [!IMPORTANT]
 > pine runs on macOS and Linux; `pine init` sets up what it needs. Windows users can try [Docker](#docker). It remains open what exactly is necessary to make it run completely in Windows.
 
 ```
-                  you:  terminal UI · Telegram
+          you:  terminal UI · Pine app · Telegram
                                │
                                ▼
  wake it                 ┌───────────┐            it uses
@@ -121,6 +121,10 @@ Mac, a server) or paired with the Pine app by QR code: the same page, with its o
 pine on the phone. Each release
 has it as an APK; the IPA to sideload with your own Apple ID is built by hand for now
 ([mobile.md](docs/references/mobile.md)).
+
+From a web browser on any computer, with nothing installed, the web client shows the same page:
+over SSH to your own pine, or paired with the Pine app by QR code
+([web.md](docs/references/web.md)).
 
 To get a newer version later, with whatever it needs:
 

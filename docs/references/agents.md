@@ -137,7 +137,10 @@ To hand the instructions over to the agent, move that file to `agents/<id>/works
 
 ## What an agent sees
 
-Its system prompt is put together from, in this order:
+Its system prompt is put together from, in this order. (This is how a run started from outside
+is told. In your own conversations pine's text alone is the system prompt: the files of items 2
+and 3 open the conversation as a first message, and the agents to hand work to are named in the
+`<pine-note>`; see "What the model server keeps".)
 
 1. pine's base prompt: that it is an agent in pine working for its owner, how to use its file
    tools, that the web is looked up with its web tools and not with `curl` in the shell, how far its shell and file tools reach (its workspace in `safe` and `manual` mode, the owner's account in `auto` and `bypass`: `mode`), that pine's setup is changed through tools and
@@ -236,7 +239,7 @@ declares them in **families**, which is about 11 500:
 
 | Family | Its actions |
 |---|---|
-| `pine_list` | What there is: `sources`, `schedules`, `mcp_servers`, `skills`, `boards`, and for the main agent `agents`, `settings`, `routes`, `conversations`. `what` takes several at once (`["sources", "schedules"]`) |
+| `pine_list` | What there is: `sources`, `schedules`, `mcp_servers`, `skills`, `models`, `boards`, and for the main agent `agents`, `settings`, `routes`, `conversations`. `what` takes several at once (`["sources", "schedules"]`) |
 | `pine_sources` | `subscribe`, `unsubscribe`, `add_source`, `send`, `read_source`, `remove_source`, `publish_event`, and for the main agent `add_source_type`, `remove_source_type` |
 | `pine_schedules` | `add_schedule`, `remove_schedule` |
 | `pine_mcp` | `add_mcp_server`, `remove_mcp_server`, `sign_in_mcp_server` (the main agent's), and the three tools for a server's resources |
@@ -245,7 +248,7 @@ declares them in **families**, which is about 11 500:
 | `pine_settings` | The main agent's: `set_setting`, `add_route`, `remove_route`, `add_model_server`, `remove_model_server`, `sign_in`, `sign_out` |
 | `pine_board` | `board_read`, `board_post`, `board_claim`, `board_done`, `board_answer`, `board_remove`: the tasks of a job that several work on ([boards.md](boards.md)) |
 | `pine_other` | `request_access`, `stop_program`, `state_get`, `state_set` |
-| `pine_conversations` | The main agent's: `read_conversation`, `set_conversation`, `remove_conversation` |
+| `pine_conversations` | The main agent's: `read_conversation`, `set_conversation`, `remove_conversation`, `rename_group`, `remove_group` |
 | One for each MCP server, named after the server (`browser`, `media`, `home_link`) | The server's tools under their own names (`browser_navigate`, `browser_click`) |
 
 An action has the name its tool has everywhere in this manual. Where the manual says "call
@@ -277,8 +280,7 @@ What keeps a short declaration from costing calls:
 - A call with wrong arguments comes back with the whole description of that action, so the
   next call is right.
 
-A run that an outside event started is declared its few tools as before, each by itself.
-An `agents/<id>/SYSTEM.md` and a list in `tools` work with either setting.
+An `agents/<id>/SYSTEM.md` and a list in `tools` work for both kinds of run.
 
 ### What the model server keeps
 
@@ -336,7 +338,8 @@ What pine cannot help:
 - With more conversations than the server has slots, one of them leaves its slot. With a
   folder for the server's slots (`limits.slotPages`) it is read back from a file; without one
   it is read again by the model. Either way, give the server at least as many slots as
-  `limits.maxConcurrentRuns`, and one more if sub-agents are used a lot.
+  pine lets that model work at once (its number in `limits.models`, Settings > Models, else
+  `limits.maxConcurrentRuns`), and one more if sub-agents are used a lot.
 - A model that cannot go back part of the way in what it has read (llama.cpp says "forcing
   full prompt re-processing" in its log) reads a conversation from its beginning when it was
   pushed out of its slot. Slots are what prevents that.
@@ -438,7 +441,7 @@ minutes. The Pine app writes under such a message whether the work has read it (
 "read 14:03"), and until it has, offers "send now": the step under way is stopped (a command it
 runs ends), and the work goes on with the message. Reading is not answering: a model deep in
 long work may read a message and still keep going. Stop the work when you need the answer and
-it does not come.
+it does not come. Other programs use `POST /tasks/<id>/now` ([operations.md](operations.md)).
 
 ## Groups of conversations
 
@@ -648,7 +651,8 @@ the main agent. `create_agent` is something else: a new agent that stays.
 
 `subagent(tasks: string[], stages?, ids?, model?, thinking?, worktree?, pool?, note?, check?, verify?)` runs up to `subagents.maxParallel` copies of the
 same agent at once (pine's `limits.maxSubagents`, 4 unless you changed it in Settings > General, or what the agent's `agent.json` says). Given more tasks than
-that, it works through them that many at a time, as a pool ([boards.md](boards.md)).
+that, it works through them that many at a time, as a pool ([boards.md](boards.md)); not with
+`worktree`, where a call takes at most that many tasks.
 Each copy has the agent's workspace, instructions and tools but an empty conversation, cannot
 delegate or spawn further, and returns only its final answer. Use it for searches and checks
 that would otherwise fill the context:

@@ -506,7 +506,7 @@ async function main(): Promise<void> {
 			process.exitCode = 1;
 			return;
 		}
-		out(`\nReady. Start with: pine${target === defaultHome() ? "" : ` --home ${target}`}\nThe example uses Claude through "claude -p". For another model: pine login <provider>, then /model in the UI.${noSandbox ? "\nThe sandbox is not set up (see above): until it is, agents get no shell. pine check says where it stands." : ""}`);
+		out(`\nReady. Start with: pine${target === defaultHome() ? "" : ` --home ${target}`}\nIt has no model yet: pine login <provider> for a subscription or an API key, or pine model add <name> <address> for a server of your own.${noSandbox ? "\nThe sandbox is not set up (see above): until it is, agents get no shell. pine check says where it stands." : ""}`);
 		return;
 	}
 

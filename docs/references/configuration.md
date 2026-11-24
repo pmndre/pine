@@ -28,6 +28,9 @@ Everything pine needs is in its home directory: `~/.pine` by default, or `$PINE_
       sessions/        conversation history (written by pine)
   skills/              skills for all agents; no entry needed (the main agent adds them with add_skill)
   sources/             source types the main agent registered (pine's own copies)
+  themes/              VS Code color themes for the Pine app; ui.theme picks one
+  views/               views of the Pine app's panel; ui.view picks one (views.md)
+  removed/             folders of agents removed with keep_files (nothing reads them)
   sandbox/             per-agent private home and generated sandbox profiles (written by pine)
   data/                event log, task queue, media, control token, files of event sources, the folder
                        states kept for undo, what is known of commands in the background, the
@@ -52,10 +55,12 @@ agent shells and MCP servers do not inherit them; they are also removed from eve
 and log lines if they ever appear there (values of 8 characters or more). Keep the file at
 mode 600 (`pine init` sets that).
 
-pine writes to `.env` itself in one case: when an agent sets up an event source that has a
+pine writes to `.env` itself in three cases. When an agent sets up an event source that has a
 password or secret, the value is stored there as `PINE_SOURCE_<NAME>_<AGENT>_<OPTION>` (without
-the agent for a source of all agents), and the configuration holds only the `${...}` reference.
-Removing the source removes the entry. See [sources.md](sources.md).
+the agent for a source of all agents); when it adds a local MCP server with a key, as
+`PINE_MCP_<NAME>_<AGENT>_<OPTION>`; and a model server's key (below). The configuration holds
+only the `${...}` reference, and removing the source or the server removes the entry. See
+[sources.md](sources.md) and [mcp.md](mcp.md).
 
 The key of a model server of your own goes there too, as `PINE_MODEL_<NAME>_API_KEY` when pine
 asked you for it (`pine model add`, `add_model_server`); `models.json` names it as `"apiKey":

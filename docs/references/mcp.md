@@ -320,7 +320,10 @@ change:
 - In the Pine app there is no window to open: the browser is beside the conversation, at the
   right of the window, live, and yours to use there ([desktop.md](desktop.md), "The browser"). While
   the app runs, `browser_show` opens it there and `browser_hide` has nothing
-  to close. What follows about sharing the browser holds there in the same way.
+  to close. What follows about sharing the browser holds there in the same way. The browser is
+  then the app's own tabs: `profile`, `headed`, `browser`, `executablePath` and `viewport` do
+  not apply, logins last as long as the app runs, and showing it reloads nothing. The guard,
+  `allowHosts`, `denyHosts` and the blocked tools are the same.
 - While the window is open you and the agent share one browser. The agent is told so, and that
   what you ask for on the web is to be done in that window, on the page you are on, not with a
   web search.

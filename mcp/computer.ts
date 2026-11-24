@@ -25,7 +25,10 @@
 // an agent whose reach is the account get this server, and the owner is asked once per app in a
 // conversation. What this server adds is that an action lands in the app that was named: a
 // reference belongs to it, a position lies in one of its windows, and keys are sent to its process alone.
-// It does not click or type in the app pine itself runs in, where pine's questions are answered.
+// It does not click or type in the app pine itself runs in, nor in the Pine app wherever it runs: that
+// is where pine's questions are answered. The Pine app may use a pine it did not start (one started
+// in a terminal, or kept running after the app quit), and then it is no app pine runs in: it is
+// known by its bundle id instead (`PINE_APP`).
 //
 // Everything a screen shows is outside content; pine marks sessions that use it as tainted.
 //
@@ -325,6 +328,15 @@ interface AppInfo {
 	windows?: Win[];
 }
 
+/**
+ * The Pine app's bundle id: the packed app's (desktop/scripts/pack.mjs) and, with a suffix, the copy of
+ * Electron a run from a checkout starts (desktop/scripts/dev-electron.mjs).
+ */
+export const PINE_APP = /^dev\.pine\.desktop(\.|$)/;
+
+/** Where pine does not act: the app it runs in, and the Pine app wherever it runs. */
+export const answersHere = (a: Pick<AppInfo, "host" | "bundle">) => a.host || PINE_APP.test(a.bundle ?? "");
+
 class HelperError extends Error {
 	code: string;
 	constructor(code: string, message: string) {
@@ -472,7 +484,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 		const name = appName(args);
 		const a = await ask("find", { app: name });
 		if (!a.running) throw new Error(`${name} is not running. Open it with app_open, or look at what is running with apps.`);
-		if (acting && a.host) throw new Error(`${a.name} is the app pine itself runs in. pine does not click, type or press there: that is where your owner answers pine's questions. You can look at it (app_snapshot${o.images === false ? "" : ", app_screenshot"}). To run a command, use your own shell.`);
+		if (acting && answersHere(a)) throw new Error(`${a.name} is ${a.host ? "the app pine itself runs in" : "the Pine app"}. pine does not click, type or press there: that is where your owner answers pine's questions. You can look at it (app_snapshot${o.images === false ? "" : ", app_screenshot"}). To run a command, use your own shell.`);
 		return a;
 	};
 	const toFront = async (a: AppInfo, window?: string) => {
@@ -523,7 +535,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 			const list: AppInfo[] = r.apps ?? [];
 			const lines = [...list.filter((a) => a.front), ...list.filter((a) => !a.front)].map((a) => {
 				const wins = a.windows;
-				const marks = [a.front ? "in front" : "", a.host ? "pine runs in it" : ""].filter(Boolean).join(", ");
+				const marks = [a.front ? "in front" : "", a.host ? "pine runs in it" : PINE_APP.test(a.bundle ?? "") ? "the Pine app" : ""].filter(Boolean).join(", ");
 				return `- ${a.name}${marks ? ` (${marks})` : ""}${wins === undefined ? "" : wins.length ? `: ${wins.length === 1 ? "window" : "windows"} ${wins.map(windowLine).join(", ")}` : ": no window"}`;
 			});
 			const screens: Array<{ index: number; w: number; h: number; main?: boolean }> = r.displays ?? [];

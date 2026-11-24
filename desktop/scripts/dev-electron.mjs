@@ -30,7 +30,8 @@ function pineApp(electron) {
 	const stock = path.resolve(electron, "..", "..", "..");
 	const icon = path.join(root, "assets", "icon.icns");
 	const version = require("electron/package.json").version;
-	const stamp = `${version} ${fs.existsSync(icon) ? fs.statSync(icon).mtimeMs : 0}`;
+	// "id": copies made before the bundle id was set are made again.
+	const stamp = `${version} ${fs.existsSync(icon) ? fs.statSync(icon).mtimeMs : 0} id`;
 	const dir = path.join(root, "node_modules", ".cache", "pine-dev");
 	const app = path.join(dir, "Pine.app");
 	const exe = path.join(app, "Contents", "MacOS", path.basename(electron));
@@ -42,6 +43,8 @@ function pineApp(electron) {
 	execFileSync("/usr/bin/ditto", [stock, app]);
 	const plist = path.join(app, "Contents", "Info.plist");
 	for (const key of ["CFBundleName", "CFBundleDisplayName"]) execFileSync("/usr/bin/plutil", ["-replace", key, "-string", "Pine", plist]);
+	// The packed app's id with a suffix: app control knows the Pine app by it and acts nowhere in it (mcp/computer.ts).
+	execFileSync("/usr/bin/plutil", ["-replace", "CFBundleIdentifier", "-string", "dev.pine.desktop.dev", plist]);
 	if (fs.existsSync(icon)) fs.copyFileSync(icon, path.join(app, "Contents", "Resources", "electron.icns"));
 	execFileSync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", app], { stdio: "ignore" });
 	fs.writeFileSync(stampFile, stamp);

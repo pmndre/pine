@@ -7,8 +7,8 @@
 // (scripts/version-code.ts), and writes ios/App/output/Pine-<version>.ipa. Then checks what it
 // wrote: nothing inside is signed at all (the app, and each embedded framework, whose vendor's
 // signature is taken off), every binary is arm64, the WebRTC library and its OpenSSL are there, its
-// versions are the ones asked for. Without a version it is 0.0.0, build 1. Needs Xcode with the iOS SDK; the Release workflow
-// runs it on a runner with Xcode 27.
+// versions are the ones asked for. Without a version it is 0.0.0, build 1. Needs Xcode with the iOS SDK. It is run by hand
+// on a Mac: the Release workflow builds no IPA for now.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

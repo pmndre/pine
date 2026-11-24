@@ -6,9 +6,10 @@ pine
 
 opens a full-screen chat with your agents (`pine tui` is the same). If a daemon is already
 running it attaches to it; otherwise it starts one inside the same process, logs to
-`data/pine.log`, and stops it again when you quit. With the example home it also starts the
-`claude -p` stand-in model when nothing else serves it, so a fresh `pine init` followed by
-`pine` works without further setup, given Claude Code is installed and signed in.
+`data/pine.log`, and stops it again when you quit. A new home has no model: the main
+conversation's welcome says where to connect one (`pine login <provider>`, or `pine model add`
+for a server of your own). A home whose `models.json` has a `dev` provider that an agent uses
+also gets the `claude -p` stand-in started when nothing else serves it.
 
 ```
  pine  1 ★ main ×  2 main·notes × ⠹  3 events ×  +                 ▤ code  ← tabs, and the code pane's button
@@ -194,7 +195,7 @@ in it, once nothing has been said in it for 7 days (`limits.conversationDays`; `
 everything). These stay however old they are: each agent's main conversation, a pinned one,
 one in a group, one that is open in a tab, and one that is subscribed to an event source or has a schedule of
 its own. The list says for each which it is: `the agent's own, always kept`, `pinned`, `open in
-a tab`, `kept in its group`, `kept`, or when it goes (`goes in 5 days`, `goes in 20 h`, `goes soon`).
+a tab`, `kept in a group`, `kept`, or when it goes (`goes in 5 days`, `goes in 20 h`, `goes soon`).
 
 | In the list | Does |
 |---|---|
@@ -225,6 +226,7 @@ Type `/` and the list appears; keep typing to narrow it, `enter` runs the comman
 | `/rename <name>` | Another name for this conversation and its tab. Its history, pin and subscriptions go with it. Not for an agent's main conversation |
 | `/branch [--worktree] [name]` | A new conversation that goes its own way from one of your messages; this one stays as it is. Without a name it lists your messages, the latest first, and "all of it": the branch has what was said up to the end of the one you pick. With a name it takes all of it. With `--worktree` (or `-w`) the branch works in a worktree of its own. See [agents.md](agents.md#branching-a-conversation) |
 | `/pin`, `/unpin` | Keep this conversation however long it is unused, or let it go again |
+| `/group [name\|-]` | Put this conversation into a group of the agent's conversations (made if there is none; its branches go with it). `/group -` takes it out, `/group` alone says which. A conversation in a group is kept. See [agents.md](agents.md#groups-of-conversations) |
 | `/reset` | Forget this conversation and start fresh (also clears "has seen outside content") |
 | `/undo` | Take back your last message: what it started is stopped, the files it changed in the conversation's folder are restored, the conversation forgets it and what followed, and its text is in the input again to change and send. Again for the message before it. See [coding.md](coding.md) for what is and is not restored |
 | `/redo` | Redo: bring back what the last `/undo` took, files and conversation. After several undos, `/redo` again brings back the next message, one at a time. Works until you send a new message |
@@ -314,6 +316,7 @@ each thing pine did about it:
  ◎ swarm started: main leads it
  ◎ swarm 3 tasks are not done: round 2 of 8 starts
  ◎ swarm the answer is being checked by a sub-agent that did none of the work
+ ◎ swarm · round 2 of 8 · looking at the board · esc to pause
  ◎ swarm · round 2 of 8 · checking the answer · esc to pause
  ✓ swarm done after 2 rounds: 16 tasks, and the answer was checked
 ```
@@ -328,7 +331,7 @@ tasks beside the conversation while it works.
 
 | Key | Does |
 |---|---|
-| `enter` | Send. While the agent is working, the message is given to that work and read at its next step, so a correction lands without stopping anything. If the work ends or is stopped before reading it, it is answered next |
+| `enter` | Send. While the agent is working, the message is given to that work and read at its next step, so a correction lands without stopping anything; pine asks the agent to answer it first, briefly, then go on. If the work ends or is stopped before reading it, it is answered next. Whether the work has read it, and "send now", are shown in the Pine app only ([agents.md](agents.md), "A message while the agent works") |
 | `alt+enter` | Send, but let the message wait its turn: it is answered as work of its own when the agent is done with what it is doing |
 | `shift+enter` | New line |
 | `up` / `down` | Earlier inputs |
@@ -406,7 +409,7 @@ The bottom bar shows the agent's mode; click it, press `shift+tab`, or use `/mod
 | Mode | What you will notice |
 |---|---|
 | `auto` | The agent works without asking and without a sandbox: it has your whole account and the network, and keeps them after reading the web. It asks before a critical action, and after outside content before it sends something out. What the main agent starts in |
-| `safe` | The agent works without asking inside its sandbox: its own folders, no network. It asks when it wants something outside ("read access to ~/dev/gonzo, reason: ..."), before a critical action, and after outside content before it sends something out. What every other agent starts in. Shown in green |
+| `safe` | The agent works without asking inside its sandbox: its own folders, no network. It asks when it wants something outside ("read access to ~/dev/gonzo, reason: ..."), before a critical action, and after outside content before it sends something out. What every other agent starts in, unless `defaults.mode` in `pine.json` names another for all; on a machine without a sandbox an agent whose mode nobody chose works in `auto`. Shown in green |
 | `plan` | The agent looks, reads, searches the web and asks, and changes nothing: no file is written, no command that changes something runs, nothing is sent, and you are not asked about any of it. Its answer is a plan. Read it, say what should be different, then switch to another mode (`/mode auto`, or a click on the mode in the bottom bar; `shift+tab` goes on to `safe`): the agent is told that planning is over and carries it out. While it plans, the agent reaches what the mode it had before reaches. Good with a small model: you see what it is about to do before it does it. Shown in magenta |
 | `manual` | Inside its sandbox, and a dialog before every command, edit or message, until you answer "Always here" for that tool or server |
 | `bypass` | No sandbox and no dialogs. The agent can read and change files anywhere in your account and use the network, and nothing is checked. Shown in red |
@@ -431,7 +434,7 @@ answer the one before it or put it off.
 | `a` or `y` | Allow once. Where a yes already holds for the whole conversation (access to a folder or the network, a local address in the browser, an app) the button reads "Allow", and the dialog says what the yes holds for |
 | `s` | Always here: allow, and do not ask again in this conversation about this MCP server (or this tool, such as `bash`). For a critical action it covers that kind of critical action, not the whole shell. Not offered for actions you configured to ask every time |
 | `d` or `n` | Deny |
-| `esc` | Later: the request stays open until `security.approvalTimeout` (5 minutes) has passed and then counts as denied. Until then the status line keeps reminding you, `enter` on an empty line opens the dialog again, and `/approve` or `/deny` answer it A question in a tab that is not in front opens no dialog there: that tab gets a `!` in the tab bar, and the status line of the tab you are in says which tab waits (`alt+<n>` goes there) |
+| `esc` | Later: the request stays open until `security.approvalTimeout` (5 minutes) has passed and then counts as denied. Until then the status line keeps reminding you, `enter` on an empty line opens the dialog again, and `/approve` or `/deny` answer it. A question in a tab that is not in front opens no dialog there: that tab gets a `!` in the tab bar, and the status line of the tab you are in says which tab waits (`alt+<n>` goes there) |
 
 When the action needs something only you have (a bot's token, a device's password), the dialog
 has a field for it: the value's name, under it what it is, and a bar to type into. When it needs

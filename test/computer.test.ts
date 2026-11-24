@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import zlib from "node:zlib";
-import { available, BUILDING, buildHelper, computer, grantText, NO_COMPILER, type Node, outline, parseKeys, pickWindow, PICTURE_TOOLS, TOOLS, toolsOffered, toScreen, unavailable } from "../mcp/computer.ts";
+import { answersHere, available, BUILDING, buildHelper, computer, grantText, NO_COMPILER, type Node, outline, parseKeys, pickWindow, PICTURE_TOOLS, TOOLS, toolsOffered, toScreen, unavailable } from "../mcp/computer.ts";
 import { classify } from "../src/actions.ts";
 import { APP_LOOK, appTarget, computerSession } from "../src/computer.ts";
 import { effectiveMcp, loadConfig, mcpTaints, toPiMcp } from "../src/config.ts";
@@ -209,6 +209,8 @@ const [log, ...flags] = process.argv.slice(2);
 const note = (line) => fs.appendFileSync(log, line + "\\n");
 note("start");
 const apps = { textedit: { name: "TextEdit", pid: 100, bundle: "com.apple.TextEdit" }, notes: { name: "Notes", pid: 200, bundle: "com.apple.Notes" }, terminal: { name: "Terminal", pid: 300, bundle: "com.apple.Terminal", host: !flags.includes("no-host") } };
+// The Pine app where pine was started elsewhere: in the place of the terminal, and not the app pine runs in.
+if (flags.includes("pine-app")) { apps.pine = { name: "Pine", pid: 300, bundle: "dev.pine.desktop" }; delete apps.terminal; }
 const windows = { 100: [{ index: 1, ref: "w1", title: "Untitled", main: true, x: 100, y: 50, w: 640, h: 400 }, { index: 2, ref: "w2", title: "Letter.rtf", x: 300, y: 300, w: 400, h: 300 }], 200: [{ index: 1, ref: "w3", title: "Notes", x: 1000, y: 0, w: 800, h: 600 }], 300: [{ index: 1, ref: "w4", title: "pine", x: 0, y: 700, w: 800, h: 400 }], 400: [] };
 const refs = { e2: 100, e3: 100, e9: 100, e20: 200, e30: 300, m11: 100, m12: 100, m14: 100 };
 let text = "Hello";
@@ -513,6 +515,29 @@ test("computer: pine does not click or type in the app it runs in, where its own
 	// Where pine does not run in an app with windows (a server, a service), there is no such app.
 	const none = fakeHelper(t, {}, "no-host");
 	assert.match(await none.call("app_type", { app: "Terminal", text: "ls" }), /^Typed 2 characters into Terminal/);
+});
+
+test("computer: pine does not click or type in the Pine app either, also when the Pine app uses a pine it did not start", async (t) => {
+	// pine was started in a terminal, or kept running after the app quit: the Pine app is no app pine runs in.
+	const c = fakeHelper(t, {}, "no-host", "pine-app");
+	assert.match(await c.call("apps"), /- Pine \(the Pine app\)/);
+	assert.match(await c.call("app_snapshot", { app: "Pine" }), /- button "Allow" \[ref=e30\]/);
+	assert.match(await c.call("app_screenshot", { app: "Pine" }), /^Picture of Pine/);
+	const refusal = /Pine is the Pine app\. pine does not click, type or press there: that is where your owner answers pine's questions\./;
+	for (const [name, args] of [
+		["app_press", { ref: "e30" }],
+		["app_set_text", { ref: "e30", text: "y" }],
+		["app_type", { text: "y\n" }],
+		["app_key", { keys: "return" }],
+		["app_click", { x: 10, y: 10 }],
+		["app_drag", { x: 10, y: 10, to_x: 20, to_y: 20 }],
+		["app_scroll", { x: 10, y: 10, direction: "down" }],
+		["app_menu", { path: "File > New" }],
+	] as const) assert.match(await c.fails(name, { app: "pine", ...args }), refusal, name);
+	assert.deepEqual(c.did(), [], "nothing reached it");
+	// The packed app's id, and the copy a run from a checkout starts; nothing else.
+	for (const bundle of ["dev.pine.desktop", "dev.pine.desktop.dev"]) assert.ok(answersHere({ host: false, bundle }), bundle);
+	for (const bundle of ["dev.pine.desktopx", "com.github.Electron", ""]) assert.ok(!answersHere({ host: false, bundle }), bundle);
 });
 
 test("computer: a missing grant is said in plain words, with where to click, and macOS is asked to show its window once", async (t) => {

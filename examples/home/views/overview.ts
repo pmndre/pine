@@ -264,6 +264,18 @@ export interface Box {
 	board?: ViewBoard;
 	bad?: boolean;
 	busy?: boolean;
+	/** On a tall panel: the row of its part it stands in, and its place in that row. */
+	row?: number;
+	slot?: number;
+}
+/** On a tall panel, how a part's cards stand: `n` in a row, each `w` wide from `x`, the rows; from `top` (its name) to `bottom`. */
+export interface Part {
+	n: number;
+	x: number;
+	w: number;
+	top: number;
+	bottom: number;
+	rows: Array<{ y: number; h: number }>;
 }
 /** A row of a board's card when it has room for one: a task, or under the tasks a word about the whole board. */
 export interface TaskRow {
@@ -278,8 +290,12 @@ export interface Layout {
 	/** The size of the board: everything on it lies between 0 and these. It does not depend on the panel's size, or on the zoom. */
 	w: number;
 	h: number;
-	cols: Array<{ x: number; w: number; title: string }>;
-	heads: Array<{ col: number; y: number; text: string }>;
+	/** Each column's place: side by side on a wide panel (`y` 0), one under the other on a tall one (`tall`). */
+	cols: Array<{ x: number; y: number; w: number; title: string }>;
+	tall: boolean;
+	/** On a tall panel, how each part's cards stand. */
+	parts?: Part[];
+	heads: Array<{ col: number; y: number; text: string; x?: number }>;
 	boxes: Box[];
 	byId: Map<string, Box>;
 }
@@ -302,6 +318,17 @@ const ANSWER_MS = 3500;
 const SIDE = 128;
 const MID = 232;
 const GAP = 40;
+/**
+ * On a tall panel the columns are parts one under the other, their cards side by side in rows as wide as the panel.
+ * The lines run in the room between them: at each side of the board (`EDGE`), between two cards side by side
+ * (`GUTTER`), between two rows (`ROWGAP`) and between two parts (`BAND`, above a part's name).
+ */
+const EDGE = 14;
+const GUTTER = 24;
+const ROWGAP = 12;
+const BAND = 28;
+/** How narrow a card may be on a tall panel before fewer of them stand in a row. */
+const NARROWEST = { side: 120, agent: 176 };
 /** The room on top of a column for what it is called, and above a group in a column for its name. */
 const TITLE = 30;
 const HEAD = 16;
@@ -391,25 +418,15 @@ function ranked(s: ViewState, pick: (a: ViewAgent) => string[]): string[] {
 /**
  * Everything on the board, each card in its place and at the size of its kind. What a card says is not decided
  * here but where it is drawn (`contentOf`), by how much room it has on the panel at the zoom it is looked at.
+ * With a `width`, for a tall panel: the three columns are parts one under the other, and the cards of each stand
+ * side by side in rows that fill that width, as many in a row as there is room for.
  */
-export function layoutOf(s: ViewState, now: number): Layout {
-	const cols = [
-		{ x: 0, w: SIDE, title: "Triggers" },
-		{ x: SIDE + GAP, w: MID, title: "Agents" },
-		{ x: SIDE + GAP + MID + GAP, w: SIDE, title: "Tools" },
-	];
-	const boxes: Box[] = [];
-	const heads: Layout["heads"] = [];
-	const y = [TITLE, TITLE, TITLE];
-	const head = (col: number, text: string) => {
-		if (y[col] > TITLE) y[col] += 8;
-		heads.push({ col, y: y[col], text });
-		y[col] += HEAD;
-	};
-	const put = (col: 0 | 1 | 2, b: Omit<Box, "col" | "x" | "y" | "w" | "h">, h: number) => {
-		boxes.push({ ...b, col, x: cols[col].x, y: y[col], w: cols[col].w, h });
-		y[col] += h + SPACE;
-	};
+export function layoutOf(s: ViewState, now: number, width?: number): Layout {
+	type Card = { b: Omit<Box, "col" | "x" | "y" | "w" | "h">; h: number };
+	// First what is in each column, in groups under their names; then where it goes, side by side or one under the other.
+	const groups: Array<Array<{ head?: string; cards: Card[] }>> = [[{ cards: [] }], [{ cards: [] }], [{ cards: [] }]];
+	const head = (col: number, text: string) => groups[col].push({ head: text, cards: [] });
+	const put = (col: 0 | 1 | 2, b: Card["b"], h: number) => groups[col].at(-1)!.cards.push({ b, h });
 
 	// On the left: you, the event sources, the schedules, and any other way in.
 	const asks = questionsOf(s);
@@ -461,7 +478,82 @@ export function layoutOf(s: ViewState, now: number): Layout {
 		}
 	}
 
-	return { w: cols[2].x + cols[2].w, h: Math.max(...y) - SPACE, cols, heads, boxes, byId: new Map(boxes.map((b) => [b.id, b])) };
+	const titles = ["Triggers", "Agents", "Tools"];
+	const boxes: Box[] = [];
+	const heads: Layout["heads"] = [];
+	const done = (cols: Layout["cols"], w: number, h: number, parts?: Part[]): Layout => ({ w, h, cols, tall: Boolean(parts), parts, heads, boxes, byId: new Map(boxes.map((b) => [b.id, b])) });
+
+	if (width === undefined) {
+		// Side by side: a column each, one card under the other.
+		const cols = [
+			{ x: 0, y: 0, w: SIDE, title: titles[0] },
+			{ x: SIDE + GAP, y: 0, w: MID, title: titles[1] },
+			{ x: SIDE + GAP + MID + GAP, y: 0, w: SIDE, title: titles[2] },
+		];
+		const y = [TITLE, TITLE, TITLE];
+		for (const col of [0, 1, 2] as const)
+			for (const g of groups[col]) {
+				if (g.head) {
+					if (y[col] > TITLE) y[col] += 8;
+					heads.push({ col, y: y[col], x: cols[col].x, text: g.head });
+					y[col] += HEAD;
+				}
+				for (const c of g.cards) {
+					boxes.push({ ...c.b, col, x: cols[col].x, y: y[col], w: cols[col].w, h: c.h });
+					y[col] += c.h + SPACE;
+				}
+			}
+		return done(cols, cols[2].x + cols[2].w, Math.max(...y) - SPACE);
+	}
+
+	// One under the other: in each part as many cards in a row as fit, all of a row as wide. A group with a name starts
+	// a row of its own, its name above it; only you, who belong to no group, share yours with the first.
+	const W = Math.max(width, NARROWEST.agent + 2 * EDGE);
+	const inner = W - 2 * EDGE;
+	const cols: Layout["cols"] = [];
+	const parts: Part[] = [];
+	let top = 0;
+	for (const col of [0, 1, 2] as const) {
+		const least = col === 1 ? NARROWEST.agent : NARROWEST.side;
+		const n = Math.max(1, Math.floor((inner + GUTTER) / (least + GUTTER)));
+		const w = (inner - (n - 1) * GUTTER) / n;
+		type Row = { cards: Card[]; heads: Array<{ slot: number; text: string }>; named: boolean };
+		const rows: Row[] = [];
+		let row: Row = { cards: [], heads: [], named: false };
+		const next = () => {
+			if (row.cards.length) rows.push(row);
+			row = { cards: [], heads: [], named: false };
+		};
+		for (const g of groups[col]) {
+			if (!g.cards.length) continue;
+			if (g.head && (row.named || row.cards.length >= n)) next();
+			if (g.head) row.heads.push({ slot: row.cards.length, text: g.head });
+			for (const c of g.cards) {
+				if (row.cards.length >= n) next();
+				row.cards.push(c);
+				row.named ||= Boolean(g.head);
+			}
+		}
+		next();
+		const part: Part = { n, x: EDGE, w, top, bottom: top + TITLE, rows: [] };
+		let y = top + TITLE;
+		rows.forEach((r, i) => {
+			if (r.heads.length) {
+				if (i > 0) y += 4;
+				for (const h of r.heads) heads.push({ col, y, x: EDGE + h.slot * (w + GUTTER), text: h.text });
+				y += HEAD;
+			}
+			const h = Math.max(...r.cards.map((c) => c.h));
+			r.cards.forEach((c, slot) => boxes.push({ ...c.b, col, x: EDGE + slot * (w + GUTTER), y, w, h: c.h, row: i, slot }));
+			part.rows.push({ y, h });
+			part.bottom = y + h;
+			y += h + ROWGAP;
+		});
+		cols.push({ x: EDGE, y: top, w: inner, title: titles[col] });
+		parts.push(part);
+		top = part.bottom + BAND;
+	}
+	return done(cols, W, parts[2].bottom, parts);
 }
 
 /** A conversation in words: never its name, which a view is not told. */
@@ -642,13 +734,46 @@ function hung(cam: Cam, l: Layout, view: Size): Cam {
 export function focusOf(l: Layout, ids: Iterable<string>, view: Size): Cam {
 	const boxes = [...ids].map((id) => l.byId.get(id)).filter((b): b is Box => b !== undefined);
 	const top = boxes.length ? Math.min(...boxes.map((b) => b.y)) - TITLE : 0;
-	const bottom = boxes.length ? Math.max(...boxes.map((b) => b.y + b.h)) : 1;
+	let bottom = boxes.length ? Math.max(...boxes.map((b) => b.y + b.h)) : 1;
+	// On a tall panel the board stays as wide as the panel: what does not fit under the top of it is scrolled to, not zoomed out to.
+	if (l.tall) bottom = Math.min(bottom, top + roomOf(view).h / Math.min(Z_MAX, roomOf(view).w / (l.w + MARGIN + 16)) - 16);
 	return hung(frame({ x: -MARGIN / 2, y: top, w: l.w + MARGIN, h: bottom - top }, roomOf(view), wholeOf(l), { zMax: Z_MAX, min: { w: l.w + MARGIN, h: 1 }, step: 0.01, zMin: 0.2 }), l, view);
 }
 
 /** Where the camera goes to show the whole board. */
 export function allOf(l: Layout, view: Size): Cam {
 	return hung(frame(wholeOf(l), roomOf(view), wholeOf(l), { zMax: Z_MAX, min: { w: l.w, h: 1 }, step: 0.01, zMin: 0.1 }), l, view);
+}
+
+/**
+ * On a tall panel, how wide to lay the board out so that all of it is shown as large as it can be: wider, more cards
+ * in a row and fewer rows; narrower, the other way. Between two widths where a part takes one more card in a row the
+ * rows stay the same, so the best width is found among those: in each, the zoom that shows everything, and of the
+ * widths that are shown that large the widest, so that the board fills the panel side to side.
+ */
+export function fittedWidth(s: ViewState, now: number, view: Size): number {
+	const room = roomOf(view);
+	const around = 2 * MARGIN + 8;
+	const lo = Math.max(NARROWEST.agent + 2 * EDGE, Math.floor(room.w / Z_MAX - around));
+	const hi = Math.max(lo + 1, room.w * 4);
+	// Where a part takes one more card in a row.
+	const steps = new Set<number>([lo]);
+	for (const least of [NARROWEST.side, NARROWEST.agent]) for (let k = 1; k < 64; k++) {
+		const w = k * (least + GUTTER) - GUTTER + 2 * EDGE;
+		if (w > hi) break;
+		if (w > lo) steps.add(w);
+	}
+	const starts = [...steps].sort((a, b) => a - b);
+	let best = { w: lo, z: 0 };
+	starts.forEach((w, i) => {
+		const end = (starts[i + 1] ?? hi) - 0.5;
+		const l = layoutOf(s, now, w);
+		const z = Math.min(Z_MAX, room.w / (w + around), room.h / (l.h + around));
+		// As wide as is still shown at that zoom, within this step.
+		const wide = Math.max(w, Math.min(end, room.w / z - around));
+		if (z > best.z + 0.004 || (Math.abs(z - best.z) <= 0.004 && wide > best.w)) best = { w: wide, z };
+	});
+	return Math.floor(best.w);
 }
 
 /** A camera somebody moved by hand, kept where some of the board is still to be seen. */
@@ -1142,9 +1267,10 @@ function pinsOf(b: Box, n: number): number[] {
  * straight across, turns into a lane of its own between the columns, and turns once more into the box it goes
  * to; each turn is cut at 45 degrees. No two lines share a lane, and several at one side of a box meet it a
  * little apart. A task delegated from agent to agent runs in a lane close beside the agents at their left,
- * its answer at their right.
+ * its answer at their right. On a tall panel the lines run another way (`tallRoutes`).
  */
 export function routesOf(links: Link[], l: Layout): Array<Array<[number, number]> | undefined> {
+	if (l.parts) return tallRoutes(links, l, l.parts);
 	const mid = (b: Box) => b.y + b.h / 2;
 	const info = links.map((k) => {
 		const a = l.byId.get(k.from);
@@ -1199,6 +1325,140 @@ export function routesOf(links: Link[], l: Layout): Array<Array<[number, number]
 		if (!v.same && Math.abs(ya - yb) < 1) return [[xa, ya], [xb, yb]];
 		const x = lane.get(i)!;
 		return chamfer([[xa, ya], [x, ya], [x, yb], [xb, yb]], 5);
+	});
+}
+
+/**
+ * The lines on a tall panel, where the parts stand one under the other and their cards side by side. A line leaves a
+ * card at a side into the gutter beside it, runs along the gutter to the gap under its row or its part, across that
+ * gap in a lane of its own, and along the gutter beside the other card into its side. Of the two gutters of a card the
+ * one is taken that makes the way across shortest; a task handed from agent to agent in the same place in a row goes
+ * by the gutter at their left, its answer at their right. In a gutter, of the lines that meet a side of it, the
+ * shortest runs nearest that side; in a gap, lanes are ordered so that lines going the same way do not cross.
+ */
+function tallRoutes(links: Link[], l: Layout, parts: Part[]): Array<Array<[number, number]> | undefined> {
+	type Pt = [number, number];
+	/** A gutter of a part: `g` 0 at the board's left edge, `n` at its right, the others between two cards. */
+	const gutter = (col: number, g: number): [number, number] => {
+		const P = parts[col];
+		return [g === 0 ? -MARGIN : P.x + g * (P.w + GUTTER) - GUTTER, g === P.n ? l.w + MARGIN : P.x + g * (P.w + GUTTER)];
+	};
+	const middle = (col: number, g: number) => {
+		const [a, b] = gutter(col, g);
+		return (a + b) / 2;
+	};
+	/** The gap under a row of a part: between it and the next row, or under the part's last row the gap before the next part. */
+	const gapUnder = (col: number, row: number): { key: string; y0: number; y1: number } => {
+		const P = parts[col];
+		const r = P.rows[row];
+		const next = P.rows[row + 1];
+		return next ? { key: `${col}:${row}`, y0: r.y + r.h, y1: next.y } : { key: `${col}:end`, y0: P.bottom, y1: col < 2 ? parts[col + 1].top : P.bottom + BAND };
+	};
+	type Way = { a: Box; b: Box; ga: number; gb: number; shared: boolean; gap?: { key: string; y0: number; y1: number } };
+	const ways: Array<Way | undefined> = links.map((k) => {
+		const a = l.byId.get(k.from);
+		const b = l.byId.get(k.to);
+		if (!a || !b || a.slot === undefined || b.slot === undefined || a.row === undefined || b.row === undefined) return undefined;
+		if (a.col === b.col && a.slot === b.slot) {
+			const g = k.back ? a.slot + 1 : a.slot;
+			return { a, b, ga: g, gb: g, shared: true };
+		}
+		// Of each card's two gutters, the pair nearest each other.
+		let best = { ga: a.slot, gb: b.slot, d: Infinity };
+		for (const ga of [a.slot, a.slot + 1])
+			for (const gb of [b.slot, b.slot + 1]) {
+				const d = Math.abs(middle(a.col, ga) - middle(b.col, gb));
+				if (d < best.d - 0.5) best = { ga, gb, d };
+			}
+		const shared = a.col === b.col && best.ga === best.gb;
+		// Between two parts, the gap under the upper part; within a part, the gap under the upper card's row.
+		const upper = a.col < b.col || (a.col === b.col && a.row! <= b.row!) ? a : b;
+		const row = a.col === b.col ? upper.row! : parts[upper.col].rows.length - 1;
+		return { a, b, ga: best.ga, gb: best.gb, shared, gap: shared ? undefined : gapUnder(upper.col, row) };
+	});
+	const mid = (b: Box) => b.y + b.h / 2;
+	const gapMid = (w: Way, other: Box) => (w.gap ? (w.gap.y0 + w.gap.y1) / 2 : mid(other));
+
+	// Where each line meets its cards: several at one side of a card a little apart, those that go up above those that go down.
+	type End = { key: number; box: Box; far: number };
+	const sides = new Map<string, End[]>();
+	ways.forEach((w, i) => {
+		if (!w) return;
+		const put = (key: number, box: Box, g: number, far: number) => {
+			const id = `${box.id}|${g === box.slot ? "l" : "r"}`;
+			sides.set(id, [...(sides.get(id) ?? []), { key, box, far }]);
+		};
+		put(i * 2, w.a, w.ga, gapMid(w, w.b));
+		put(i * 2 + 1, w.b, w.gb, gapMid(w, w.a));
+	});
+	const yOf = new Map<number, number>();
+	for (const list of sides.values()) {
+		list.sort((p, q) => p.far - q.far || p.key - q.key);
+		const ys = pinsOf(list[0].box, list.length);
+		list.forEach((e, n) => yOf.set(e.key, ys[n]));
+	}
+
+	// A lane in each gutter a line runs along: from each side of the gutter, the shortest way nearest that side.
+	type Visit = { key: number; left: boolean; span: number };
+	const gutters = new Map<string, Visit[]>();
+	ways.forEach((w, i) => {
+		if (!w) return;
+		const visit = (end: 0 | 1) => {
+			const box = end ? w.b : w.a;
+			const g = end ? w.gb : w.ga;
+			const y = yOf.get(i * 2 + end)!;
+			const far = w.shared ? yOf.get(i * 2 + 1 - end)! : (w.gap!.y0 + w.gap!.y1) / 2;
+			const id = `${box.col}|${g}`;
+			gutters.set(id, [...(gutters.get(id) ?? []), { key: i * 2 + end, left: g !== box.slot, span: Math.abs(far - y) }]);
+		};
+		visit(0);
+		if (!w.shared) visit(1);
+	});
+	const xOf = new Map<number, number>();
+	for (const [id, list] of gutters) {
+		const [col, g] = id.split("|").map(Number);
+		const [x0, x1] = gutter(col, g);
+		const room = x1 - x0;
+		const pitch = Math.max(2, Math.min(4, (room - 2 * (PIN + 6)) / Math.max(1, list.length - 1)));
+		for (const left of [true, false]) {
+			const mine = list.filter((v) => v.left === left).sort((p, q) => p.span - q.span || p.key - q.key);
+			mine.forEach((v, n) => xOf.set(v.key, Math.round(Math.max(x0 + 2, Math.min(x1 - 2, left ? x0 + PIN + 7 + n * pitch : x1 - PIN - 7 - n * pitch)))));
+		}
+	}
+
+	// A lane in each gap a line crosses: those going right, the one that starts furthest right on top; then those going left.
+	const yLane = new Map<number, number>();
+	const gaps = new Map<string, number[]>();
+	ways.forEach((w, i) => w?.gap && gaps.set(w.gap.key, [...(gaps.get(w.gap.key) ?? []), i]));
+	for (const list of gaps.values()) {
+		const gap = ways[list[0]]!.gap!;
+		// Where a line comes into the gap from above, and where it leaves it below (or, between two cards of one row, where it leaves it).
+		const ends = (i: number) => {
+			const w = ways[i]!;
+			const xa = xOf.get(i * 2)!;
+			const xb = xOf.get(i * 2 + 1)!;
+			return w.a.y <= w.b.y ? [xa, xb] : [xb, xa];
+		};
+		const right = list.filter((i) => ends(i)[1] >= ends(i)[0]).sort((p, q) => ends(q)[0] - ends(p)[0]);
+		const left = list.filter((i) => ends(i)[1] < ends(i)[0]).sort((p, q) => ends(p)[0] - ends(q)[0]);
+		const all = [...right, ...left];
+		all.forEach((i, n) => yLane.set(i, Math.round(gap.y0 + 4 + ((gap.y1 - gap.y0 - 8) * (n + 1)) / (all.length + 1))));
+	}
+
+	return ways.map((w, i) => {
+		if (!w) return undefined;
+		const ya = yOf.get(i * 2)!;
+		const yb = yOf.get(i * 2 + 1)!;
+		const side = (box: Box, g: number) => (g === box.slot ? box.x - PIN : box.x + box.w + PIN);
+		const xa = side(w.a, w.ga);
+		const xb = side(w.b, w.gb);
+		const ga = xOf.get(i * 2)!;
+		if (w.shared) return chamfer([[xa, ya], [ga, ya], [ga, yb], [xb, yb]], 5);
+		const gb = xOf.get(i * 2 + 1)!;
+		if (Math.abs(ga - gb) < 1) return chamfer([[xa, ya], [ga, ya], [ga, yb], [xb, yb]], 5);
+		const y = yLane.get(i)!;
+		const pts: Pt[] = [[xa, ya], [ga, ya], [ga, y], [gb, y], [gb, yb], [xb, yb]];
+		return chamfer(pts, 5);
 	});
 }
 
@@ -1271,11 +1531,11 @@ export function draw(g: Ctx, s: ViewState, l: Layout, now: number, o: Shown): Hi
 	g.textBaseline = "bottom";
 	g.font = `500 12px ${FONT}`;
 	g.fillStyle = th.muted;
-	for (const c of l.cols) g.fillText(c.title, X(c.x) + 2, Y(TITLE) - 5);
+	for (const c of l.cols) g.fillText(c.title, X(c.x) + 2, Y(c.y + TITLE) - 5);
 	if (z >= 0.6) {
 		g.font = `11px ${FONT}`;
 		g.fillStyle = th.faint;
-		for (const head of l.heads) if (seen({ y: head.y, h: HEAD })) g.fillText(head.text, X(l.cols[head.col].x) + 2, Y(head.y + HEAD) - 4);
+		for (const head of l.heads) if (seen({ y: head.y, h: HEAD })) g.fillText(head.text, X(head.x ?? l.cols[head.col].x) + 2, Y(head.y + HEAD) - 4);
 	}
 	g.textBaseline = "middle";
 
@@ -1653,6 +1913,11 @@ const EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.06 12.35a1 
 const ALL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
 /** How long a box stays in what the camera follows after the last thing happened at it: a short tool call does not make it sway. */
 const LINGER_MS = 4000;
+/** What the picture is, for a screen reader, in each of its two shapes. */
+const LABEL = {
+	wide: "All of pine on one page: triggers on the left, the agents and what each is doing in the middle, their boards and tools on the right",
+	tall: "All of pine on one page: triggers on top, the agents and what each is doing under them, their boards and tools at the bottom",
+};
 
 export default defineView((host: ViewHost) => {
 	const root = host.root;
@@ -1661,7 +1926,6 @@ export default defineView((host: ViewHost) => {
 	const box = document.createElement("div");
 	box.className = "overview";
 	const canvas = document.createElement("canvas");
-	canvas.setAttribute("aria-label", "All of pine on one page: triggers on the left, the agents and what each is doing in the middle, their boards and tools on the right");
 	const bar = document.createElement("div");
 	bar.className = "overview-bar";
 	const sum = document.createElement("div");
@@ -1696,10 +1960,20 @@ export default defineView((host: ViewHost) => {
 	/** Where each box is drawn right now: it glides to where it belongs, it does not jump there. */
 	const glide = new Map<string, number>();
 	let before = 0;
-	/** The camera; whether it follows what happens; and where it is on its way to after "Show everything". */
+	/** The camera; whether it follows what happens, or shows everything (after "Show everything", and after the panel's size changed). */
 	let cam: Cam | undefined;
 	let follow = true;
-	let going: Cam | undefined;
+	let whole = false;
+	/**
+	 * On a tall panel, how wide the board is laid out: as wide as the panel to begin with, and when everything is to be
+	 * shown, as wide as shows all of it largest (`fittedWidth`). Laid out anew only when the panel's size changes, when
+	 * everything is asked for, or, while everything is shown, when cards come or go: never under the owner's hand.
+	 */
+	let arranged: number | undefined;
+	let arrangedFor = "";
+	let seenView: { w: number; h: number } | undefined;
+	/** Until when boxes glide slowly: the board was laid out anew, and they move across it rather than a little way. */
+	let morphing = 0;
 	/** When something last happened at a box: what the camera keeps in view. */
 	const linger = new Map<string, number>();
 	let drag: { x: number; y: number; moved: boolean } | undefined;
@@ -1727,7 +2001,7 @@ export default defineView((host: ViewHost) => {
 	};
 	const setFollow = (on: boolean) => {
 		follow = on;
-		going = undefined;
+		whole = false;
 		followButton.setAttribute("aria-pressed", String(on));
 		hand();
 	};
@@ -1802,11 +2076,14 @@ export default defineView((host: ViewHost) => {
 		{ passive: false },
 	);
 	followButton.addEventListener("click", () => setFollow(!follow));
-	allButton.addEventListener("click", () => {
+	/** Everything, as large as it fits: laid out anew for the panel, the camera on its way to the whole board. */
+	const showAll = () => {
 		setFollow(false);
-		if (layout) going = allOf(layout, size());
+		whole = true;
+		arranged = undefined;
 		hand();
-	});
+	};
+	allButton.addEventListener("click", showAll);
 
 	const say = (s: ViewState) => {
 		words.replaceChildren(
@@ -1851,7 +2128,25 @@ export default defineView((host: ViewHost) => {
 			for (const [k, v] of Object.entries({ "--text": th.text, "--faint": th.faint, "--warn": th.warn, "--bad": th.bad, "--hover": veil(th.text, 0.07), "--press": veil(th.text, 0.12) })) box.style.setProperty(k, v);
 			// The frame is see-through only while it is dark where the app is dark: then the panel's own ground is the board's.
 			root.ownerDocument.documentElement.style.colorScheme = s.dark ? "dark" : "light";
-			layout = layoutOf(s, now);
+			// When the panel's size changes, everything is shown, laid out for its new size, and the camera glides there.
+			// (Not the panel's first size: a frame can be measured before it is laid out.)
+			if (seenView && seenView.w > 40 && seenView.h > 40 && (seenView.w !== view.w || seenView.h !== view.h)) showAll();
+			seenView = view;
+			// A panel taller than wide gets the three parts one under the other, their cards in rows. When it turns, the
+			// cards glide from where they stood in the other shape to where they stand in this one, and the camera with them.
+			const tall = view.h > view.w;
+			if (tall !== layout?.tall) {
+				canvas.setAttribute("aria-label", tall ? LABEL.tall : LABEL.wide);
+				if (layout) morphing = now + 900;
+			}
+			const count = s.agents.length + s.inputs.length + s.schedules.length + boardsOf(s).length + new Set(s.agents.flatMap((a) => [...a.mcp.map((m) => `m:${m}`), ...a.skills.map((k) => `k:${k}`)])).size;
+			if (tall && (arranged === undefined || (whole && arrangedFor !== `${count}`))) {
+				const next = whole ? fittedWidth(s, now, view) : view.w - 2 * MARGIN;
+				if (arranged !== undefined && next !== arranged) morphing = now + 900;
+				arranged = next;
+				arrangedFor = `${count}`;
+			}
+			layout = layoutOf(s, now, tall ? arranged : undefined);
 			const live = linksOf(s, layout, now);
 			const dt = before ? Math.min(100, now - before) : 0;
 			before = now;
@@ -1860,14 +2155,13 @@ export default defineView((host: ViewHost) => {
 			for (const b of layout.boxes) if (b.busy || (b.bad && b.kind !== "source")) linger.set(b.id, now);
 			for (const k of live) linger.set(k.from, now), linger.set(k.to, now);
 			for (const [id, t] of linger) if (now - t > LINGER_MS || !layout.byId.has(id)) linger.delete(id);
-			const target = follow ? focusOf(layout, linger.keys(), view) : going;
+			const target = follow ? focusOf(layout, linger.keys(), view) : whole ? allOf(layout, view) : undefined;
 			let panning = false;
 			if (!cam) cam = target ?? focusOf(layout, [], view);
 			else if (target) {
 				// Slower than a camera that is sent somewhere: it is to keep up, not to chase.
 				cam = ease(cam, target, follow ? dt * 0.55 : dt);
 				panning = cam.x !== target.x || cam.y !== target.y || cam.z !== target.z;
-				if (!panning && !follow) going = undefined;
 			}
 
 			// When an agent starts or stops, boxes change places: each moves most of its way in a fifth of a second.
@@ -1876,13 +2170,14 @@ export default defineView((host: ViewHost) => {
 			const eased = (key: string, to: number) => {
 				seen.add(key);
 				const was = glide.get(key);
-				const y = was === undefined || !dt || Math.abs(to - was) < 0.6 ? to : was + (to - was) * (1 - Math.exp(-dt / 90));
+				const y = was === undefined || !dt || Math.abs(to - was) < 0.6 ? to : was + (to - was) * (1 - Math.exp(-dt / (now < morphing ? 200 : 90)));
 				if (y !== to) gliding = true;
 				glide.set(key, y);
 				return y;
 			};
-			for (const b of layout.boxes) b.y = eased(b.id, b.y);
-			for (const head of layout.heads) head.y = eased(`head:${head.col}:${head.text}`, head.y);
+			for (const b of layout.boxes) (b.y = eased(b.id, b.y)), (b.x = eased(`${b.id}:x`, b.x)), (b.w = eased(`${b.id}:w`, b.w));
+			for (const head of layout.heads) (head.y = eased(`head:${head.col}:${head.text}`, head.y)), head.x !== undefined && (head.x = eased(`head:${head.col}:${head.text}:x`, head.x));
+			for (const c of layout.cols) (c.y = eased(`col:${c.title}`, c.y)), (c.x = eased(`col:${c.title}:x`, c.x));
 			for (const key of glide.keys()) if (!seen.has(key)) glide.delete(key);
 
 			const over = pointer && !drag?.moved ? boxAt(pointer) : undefined;

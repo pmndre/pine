@@ -97,7 +97,8 @@ app's first screen offers; a machine over SSH is behind its link "Or connect to 
 3. The app asks first, "Pair with this computer?", and names the meeting service when it is not
    Pine's own. Nothing is used before you press Pair.
 4. The app shows four digits; the computer shows the same four beside the phone's name. Press
-   Allow at the computer only if they are the same.
+   Allow at the computer only if they are the same. While it waits, Cancel ends the pairing on
+   the phone, and nothing is kept.
 5. The computer is in the app's list of machines, by the name it gave, beside your `user@host`
    machines, and it is the one in use.
 
@@ -265,7 +266,7 @@ is careful about"). On the phone:
 | A paired computer | The calls to the daemon go through the direct connection, which lives in the native part too (Google's libwebrtc on Android, libdatachannel on iOS), never in the page, encrypted end to end: the meeting service passes the few messages that set up the connection, and sees neither key nor token |
 | A link opened in it | Handed to the page as text and read by the same rules as a pasted link; the page asks you before anything is used, naming a service that is not Pine's own |
 | `ACCESS_NETWORK_STATE` | On Android two permissions are asked for: the network, and this one, to read which networks the phone has. Google's libwebrtc reads them to find a way to a paired computer, and cannot run without it. Android grants it at install and never asks you; it reads and changes nothing. No camera, no microphone, nothing else. Finding a computer on the network needs nothing more: Android's own service (`NsdManager`) looks for it. On an iPhone only the local network is asked for |
-| What the network announces | Only a fingerprint and an `https` meeting service are read from it (`_pine._tcp`, `v=1`), and it is not trusted: the key is checked against the fingerprint, and the four digits are compared on both screens |
+| What the network announces | Only a fingerprint, an `https` meeting service and the random word that changes every few minutes are read from it (`_pine._tcp`, `v=1`); a record without the word is passed over, and it is not trusted: the key is checked against the fingerprint, and the four digits are compared on both screens |
 | The page stays the app | It loads nothing from the web, cannot be taken to another address, opens no window and is given no permission. A link opens in your browser, `http` and `https` only. A photo is attached through the system's file chooser |
 | Pictures, video and sound | Answered by the native part from the daemon, under the Mac app's rules: fixed addresses only, never SVG. On iOS they come through a scheme of the app's own (`pine-media:`), the only origin the page's policy allows for them |
 

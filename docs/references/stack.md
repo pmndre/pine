@@ -5,11 +5,13 @@
 | Piece | Role | Notes |
 |---|---|---|
 | Node 24+ | Runtime | Runs the TypeScript sources directly in a checkout (type stripping); the npm package holds them compiled to JavaScript (`npm run build`). No bundler. |
-| `@earendil-works/pi-coding-agent` 1.5.1 | The agent loop | Sessions, model calls, tool execution, compaction, retries, MCP client, skills, extensions. pine embeds it through its SDK. |
+| `@earendil-works/pi-coding-agent` 1.6 | The agent loop | Sessions, model calls, tool execution, compaction, retries, MCP client, skills, extensions. pine embeds it through its SDK. |
 | `node:sqlite` | Storage | One file, `data/pine.db`: events, tasks, shared state, and what pine keeps for itself (what sources remember, when schedules last fired, which conversations have read outside content, their folders, pins, goals and lists of steps, what `/undo` can take back, the open tabs). WAL mode. |
 | `undici` | HTTP client behind `fetch` | pine installs timeouts for the model servers' connection pools; the `web` MCP server, the `download` tool and the `http` source use it for address checks at connect time. |
 | `@earendil-works/pi-mcp` | MCP naming | pi's MCP package; pine uses its function that turns a server name into the prefix of its tool names. |
 | `mqtt` | MQTT client | Only loaded when an `mqtt` source starts. |
+| `@slack/web-api`, `@slack/socket-mode` | Slack's SDK | Only loaded when a `slack` source starts. pine keeps its own fetch (the address guard, the token only to Slack), reconnects and rate-limit waits around it. |
+| `marked` | Markdown to HTML | What an agent sends to Telegram arrives formatted. |
 | `@earendil-works/pi-tui` | Terminal UI toolkit | pi's own: full-screen layout, editor with completion, Markdown rendering. Used by `src/tui/`. |
 | `highlight.js` | Code colors | Colors code blocks in the terminal UI. |
 | `@playwright/mcp` | Browser automation | Started as a child of `mcp/browser.ts`, which filters its tools and proxies its traffic. `pine init` downloads the browser it drives. |
@@ -63,6 +65,16 @@ Before pine was written, 59 checks charted how pi 1.5.1 behaves when embedded
 | Tool calls in one assistant message run in parallel | Slots are lent out per waiting call, not per run |
 | pi also discovers skills and instruction files in the user's home | Filtered to configured locations |
 
+Found since the baseline:
+
+| Finding | Consequence in pine |
+|---|---|
+| `tools: [...]` is a strict allow-list that hides the tools of extensions | Built-in tools are taken away with `excludeTools` instead |
+| The default system prompt describes a coding assistant inside pi and points at pi's manuals | pine supplies its own (`systemPromptOverride`), and agents search pine's manual with the `manual` tool |
+| The shell tool ends a command at its time limit and cannot let go of one that runs on | A command for the background is started by pine itself, never through pi's tool ([coding.md](coding.md), "Commands in the background") |
+| A session opened from its file stands at its last entry; `branch()` moves it in memory only | `/undo` works on the closed session and writes an entry of pine's own where it went back to |
+| pi's choice of model for each provider is not exported | pine reads it from pi's own module, and takes the provider's first model when that fails |
+
 Run `npm run baseline` after upgrading pi and compare with `RESULTS.md`.
 
 ## The request pi sends
@@ -76,8 +88,8 @@ two consecutive user messages.
 
 | Suite | Runs | Against |
 |---|---|---|
-| `npm test` | More than 250 tests in about ten seconds, files in parallel. The ones whose name starts with `live:` are skipped | The scripted model server in `baseline/tests/mock.mjs` |
-| `npm run test:live` | The `live:` tests of `test/live.test.ts`, `test/browser.test.ts` and `test/computer.test.ts`: delegation to a specialist that reads its files, then a hostile event; an agent that sets up, uses and removes an MCP server, a skill, an event source and a schedule when asked in plain words; an agent driving the real browser; and, on a Mac, app control with the real helper (its own demo window, and TextEdit when the terminal has the grants) | A real model through `claude -p`; Chromium and the network |
+| `npm test` | More than 500 tests in about ten seconds, files in parallel. The ones whose name starts with `live:` are skipped | The scripted model server in `baseline/tests/mock.mjs` |
+| `npm run test:live` | The `live:` tests of `test/live.test.ts`, `test/browser.test.ts`, `test/computer.test.ts`, `test/voice.test.ts`, `test/system.test.ts` and `test/render.test.ts`: delegation to a specialist that reads its files, then a hostile event; an agent that sets up, uses and removes an MCP server, a skill, an event source and a schedule when asked in plain words; an agent driving the real browser; the `http` source's `render` with the real browser; and, on a Mac, app control with the real helper (its own demo window, and TextEdit when the terminal has the grants), the voice helper reading a recording and the `system` source's helper. With `PINE_LIVE_URL` naming a llama.cpp server, also what that server keeps of a conversation | A real model through `claude -p`; Chromium and the network |
 | `npm run baseline` | 59 checks of pi itself | The scripted model server |
 
 The scripted server answers according to a directive embedded in the prompt
@@ -116,7 +128,6 @@ Not verified yet, in rough order of importance:
    written, none was run), Podman, and the terminal UI in a real Linux terminal (only through
    the suite's fake terminal). With the network
    granted, Linux still lets a command reach socket files in the temp folders, which macOS
-   refuses. There is no sandbox
-   on other systems; the shell tool is withheld there.
-7. **Not built:** a Slack source, a web dashboard, voice. Slack would be a source type like
-   `telegram`: one that talks and can send.
+   refuses. There is no sandbox on other systems: an agent whose mode nobody chose works in
+   `auto` there, with your account; one set to `safe`, and every run started from outside, gets
+   no shell.

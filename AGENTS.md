@@ -51,15 +51,17 @@ src/
   agents.ts         AgentManager: task queue, pi sessions, conversations, the policy gate, the download tool, context block
   tools.ts          the tools pine gives an agent: delegate, subagent, publish_event, send, read_source, request_access, state_get,
                     state_set, question, todo, stop_program, manual; the board tools (boards, board_read, board_post,
-                    board_claim, board_done, board_answer) and the pool of sub-agents that works through a board (`workPool`),
+                    board_claim, board_done, board_answer, board_remove) and the pool of sub-agents that works through a board (`workPool`),
                     which comes back to its conversation when a sub-agent asks or fails;
                     the lists of what it has (sources, schedules,
                     mcp_servers, skills, models); and the setup tools (subscribe, unsubscribe, add_/remove_ source, source_type,
                     mcp_server, skill, schedule, model_server; create_agent); and the main agent's tools for
-                    conversations (conversations, read_conversation, set_conversation, remove_conversation)
+                    agents (update_agent, rename_agent, remove_agent) and for conversations (conversations,
+                    read_conversation, set_conversation, remove_conversation, rename_group, remove_group)
   agent-admin.ts    create_agent: checks a proposed agent and writes its folder
   admin.ts          what only the main agent administers: a change to an agent (`checkAgentChange`), pine's settings
-                    (`SETTINGS`), routes (`checkRoute`), and everything that goes with a removed agent (`eraseAgent`)
+                    (`SETTINGS`), routes (`checkRoute`), everything that goes with a removed agent (`eraseAgent`)
+                    and everything that follows a renamed one (`renameAgent`)
   security.ts       the sandbox's rules (macOS profile; `sandboxArgv` for either system), the level an agent works at (`levelOf`), path checks, approvals, redaction, configuration audit
   sandbox-linux.ts  the same rules as bubblewrap mounts; what a mount cannot forbid is removed after the command (`Guard`)
   sandbox-setup.ts  what `pine init` does on Linux: installs bubblewrap, the AppArmor rule and the browser's libraries after one yes
@@ -276,11 +278,12 @@ These are invariants. A change that breaks one needs a test that shows why it is
    refused to every agent but the main one. Removing something must leave things as they were
    before it was added.
    The main agent is pine's administrator: besides `create_agent` it has `agents`,
-   `update_agent`, `remove_agent`, `settings`, `set_setting`, `routes`, `add_route` and
+   `update_agent`, `rename_agent`, `remove_agent`, `settings`, `set_setting`, `routes`, `add_route` and
    `remove_route` (`src/admin.ts`), and for the conversations there are (the owner's tabs and
-   each agent's list) `conversations`, `read_conversation`, `set_conversation` and
-   `remove_conversation`. Those four go through the functions the control API has for the
-   owner's own hand (`pinSession`, `renameSession`, `removeSession`), never a second road.
+   each agent's list, with its groups) `conversations`, `read_conversation`, `set_conversation`,
+   `remove_conversation`, `rename_group` and `remove_group`. Those go through the functions the
+   control API has for the owner's own hand (`pinSession`, `renameSession`, `removeSession`,
+   `setGroup`, `renameGroup`, `removeGroup`), never a second road.
    `read_conversation` hands on the messages and the answers and of a tool call only its name
    and subject, never what the tool returned (another agent's files are closed to the main
    agent), and marks the reading conversation when the one it reads holds outside content
@@ -288,7 +291,9 @@ These are invariants. A change that breaks one needs a test that shows why it is
    one place that knows what carries an agent's name (routes, lists of others, secrets, stored
    keys, folders under `data/`, its folder and private home), for the tool, the control API and
    `pine agent remove` alike, and `test/admin.test.ts` looks for anything named after a removed
-   agent. Whatever is added to pine that is kept by agent goes into `eraseAgent` too. Each change is
+   agent. Whatever is added to pine that is kept by agent goes into `eraseAgent` too, and into
+   `renameAgent` beside it, which is the same list the other way round: what one takes away, the
+   other moves (`rename_agent`, the control API and `pine agent rename` alike). Each change is
    a few named values that are checked one by one, never text into a file; it is put to the
    owner in every mode; the configuration is read back through `loadConfig` and the file put
    back if it does not load; and the ones that change something are refused in a tainted
@@ -814,8 +819,10 @@ These are invariants. A change that breaks one needs a test that shows why it is
    `src/computer.ts`; the yes is kept in `AgentManager.grants`, like a local address of the
    browser). `mcp/computer.ts` makes the name true: a reference has to belong to that app, a
    position has to lie in one of its windows (`landsIn`), keys are sent to its process alone. It never
-   clicks, types or presses in the app pine itself runs in, where the owner answers pine's
-   questions. There is no list of forbidden apps, on purpose: do not add one. The helper only
+   clicks, types or presses in the app pine itself runs in, nor in the Pine app wherever it runs
+   (`answersHere`: the helper's `host`, or the Pine app's bundle id, `PINE_APP`, which the copy of
+   Electron a checkout starts carries too), where the owner answers pine's questions. That is
+   pine's own place, not a list of forbidden apps: there is none, on purpose, and none is to be added. The helper only
    does what it is told; a check that decides who may do what belongs in `computer.ts`, where
    the tests reach it with a stand-in for the helper. On a system that is not macOS the server
    is not registered, and started by hand it offers nothing and says so.
