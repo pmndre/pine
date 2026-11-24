@@ -1,9 +1,9 @@
 // Where the owner writes: the message, the files that go with it, and under it what the
 // conversation runs on (folder, model, reasoning, mode), each a click away.
 import { Combobox as ComboboxPrimitive } from "@base-ui/react";
-import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CpuIcon, EyeIcon, FileIcon, FolderIcon, MicIcon, PlusIcon, QuoteIcon, ShieldIcon, SparkleIcon, SquareIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CpuIcon, EyeIcon, FileIcon, FolderIcon, MicIcon, PlusIcon, ShieldIcon, SparkleIcon, SquareIcon, XIcon } from "lucide-react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Attachment as Chip, AttachmentAction, AttachmentActions, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle, AttachmentTrigger } from "@/components/ui/attachment";
+import { Attachment as Chip, AttachmentAction, AttachmentActions, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Combobox, ComboboxContent, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
 import { HoverTooltip } from "@/components/hover-tooltip";
+import { QuoteChip } from "@/components/quote-chip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "usehooks-ts";
@@ -22,10 +23,6 @@ import { baseName, MODES, size, tilde } from "./text.ts";
 
 const MAX_FILE = 20 * 1024 * 1024;
 
-function opening(text: string, max = 40): string {
-	const line = text.replace(/\s+/g, " ").trim();
-	return line.length > max ? `${line.slice(0, max).trimEnd()}…` : line;
-}
 const MAX_FILES = 10;
 
 const toBase64 = (buf: ArrayBuffer) => {
@@ -332,24 +329,7 @@ export function Composer({ tab }: { tab: Tab }) {
 					{tab.attachments.length || tab.quotes.length || over ? (
 						<InputGroupAddon align="block-start" className="flex-wrap">
 							{tab.quotes.map((q, i) => (
-								<Chip size="sm" key={`quote:${q.id}`} className="max-w-72 min-w-0">
-									<HoverTooltip>
-										<TooltipTrigger render={<AttachmentTrigger onClick={() => store.showQuote(q)} aria-label={`Go to where you quoted: ${opening(q.text)}`} />} />
-										<TooltipContent className="max-w-sm">
-											<div className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words">{q.text}</div>
-										</TooltipContent>
-									</HoverTooltip>
-									<AttachmentMedia><QuoteIcon /></AttachmentMedia>
-									<AttachmentContent>
-										<AttachmentTitle>{opening(q.text)}</AttachmentTitle>
-									</AttachmentContent>
-									<AttachmentActions>
-										<HoverTooltip>
-											<TooltipTrigger render={<AttachmentAction onClick={() => (tab.quotes.splice(i, 1), tab.touch())} aria-label="Remove quote" />}><XIcon /></TooltipTrigger>
-											<TooltipContent>Remove quote</TooltipContent>
-										</HoverTooltip>
-									</AttachmentActions>
-								</Chip>
+								<QuoteChip key={`quote:${q.id}`} text={q.text} onOpen={() => store.showQuote(q)} onRemove={() => (tab.quotes.splice(i, 1), tab.touch())} />
 							))}
 							{tab.attachments.map((f, i) => (
 								<Chip size="sm" key={`${f.name}:${i}`}>

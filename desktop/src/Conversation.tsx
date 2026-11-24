@@ -29,6 +29,7 @@ import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Toggle } from "@/components/ui/toggle";
 import { HoverTooltip } from "@/components/hover-tooltip";
+import { QuoteChip } from "@/components/quote-chip";
 import { SelectionToolbar, SelectionToolbarButton, useTextSelection } from "@/components/selection-toolbar";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
@@ -38,7 +39,7 @@ import { bridge } from "./bridge.ts";
 import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
-import { type Item, type Part, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
+import { type Item, type Part, type Steer, splitQuotes, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { childKind, clock, count, MODES, oneLine, plural, short, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
 
@@ -256,7 +257,7 @@ function Work({ item }: { item: Extract<Item, { t: "work" }> }) {
 
 /** The owner's turn (or a task's prompt): a bubble on the owner's side, with the files it brought. */
 /** A message of the owner's. With `menu`, a right click on it offers to branch from it. */
-export function OwnerTurn({ text, from, files, menu, skeleton, footer }: { text?: string; from?: string; files?: string[]; menu?: () => void; /** While the conversation loads: a bubble's shape on the owner's side, from stock Skeleton. */ skeleton?: boolean; /** A line under the bubble (whether running work read it). */ footer?: ReactNode }) {
+export function OwnerTurn({ text, from, files, menu, skeleton, footer, onQuote }: { text?: string; from?: string; files?: string[]; menu?: () => void; /** A click on a quote badge of the message: which quote, and the badge. */ onQuote?: (index: number, quote: string, at: HTMLElement) => void; /** While the conversation loads: a bubble's shape on the owner's side, from stock Skeleton. */ skeleton?: boolean; /** A line under the bubble (whether running work read it). */ footer?: ReactNode }) {
 	if (skeleton)
 		return (
 			<Message align="end" data-item="user-skeleton">
@@ -265,12 +266,22 @@ export function OwnerTurn({ text, from, files, menu, skeleton, footer }: { text?
 				</MessageContent>
 			</Message>
 		);
+	const { quotes, body } = splitQuotes(text ?? "");
 	return (
 		<Message align="end" data-item="user" onContextMenu={menu ? (e) => (e.preventDefault(), menu()) : undefined}>
 			<MessageContent>
 				{from ? <MessageHeader>{from}</MessageHeader> : null}
 				<Bubble align="end" variant="muted">
-					<BubbleContent className="text-base leading-snug whitespace-pre-wrap select-text">{text}</BubbleContent>
+					<BubbleContent className="text-base leading-snug whitespace-pre-wrap select-text">
+						{quotes.length ? (
+							<div className={cn("flex flex-wrap gap-1.5 whitespace-normal", body.trim() && "mb-2")}>
+								{quotes.map((q, i) => (
+									<QuoteChip key={i} text={q} className="bg-background" onOpen={onQuote ? (e) => onQuote(i, q, e.currentTarget) : undefined} />
+								))}
+							</div>
+						) : null}
+						{body}
+					</BubbleContent>
 				</Bubble>
 				{files?.length ? (
 					<AttachmentGroup>
@@ -449,13 +460,37 @@ async function branchMenu(tab: Tab, task: number): Promise<void> {
 	if (picked === "branch" || picked === "worktree") await store.branch(tab.agent, tab.session, task, picked === "worktree");
 }
 
+const squash = (text: string) => text.replace(/\s+/g, " ").trim();
+
+function quoteSource(tab: Tab, from: Item, quote: string, at: HTMLElement): number | undefined {
+	const first = quote.split(/\r?\n/).find((line) => line.trim());
+	if (!first) return undefined;
+	const want = squash(first);
+	const scope = at.closest("[data-message-id]")?.parentElement;
+	for (let i = tab.items.indexOf(from) - 1; i >= 0; i--) {
+		const it = tab.items[i];
+		if ("text" in it && typeof it.text === "string" && squash(it.text).includes(want)) return it.id;
+		const el = scope?.querySelector(`[data-message-id="${it.id}"]`);
+		if (el && squash(el.textContent ?? "").includes(want)) return it.id;
+	}
+	return undefined;
+}
+
+function openQuote(tab: Tab, item: Extract<Item, { t: "user" }>, index: number, quote: string, at: HTMLElement): void {
+	const sent = item.quotes?.[index];
+	if (sent && squash(sent.text) === squash(quote)) return store.showQuote(sent);
+	const source = quoteSource(tab, item, quote, at);
+	if (source === undefined) return store.flash("The quoted message is no longer in this conversation.", "muted");
+	store.showQuote({ id: 0, text: quote, tab: tab.key, item: source });
+}
+
 /** One item of a conversation, drawn as what it is. */
 export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab: Tab }) {
 	switch (item.t) {
 		case "user": {
 			const task = tab.kind === "chat" ? item.task : undefined;
 			const steer = tab.kind === "chat" ? item.steer : undefined;
-			return <OwnerTurn text={item.text} from={item.from} files={item.files} menu={task === undefined ? undefined : () => void branchMenu(tab, task)} footer={steer ? <SteerLine tab={tab} steer={steer} /> : undefined} />;
+			return <OwnerTurn text={item.text} from={item.from} files={item.files} onQuote={tab.kind === "chat" ? (i, quote, at) => openQuote(tab, item, i, quote, at) : undefined} menu={task === undefined ? undefined : () => void branchMenu(tab, task)} footer={steer ? <SteerLine tab={tab} steer={steer} /> : undefined} />;
 		}
 		case "answer":
 			return (

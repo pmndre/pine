@@ -56,7 +56,7 @@ interface Base {
 
 export type Item = Base &
 	(
-		| { t: "user"; text: string; from?: string; files?: string[]; /** The owner's message as a task, to branch from. */ task?: number; /** It was given to work that was running (`into`), as task `task`: when that work read it. */ steer?: Steer }
+		| { t: "user"; text: string; from?: string; files?: string[]; quotes?: Quote[]; /** The owner's message as a task, to branch from. */ task?: number; /** It was given to work that was running (`into`), as task `task`: when that work read it. */ steer?: Steer }
 		| { t: "answer"; task: number; agent: string; text: string; live: boolean; /** It arrived while the owner was looking at its conversation: its first sound plays by itself, once. */ arrived?: { heard: boolean } }
 		| { t: "work"; parts: Part[]; done: boolean; open: boolean; startedAt: number; ms?: number }
 		| { t: "note"; tone: Tone; text: string; lines?: Array<{ text: string; tone?: Tone }>; action?: { label: string; run: () => void } }
@@ -103,6 +103,20 @@ export function quoteBlock(text: string): string {
 		.split(/\r?\n/)
 		.map((line) => (line.trim() ? `> ${line.trimEnd()}` : ">"))
 		.join("\n");
+}
+
+export function splitQuotes(text: string): { quotes: string[]; body: string } {
+	const lines = text.split(/\r?\n/);
+	const quotes: string[] = [];
+	let i = 0;
+	while (i < lines.length && lines[i].startsWith(">")) {
+		const block: string[] = [];
+		while (i < lines.length && lines[i].startsWith(">")) block.push(lines[i++].replace(/^> ?/, ""));
+		const quote = block.join("\n").trim();
+		if (quote) quotes.push(quote);
+		while (i < lines.length && !lines[i].trim()) i++;
+	}
+	return { quotes, body: lines.slice(i).join("\n") };
 }
 
 export type CodeView = "agent" | "files" | "changes" | "turn" | "output" | "running" | "board" | "terminal";
@@ -1980,7 +1994,7 @@ export class Store extends Model {
 		const text = [...quotes.map((q) => quoteBlock(q.text)), typed].filter(Boolean).join("\n\n");
 		const files = tab.attachments.splice(0);
 		tab.draft = "";
-		const mine = tab.add({ t: "user", text, files: files.map((f) => f.name) });
+		const mine = tab.add({ t: "user", text, files: files.map((f) => f.name), quotes: quotes.length ? quotes : undefined });
 		for (const f of files) if (f.preview) tab.add({ t: "media", kind: "image", name: f.name, url: f.preview });
 		tab.awaiting.push(text);
 		tab.touch();
