@@ -131,8 +131,8 @@ const meta = {
 	parameters: { layout: "padded" },
 	// What a story sets on the store is put back after it: the next story starts from the store as it was.
 	beforeEach: () => {
-		const { local, service, prefs, connected, section, settingsAgent, agents } = store;
-		return () => void Object.assign(store, { local, service, prefs, connected, section, settingsAgent, agents });
+		const { local, service, prefs, connected, section, settingsAgent, agents, openHosts } = store;
+		return () => void Object.assign(store, { local, service, prefs, connected, section, settingsAgent, agents, openHosts });
 	},
 } satisfies Meta<typeof Tab>;
 
@@ -215,6 +215,23 @@ export const Environments: Story = {
 		store.service = { status: "ready", mode: "on build-box", started: false, home: "build-box:~/.pine", version: "0.23.0", from: "ssh me@build-box", host: "me@build-box", label: "build-box" };
 		store.connected = true;
 		return <Tab {...args} />;
+	},
+};
+
+/** Multiple windows open across machines: this window on this computer, another window on me@build-box, and Open in new window offered on every row. */
+export const EnvironmentsInMultipleWindows: Story = {
+	args: { section: "environments" },
+	render: (args) => {
+		store.prefs = { ...store.prefs, hosts: ["me@build-box", "studio"], use: undefined };
+		store.service = { status: "ready", mode: "started here", started: true, home: "~/.pine", version: "0.38.0", from: "this checkout" };
+		store.openHosts = ["me@build-box"];
+		store.connected = true;
+		return <Tab {...args} />;
+	},
+	play: async ({ canvasElement }) => {
+		await expect(canvasElement.querySelectorAll('[data-slot="open-in-new-window"]')).toHaveLength(3);
+		await expect(canvasElement.querySelector('[data-environment="me@build-box"] [data-slot="in-another-window"]')).not.toBeNull();
+		await expect(canvasElement.querySelector('[data-environment="studio"] [data-slot="in-another-window"]')).toBeNull();
 	},
 };
 

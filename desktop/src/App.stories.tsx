@@ -3,8 +3,8 @@ import { expect, fn, within } from "storybook/test";
 import { useEffect } from "react";
 import { SidebarFooter, SidebarMenu, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import type { AgentInfo, Conversation } from "./api.ts";
-import { AgentGroup, ConversationRow, Machines, Sidebar } from "./App.tsx";
-import { store } from "./model.ts";
+import { AgentGroup, ConversationRow, Machines, Sidebar, TitleBar } from "./App.tsx";
+import { store, Tab } from "./model.ts";
 
 // The foot of the side bar, open on its list of machines, without a daemon: the store is set as
 // the bridge's state would set it. `local` stands for what the bridge's `state()` says: false
@@ -31,8 +31,8 @@ const meta = {
 	parameters: { layout: "padded" },
 	// What a story sets on the store is put back after it: the next story starts from the store as it was.
 	beforeEach: () => {
-		const { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled } = store;
-		return () => void Object.assign(store, { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled });
+		const { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled, sidebar, tabs, active, openHosts } = store;
+		return () => void Object.assign(store, { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled, sidebar, tabs, active, openHosts });
 	},
 	// Opened, so that the snapshot shows the list of machines.
 	play: async ({ canvas, userEvent }) => await userEvent.click(canvas.getByRole("button", { name: /The pine the app uses/ })),
@@ -167,4 +167,49 @@ export const AgentGroupSkeleton: Story = {
 			<AgentGroup skeleton />
 		</SidebarProvider>
 	),
+};
+
+function TopBar({ remote, sidebarOpen }: { remote: boolean; sidebarOpen: boolean }) {
+	store.local = true;
+	store.sidebar = sidebarOpen;
+	store.prefs = { ...store.prefs, hosts: ["me@build-box", "studio"], use: remote ? "me@build-box" : undefined };
+	store.service = remote
+		? { status: "ready", mode: "on build-box", started: false, home: "build-box:~/.pine", version: "0.38.0", from: "ssh me@build-box", host: "me@build-box", label: "build-box" }
+		: ({ status: "ready", mode: "started here", started: true, home: "~/.pine", version: "0.38.0", from: "this checkout" } as typeof store.service);
+	store.connected = true;
+	store.agents = AGENTS;
+	const chatTab = new Tab("chat", "main", "main");
+	store.tabs = [chatTab];
+	store.active = chatTab;
+	return (
+		<SidebarProvider open={sidebarOpen} className="min-h-0 w-full max-w-220 rounded-lg border bg-sidebar">
+			<div className="flex min-w-0 flex-1 flex-col">
+				<TitleBar />
+			</div>
+		</SidebarProvider>
+	);
+}
+
+/** The title bar on another machine over SSH, with the side bar open: the environment pill names the machine and opens the environment menu. */
+export const TitleBarOnRemoteMachine: Story = {
+	args: { local: true },
+	render: () => <TopBar remote sidebarOpen />,
+	play: async ({ canvasElement, userEvent }) => {
+		const pill = canvasElement.querySelector<HTMLElement>('[data-slot="window-environment"]')!;
+		await expect(pill).not.toBeNull();
+		await expect(pill).toHaveTextContent("build-box");
+		await userEvent.click(pill);
+		await expect(await within(document.body).findAllByRole("menuitemradio")).toHaveLength(3);
+	},
+};
+
+/** The title bar on this computer when the side bar is hidden: the environment pill appears so the active machine stays visible and reachable. */
+export const TitleBarWithSidebarHidden: Story = {
+	args: { local: true },
+	render: () => <TopBar remote={false} sidebarOpen={false} />,
+	play: async ({ canvasElement }) => {
+		const pill = canvasElement.querySelector<HTMLElement>('[data-slot="window-environment"]')!;
+		await expect(pill).not.toBeNull();
+		await expect(pill.textContent).toMatch(/^This (Mac|computer)$/);
+	},
 };

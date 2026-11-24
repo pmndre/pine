@@ -285,6 +285,21 @@ function sendCommand(entry: WindowEntry, command: string): void {
 	else entry.pendingCommands.push(command);
 }
 
+/** Routes a local-computer OS action (`folder:...`, `pairing-shown`, `add-device`) to the most recently active local window, opening one if needed. */
+function withLocalWindow(command: string): WindowEntry {
+	const existing = targetWindow((w) => w.host === undefined);
+	if (existing) {
+		showWindow(existing);
+		sendCommand(existing, command);
+		return existing;
+	}
+	const created = openWindow({ from: targetWindow(), host: null });
+	showWindow(created);
+	sendCommand(created, command);
+	persistOpenWindows();
+	return created;
+}
+
 function openHostsFor(caller: WindowEntry): string[] {
 	const out: string[] = [];
 	for (const w of windows.values()) {
@@ -296,6 +311,13 @@ function openHostsFor(caller: WindowEntry): string[] {
 function notifyOpenHosts(): void {
 	for (const w of windows.values()) {
 		if (!w.win.isDestroyed()) sendTo(w, "pine:open-hosts", openHostsFor(w));
+	}
+}
+
+function notifyPrefs(): void {
+	const base = publicPrefs();
+	for (const w of windows.values()) {
+		if (!w.win.isDestroyed()) sendTo(w, "pine:prefs", { ...base, look: w.look ?? prefs.look });
 	}
 }
 
@@ -403,6 +425,7 @@ const terminals = new Terminals(
  * while another is shown. They are let go of when the app quits.
  */
 const held = new Map<string, Service>();
+const connecting = new Map<string, Promise<Service>>();
 
 interface ServiceStream {
 	abort: AbortController;
@@ -583,7 +606,8 @@ async function startWindowService(entry: WindowEntry): Promise<void> {
  * computer's, also while the window shows another machine's pine.
  */
 async function hold(host: string | undefined): Promise<Service> {
-	let s = held.get(host ?? "");
+	const key = host ?? "";
+	let s = held.get(key);
 	// One held from before answers still: it is used again at once. One that does not is let go of and made anew.
 	if (s && !(await answers(s))) {
 		const dead = serviceStreams.get(s);
@@ -591,17 +615,28 @@ async function hold(host: string | undefined): Promise<Service> {
 			dead.abort.abort();
 			serviceStreams.delete(s);
 		}
-		if (held.get(host ?? "") === s) held.delete(host ?? "");
+		if (held.get(key) === s) held.delete(key);
 		void letGo(s);
 		s = undefined;
 	}
 	if (s) return s;
-	const made = host ? await connectSsh(host, await loginEnv()) : await connect((launch = await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined)), { home: prefs.home ?? process.env.PINE_HOME, keep: prefs.keepRunning });
-	// Asked for twice (Try again while it connected, or browser access at the same time): the one that came first is kept.
-	const first = held.get(host ?? "");
-	if (first) void letGo(made);
-	else held.set(host ?? "", made);
-	return first ?? made;
+	let pending = connecting.get(key);
+	if (!pending) {
+		pending = (async () => {
+			const made = host ? await connectSsh(host, await loginEnv()) : await connect((launch = await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined)), { home: prefs.home ?? process.env.PINE_HOME, keep: prefs.keepRunning });
+			const first = held.get(key);
+			if (first) {
+				void letGo(made);
+				return first;
+			}
+			held.set(key, made);
+			return made;
+		})().finally(() => {
+			if (connecting.get(key) === pending) connecting.delete(key);
+		});
+		connecting.set(key, pending);
+	}
+	return pending;
 }
 
 /** Whether a pine still answers: one on another machine may have lost its connection meanwhile. */
@@ -708,21 +743,19 @@ let accessStarted: Promise<void> | undefined;
 /**
  * `pine://pair`, from the web client's "Open Pine on this computer" (ADR 0005).
  */
-async function pairFromAddress(url: string): Promise<void> {
-	if (!isPairAddress(url)) return;
+async function pairFromAddress(url: string): Promise<boolean> {
+	if (!isPairAddress(url)) return false;
 	await accessStarted;
-	if (!access) return;
+	if (!access) return false;
 	const now = await access.state();
-	if (!now.enabled || now.status === "off") return;
-	if (now.pairing || now.request) return;
+	if (!now.enabled || now.status === "off") return false;
+	if (now.pairing || now.request) return false;
 	const opened = await access.openPairing().catch(() => undefined);
-	if (!opened) return;
+	if (!opened) return false;
 	openOutside(opened.link);
-	const local = targetWindow((w) => !w.host);
-	if (local) {
-		showWindow(local);
-		sendCommand(local, "pairing-shown");
-	} else pairingShown = true;
+	if (appReady) withLocalWindow("pairing-shown");
+	else pairingShown = true;
+	return true;
 }
 let pairingShown = false;
 /** Addresses the system handed the app before browser access existed (`open-url` on a cold start). */
@@ -900,7 +933,7 @@ function openWindow(init: OpenWindowInit = {}): WindowEntry {
 			prefs.bounds = entry.bounds;
 			persistOpenWindows();
 		}
-		if (entry.look) nativeTheme.themeSource = entry.look.kind;
+		nativeTheme.themeSource = entry.look?.kind ?? "dark";
 		sendTo(entry, "pine:focus", true);
 	});
 	win.on("blur", () => {
@@ -1046,6 +1079,12 @@ const item = (label: string, command: string, accelerator?: string, more: MenuIt
 	...more,
 });
 
+const localItem = (label: string, command: string, accelerator?: string): MenuItemConstructorOptions => ({
+	label,
+	accelerator,
+	click: () => void withLocalWindow(command),
+});
+
 function buildMenu(): void {
 	const newWindowItem = (accelerator?: string): MenuItemConstructorOptions => ({
 		label: "New Window",
@@ -1060,7 +1099,7 @@ function buildMenu(): void {
 			? [
 					{
 						label: "Pine",
-						submenu: [{ role: "about" as const }, ...(RELEASE_API ? [item("Check for Updates…", "updates")] : []), { type: "separator" as const }, item("Settings…", "settings", "Cmd+,"), item("Add a Device…", "add-device", "Cmd+Shift+D"), ...(RESOURCES && fs.existsSync(path.join(RESOURCES, "bin", "pine")) ? [{ label: "pine in a Terminal…", click: () => void commandFromMenu() }] : []), { type: "separator" as const }, { role: "services" as const }, { type: "separator" as const }, { role: "hide" as const }, { role: "hideOthers" as const }, { role: "unhide" as const }, { type: "separator" as const }, { role: "quit" as const }],
+						submenu: [{ role: "about" as const }, ...(RELEASE_API ? [item("Check for Updates…", "updates")] : []), { type: "separator" as const }, item("Settings…", "settings", "Cmd+,"), localItem("Add a Device…", "add-device", "Cmd+Shift+D"), ...(RESOURCES && fs.existsSync(path.join(RESOURCES, "bin", "pine")) ? [{ label: "pine in a Terminal…", click: () => void commandFromMenu() }] : []), { type: "separator" as const }, { role: "services" as const }, { type: "separator" as const }, { role: "hide" as const }, { role: "hideOthers" as const }, { role: "unhide" as const }, { type: "separator" as const }, { role: "quit" as const }],
 					},
 				]
 			: []),
@@ -1080,7 +1119,7 @@ function buildMenu(): void {
 				{ type: "separator" },
 				item("Close Tab", "close", "CmdOrCtrl+W"),
 				{ label: "Close Window", accelerator: "CmdOrCtrl+Shift+W", click: () => targetWindow()?.win.close() },
-				...(isMac ? [] : [{ type: "separator" as const }, item("Settings…", "settings", "Ctrl+,"), item("Add a Device…", "add-device", "Ctrl+Shift+D"), { role: "quit" as const }]),
+				...(isMac ? [] : [{ type: "separator" as const }, item("Settings…", "settings", "Ctrl+,"), localItem("Add a Device…", "add-device", "Ctrl+Shift+D"), { role: "quit" as const }]),
 			],
 		},
 		{ label: "Edit", submenu: [{ role: "undo" }, { role: "redo" }, { type: "separator" }, { role: "cut" }, { role: "copy" }, { role: "paste" }, { role: "pasteAndMatchStyle" }, { role: "selectAll" }, { type: "separator" }, item("Find in Conversation", "find", "CmdOrCtrl+F"), item("Copy Last Answer", "copy", "CmdOrCtrl+Shift+C"), ...(isMac ? [item("Dictate Message", "voice", "Ctrl+R")] : [])] },
@@ -1136,7 +1175,7 @@ function buildMenu(): void {
 	];
 	Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 	// The Dock's menu: open a new window or add a device while windows are behind others or closed.
-	if (isMac) app.dock?.setMenu(Menu.buildFromTemplate([newWindowItem(), item("Add a Device…", "add-device")]));
+	if (isMac) app.dock?.setMenu(Menu.buildFromTemplate([newWindowItem(), localItem("Add a Device…", "add-device")]));
 }
 
 // ---- what the page may ask for -----------------------------------------------------------------
@@ -1304,16 +1343,16 @@ function wire(): void {
 		return worded(action === "install" ? await install(RESOURCES, env) : action === "remove" ? await remove(RESOURCES, env) : look(RESOURCES, env));
 	});
 	handle("pine:use", (caller, host?: string) => use(caller, typeof host === "string" ? host : undefined));
-	handle("pine:hosts-add", (_caller, value: string) => {
+	handle("pine:hosts-add", (caller, value: string) => {
 		const host = sshHost(String(value ?? ""))?.host;
 		if (!host) throw new Error("Write the machine as you would after ssh: host or user@host.");
 		if (!prefs.hosts.includes(host)) {
 			if (prefs.hosts.length >= 20) throw new Error("There are 20 machines in the list already: forget one first.");
 			prefs.hosts.push(host);
 			savePrefs();
-			broadcast("pine:prefs", publicPrefs());
+			notifyPrefs();
 		}
-		return publicPrefs();
+		return { ...publicPrefs(), look: caller.look ?? prefs.look };
 	});
 	handle("pine:hosts-forget", (caller, host: string, options?: { closeWindows?: boolean }) => {
 		if (host === caller.host) throw new Error("The app uses this machine now. Use another one first.");
@@ -1326,10 +1365,10 @@ function wire(): void {
 		const s = held.get(String(host));
 		if (s) (held.delete(String(host)), void letGo(s));
 		notifyOpenHosts();
-		broadcast("pine:prefs", publicPrefs());
-		return publicPrefs();
+		notifyPrefs();
+		return { ...publicPrefs(), look: caller.look ?? prefs.look };
 	});
-	handle("pine:prefs", (caller, change: Partial<Prefs>) => {
+	handle("pine:prefs", async (caller, change: Partial<Prefs>) => {
 		if (typeof change.notify === "boolean") prefs.notify = change.notify;
 		if (typeof change.updates === "boolean") prefs.updates = change.updates;
 		if (typeof change.autoUpdate === "boolean") {
@@ -1338,14 +1377,16 @@ function wire(): void {
 			broadcast("pine:update-state", withUpdater(known));
 		}
 		if (typeof change.keepRunning === "boolean") prefs.keepRunning = change.keepRunning;
+		let homeChanged = false;
+		let oldLocal: Service | undefined;
 		if ("home" in change) {
 			const home = typeof change.home === "string" && change.home.trim() ? change.home.trim() : undefined;
-			const old = held.get("");
-			if (home !== prefs.home && old) {
-				held.delete("");
-				if (old !== caller.service) void letGo(old);
+			if (home !== prefs.home) {
+				homeChanged = true;
+				prefs.home = home;
+				oldLocal = held.get("");
+				if (oldLocal) held.delete("");
 			}
-			prefs.home = home;
 		}
 		if ("look" in change) {
 			caller.look = cleanLook(change.look);
@@ -1354,7 +1395,19 @@ function wire(): void {
 			if (!caller.win.isDestroyed()) caller.win.setBackgroundColor(windowBackground(caller.look));
 		}
 		savePrefs();
-		broadcast("pine:prefs", publicPrefs());
+		notifyPrefs();
+		if (homeChanged) {
+			const localWindows = [...windows.values()].filter((w) => !w.win.isDestroyed() && w.host === undefined);
+			for (const w of localWindows) {
+				w.service = undefined;
+				w.layout = { ...w.layout, tabs: [], active: 0, noTab: false };
+				setWindowState(w, { status: "starting", host: undefined });
+			}
+			if (oldLocal) await letGo(oldLocal);
+			for (const w of localWindows) {
+				if (!w.win.isDestroyed() && w.host === undefined) void startWindowService(w);
+			}
+		}
 		return { ...publicPrefs(), look: caller.look ?? prefs.look };
 	});
 	handle("pine:access", () => accessOn().state());
@@ -1460,33 +1513,46 @@ function wire(): void {
 // ---- life of the app ---------------------------------------------------------------------------
 
 /** A folder the app was opened with (dropped on its icon, or `open -a Pine <folder>`): a conversation that works there. */
+let appReady = false;
 const pendingFolders: string[] = [];
-function openFolder(dir: string): void {
+
+function isDirectory(dir: string): boolean {
 	try {
-		if (!fs.statSync(dir).isDirectory()) return;
+		return fs.statSync(dir).isDirectory();
 	} catch {
+		return false;
+	}
+}
+
+function openFolder(dir: string): void {
+	if (!isDirectory(dir)) return;
+	if (!appReady) {
+		pendingFolders.push(dir);
 		return;
 	}
-	const local = targetWindow((w) => !w.host) ?? targetWindow();
-	if (local?.pageReady) {
-		showWindow(local);
-		sendTo(local, "pine:menu", `folder:${dir}`);
-	} else pendingFolders.push(dir);
+	withLocalWindow(`folder:${dir}`);
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
 	app.on("second-instance", (_e, argv) => {
-		const existing = targetWindow() ?? openWindow();
-		showWindow(existing);
 		const address = argv.find((a) => a.toLowerCase().startsWith("pine:"));
-		if (address) return void pairFromAddress(address);
+		if (address) {
+			void pairFromAddress(address).then((paired) => {
+				if (!paired) showWindow(targetWindow() ?? openWindow());
+			});
+			return;
+		}
 		const dir = argv.slice(1).find((a) => !a.startsWith("-") && path.isAbsolute(a));
-		if (dir) openFolder(dir);
+		if (dir && isDirectory(dir)) {
+			openFolder(dir);
+			return;
+		}
+		showWindow(targetWindow() ?? openWindow());
 	});
 	app.on("open-url", (e, url) => {
 		e.preventDefault();
-		if (!accessStarted) pendingAddresses.push(url);
+		if (!accessStarted || !appReady) pendingAddresses.push(url);
 		else void pairFromAddress(url);
 	});
 	app.on("open-file", (e, file) => {
@@ -1504,9 +1570,6 @@ else {
 		wire();
 		startAccess();
 		registerScheme();
-		for (const url of pendingAddresses.splice(0)) void pairFromAddress(url);
-		const address = process.argv.find((a) => a.toLowerCase().startsWith("pine:"));
-		if (address) void pairFromAddress(address);
 		ipcMain.on("pine:ready", (e) => {
 			const caller = entryFromEvent(e);
 			if (!caller) return;
@@ -1514,10 +1577,6 @@ else {
 			sendTo(caller, "pine:service", caller.state);
 			if (caller.service && serviceStreams.get(caller.service)?.connected) sendTo(caller, "pine:connection", true);
 			for (const cmd of caller.pendingCommands.splice(0)) sendTo(caller, "pine:menu", cmd);
-			if (!caller.host) {
-				for (const dir of pendingFolders.splice(0)) sendTo(caller, "pine:menu", `folder:${dir}`);
-				if (pairingShown) ((pairingShown = false), sendTo(caller, "pine:menu", "pairing-shown"));
-			}
 		});
 		if (isMac && !app.isPackaged) {
 			try {
@@ -1545,6 +1604,15 @@ else {
 			openWindow({ bootMode: "daemon" });
 			persistOpenWindows();
 		}
+		appReady = true;
+		for (const dir of pendingFolders.splice(0)) withLocalWindow(`folder:${dir}`);
+		if (pairingShown) {
+			pairingShown = false;
+			withLocalWindow("pairing-shown");
+		}
+		for (const url of pendingAddresses.splice(0)) void pairFromAddress(url);
+		const address = process.argv.find((a) => a.toLowerCase().startsWith("pine:"));
+		if (address) void pairFromAddress(address);
 		void firstCommand();
 		app.on("activate", () => {
 			if (windows.size === 0) {

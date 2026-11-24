@@ -2459,6 +2459,7 @@ export function MachineList() {
 					{/* A machine with a name (a paired computer, one the owner renamed) is shown by it; user@host without one as written, in mono. */}
 					<span className={cn("min-w-0 wrap-anywhere", h && !isPaired(h) && !s.prefs.names?.[h] && "font-mono")}>{h ? isPaired(h) || s.prefs.names?.[h] ? s.nameOf(h) : <Breakable host={h} /> : here}</span>
 					{status(h)}
+					{h && state.host !== h && s.openHosts.includes(h) ? <Badge variant="outline" data-slot="in-another-window">in another window</Badge> : null}
 				</>}
 			description={state.host === h && state.status === "error" ? state.message : h ? about(h) : "The pine on this computer: the one that runs, or one this app starts."}
 			descriptionClassName="line-clamp-none wrap-anywhere"
@@ -2466,10 +2467,11 @@ export function MachineList() {
 				{key && key.host === h ? <Button size="sm" data-slot="trust-host-key" onClick={() => void s.trustHostKey(key)}>Trust this key</Button> : null}
 				{state.host === h && state.status === "error" ? <Button variant="outline" size="sm" onClick={() => void bridge.retry()}>Try again</Button> : null}
 				{state.host === h ? null : <Button variant="outline" size="sm" onClick={() => void s.useMachine(h)}>Use</Button>}
+				{s.canManageWindows ? <Button variant="outline" size="sm" data-slot="open-in-new-window" onClick={() => void s.attempt(() => bridge.newWindow!({ host: h ?? null }))}>Open in new window</Button> : null}
 				{state.host === h && s.canDisconnect ? <Button variant="outline" size="sm" data-slot="disconnect" onClick={() => void s.disconnect()}>Disconnect</Button> : null}
 				{h && s.canRename ? <Button variant="outline" size="sm" data-slot="rename-machine" onClick={() => void s.renameMachine(h)}>Rename</Button> : null}
 				{/* With no local machine to fall back on, the one in use may go when it is not reached (its host key changed, say). */}
-				{h && (state.host !== h || (!s.local && state.status === "error")) ? <Button variant="ghost" size="sm" onClick={() => void forget(h)}>Forget</Button> : null}
+				{h && (state.host !== h || (!s.local && state.status === "error")) ? <Button variant="ghost" size="sm" data-slot="forget-machine" onClick={() => void forget(h)}>Forget</Button> : null}
 			</>}
 		>
 				{h && reachedThrough(h, s.serviceHost) ? <ItemDescription className="line-clamp-none wrap-anywhere" data-slot="reached-through">{reachedThrough(h, s.serviceHost)}</ItemDescription> : null}
@@ -2760,8 +2762,8 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 								</FieldDescription>
 							</FieldContent>
 							<Control>
-								{s.prefs.home ? <Button variant="outline" onClick={() => void set({ home: "" }).then(() => !s.remote && bridge.retry())}>Use ~/.pine</Button> : null}
-								<Button variant="outline" onClick={() => void bridge.pickFolder("A pine home folder").then((dir: string | undefined) => dir && set({ home: dir }).then(() => (s.remote ? undefined : service?.started ? bridge.restart() : bridge.retry())))}><FolderIcon data-icon="inline-start" />Choose…</Button>
+								{s.prefs.home ? <Button variant="outline" onClick={() => void set({ home: "" }).then(() => typeof bridge.onPrefs !== "function" && !s.remote && bridge.retry())}>Use ~/.pine</Button> : null}
+								<Button variant="outline" onClick={() => void bridge.pickFolder("A pine home folder").then((dir: string | undefined) => dir && set({ home: dir }).then(() => (typeof bridge.onPrefs === "function" || s.remote ? undefined : service?.started ? bridge.restart() : bridge.retry())))}><FolderIcon data-icon="inline-start" />Choose…</Button>
 							</Control>
 						</Field>
 					) : null}

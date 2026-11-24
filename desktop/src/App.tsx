@@ -1,7 +1,7 @@
 // The window: the list of agents and conversations at the side, the tabs along the top, one
 // conversation in the middle with its panel, and whatever lies over them for a moment (a list
 // to pick from, a question, the palette).
-import { ArrowUpIcon, AudioLinesIcon, DownloadIcon, HourglassIcon, RotateCwIcon, CheckIcon, RadarIcon, ChevronDownIcon, ChevronRightIcon, ChevronsUpDownIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, GlobeIcon, ListIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, Trash2Icon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
+import { AppWindowIcon, ArrowUpIcon, AudioLinesIcon, DownloadIcon, HourglassIcon, RotateCwIcon, CheckIcon, RadarIcon, ChevronDownIcon, ChevronRightIcon, ChevronsUpDownIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, GlobeIcon, ListIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, Trash2Icon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
 import { useMediaQuery } from "usehooks-ts";
 import { Toggle } from "@/components/ui/toggle";
 import { Badge } from "@/components/ui/badge";
@@ -606,16 +606,85 @@ export function Sidebar() {
 	);
 }
 
-/**
- * The pine the app uses, at the foot of the side bar, as large as the rows above it: its state and
- * version, and on which machine it runs. A click lists the machines (this one, and those added in
- * Settings > Environments) to use another, and leads to those settings. Under a bridge with no
- * local machine (`store.local`), only the machines added.
- */
-export function Machines() {
+function MachineMenuContent({ side, close }: { side: "top" | "bottom"; close: () => void }) {
 	const s = useModel(store);
 	const state = s.service;
 	const here = `This ${computerWord(s.platform)}`;
+	const row = (host: string | undefined) => {
+		const label = host ? s.nameOf(host) : here;
+		return (
+			<div key={host ?? ""} className="flex items-center gap-0.5">
+				<DropdownMenuRadioItem
+					value={host ?? ""}
+					closeOnClick={false}
+					data-host={host}
+					className="min-w-0 flex-1"
+					onClick={(e) => {
+						close();
+						if (s.canManageWindows && (e.metaKey || e.ctrlKey)) {
+							void s.attempt(() => bridge.newWindow!({ host: host ?? null }));
+							return;
+						}
+						void s.useMachine(host);
+					}}
+				>
+					{host && !isPaired(host) ? <ServerIcon /> : <LaptopIcon />}
+					<span className="truncate">{label}</span>
+				</DropdownMenuRadioItem>
+				{s.canManageWindows ? (
+					<HoverTooltip>
+						<TooltipTrigger
+							render={
+								<Button
+									variant="ghost"
+									size="icon-xs"
+									data-slot="open-machine-window"
+									data-host={host ?? "local"}
+									className="text-muted-foreground hover:text-foreground"
+									aria-label={`Open ${label} in a new window`}
+									onClick={(e) => {
+										e.stopPropagation();
+										close();
+										void s.attempt(() => bridge.newWindow!({ host: host ?? null }));
+									}}
+								/>
+							}
+						>
+							<AppWindowIcon />
+						</TooltipTrigger>
+						<TooltipContent>Open in a new window</TooltipContent>
+					</HoverTooltip>
+				) : null}
+			</div>
+		);
+	};
+	return (
+		<DropdownMenuContent side={side} className="min-w-56">
+			<DropdownMenuGroup>
+				<DropdownMenuLabel>Use the pine on</DropdownMenuLabel>
+				<DropdownMenuRadioGroup value={state.host ?? ""}>
+					{s.local ? row(undefined) : null}
+					{s.prefs.hosts.map(row)}
+				</DropdownMenuRadioGroup>
+			</DropdownMenuGroup>
+			<DropdownMenuSeparator />
+			{/* Back to the list of machines, the one in use kept: only a bridge with no local machine offers it (the web client's). */}
+			{s.canDisconnect ? <DropdownMenuItem data-slot="disconnect" onClick={() => void s.disconnect()}><UnplugIcon />Disconnect</DropdownMenuItem> : null}
+			<DropdownMenuItem onClick={() => s.openSettings("environments")}><SettingsIcon />Environments…</DropdownMenuItem>
+		</DropdownMenuContent>
+	);
+}
+
+/**
+ * The pine the app uses, at the foot of the side bar, as large as the rows above it: its state and
+ * version, and on which machine it runs. A click lists the machines (this one, and those added in
+ * Settings > Environments) to use another or open one in a new window, and leads to those settings.
+ * Under a bridge with no local machine (`store.local`), only the machines added.
+ */
+export function Machines() {
+	const s = useModel(store);
+	const [open, setOpen] = useState(false);
+	const state = s.service;
 	const on = state.status === "ready" ? state.label : state.host;
 	// A paired computer by its name, never its id.
 	const reached = state.host && s.nameOf(state.host);
@@ -632,28 +701,14 @@ export function Machines() {
 	const about = state.status === "ready" ? `${state.home} · ${state.host ? (isPaired(state.host) ? `paired with this ${s.device}` : `over SSH (${state.host})`) : state.started ? "started by this app" : "a pine that was already running"}` : "";
 	return (
 		<SidebarMenuItem className="app-no-drag">
-			<DropdownMenu>
+			<DropdownMenu open={open} onOpenChange={setOpen}>
 				<DropdownMenuTrigger render={<SidebarMenuButton data-slot="service-status" title={about} aria-label={`The pine the app uses: ${text}. Use another one`} />}>
 					{/* The dot stands in the place of the icons in the rows above it: its middle under theirs, and what is written beside it under their names. */}
 					<span className="grid size-4 flex-none place-items-center"><span className={cn(DOT, state.status === "error" ? "bg-destructive" : state.status !== "ready" ? "bg-warn" : s.connected ? "bg-primary" : "bg-destructive")} /></span>
 					<span className="min-w-0 flex-1 truncate">{text}</span>
 					<ChevronsUpDownIcon className="text-faint" />
 				</DropdownMenuTrigger>
-				<DropdownMenuContent side="top" className="min-w-56">
-					<DropdownMenuGroup>
-						<DropdownMenuLabel>Use the pine on</DropdownMenuLabel>
-						<DropdownMenuRadioGroup value={state.host ?? ""} onValueChange={(host: string) => void s.useMachine(host || undefined)}>
-							{s.local ? <DropdownMenuRadioItem value="" closeOnClick><LaptopIcon />{here}</DropdownMenuRadioItem> : null}
-							{s.prefs.hosts.map((host) => (
-								<DropdownMenuRadioItem key={host} value={host} closeOnClick data-host={host}>{isPaired(host) ? <LaptopIcon /> : <ServerIcon />}<span className="truncate">{s.nameOf(host)}</span></DropdownMenuRadioItem>
-							))}
-						</DropdownMenuRadioGroup>
-					</DropdownMenuGroup>
-					<DropdownMenuSeparator />
-					{/* Back to the list of machines, the one in use kept: only a bridge with no local machine offers it (the web client's). */}
-					{s.canDisconnect ? <DropdownMenuItem data-slot="disconnect" onClick={() => void s.disconnect()}><UnplugIcon />Disconnect</DropdownMenuItem> : null}
-					<DropdownMenuItem onClick={() => s.openSettings("environments")}><SettingsIcon />Environments…</DropdownMenuItem>
-				</DropdownMenuContent>
+				<MachineMenuContent side="top" close={() => setOpen(false)} />
 			</DropdownMenu>
 		</SidebarMenuItem>
 	);
@@ -743,13 +798,44 @@ function measureRoom(el: HTMLDivElement | null): (() => void) | undefined {
 	return () => observer.disconnect();
 }
 
-function TitleBar() {
+function WindowEnvironmentPill() {
+	const s = useModel(store);
+	const [open, setOpen] = useState(false);
+	const host = s.service.host;
+	const label = s.remote ?? (host ? s.nameOf(host) : `This ${computerWord(s.platform)}`);
+	return (
+		<DropdownMenu open={open} onOpenChange={setOpen}>
+			<DropdownMenuTrigger
+				render={
+					<Button
+						variant="ghost"
+						size="xs"
+						data-slot="window-environment"
+						className="max-w-44 flex-none text-muted-foreground app-no-drag hover:text-foreground"
+						aria-label={`Environment: ${label}`}
+					/>
+				}
+			>
+				{host && !isPaired(host) ? <ServerIcon data-icon="inline-start" /> : <LaptopIcon data-icon="inline-start" />}
+				<span className="truncate">{label}</span>
+			</DropdownMenuTrigger>
+			<MachineMenuContent side="bottom" close={() => setOpen(false)} />
+		</DropdownMenu>
+	);
+}
+
+/**
+ * The top bar of a window: open tabs, the button to start a conversation, the active environment pill
+ * (shown on remote machines or when the side bar is hidden), and the toggles for panels beside the conversation.
+ */
+export function TitleBar() {
 	const s = useModel(store);
 	// Drawn again when the window crosses the width where the panels become sheets: what the icons say depends on it.
 	useMediaQuery(ROOM);
 	const with_ = s.agentInFront();
 	const { isMobile, setOpenMobile, toggleSidebar } = useSidebar();
 	const column = s.sidebar && !isMobile;
+	const showEnvironment = Boolean(s.remote || s.service.host) || !column;
 	// The menu's Toggle Sidebar goes to the stock toggle, which knows whether the side bar is a column or a sheet.
 	useSignal("sidebar", toggleSidebar);
 	// The sheet of a narrow window is put away once another tab comes to the front (from the sheet, the palette,
@@ -768,6 +854,7 @@ function TitleBar() {
 			</ScrollArea>
 			<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon" className="app-no-drag" onClick={() => void s.newConversation()} aria-label={with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent"} />}><PlusIcon /></TooltipTrigger><TooltipContent>{with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent"}<Kbd>⌘T</Kbd></TooltipContent></HoverTooltip>
 			<span className="min-w-0 flex-1" />
+			{showEnvironment ? <WindowEnvironmentPill /> : null}
 			<BesideToggle which="code" label="Side panel: the agent, files, changes, output and what is running" keys="⌥⌘B" icon={<PanelRightIcon />} />
 			<BesideToggle which="aside" label="Browser: the page the agent works in" keys="⇧⌘B" icon={<GlobeIcon />} />
 			{s.hasView ? <BesideToggle which="view" label={`View: all of pine at a glance, drawn by ${s.view}`} keys="⇧⌘O" icon={<RadarIcon />} /> : null}
@@ -993,6 +1080,22 @@ export function App() {
 	}, []);
 	const ready = s.service.status === "ready" && s.agents.length > 0 && s.opened;
 	const tab = s.active;
+	const remoteName = s.remote ?? (s.service.host ? s.nameOf(s.service.host) : undefined);
+	const tabLabel = !ready || !tab
+		? undefined
+		: tab.kind === "events"
+			? "Events"
+			: tab.kind === "settings"
+				? "Settings"
+				: tab.kind === "task"
+					? `${tab.agent} #${tab.task}`
+					: tab.session === "main"
+						? tab.agent
+						: `${tab.agent} · ${s.titleOf(tab.agent, tab.session)}`;
+	const windowTitle = [tabLabel, remoteName, "Pine"].filter(Boolean).join(" — ");
+	useEffect(() => {
+		document.title = windowTitle;
+	}, [windowTitle]);
 	const side = usePanelRef();
 	// Narrower than stock's breakpoint (Tailwind's `md`), the side bar lies over the page instead of beside it, as stock's
 	// own sheet. (The panel beside a conversation does the same below `lg`: CodePanel.tsx.)

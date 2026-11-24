@@ -416,6 +416,8 @@ export class Store extends Model {
 	private restoring = false;
 	private loading = false;
 	private started = false;
+	private serviceHome?: string;
+	private pendingFolders: string[] = [];
 	private timers: number[] = [];
 
 	// ---- start -----------------------------------------------------------------------------------
@@ -460,6 +462,7 @@ export class Store extends Model {
 		});
 		bridge.onPrefs?.((prefs: Prefs) => {
 			this.prefs = prefs;
+			this.home = prefs.home;
 			this.touch();
 		});
 		const first = await bridge.state();
@@ -696,9 +699,13 @@ export class Store extends Model {
 
 	private async onService(s: ServiceState): Promise<void> {
 		const was = this.service.status;
-		// Another pine than before (another machine was picked): nothing of the last one is kept, not even what an agent of the same name was doing.
-		const moved = s.host !== this.service.host || s.status !== was;
-		if (s.host !== this.service.host) this.forgetPine();
+		const prevHome = this.serviceHome;
+		if (s.status === "ready") this.serviceHome = s.home;
+		else if (s.host !== this.service.host) this.serviceHome = undefined;
+		const switchedHome = s.status === "ready" && prevHome !== undefined && s.home !== prevHome;
+		// Another pine than before (another machine or another local home was picked): nothing of the last one is kept.
+		const moved = s.host !== this.service.host || switchedHome || s.status !== was;
+		if (s.host !== this.service.host || switchedHome) this.forgetPine();
 		let ended = pairingEnded(this.service, s);
 		// Ended by the owner's Cancel: neither a failure to say nor a pairing to welcome.
 		if (ended && this.pairCancelled) {
@@ -804,6 +811,26 @@ export class Store extends Model {
 	 * its access open, which only Remove in the Pine app on that computer closes.
 	 */
 	async forgetMachine(host: string): Promise<void> {
+		const openCount = this.openHosts.filter((x) => x === host).length;
+		if (openCount > 0) {
+			const name = this.nameOf(host);
+			const sure = await this.pick({
+				title: `Forget ${name}?`,
+				items: [
+					{
+						value: "forget",
+						label: openCount > 1 ? `Close its ${openCount} windows and forget` : "Close its window and forget",
+						about: `${openCount > 1 ? `The ${openCount} windows` : "The window"} using ${name} ${openCount > 1 ? "close" : "closes"}, the SSH connection ends, and ${name} is removed from the list`,
+						tone: "bad",
+					},
+					{ value: "no", label: "Cancel" },
+				],
+			});
+			if (sure !== "forget") return;
+			const prefs = await this.attempt(() => bridge.forgetHost(host, { closeWindows: true }));
+			if (prefs) (this.prefs = prefs), this.touch();
+			return;
+		}
 		if (isPaired(host)) {
 			const name = this.nameOf(host);
 			const sure = await this.pick({
@@ -1041,6 +1068,9 @@ export class Store extends Model {
 		} finally {
 			this.loading = false;
 		}
+		if (this.opened && !this.remote) {
+			for (const dir of this.pendingFolders.splice(0)) void this.openFolder(dir);
+		}
 	}
 
 	/**
@@ -1055,7 +1085,7 @@ export class Store extends Model {
 		this.theme = got.theme;
 		const look = cleanLook(got.themes.find((t) => t.id === got.theme));
 		applyLook(look);
-		if (look && JSON.stringify(look) !== JSON.stringify(this.prefs.look)) this.prefs = await bridge.prefs({ look }).catch(() => this.prefs);
+		if (JSON.stringify(look ?? null) !== JSON.stringify(this.prefs.look ?? null)) this.prefs = await bridge.prefs({ look: look ?? null }).catch(() => this.prefs);
 		this.touch();
 	}
 
@@ -2570,7 +2600,14 @@ export class Store extends Model {
 		const tab = this.active;
 		const chat = tab?.kind === "chat" ? tab : undefined;
 		// A folder opened with the app from the Finder is this computer's.
-		if (name.startsWith("folder:")) return this.remote ? this.flash(`That folder is on this computer, and the app uses the pine on ${this.remote}. Use this ${computerWord(this.platform)}'s pine to open it.`, "warn", 7000) : this.openFolder(name.slice(7));
+		if (name.startsWith("folder:")) {
+			if (this.remote) return this.flash(`That folder is on this computer, and the app uses the pine on ${this.remote}. Use this ${computerWord(this.platform)}'s pine to open it.`, "warn", 7000);
+			if (!this.opened || this.loading) {
+				this.pendingFolders.push(name.slice(7));
+				return;
+			}
+			return this.openFolder(name.slice(7));
+		}
 		if (name.startsWith("focus:")) return this.activate(this.tabs.find((t) => t.key === name.slice(6)));
 		if (name.startsWith("tab-")) return this.activate(this.tabs[Number(name.slice(4)) - 1]);
 		if (name.startsWith("code-")) {
