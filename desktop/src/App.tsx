@@ -235,6 +235,7 @@ function conversationItems(c: Conv, movable: boolean) {
 	const main = c.session === "main";
 	return [
 		{ id: "open", label: "Open" },
+		...(typeof bridge.newWindow === "function" ? [{ id: "open-in-new-window", label: "Open in New Window" }] : []),
 		...(c.tasks ? [{ id: "branch", label: "Branch" }] : []),
 		...(c.tasks && c.folder ? [{ id: "branch-worktree", label: "Branch into a Worktree" }] : []),
 		...(c.worktree ? [{ id: "worktree", label: "Worktree…" }] : []),
@@ -249,6 +250,7 @@ function conversationItems(c: Conv, movable: boolean) {
 async function conversationPicked(agent: string, c: Conv, picked: string | undefined | null): Promise<void> {
 	const s = store;
 	if (picked === "open") await s.openTab(agent, c.session);
+	if (picked === "open-in-new-window") await s.openConversationInNewWindow(agent, c.session);
 	if (picked === "move") await s.askMoveToGroup(agent, c.session, c.group);
 	if (picked === "branch" || picked === "branch-worktree") await s.branch(agent, c.session, undefined, picked === "branch-worktree");
 	if (picked === "worktree") {
@@ -663,6 +665,9 @@ export function Machines() {
 
 // ---- the tabs ------------------------------------------------------------------------------------------
 
+const TAB_DRAG_NONCE = Math.random().toString(36).slice(2);
+const tabDragOrigin = () => (store.windowId || TAB_DRAG_NONCE).toLowerCase();
+
 function TabButton({ tab, index }: { tab: Tab; index: number }) {
 	useModel(tab);
 	const s = store;
@@ -677,6 +682,7 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 	const act = (action: TabMenuAction) => {
 		if (action === "close") return s.closeTab(tab);
 		if (action === "pin" || action === "unpin") return void s.pin(tab, action === "pin");
+		if (action === "move-to-window") return void s.moveTabToNewWindow(tab);
 		s.closeTabs(action, tab);
 	};
 	// The least width is what the tab holds besides its name (the avatar, the gaps, the close button) and a few letters of the
@@ -684,6 +690,7 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 	return (
 		<TabMenu
 			pin={tab.kind !== "chat" ? undefined : tab.session === "main" ? "main" : kept ? "unpin" : "pin"}
+			moveToWindow={tab.kind === "chat" && typeof bridge.newWindow === "function"}
 			others={s.tabs.length > 1}
 			right={index < s.tabs.length - 1}
 			onAction={act}
@@ -694,10 +701,29 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 					data-active={on || undefined}
 					className={cn("group/tab relative flex h-8 max-w-55 min-w-28 flex-initial items-center gap-2 rounded-md pr-1.5 pl-2.5 app-no-drag", on ? "bg-background text-foreground ring-1 ring-border" : "text-muted-foreground hover:bg-accent hover:text-foreground", drop && "before:absolute before:inset-y-1 before:-left-0.5 before:w-0.5 before:rounded-full before:bg-primary")}
 					draggable
-					onDragStart={(e) => (e.dataTransfer.setData("application/x-pine-tab", String(index)), (e.dataTransfer.effectAllowed = "move"))}
-					onDragOver={(e) => e.dataTransfer.types.includes("application/x-pine-tab") && (e.preventDefault(), setDrop(true))}
+					onDragStart={(e) => {
+						const origin = tabDragOrigin();
+						e.dataTransfer.setData("application/x-pine-tab", JSON.stringify({ window: origin, index }));
+						e.dataTransfer.setData(`application/x-pine-tab-${origin}`, String(index));
+						e.dataTransfer.effectAllowed = "move";
+					}}
+					onDragOver={(e) => {
+						if (e.dataTransfer.types.includes(`application/x-pine-tab-${tabDragOrigin()}`)) {
+							e.preventDefault();
+							setDrop(true);
+						}
+					}}
 					onDragLeave={() => setDrop(false)}
-					onDrop={(e) => (setDrop(false), s.moveTab(Number(e.dataTransfer.getData("application/x-pine-tab")), index))}
+					onDrop={(e) => {
+						setDrop(false);
+						const raw = e.dataTransfer.getData("application/x-pine-tab");
+						try {
+							const parsed = JSON.parse(raw) as { window?: unknown; index?: unknown };
+							if (parsed.window === tabDragOrigin() && typeof parsed.index === "number") s.moveTab(parsed.index, index);
+						} catch {
+							// ignore payloads from other windows or sources
+						}
+					}}
 					onClick={() => s.activate(tab)}
 					onAuxClick={(e) => e.button === 1 && s.closeTab(tab)}
 					title={tab.kind === "chat" ? `${tab.agent} · ${tab.session}${tab.folder ? ` · ${tab.folder}` : ""}` : tab.kind === "task" ? `task #${tab.task}` : tab.kind}

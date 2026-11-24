@@ -337,15 +337,9 @@ let listeningWindow: ManagedWindow | undefined;
 // A block run with a Run button reports how it went to the page, which tells the conversation through the daemon.
 const terminals = new Terminals(
 	{
-		data: (id, data) => {
-			for (const w of windowsForHost(undefined)) sendTo(w, "pine:term-data", id, data);
-		},
-		exit: (id, code) => {
-			for (const w of windowsForHost(undefined)) sendTo(w, "pine:term-exit", id, code);
-		},
-		run: (id, report) => {
-			for (const w of windowsForHost(undefined)) sendTo(w, "pine:term-run", id, report);
-		},
+		data: (id, data, windowId) => sendTo(windows.get(windowId), "pine:term-data", id, data),
+		exit: (id, code, windowId) => sendTo(windows.get(windowId), "pine:term-exit", id, code),
+		run: (id, report, windowId) => sendTo(windows.get(windowId), "pine:term-run", id, report),
 	},
 	{ env: loginEnv, hooks: path.join(app.getPath("userData"), "shell-hooks"), shell: process.env.PINE_DESKTOP_SHELL ? [process.env.PINE_DESKTOP_SHELL] : undefined, stillRunningMs: Number(process.env.PINE_DESKTOP_STILL_RUNNING_MS) || undefined },
 );
@@ -444,8 +438,11 @@ async function useInWindow(w: ManagedWindow, host: string | undefined): Promise<
 	prefs.use = host;
 	persistOpenWindows();
 	broadcastOpenHosts();
-	// Only close local terminals when no local window remains open.
-	if (wasLocal && host && windowsForHost(undefined).length === 0) terminals.closeAll();
+	// Close only this window's local terminals when switching away from local.
+	if (wasLocal && host) {
+		terminals.closeWindow(w.id);
+		w.terminalFocused = false;
+	}
 	pruneStreams();
 	await startService(w);
 }
@@ -879,6 +876,7 @@ function createWindow(opts: CreateWindowOptions = {}): ManagedWindow {
 	win.on("closed", () => {
 		windows.delete(w.id);
 		byContents.delete(wcId);
+		terminals.closeWindow(w.id);
 		if (listeningWindow === w) {
 			listening?.cancel();
 			listening = undefined;
@@ -903,7 +901,7 @@ function openNewWindow(options?: NewWindowOptions, caller?: ManagedWindow): Mana
 	const envAlreadyOpen = windowsForHost(host).length > 0;
 	const hasTab = Boolean(options?.tab);
 	const chrome = caller?.layout ? chromeOf(caller.layout) : caller?.chromeLayout ?? prefs.layout;
-	return createWindow({
+	const created = createWindow({
 		host,
 		cascadeFrom: caller ?? focusedWindow(),
 		chromeLayout: chrome,
@@ -911,6 +909,10 @@ function openNewWindow(options?: NewWindowOptions, caller?: ManagedWindow): Mana
 		initialTab: options?.tab,
 		initialDraft: options?.draft,
 	});
+	if (options?.moveFrom && options.tab && caller && !host && !caller.host) {
+		terminals.transfer(caller.id, created.id, `${options.tab.agent}:${options.tab.session}`);
+	}
+	return created;
 }
 
 function showWindow(target?: ManagedWindow): ManagedWindow {
@@ -1526,11 +1528,11 @@ function wire(): void {
 	});
 	// The owner's terminal beside a conversation. What is written into it comes from the page's
 	// keyboard, or from a code block of an answer that the owner ran with its button.
-	handle("pine:term-open", (_w, id: string, cwd?: string, cols?: number, rows?: number) => terminals.open(String(id), cwd, cols, rows));
-	handle("pine:term-write", (_w, id: string, data: string) => terminals.write(String(id), data));
-	handle("pine:term-run", (_w, id: string, code: string) => terminals.run(String(id), code));
-	handle("pine:term-resize", (_w, id: string, cols: number, rows: number) => terminals.resize(String(id), cols, rows));
-	handle("pine:term-close", (_w, id: string) => terminals.close(String(id)));
+	handle("pine:term-open", (w, id: string, cwd?: string, cols?: number, rows?: number) => terminals.open(String(id), cwd, cols, rows, w.id));
+	handle("pine:term-write", (w, id: string, data: string) => terminals.write(String(id), data, w.id));
+	handle("pine:term-run", (w, id: string, code: string) => terminals.run(String(id), code, w.id));
+	handle("pine:term-resize", (w, id: string, cols: number, rows: number) => terminals.resize(String(id), cols, rows, w.id));
+	handle("pine:term-close", (w, id: string) => terminals.close(String(id), w.id));
 	// Off a Mac the window shows no menu bar (createWindow): the page's menu button opens the menus at its place, given in the page's pixels.
 	handle("pine:app-menu", (w, x: number, y: number) => {
 		if (w.win.isDestroyed() || isMac) return;

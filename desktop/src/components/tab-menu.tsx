@@ -2,15 +2,16 @@ import type { ReactElement } from "react";
 import { shortcut } from "../text.ts";
 import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "@/components/ui/context-menu";
 
-export type TabMenuAction = "close" | "others" | "right" | "all" | "pin" | "unpin";
+export type TabMenuAction = "close" | "others" | "right" | "all" | "pin" | "unpin" | "move-to-window";
 
 /**
- * The menu of a tab in the title bar, opened with a right click on the tab, as in VS Code: the ways to close tabs, and
- * pinning the conversation the tab shows. `trigger` is the tab itself; it is drawn as it is and opens the menu.
- * `pin` says which of Pin and Unpin is offered: "main" for an agent's main conversation, which always stays (the entry
- * is there and cannot be chosen), nothing for a tab that shows no conversation (the entry is left out).
+ * The menu of a tab in the title bar, opened with a right click on the tab, as in VS Code: the ways to close tabs,
+ * moving the tab to a new window (on desktop), and pinning the conversation the tab shows. `trigger` is the tab itself;
+ * it is drawn as it is and opens the menu. `pin` says which of Pin and Unpin is offered: "main" for an agent's main
+ * conversation, which always stays (the entry is there and cannot be chosen), nothing for a tab that shows no
+ * conversation (the entry is left out).
  */
-export function TabMenu({ trigger, pin, others = true, right = true, open, onAction }: { trigger: ReactElement; pin?: "pin" | "unpin" | "main"; others?: boolean; right?: boolean; open?: boolean; onAction: (action: TabMenuAction) => void }) {
+export function TabMenu({ trigger, pin, moveToWindow = false, others = true, right = true, open, onAction }: { trigger: ReactElement; pin?: "pin" | "unpin" | "main"; moveToWindow?: boolean; others?: boolean; right?: boolean; open?: boolean; onAction: (action: TabMenuAction) => void }) {
 	return (
 		<ContextMenu open={open}>
 			<ContextMenuTrigger render={trigger} />
@@ -23,6 +24,14 @@ export function TabMenu({ trigger, pin, others = true, right = true, open, onAct
 					<ContextMenuItem disabled={!right} onClick={() => onAction("right")}>Close to the Right</ContextMenuItem>
 					<ContextMenuItem onClick={() => onAction("all")}>Close All</ContextMenuItem>
 				</ContextMenuGroup>
+				{moveToWindow ? (
+					<>
+						<ContextMenuSeparator />
+						<ContextMenuGroup>
+							<ContextMenuItem onClick={() => onAction("move-to-window")}>Move to New Window</ContextMenuItem>
+						</ContextMenuGroup>
+					</>
+				) : null}
 				{pin ? (
 					<>
 						<ContextMenuSeparator />
