@@ -2405,6 +2405,7 @@ export function MachineList() {
 	const s = useModel(store);
 	const [host, setHost] = useState("");
 	const [error, setError] = useState<string>();
+	const [forgetting, setForgetting] = useState<{ host: string; count: number }>();
 	const field = useId();
 	const state = s.service;
 	const key = s.keyToTrust;
@@ -2455,7 +2456,12 @@ export function MachineList() {
 		}
 	};
 	// A paired computer is asked about first: forgetting it here leaves its access open (`forgetMachine`).
-	const forget = (h: string) => s.forgetMachine(h);
+	// A remote host open in other windows is confirmed before closing those windows.
+	const forget = (h: string) => {
+		const count = s.otherWindowsOn(h);
+		if (count > 0) return void setForgetting({ host: h, count });
+		return s.forgetMachine(h);
+	};
 	/** How the pine of a row is, when it is the one the app uses; nothing is asked of the others. */
 	const status = (h?: string) => {
 		if (state.host !== h) return null;
@@ -2482,6 +2488,7 @@ export function MachineList() {
 					{/* A machine with a name (a paired computer, one the owner renamed) is shown by it; user@host without one as written, in mono. */}
 					<span className={cn("min-w-0 wrap-anywhere", h && !isPaired(h) && !h.startsWith("wsl:") && !s.prefs.names?.[h] && "font-mono")}>{h?.startsWith("wsl:") ? `${h.slice(4)} (WSL)` : h ? isPaired(h) || s.prefs.names?.[h] ? s.nameOf(h) : <Breakable host={h} /> : here}</span>
 					{status(h)}
+					{h && s.otherWindowsOn(h) > 0 ? <Badge variant="outline" data-slot="in-another-window">in another window</Badge> : null}
 				</>}
 			description={state.host === h && state.status === "error" ? state.message : h?.startsWith("wsl:") ? `The pine in ${h.slice(4)}, a Linux of WSL on this computer, where pine has its sandbox.` : h ? about(h) : "The pine on this computer: the one that runs, or one this app starts."}
 			descriptionClassName="line-clamp-none wrap-anywhere"
@@ -2494,6 +2501,7 @@ export function MachineList() {
 				) : null}
 				{state.host === h && state.status === "error" ? <Button variant="outline" size="sm" onClick={() => void bridge.retry()}>Try again</Button> : null}
 				{state.host === h ? null : <Button variant="outline" size="sm" onClick={() => void s.useMachine(h)}>Use</Button>}
+				{s.canOpenWindow ? <Button variant="outline" size="sm" data-slot="open-in-new-window" onClick={() => void s.openMachineWindow(h)}>Open in new window</Button> : null}
 				{state.host === h && s.canDisconnect ? <Button variant="outline" size="sm" data-slot="disconnect" onClick={() => void s.disconnect()}>Disconnect</Button> : null}
 				{h && s.canRename ? <Button variant="outline" size="sm" data-slot="rename-machine" onClick={() => void s.renameMachine(h)}>Rename</Button> : null}
 				{/* With no local machine to fall back on, the one in use may go when it is not reached (its host key changed, say). */}
@@ -2565,6 +2573,31 @@ export function MachineList() {
 					{s.serviceHost ? <FieldDescription data-slot="relay-line">{relayLine(s.serviceHost)}</FieldDescription> : null}
 				</FieldGroup>
 			</Section> : null}
+			{forgetting ? (
+				<AlertDialog open onOpenChange={(open) => open || setForgetting(undefined)}>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Forget {s.nameOf(forgetting.host)}?</AlertDialogTitle>
+						</AlertDialogHeader>
+						<p className="text-sm text-muted-foreground">
+							{s.nameOf(forgetting.host)} is currently open in {forgetting.count === 1 ? "another window" : `${forgetting.count} other windows`}. Forgetting it closes {forgetting.count === 1 ? "that window" : "those windows"}, ends its connection, and removes it from your list of environments.
+						</p>
+						<AlertDialogFooter>
+							<AlertDialogCancel>Cancel</AlertDialogCancel>
+							<Button
+								variant="destructive"
+								onClick={() => {
+									const target = forgetting.host;
+									setForgetting(undefined);
+									void s.forgetMachine(target, { closeWindows: true });
+								}}
+							>
+								{forgetting.count === 1 ? "Close its window and forget" : `Close its ${forgetting.count} windows and forget`}
+							</Button>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+			) : null}
 		</>
 	);
 }
@@ -2814,8 +2847,8 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 								</FieldDescription>
 							</FieldContent>
 							<Control>
-								{s.prefs.home ? <Button variant="outline" onClick={() => void set({ home: "" }).then(() => !s.remote && bridge.retry())}>Use ~/.pine</Button> : null}
-								<Button variant="outline" onClick={() => void bridge.pickFolder("A pine home folder").then((dir: string | undefined) => dir && set({ home: dir }).then(() => (s.remote ? undefined : service?.started ? bridge.restart() : bridge.retry())))}><FolderIcon data-icon="inline-start" />Choose…</Button>
+								{s.prefs.home ? <Button variant="outline" onClick={() => void set({ home: "" })}>Use ~/.pine</Button> : null}
+								<Button variant="outline" onClick={() => void bridge.pickFolder("A pine home folder").then((dir: string | undefined) => (dir ? set({ home: dir }) : undefined))}><FolderIcon data-icon="inline-start" />Choose…</Button>
 							</Control>
 						</Field>
 					) : null}

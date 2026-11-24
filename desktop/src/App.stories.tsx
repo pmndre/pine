@@ -31,8 +31,8 @@ const meta = {
 	parameters: { layout: "padded" },
 	// What a story sets on the store is put back after it: the next story starts from the store as it was.
 	beforeEach: () => {
-		const { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled } = store;
-		return () => void Object.assign(store, { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled });
+		const { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled, openHosts, sidebar } = store;
+		return () => void Object.assign(store, { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled, openHosts, sidebar });
 	},
 	// Opened, so that the snapshot shows the list of machines.
 	play: async ({ canvas, userEvent }) => await userEvent.click(canvas.getByRole("button", { name: /The pine the app uses/ })),
@@ -126,6 +126,33 @@ export const TitleBarOnMac: Story = { ...bar("⌘T"), beforeEach: onSystem("darw
  * which has no such controls, the room is the bar's own).
  */
 export const TitleBarOffMac: Story = { ...bar("Ctrl+T"), beforeEach: onSystem("win32") };
+
+/** On a remote environment with the side bar open: the clickable environment pill identifies the machine and opens the machine menu. */
+export const TitleBarWithRemoteEnvironment: Story = {
+	args: { local: true },
+	parameters: { layout: "fullscreen" },
+	beforeEach: onSystem("darwin"),
+	render: () => {
+		store.local = true;
+		store.sidebar = true;
+		store.prefs = { ...store.prefs, hosts: ["me@build-box", "studio"], use: "me@build-box" };
+		store.service = { status: "ready", mode: "on build-box", started: false, home: "build-box:~/.pine", version: "0.23.0", from: "ssh me@build-box", host: "me@build-box", label: "build-box" };
+		store.connected = true;
+		return (
+			<SidebarProvider className="min-h-0 w-full" open={true}>
+				<div className="flex w-full flex-col bg-sunk">
+					<TitleBar />
+				</div>
+			</SidebarProvider>
+		);
+	},
+	play: async ({ canvas, userEvent }) => {
+		const pill = canvas.getByRole("button", { name: /Environment: build-box/ });
+		await expect(pill).toBeVisible();
+		await userEvent.click(pill);
+		await expect(await within(document.body).findByRole("menuitemradio", { name: "me@build-box" })).toBeVisible();
+	},
+};
 
 // The side bar itself, with agents as the daemon would list them. An agent with one conversation is one
 // line that opens it; one with more is a group that says how many it holds.

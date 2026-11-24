@@ -131,8 +131,8 @@ const meta = {
 	parameters: { layout: "padded" },
 	// What a story sets on the store is put back after it: the next story starts from the store as it was.
 	beforeEach: () => {
-		const { local, service, prefs, connected, section, settingsAgent, agents } = store;
-		return () => void Object.assign(store, { local, service, prefs, connected, section, settingsAgent, agents });
+		const { local, service, prefs, connected, section, settingsAgent, agents, openHosts } = store;
+		return () => void Object.assign(store, { local, service, prefs, connected, section, settingsAgent, agents, openHosts });
 	},
 } satisfies Meta<typeof Tab>;
 
@@ -214,7 +214,27 @@ export const Environments: Story = {
 		store.prefs = { ...store.prefs, hosts: ["me@build-box", "studio"], use: "me@build-box" };
 		store.service = { status: "ready", mode: "on build-box", started: false, home: "build-box:~/.pine", version: "0.23.0", from: "ssh me@build-box", host: "me@build-box", label: "build-box" };
 		store.connected = true;
+		store.openHosts = ["me@build-box"];
 		return <Tab {...args} />;
+	},
+};
+
+/** Multi-window Environments: studio is open in another window (badge shown), every row offers Open in new window, and Forget asks before closing that window. */
+export const EnvironmentsMultiWindow: Story = {
+	args: { section: "environments" },
+	render: (args) => {
+		store.prefs = { ...store.prefs, hosts: ["me@build-box", "studio"], use: "me@build-box" };
+		store.service = { status: "ready", mode: "on build-box", started: false, home: "build-box:~/.pine", version: "0.23.0", from: "ssh me@build-box", host: "me@build-box", label: "build-box" };
+		store.connected = true;
+		store.openHosts = ["me@build-box", "studio"];
+		return <Tab {...args} />;
+	},
+	play: async ({ canvasElement, userEvent }) => {
+		const studio = canvasElement.querySelector('[data-environment="studio"]') as HTMLElement;
+		await expect(within(studio).getByText("in another window")).toBeVisible();
+		await expect(canvasElement.querySelectorAll('[data-slot="open-in-new-window"]')).toHaveLength(3);
+		await userEvent.click(within(studio).getByRole("button", { name: "Forget" }));
+		await expect(await within(document.body).findByRole("button", { name: "Close its window and forget" })).toBeVisible();
 	},
 };
 
