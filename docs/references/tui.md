@@ -223,7 +223,7 @@ Type `/` and the list appears; keep typing to narrow it, `enter` runs the comman
 | `/agent [id] [session]` | Open a tab with an agent; without an id, choose from a list |
 | `/sessions [name]` | Open one of this agent's conversations; without a name, choose from a list |
 | `/tab <n>`, `/close` | Switch to, or close, a tab |
-| `/rename <name>` | Another name for this conversation and its tab. Its history, pin and subscriptions go with it. Not for an agent's main conversation |
+| `/rename <name>` | Another name for this conversation and its tab. Its history, pin and subscriptions go with it, and work under way goes on under the new name. Not for an agent's main conversation |
 | `/branch [--worktree] [name]` | A new conversation that goes its own way from one of your messages; this one stays as it is. Without a name it lists your messages, the latest first, and "all of it": the branch has what was said up to the end of the one you pick. With a name it takes all of it. With `--worktree` (or `-w`) the branch works in a worktree of its own. See [agents.md](agents.md#branching-a-conversation) |
 | `/pin`, `/unpin` | Keep this conversation however long it is unused, or let it go again |
 | `/group [name\|-]` | Put this conversation into a group of the agent's conversations (made if there is none; its branches go with it). `/group -` takes it out, `/group` alone says which. A conversation in a group is kept. See [agents.md](agents.md#groups-of-conversations) |

@@ -2924,7 +2924,7 @@ export class Store extends Model {
 				this.busy.get(key)!.add(p.task);
 				this.dirty.add(this);
 			} else if (kind === "done" || kind === "failed") {
-				this.busy.get(key)?.delete(p.task);
+				for (const tasks of this.busy.values()) tasks.delete(p.task);
 				this.dirty.add(this);
 				this.installWhenDone();
 				// What an agent just did may have been making, changing or removing an agent.
@@ -3032,6 +3032,9 @@ export class Store extends Model {
 		} else if (p.change === "rename" && typeof p.to === "string") {
 			for (const t of showing) ((t.session = p.to), t.touch());
 			if (showing.length) this.saveTabs();
+			const tasks = this.busy.get(`${agent}:${session}`);
+			if (tasks) this.busy.delete(`${agent}:${session}`), this.busy.set(`${agent}:${p.to}`, new Set([...(this.busy.get(`${agent}:${p.to}`) ?? []), ...tasks]));
+			void this.refreshTaints();
 		} else if (p.change === "remove") this.dropTabs(agent, session);
 		// Its folder was changed, or a worktree made or discarded, elsewhere (a terminal UI): the chip and the side bar say where it works now.
 		else if (p.change === "folder") return void (await this.followWorktree(agent, session), this.touch());

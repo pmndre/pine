@@ -327,6 +327,15 @@ export class TaskStore {
 	/** Give a conversation's tasks another conversation name. */
 	rename(agent: string, from: string, to: string): void {
 		this.db.prepare("UPDATE tasks SET session = ? WHERE agent = ? AND session = ?").run(to, agent, from);
+		const rows = this.db.prepare("SELECT id, meta FROM tasks WHERE meta LIKE ?").all(`%"${from}"%`) as Array<{ id: number; meta: string }>;
+		const update = this.db.prepare("UPDATE tasks SET meta = ? WHERE id = ?");
+		for (const r of rows) {
+			const meta = parse(r.meta) ?? {};
+			let changed = false;
+			if (meta.notify?.agent === agent && meta.notify.session === from) (meta.notify.session = to), (changed = true);
+			if (meta.board === `${agent}:${from}`) (meta.board = `${agent}:${to}`), (changed = true);
+			if (changed) update.run(JSON.stringify(meta), r.id);
+		}
 	}
 
 	byStatus(status: TaskStatus): Task[] {

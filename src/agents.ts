@@ -424,6 +424,8 @@ export class AgentManager {
 	private lives = new Map<string, Live>();
 	private creating = new Map<string, Promise<Live>>();
 	private lanes = new Map<string, Promise<void>>();
+	private quieting = new Map<string, Promise<void>>();
+	private renaming = new Map<string, Promise<unknown>>();
 	private running = new Map<number, RunContext & { live?: Live }>();
 	private waiters = new Map<number, Array<(r: TaskResult) => void>>();
 	private taints = new Map<number, string>();
@@ -1290,8 +1292,11 @@ export class AgentManager {
 		});
 		const next = run.then(() => {}, () => {});
 		this.lanes.set(lane, next);
+		this.quieting.set(lane, next);
 		void next.finally(() => {
-			if (this.lanes.get(lane) === next) this.lanes.delete(lane);
+			if (this.quieting.get(lane) === next) this.quieting.delete(lane);
+			const now = [...this.lanes].find(([, p]) => p === next)?.[0];
+			if (now) this.lanes.delete(now);
 		});
 		return run;
 	}
@@ -2099,7 +2104,17 @@ export class AgentManager {
 	}
 
 	/** Give a conversation another name. Everything stays with it: its history, its pin, what it listens to. */
-	async renameSession(agentId: string, from: string, wanted: string): Promise<{ session: string }> {
+	renameSession(agentId: string, from: string, wanted: string): Promise<{ session: string }> {
+		const run = (this.renaming.get(agentId) ?? Promise.resolve()).then(() => this.renameNow(agentId, from, wanted));
+		const next = run.catch(() => {});
+		this.renaming.set(agentId, next);
+		void next.finally(() => {
+			if (this.renaming.get(agentId) === next) this.renaming.delete(agentId);
+		});
+		return run;
+	}
+
+	private async renameNow(agentId: string, from: string, wanted: string): Promise<{ session: string }> {
 		const agent = this.cfg.agents[agentId];
 		if (!agent) throw new Error(`unknown agent "${agentId}"`);
 		const a = sessionKey(from);
@@ -2108,13 +2123,55 @@ export class AgentManager {
 		if (a === "main" || from.endsWith("~u")) throw new Error(a === "main" ? "the main conversation cannot be renamed" : "this conversation holds what came from outside and cannot be renamed");
 		if (a === b) return { session: b };
 		const root = path.join(agent.dir, "sessions");
+		const busy = (key: string) => this.lanes.has(key) || [...this.running.values()].some((r) => `${r.task.agent}:${r.task.session}` === key);
+		for (;;) {
+			const waits: Promise<unknown>[] = [];
+			for (const key of [`${agentId}:${a}`, `${agentId}:${a}~u`]) {
+				for (const p of [this.creating.get(key), this.quieting.get(key)]) if (p) waits.push(p);
+				const live = this.lives.get(key);
+				if (live && !live.current && !busy(key)) waits.push(this.dispose(live));
+			}
+			if (!waits.length) break;
+			await Promise.allSettled(waits);
+		}
 		if (b === "main" || b === "new" || fs.existsSync(path.join(root, b)) || fs.existsSync(path.join(root, `${b}~u`)) || this.tasks.sessions(agentId).some((s) => s.session.replace(/~u$/, "") === b)) throw new Error(`${agentId} already has a conversation called ${b}`);
-		for (const end of ["", "~u"]) if (this.lives.get(`${agentId}:${a}${end}`)?.current) throw new Error(`the conversation ${from} of ${agentId} is working; rename it when it is done`);
 		for (const end of ["", "~u"]) {
-			const live = this.lives.get(`${agentId}:${a}${end}`);
-			if (live) await this.dispose(live);
+			const was = `${agentId}:${a}${end}`;
+			const now = `${agentId}:${b}${end}`;
 			if (fs.existsSync(path.join(root, `${a}${end}`))) fs.renameSync(path.join(root, `${a}${end}`), path.join(root, `${b}${end}`));
-			for (const mark of ["taint", "keep", "prefix", "note", "visited", "bookmarks"]) {
+			const live = this.lives.get(was);
+			if (live) {
+				this.lives.delete(was);
+				this.lives.set(now, live);
+				live.key = `${b}${end}`;
+				live.stale = true;
+				const files = live.session?.sessionManager;
+				if (files) {
+					files.sessionDir = path.join(root, live.key);
+					if (files.sessionFile) files.sessionFile = path.join(files.sessionDir, path.basename(files.sessionFile));
+				}
+			}
+			for (const [old, fresh] of [[this.views.file(was), this.views.file(now)], [this.localFile(was), this.localFile(now)]]) if (fs.existsSync(old)) fs.renameSync(old, fresh);
+			for (const l of this.lives.values()) {
+				if (l.perm === was) l.perm = now;
+				if (l.board === was) l.board = now;
+			}
+			const lane = this.lanes.get(was);
+			if (lane) this.lanes.delete(was), this.lanes.set(now, lane);
+			for (const r of this.running.values()) {
+				if (r.task.agent === agentId && r.task.session === `${a}${end}`) r.task.session = `${b}${end}`;
+				if (r.task.meta.notify?.agent === agentId && r.task.meta.notify.session === `${a}${end}`) r.task.meta.notify.session = `${b}${end}`;
+				if (r.task.meta.board === was) r.task.meta.board = now;
+			}
+			const pool = this.poolAt.get(was);
+			if (pool) this.poolAt.delete(was), this.poolAt.set(now, pool);
+			for (const key of [...this.pooling].filter((k) => k.endsWith(`:${was}`))) this.pooling.delete(key), this.pooling.add(`${key.slice(0, -was.length)}${now}`);
+			for (const map of [this.refused, this.handed, this.toldMode, this.toldHome, this.declared] as Array<Map<string, unknown>>) {
+				const had = map.get(was);
+				map.delete(was);
+				if (had !== undefined) map.set(now, had);
+			}
+			for (const mark of ["taint", "keep", "prefix", "note", "visited", "bookmarks", "todos"]) {
 				const had = this.kv.get(`${mark}:${agentId}:${a}${end}`);
 				this.kv.set(`${mark}:${agentId}:${a}${end}`, null);
 				if (had !== undefined && had !== null) this.kv.set(`${mark}:${agentId}:${b}${end}`, had);
@@ -2293,13 +2350,13 @@ export class AgentManager {
 	}
 
 	private enqueue(task: Task): void {
-		const lane = `${task.agent}:${task.session}`;
-		const next = (this.lanes.get(lane) ?? Promise.resolve())
+		const next = (this.lanes.get(`${task.agent}:${task.session}`) ?? Promise.resolve())
 			.then(() => this.execute(task))
 			.catch((e) => this.log.error(`task #${task.id} crashed`, e));
-		this.lanes.set(lane, next);
+		this.lanes.set(`${task.agent}:${task.session}`, next);
 		void next.finally(() => {
-			if (this.lanes.get(lane) !== next) return;
+			const lane = [...this.lanes].find(([, p]) => p === next)?.[0];
+			if (!lane) return;
 			this.lanes.delete(lane);
 			// The conversation has nothing left to do: now it hears which of its background commands have ended meanwhile.
 			this.programs.nudge(lane);
@@ -2312,14 +2369,18 @@ export class AgentManager {
 		if (!agent) return this.finish(task, "failed", "", `agent ${task.agent} no longer exists`, undefined);
 		// (In its model server's own queue, where that server has a limit of its own.)
 		const slot = await this.limiterOf(this.modelRefOf(task, agent)).acquire(task.priority);
-		if (this.stopping || this.tasks.get(task.id)?.status !== "pending") return slot.release();
+		const stored = this.tasks.get(task.id);
+		if (this.stopping || stored?.status !== "pending") return slot.release();
+		task.session = stored.session;
+		if (stored.meta.notify) task.meta.notify = stored.meta.notify;
+		if (stored.meta.board) task.meta.board = stored.meta.board;
 		const ctx: RunContext & { live?: Live } = { task, slot };
 		this.running.set(task.id, ctx);
 		const started = Date.now();
 		this.tasks.update(task.id, { status: "running", started });
 		const source = `agent:${agent.id}`;
 		// Fields every activity event carries, so a viewer can attach it to the conversation that caused it.
-		const ids = { task: task.id, agent: agent.id, session: task.session, root: task.meta.root ?? task.id, parent: task.parent, depth: task.depth };
+		const ids = { task: task.id, agent: agent.id, get session() { return task.session; }, root: task.meta.root ?? task.id, parent: task.parent, depth: task.depth };
 		this.bus.publish(`agent/${agent.id}/started`, { ...ids, kind: task.kind, reply: task.reply, label: task.meta.label, prompt: truncate(task.prompt, 2000), images: task.meta.images?.length || undefined, requeued: task.meta.requeued, compact: task.meta.compact, quotes: shortQuotes(task.meta.quotes), body: task.meta.body === undefined ? undefined : truncate(task.meta.body, 2000) }, { source, cause: this.causeOf(task) });
 
 		const stats: NonNullable<Task["meta"]["stats"]> = { input: 0, output: 0, turns: 0, tools: [], ms: 0 };
@@ -2502,7 +2563,6 @@ export class AgentManager {
 			error = errText(e);
 		} finally {
 			slot.release();
-			this.running.delete(task.id);
 			stats.ms = Date.now() - started;
 			if (live) {
 				// A message that was steered in just as the work ended, or before it was stopped, was not
@@ -2520,10 +2580,14 @@ export class AgentManager {
 		}
 		// What the task left in its conversation's folder, for the owner's undo. A sub-agent's work is recorded when the task above it ends.
 		const top = task.meta.root ?? task.id;
-		if (!this.stopping) await this.turns.ended(task, top !== task.id && this.running.has(top) ? 0 : stats.tools.length);
-		// Met once it answered: a model that failed has met nobody.
-		if (status === "done" && introducing) this.kv.set(introducedKey(agent.id), Date.now());
-		this.finish(task, status, text, error, stats);
+		try {
+			if (!this.stopping) await this.turns.ended(task, top !== task.id && this.running.has(top) ? 0 : stats.tools.length);
+			// Met once it answered: a model that failed has met nobody.
+			if (status === "done" && introducing) this.kv.set(introducedKey(agent.id), Date.now());
+			this.finish(task, status, text, error, stats);
+		} finally {
+			this.running.delete(task.id);
+		}
 	}
 
 	private causeOf(task: Task): PineEvent {
@@ -2933,7 +2997,6 @@ export class AgentManager {
 				roots.fixed = rights.fixed;
 			}
 		}
-		const taintKey = `taint:${agent.id}:${task.session}`;
 		const persistTaint = !ephemeral && cfg.security.taint === "session";
 
 		const live: Live = {
@@ -2949,12 +3012,12 @@ export class AgentManager {
 			cap: trust === "owner" ? task.meta.level : undefined,
 			runtime: undefined,
 			session: undefined,
-			tainted: trust === "untrusted" ? "an untrusted event started this session" : persistTaint ? (this.kv.get<string>(taintKey) ?? undefined) : undefined,
+			tainted: trust === "untrusted" ? "an untrusted event started this session" : persistTaint ? (this.kv.get<string>(`taint:${agent.id}:${task.session}`) ?? undefined) : undefined,
 			taint: (reason) => {
 				if (live.tainted || cfg.security.taint === "off") return;
 				live.tainted = reason;
-				if (persistTaint) this.kv.set(taintKey, reason);
-				this.log.info(`session ${agent.id}/${task.session} is now tainted: ${reason}`);
+				if (persistTaint) this.kv.set(`taint:${agent.id}:${live.key}`, reason);
+				this.log.info(`session ${agent.id}/${live.key} is now tainted: ${reason}`);
 			},
 			restricted: () => live.trust === "untrusted" || Boolean(live.tainted),
 			mode: () => this.effectiveMode(agent, live),

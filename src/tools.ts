@@ -116,9 +116,14 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 
 	// ---- boards: what the board tools and the pool of sub-agents share (src/boards.ts) -------------
 	const boards = manager.boards;
-	const cut = live.board.indexOf(":");
 	/** Who this run is on a board: the agent it runs as, and the conversation whose board is its own. */
-	const who: Who = { agent: agent.id, conversation: { agent: live.board.slice(0, cut), session: live.board.slice(cut + 1) } };
+	const who: Who = {
+		agent: agent.id,
+		get conversation() {
+			const cut = live.board.indexOf(":");
+			return { agent: live.board.slice(0, cut), session: live.board.slice(cut + 1) };
+		},
+	};
 	const postedAs = () => ({ by: agent.id, trust: live.trust === "untrusted" ? ("untrusted" as const) : ("owner" as const), tainted: live.tainted, cause: live.current ? causeOf() : undefined });
 	const boardLabel = (b: Board) => (!b.name ? "the board of this conversation" : `the board "${b.name}" (${b.scope === "global" ? "for all agents" : b.scope === "agent" ? `of ${b.agent}, in all of the agent's conversations` : "of this conversation"})`);
 	const flat = (s: string, n: number) => truncate(s.replace(/\s+/g, " ").trim(), n);
@@ -268,6 +273,7 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 			return await workTasks();
 		} finally {
 			manager.pooling.delete(key);
+			manager.pooling.delete(`${board.id}:${live.board}`);
 		}
 		async function workTasks(): Promise<string> {
 		/** Whether a note that is about no one task is for this task: one for all is, and a pool's note for the tasks it came with. */

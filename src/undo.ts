@@ -241,14 +241,16 @@ export class Turns {
 			this.log.warn(`the folder ${at.turn.root} was not recorded ${which} task #${task.id}: undo will not restore files there`, problem);
 		}
 		// Read again: the turn may have been taken back, or written by another task, while git ran.
-		const turn = this.of(at.agent, at.session).find((t) => t.task === at.turn.task);
+		const now = this.turnOf(task);
+		if (!now) return;
+		const turn = this.of(now.agent, now.session).find((t) => t.task === at.turn.task);
 		if (!turn) return;
 		const step = turn.steps.find((s) => s.task === id);
 		if (snap && which === "before" && !step) turn.steps.push({ task: id, before: snap });
 		else if (snap && step) step.after = snap;
 		// Without a "before" there is nothing to go back to. A missed "after" only means the present is taken for it.
 		else if (!snap && which === "before") turn.problem = problem;
-		this.save(at.agent, at.session, turn);
+		this.save(now.agent, now.session, turn);
 	}
 
 	/** Take a turn out of the list (its message is being taken back). */
