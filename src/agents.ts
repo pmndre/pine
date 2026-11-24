@@ -27,7 +27,7 @@ import { type Approvals, checkPath, denialTools, gitForWindows, globMatch, grant
 import { type AgentChange, applyAgentChange, checkAgentChange, checkAgentId, countFiles, eraseAgent, renameAgent } from "./admin.ts";
 import { createAgent, type NewAgent } from "./agent-admin.ts";
 import type { Router } from "./router.ts";
-import { type SentQuote, shortQuotes, withQuotes } from "./quotes.ts";
+import { fitQuotes, type SentQuote, shortQuotes, withQuotes } from "./quotes.ts";
 import { Denials, fromOutput, gather, looksFailed, reaches, sortDenials, there, type Want, wantKey, wantText } from "./access.ts";
 import type { Bus, Kv, State, TaskStore } from "./store.ts";
 import { asksAtEnd, type Board, type BoardItem, type Boards, verdictOf } from "./boards.ts";
@@ -826,12 +826,17 @@ export class AgentManager {
 		// at that agent's level ("~safe"; a name of the owner's or a model's never has a "~").
 		// A leading underscore is reserved for one-off sessions ("_t<task id>").
 		const session = ephemeral ? "pending" : `${sessionKey(wanted)}${level ? `~${level}` : ""}${trust === "untrusted" ? "~u" : ""}`;
+		const limit = Math.max(this.cfg.limits.maxEventChars, 1000) * (trust === "owner" ? 10 : 1);
+		// What the owner quoted goes first, as markdown quotes. Quotes give way to what was typed: they are cut
+		// to the room it leaves (half the limit at least), never the typed text to make room for them.
+		const fitted = trust === "owner" && o.quotes?.length ? fitQuotes(o.quotes, Math.max(limit - o.prompt.length - 2, Math.floor(limit / 2))) : [];
+		const quotes = fitted.length ? fitted : undefined;
+		const written = quotes ? withQuotes(quotes, o.prompt) : o.prompt;
 		// A message of the owner's own in a conversation that works on a goal: the goal waits for their word (src/goals.ts).
 		if (trust === "owner" && !ephemeral && !o.parent) this.goals.incoming(agent.id, session, o.kind ?? (o.event ? "event" : "prompt"), Boolean(o.reply));
 		// And one in a conversation whose swarm waits for their answer: the swarm goes on with it (src/swarm.ts).
-		if (trust === "owner" && !ephemeral && !o.parent) this.swarms.incoming(agent.id, session, o.kind ?? (o.event ? "event" : "prompt"), Boolean(o.reply), o.event ? "" : String(o.prompt ?? ""));
-		const quotes = trust === "owner" && o.quotes?.length ? o.quotes : undefined;
-		let prompt = truncate(quotes ? withQuotes(quotes, o.prompt) : o.prompt, Math.max(this.cfg.limits.maxEventChars, 1000) * (trust === "owner" ? 10 : 1));
+		if (trust === "owner" && !ephemeral && !o.parent) this.swarms.incoming(agent.id, session, o.kind ?? (o.event ? "event" : "prompt"), Boolean(o.reply), o.event ? "" : String(written ?? ""));
+		let prompt = truncate(written, limit);
 		let images = o.images;
 		if (o.attachments?.length) {
 			if (trust !== "owner") throw new Error("only the owner can attach files");

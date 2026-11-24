@@ -93,6 +93,12 @@ export interface Attachment {
 
 export type { QuoteSource, SentQuote };
 
+/**
+ * Whether an event's message is one this tab sent: events carry a message's first 2000 characters
+ * (`truncate` in the daemon), so a long one, which quotes make common, is compared by its beginning.
+ */
+const ownMessage = (prompt: unknown, sent: string) => String(prompt ?? "").startsWith(sent.slice(0, 2000));
+
 export interface Quote extends SentQuote {
 	id: number;
 	tab: string;
@@ -2708,7 +2714,7 @@ export class Store extends Model {
 			const tab = this.tabs.find((t) => t.kind === "chat" && t.agent === p.agent && t.session === p.session);
 			if (!tab || tab.roots.has(p.by)) return;
 			tab.roots.add(p.by);
-			const i = tab.awaiting.findIndex((x) => String(p.prompt ?? "").startsWith(x));
+			const i = tab.awaiting.findIndex((x) => ownMessage(p.prompt, x));
 			const steer = { task: Number(p.by), into: Number(p.task) };
 			if (i >= 0) {
 				// Ours: the bubble on screen gets its line now, before the answer to the request comes.
@@ -2736,7 +2742,7 @@ export class Store extends Model {
 				void this.refreshConversations(p.agent);
 				return;
 			}
-			const i = tab.awaiting.findIndex((x) => String(p.prompt ?? "").startsWith(x));
+			const i = tab.awaiting.findIndex((x) => ownMessage(p.prompt, x));
 			if (i >= 0) {
 				tab.awaiting.splice(i, 1);
 				// It waited behind work that was just stopped: the next stop is not meant for it.

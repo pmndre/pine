@@ -1,3 +1,9 @@
+// What the owner quotes from a conversation in the Pine app: each quote's text, and where it was taken
+// from (the task whose message or answer it is, or the welcome letter or card). The agent reads the
+// quotes as markdown quotes in front of the message; the daemon keeps them beside it (`TaskMeta.quotes`,
+// `.body`) so that a UI shows them as they were sent and goes back to where each came from. The daemon
+// never reads what a source names: it is a place on the page, not a way to another conversation's text.
+// Pure, with no Node in it: the app's page uses it too.
 export type QuoteSource = { task: number; part: "prompt" | "answer" } | "letter" | "welcome";
 
 export interface SentQuote {
@@ -18,6 +24,28 @@ export function quoteBlock(text: string): string {
 
 export function withQuotes(quotes: ReadonlyArray<{ text: string }>, body: string): string {
 	return [...quotes.map((q) => quoteBlock(q.text)), body.trim()].filter(Boolean).join("\n\n");
+}
+
+/**
+ * The quotes as they fit in `room` characters of quote blocks, in order: the first that does not fit
+ * whole is cut (with "…"), and those after it are left out.
+ */
+export function fitQuotes(quotes: SentQuote[], room: number): SentQuote[] {
+	const out: SentQuote[] = [];
+	let left = room;
+	for (const q of quotes) {
+		const size = quoteBlock(q.text).length + 2;
+		if (size <= left) {
+			out.push(q);
+			left -= size;
+			continue;
+		}
+		let keep = Math.min(q.text.length, left);
+		while (keep > 0 && quoteBlock(`${q.text.slice(0, keep).trimEnd()}…`).length + 2 > left) keep = Math.floor(keep * 0.9);
+		if (keep > 0) out.push({ ...q, text: `${q.text.slice(0, keep).trimEnd()}…` });
+		break;
+	}
+	return out;
 }
 
 export function sameSource(a: QuoteSource, b: QuoteSource): boolean {

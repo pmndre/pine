@@ -490,6 +490,37 @@ test("text selected in an answer is quoted: a badge above the input, a markdown 
 	await page.fill("[data-slot=composer] textarea", "");
 });
 
+test("a long quote given to work that runs is known as the owner's own message: shown once, with its badge and whether the work read it", async () => {
+	const long = `LONG-QUOTE ${"every word of this answer is quoted ".repeat(75).trim()}`;
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ text: long }], "say something long "));
+	await page.keyboard.press("Enter");
+	await sees("[data-slot=markdown] >> text=LONG-QUOTE");
+	// Work that runs until the test lets it go: what is sent meanwhile is given to it.
+	let go = false;
+	mock.state.scripts.held = [{ until: () => go, text: "LONG-QUOTE-HELD-DONE" }];
+	await page.fill("[data-slot=composer] textarea", "@@REF:held@@ hold on ");
+	await page.keyboard.press("Enter");
+	await sees("[data-slot=composer] [aria-label=Stop]");
+	const before = await page.$$eval("[data-item=user]", (els: Element[]) => els.length);
+	await page.evaluate(() => {
+		const answer = [...document.querySelectorAll("[data-item=answer] [data-slot=markdown]")].find((e) => e.textContent!.includes("LONG-QUOTE"))!;
+		const range = document.createRange();
+		range.selectNodeContents(answer);
+		window.getSelection()!.removeAllRanges();
+		window.getSelection()!.addRange(range);
+	});
+	await page.locator("[data-slot=selection-toolbar]").getByRole("button", { name: "Quote" }).click();
+	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=LONG-QUOTE");
+	await page.fill("[data-slot=composer] textarea", "and that? ");
+	await page.press("[data-slot=composer] textarea", "Enter");
+	// Its line says whether the work has read it: the app knew the steered message for its own.
+	await sees("[data-item=user]:has([data-slot=quote-chip]) >> text=/not read yet|read \\d/");
+	go = true;
+	await sees("[data-slot=markdown] >> text=LONG-QUOTE-HELD-DONE");
+	assert.equal(await page.$$eval("[data-item=user]", (els: Element[]) => els.length), before + 1);
+	assert.doesNotMatch(await page.textContent("[data-slot=message-scroller-content]"), /elsewhere/);
+});
+
 test("a click into the composer draws no ring and no brighter border: it looks as it did before", async () => {
 	const look = () =>
 		page.$eval("[data-slot=composer] [data-slot=input-group]", (el: Element) => {
