@@ -440,6 +440,7 @@ export class Store extends Model {
 	/** The question at the start, when it is not: fetch it now, or later. */
 	browserAsk = false;
 	browserFetching = false;
+	private browserVersion?: string;
 	/** Something a menu asked for that only a part of the page can do (save the file in the editor, focus the input). */
 	signal = new Model();
 	/** The name of what was asked for last. Read with `useSignal`, which several parts can do for the same asking. */
@@ -503,6 +504,12 @@ export class Store extends Model {
 				this.forgetPine();
 			}
 			this.touch();
+		});
+		window.addEventListener?.("storage", (e: StorageEvent) => {
+			if (e.key === "pine.browser.later" && this.browserAsk && !this.browserFetching && e.newValue && e.newValue === this.browserVersion) {
+				this.browserAsk = false;
+				this.touch();
+			}
 		});
 		const first = await bridge.state();
 		// Whether the event stream is up: a page loaded anew is not told it by an event.
@@ -948,6 +955,7 @@ export class Store extends Model {
 		this.settingsAgent = undefined;
 		this.browser = undefined;
 		this.browserAsk = false;
+		this.browserVersion = undefined;
 		this.loading = false;
 		for (const t of this.timers) clearInterval(t);
 		this.timers = [];
@@ -1418,11 +1426,14 @@ export class Store extends Model {
 	 */
 	async checkBrowser(ask = false): Promise<void> {
 		// The build is fetched onto this computer, for this computer's pine.
-		if (this.remote) return void ((this.browser = undefined), (this.browserChecked = true), this.touch());
+		if (this.remote) return void ((this.browser = undefined), (this.browserVersion = undefined), (this.browserChecked = true), this.touch());
+		const home = this.serviceHome;
 		const over = await api.overview().catch(() => undefined);
+		if (this.remote || this.serviceHome !== home) return;
 		this.browserChecked = true;
 		if (!over) return this.touch();
 		this.browser = over.browser;
+		this.browserVersion = over.version;
 		let later: string | null = null;
 		try {
 			later = localStorage.getItem("pine.browser.later");
@@ -1437,6 +1448,16 @@ export class Store extends Model {
 	/** Not now: it is not asked again until pine is another version. Settings > General still offers it. */
 	async browserLater(): Promise<void> {
 		this.browserAsk = false;
+		const version = this.browserVersion ?? (this.service.status === "ready" && !this.remote ? this.service.version : undefined);
+		if (version) {
+			try {
+				localStorage.setItem("pine.browser.later", version);
+			} catch {
+				// Then it is asked again next time.
+			}
+			this.touch();
+			return;
+		}
 		this.touch();
 		const over = await api.overview().catch(() => undefined);
 		try {
