@@ -15,6 +15,7 @@ import { createAnnouncer, isPairAddress } from "./access/nearby.ts";
 import { startStandIn } from "./access/stand-in.ts";
 import { type Command, install, look, remove, said } from "./command.ts";
 import { callDaemon, followEvents, mediaFromDaemon, pageCsp, VIEW_CSP } from "./daemon.ts";
+import { droppedHosts, notePrefs, readPrefsFile, setAside, writePrefsFile } from "./prefs-file.ts";
 import { connect, connectSsh, findPine, hostOf, type Launch, loginEnv, onPath, pineRoot, pineVersion, readHosts, runPine, type Service, ServiceError } from "./service.ts";
 import { fromWsl, install as installIntoWsl, toWsl } from "./wsl.ts";
 import { wslDistros } from "../../src/remote.ts";
@@ -110,9 +111,22 @@ interface Prefs {
 const prefsFile = () => path.join(app.getPath("userData"), "prefs.json");
 let prefs: Prefs = { keepRunning: false, hosts: [], notify: true, updates: true, autoUpdate: true, commandTried: false, access: readAccessPrefs(undefined) };
 
+/**
+ * Whether prefs.json may be written: not before it was read (what is in memory then is the defaults,
+ * which would replace the owner's machines), and not over a file that could not be read and could
+ * not be set aside.
+ */
+let prefsWritable = false;
+
 function loadPrefs(): void {
-	try {
-		const raw = JSON.parse(fs.readFileSync(prefsFile(), "utf8"));
+	const read = readPrefsFile(prefsFile());
+	if (read.unreadable) {
+		const aside = setAside(prefsFile());
+		notePrefs(prefsFile(), `prefs.json could not be read (${read.unreadable}): ${aside ? "set aside as prefs.json.unreadable, and the app starts from its defaults" : "left as it is, and nothing is saved over it until the app starts again"}`);
+		prefsWritable = aside;
+	} else prefsWritable = true;
+	const raw = read.raw;
+	if (raw) {
 		prefs = {
 			home: typeof raw.home === "string" && raw.home ? raw.home : undefined,
 			keepRunning: raw.keepRunning === true,
@@ -128,8 +142,7 @@ function loadPrefs(): void {
 		};
 		// Only a machine that is in the list: what else might be written there is not connected to.
 		if (typeof raw.use === "string" && prefs.hosts.includes(raw.use)) prefs.use = raw.use;
-	} catch {
-		// first start
+		for (const host of droppedHosts(raw.hosts, prefs.hosts)) notePrefs(prefsFile(), `machine ${host} left the list: it is not a host for ssh, or past the limit of 20`);
 	}
 	nativeTheme.themeSource = prefs.look?.kind ?? "dark";
 }
@@ -163,9 +176,9 @@ function refreshBackground(): void {
 }
 
 function savePrefs(): void {
+	if (!prefsWritable) return;
 	try {
-		fs.mkdirSync(path.dirname(prefsFile()), { recursive: true });
-		fs.writeFileSync(prefsFile(), `${JSON.stringify(prefs, null, 2)}\n`);
+		writePrefsFile(prefsFile(), prefs);
 	} catch {
 		// a preference that is not kept is not worth an error
 	}
@@ -823,6 +836,7 @@ function wire(): void {
 	});
 	handle("pine:hosts-forget", (host: string) => {
 		if (host === prefs.use) throw new Error("The app uses this machine now. Use another one first.");
+		if (prefs.hosts.includes(host)) notePrefs(prefsFile(), `machine ${host} left the list: forgotten in Settings > Environments`);
 		prefs.hosts = prefs.hosts.filter((h) => h !== host);
 		savePrefs();
 		// Its connection ends, and a pine it started there with it.

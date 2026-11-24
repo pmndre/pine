@@ -1030,6 +1030,8 @@ test("another machine's pine is used from the foot of the side bar, and this Mac
 	await page.locator("[data-environment='you@elsewhere']").getByRole("button", { name: "Forget" }).click();
 	await page.locator("[data-environment='you@elsewhere']").waitFor({ state: "detached" });
 	assert.deepEqual((await page.evaluate(() => (window as any).pine.state())).prefs.hosts, []);
+	// Why it left the list is noted beside prefs.json.
+	assert.match(fs.readFileSync(path.join(home, "desktop-data", "prefs.log"), "utf8"), /machine you@elsewhere left the list: forgotten in Settings > Environments/);
 	assert.equal(await daemonGone(farPort, far), true);
 	await menu("settings");
 });

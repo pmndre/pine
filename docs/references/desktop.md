@@ -314,7 +314,11 @@ machines are added and forgotten. The palette (`⌘K`) has "Use the pine on …"
 | Quitting | Every connection ends. A pine the app started on another machine stops with it; one that was already running there goes on. This computer's pine follows Keep pine running, as before |
 
 What is chosen is kept in the app's `prefs.json`: `hosts`, the machines you added, and `use`,
-the one in use (none: this computer's).
+the one in use (none: this computer's). The file (on a Mac in `~/Library/Application Support/Pine`)
+is written whole or not at all, and one that cannot be read is never written over: it is moved to
+`prefs.json.unreadable`, with the machines it still names. `prefs.log` beside it says why a machine
+was dropped (forgotten in Settings, or no host for ssh) and when a `prefs.json` could not be read:
+look there when a machine you added is missing.
 
 How it connects (`src/remote.ts`): one ssh connection to the machine runs `pine service` there,
 with the PATH of your login shell there (sh, bash, zsh, fish, csh or tcsh) and nvm's node when

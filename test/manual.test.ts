@@ -105,6 +105,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["can I talk to pine instead of typing", /^(tui|desktop)#(dictating-a-message|commands|keys)/],
 		["is there an app with a window instead of the terminal", /^desktop/],
 		["how do I search my old sessions for something that was said", /^desktop#finding-a-conversation/],
+		["the Pine app keeps forgetting the ssh server I entered", /^desktop#environments/],
 		["how do I search the settings in the Pine app for a setting whose name I know", /^desktop#settings/],
 		["where did the list of conversations go when I made the pine window narrow, to put it beside another app", /^desktop#the-window/],
 		["close the other tabs in the app; does a conversation go away with its tab", /^desktop#the-window/],

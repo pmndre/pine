@@ -5,9 +5,7 @@
   </picture>
 </h1>
 
-<p align="center">
-  <img src="docs/images/reel.webp" width="100%" alt="pine in half a minute. pine start: it runs as a service. In the terminal, for a chat: a question about the weather is answered with a web search. Or in the desktop app, for code: an agent adds a function, runs the tests, and the diff is shown beside the conversation. Then a card: pine is built on an event bus, agents can react to any external stimuli. A colleague writes in Slack; in pine that is an event, and the agent that listens wakes, reads the message and says what it is about. At night a camera sees somebody with a covered face at the door; the clip is an event, the agent watches it and asks its owner on Telegram whether to ring the alarm. A letter goes through the scanner; the scan is an event, the agent reads the letter and puts what is due on a TODO list.">
-</p>
+[pine.pmnd.re](https://pine.pmnd.re)
 
 ```bash
 npm install -g @pmndre/pine
