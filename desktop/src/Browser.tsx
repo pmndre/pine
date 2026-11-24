@@ -37,7 +37,16 @@ function keyOf(e: React.KeyboardEvent): string | undefined {
 	return undefined;
 }
 
-export function BrowserView({ tab }: { tab: Tab }) {
+interface BrowserTabProps {
+	/** Active conversation tab whose agent browser is displayed. */
+	tab: Tab;
+}
+
+/**
+ * Renders the conversation's agent browser: either the native `WebContentsView` overlay on this computer or the live frame canvas.
+ */
+export function BrowserView({ tab }: BrowserTabProps) {
+	const s = useModel(store);
 	useModel(tab);
 	const canvas = useRef<HTMLCanvasElement>(null);
 	const line = useRef<HTMLInputElement>(null);
@@ -55,12 +64,27 @@ export function BrowserView({ tab }: { tab: Tab }) {
 	/** How many pixels of the picture make one point of the page (2: as sharp as a Retina display draws). */
 	const scale = useRef(1);
 	scale.current = state?.scale ?? 1;
-	/** The app could not lay its own browser over the panel (another machine's pine): pictures, then. */
+	/** The app could not lay its own browser over the panel (held by another window, or another machine's pine): pictures, then. */
 	const [noPage, setNoPage] = useState(false);
 	/** The browser is the app's own, and this bridge lays its page over the panel: the page itself is there, not pictures. */
-	const inApp = state?.open && state.room && bridge?.browserShow && !noPage ? state.room : undefined;
+	const inApp = s.service.status === "ready" && !s.remote && state?.open && state.room && bridge?.browserShow && !noPage ? state.room : undefined;
 	const hosted = Boolean(state?.room);
+	const ready = s.service.status === "ready";
 	const front = state?.tabs[state.current];
+
+	useEffect(() => {
+		setState(undefined);
+		setLookError(undefined);
+		setNoPage(false);
+	}, [s.remote, tab.agent, tab.session]);
+
+	useEffect(() => {
+		setNoPage(false);
+	}, [state?.room, state?.current]);
+
+	useEffect(() => {
+		if (s.focused) setNoPage(false);
+	}, [s.focused]);
 	/** What the empty view offers: the ports of the conversation's running programs, and what the agent opened that is not one of those. */
 	const running = tab.programs.flatMap((p) => p.ports.map((port) => ({ port, command: p.command })));
 	const visited = (state?.visited ?? []).filter((url) => !running.some((r) => new RegExp(`^https?://(localhost|127\\.0\\.0\\.1):${r.port}/?$`).test(url)));
@@ -73,6 +97,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 
 	// Where the browser is: asked while this view is open, and again after the agent used it.
 	useEffect(() => {
+		if (!ready) return;
 		let over = false;
 		const look = () => void api.browser(tab.agent, tab.session).then(
 			(s) => {
@@ -90,7 +115,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 			over = true;
 			window.clearInterval(timer);
 		};
-	}, [tab.agent, tab.session, tab.codeTick, hosted]);
+	}, [ready, s.remote, tab.agent, tab.session, tab.codeTick, hosted]);
 
 	// The picture: one after another while a page is open, each drawn when it is whole.
 	const open = state?.open === true;
@@ -266,7 +291,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 				</InputGroup>
 			</div>
 			{inApp ? (
-				<HostedPage room={inApp} index={state?.current ?? 0} title={front?.title} refused={() => setNoPage(true)} />
+				<HostedPage room={inApp} index={state?.current ?? 0} title={front?.title} onRefused={setNoPage} />
 			) : open ? (
 				<ScrollArea ref={room} className="flex min-h-0 flex-1 flex-col bg-press *:data-[slot=scroll-area-viewport]:scroll-fade">
 					{/* The page keeps its shape: as wide as the panel, and scrolled down to when it is taller than the room. */}
@@ -370,13 +395,14 @@ function covered(el: HTMLElement, r: DOMRect): boolean {
  * changes size. While something of the app's own lies over it (a dialog, a menu), the page is taken away and a still
  * picture of it stands in its place, so that what the app shows is seen and can be answered.
  */
-function HostedPage({ room, index, title, refused }: { room: string; index: number; title?: string; refused: () => void }) {
+function HostedPage({ room, index, title, onRefused }: { room: string; index: number; title?: string; onRefused: (value: boolean) => void }) {
 	const place = useRef<HTMLDivElement>(null);
 	const [still, setStill] = useState<string>();
 	useEffect(() => {
 		const show = bridge!.browserShow!;
 		let over = false;
 		let last = "";
+		let checkedAt = 0;
 		let misses = 0;
 		let frame = 0;
 		let timer: number | undefined;
@@ -389,9 +415,11 @@ function HostedPage({ room, index, title, refused }: { room: string; index: numb
 				const box = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
 				const away = box.width < 1 || box.height < 1 || covered(el, r);
 				const now = away ? "away" : `${index} ${box.x} ${box.y} ${box.width} ${box.height}`;
-				if (now !== last) {
+				const recheck = !store.focused && !away && performance.now() - checkedAt >= 120;
+				if (now !== last || recheck) {
 					const was = last;
 					last = now;
+					checkedAt = performance.now();
 					if (away) {
 						if (was && was !== "away") {
 							const picture = await bridge!.browserPicture?.().catch(() => undefined);
@@ -403,10 +431,10 @@ function HostedPage({ room, index, title, refused }: { room: string; index: numb
 						if (over) return hide();
 						if (shown) (setStill(undefined), (misses = 0));
 						else {
-							// The tab is not there yet (the browser is being moved into the app), or never will be.
+							// Another window holds this tab while this one is unfocused, or the tab is not in the app yet.
+							if (!store.focused || ++misses > 20) return onRefused(true);
 							last = "";
 							wait = 300;
-							if (++misses > 20) return refused();
 						}
 					}
 				}
@@ -422,7 +450,7 @@ function HostedPage({ room, index, title, refused }: { room: string; index: numb
 			window.clearTimeout(timer);
 			hide();
 		};
-	}, [room, index]);
+	}, [room, index, onRefused]);
 	return (
 		<div ref={place} data-slot="browser-page" title={title} className="relative min-h-0 flex-1 bg-white">
 			{still ? <img src={still} alt="" className="absolute inset-0 size-full object-cover object-left-top" /> : null}
@@ -430,8 +458,13 @@ function HostedPage({ room, index, title, refused }: { room: string; index: numb
 	);
 }
 
+interface BrowserSkeletonProps {
+	/** Optional layout classes applied to the skeleton container. */
+	className?: string;
+}
+
 /** A page while it loads: a header bar, a title and lines of text, from stock Skeleton blocks. Shown while the browser is looked for and before the first picture. */
-export function BrowserSkeleton({ className }: { className?: string }) {
+export function BrowserSkeleton({ className }: BrowserSkeletonProps) {
 	return (
 		<div data-slot="browser-skeleton" className={cn("flex flex-col gap-3 bg-background p-4", className)}>
 			<Skeleton className="h-8 w-full" />
@@ -444,6 +477,7 @@ export function BrowserSkeleton({ className }: { className?: string }) {
 	);
 }
 
+/** Storage key for the browser aside's width outside per-window desktop state. */
 export const ASIDE_KEY = "pine.aside.width";
 
 /**
@@ -451,7 +485,7 @@ export const ASIDE_KEY = "pine.aside.width";
  * its close button, and the browser under it. Where the window has no room for columns it is a
  * sheet over the conversation, like the side panel, and putting the sheet away closes it.
  */
-export function BrowserAside({ tab }: { tab: Tab }) {
+export function BrowserAside({ tab }: BrowserTabProps) {
 	const sheet = !useMediaQuery(ROOM);
 	return (
 		<SideSheet
