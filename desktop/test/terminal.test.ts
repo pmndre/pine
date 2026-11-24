@@ -180,6 +180,35 @@ test("marks: read out of output however it is cut", () => {
 	assert.equal(pieces.filter((p) => typeof p === "string").join(""), "aout\x1b]0;title\x07b");
 });
 
+test("marks: another integration's, with more after the code (WezTerm's aid), give the code", () => {
+	assert.deepEqual(new MarkReader().read("\x1b]133;C;\x07\x1b]133;D;1;aid=4125891\x07\x1b]133;A;cl=m;aid=4125891\x07"), [{ kind: "C", code: undefined }, { kind: "D", code: 1 }, { kind: "A", code: undefined }]);
+});
+
+// The owner's prompt marks after pine's hooks, as WezTerm's integration does in every login shell where its package is
+// installed (/etc/profile.d/wezterm.sh), whatever the terminal: with the code and more after it, or with no code at all.
+for (const [kind, mark] of [["WezTerm's D;<code>;aid=<pid>", "%{\\e]133;D;%?;aid=4125891\\a%}"], ["a bare D", "%{\\e]133;D\\a%}"]] as const) {
+	test(`terminal (zsh): a block's code is known when the owner's prompt marks too, after pine (${kind})`, { skip: !fs.existsSync("/bin/zsh") && "no zsh" }, async () => {
+		const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-terminal-")));
+		fs.writeFileSync(path.join(dir, ".zshrc"), `PS1=$'${mark}$ '\n`);
+		const runs: RunReport[] = [];
+		// The owner's own shell (no shell named), so that it reads its startup files: those of the folder ZDOTDIR names. (WezTerm's
+		// own, where it is installed, would mark too: here only the prompt above does.)
+		const terms = new Terminals({ data: () => {}, exit: () => {}, run: (_id, r) => runs.push(r) }, { env: async () => ({ ...process.env, SHELL: "/bin/zsh", HOME: dir, ZDOTDIR: dir, WEZTERM_SHELL_SKIP_ALL: "1" }), hooks: path.join(dir, ".hooks"), stillRunningMs: 5000 });
+		try {
+			await terms.open("main:marks", dir, 80, 24);
+			for (const [command, code] of [["false", 1], ["true", 0]] as const) {
+				const before = runs.length;
+				await terms.run("main:marks", command);
+				for (let i = 0; i < 250 && !runs.slice(before).some((r) => r.state === "ended"); i++) await new Promise((r) => setTimeout(r, 20));
+				assert.equal(runs.slice(before).find((r) => r.state === "ended")?.code, code, `${command}: ${JSON.stringify(runs.slice(before))}`);
+			}
+		} finally {
+			terms.closeAll();
+			fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+		}
+	});
+}
+
 test("marks: where a prompt ends (PowerShell's B) is read and is no output", () => {
 	const r = new MarkReader();
 	const pieces = r.read("\x1b]133;D;0\x07\x1b]133;A\x07PS C:\\> \x1b]133;B\x07");

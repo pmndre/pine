@@ -21,7 +21,8 @@ const bridge = {
 	/** What is said of a newer app, each time the app's own download of it moves on. */
 	onUpdate: on("pine:update-state"),
 	restart: () => ipcRenderer.invoke("pine:restart"),
-	init: () => ipcRenderer.invoke("pine:init"),
+	/** `pine init`: its exit code, or "administrator" when it set up everything but what an administrator has to run (Linux), which it printed. */
+	init: (): Promise<number | "administrator"> => ipcRenderer.invoke("pine:init"),
 	/** Fetch the browser build this pine drives (`pine browser-install`); what it prints comes as init lines. */
 	browserInstall: () => ipcRenderer.invoke("pine:browser"),
 	prefs: (change: Record<string, unknown>) => ipcRenderer.invoke("pine:prefs", change),
@@ -37,6 +38,8 @@ const bridge = {
 	notify: (title: string, body: string, tab?: string) => ipcRenderer.invoke("pine:notify", title, body, tab),
 	badge: (count: number) => ipcRenderer.invoke("pine:badge", count),
 	contextMenu: (items: unknown[]) => ipcRenderer.invoke("pine:context-menu", items),
+	/** The app's menus, opened at a place of the page: where the window shows no menu bar (off a Mac). */
+	appMenu: (x: number, y: number) => ipcRenderer.invoke("pine:app-menu", x, y),
 	/** `pine` for a terminal: what the shell has; with "install" or "remove", after doing that. */
 	command: (action?: "install" | "remove") => ipcRenderer.invoke("pine:command", action),
 	voiceStart: (language?: string) => ipcRenderer.invoke("pine:voice-start", language),

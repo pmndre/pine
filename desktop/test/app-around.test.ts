@@ -596,7 +596,8 @@ test("many tabs keep their width and scroll instead of stepping on each other", 
 	assert.ok(Math.min(...gaps) >= 0, `tabs overlap: the smallest gap between two tabs is ${Math.min(...gaps)}px`);
 	assert.ok(Math.min(...m.tabs.map((t: any) => t.width)) >= 96, "every tab keeps room for its avatar, a few letters and its close button");
 	const on = m.tabs.find((t: any) => t.on);
-	assert.ok(on.left >= m.strip.left - 0.5 && on.right <= m.strip.right + 0.5, `the tab in front is in view: ${JSON.stringify({ on, strip: m.strip })}`);
+	// (Within a pixel: a strip whose width is not whole scrolls to a fraction of one.)
+	assert.ok(on.left >= m.strip.left - 1 && on.right <= m.strip.right + 1, `the tab in front is in view: ${JSON.stringify({ on, strip: m.strip })}`);
 	assert.ok(m.plus.left >= m.strip.right && m.plus.right <= m.width, "the plus stays in view after the tabs");
 	// Going back to the first tab scrolls it into view.
 	await page.click("[data-slot=tab] >> nth=0");
@@ -604,7 +605,7 @@ test("many tabs keep their width and scroll instead of stepping on each other", 
 	await page.waitForFunction(() => {
 		const strip = document.querySelector("header [data-slot=scroll-area-viewport]")!.getBoundingClientRect();
 		const r = document.querySelector("[data-slot=tab][data-active]")!.getBoundingClientRect();
-		return r.left >= strip.left - 0.5 && r.right <= strip.right + 0.5;
+		return r.left >= strip.left - 1 && r.right <= strip.right + 1;
 	});
 	await shot("many-tabs");
 	while ((await page.locator("[data-slot=tab]").count()) > had) await page.click("[data-slot=tab] >> nth=-1 >> button[aria-label='Close this tab']");
@@ -1030,6 +1031,8 @@ test("another machine's pine is used from the foot of the side bar, and this Mac
 	await page.locator("[data-environment='you@elsewhere']").getByRole("button", { name: "Forget" }).click();
 	await page.locator("[data-environment='you@elsewhere']").waitFor({ state: "detached" });
 	assert.deepEqual((await page.evaluate(() => (window as any).pine.state())).prefs.hosts, []);
+	// Why it left the list is noted beside prefs.json.
+	assert.match(fs.readFileSync(path.join(home, "desktop-data", "prefs.log"), "utf8"), /machine you@elsewhere left the list: forgotten in Settings > Environments/);
 	assert.equal(await daemonGone(farPort, far), true);
 	await menu("settings");
 });

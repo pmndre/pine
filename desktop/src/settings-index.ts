@@ -6,6 +6,7 @@
 //   machines), built from the lists the pages ask for anyway.
 // No React, no store: the palette and the tests use it too.
 import type { AgentInfo, McpServer, ModelServer, Provider, Route, Schedule, Setting, Skill, SourceInfo } from "./api.ts";
+import { providerName, providerWords } from "./providers.ts";
 import { fuzzy } from "./text.ts";
 
 /** Where a found thing is: a page of Settings, an agent's page, and the element in it. */
@@ -140,7 +141,7 @@ export function entries(shown: Shown, lists: Lists): Entry[] {
 		for (const f of AGENT_PLACES) if (f.main !== false || !a.main) add({ id: `agent:${a.id}:${f.id}`, title: f.title, path: [LABELS.agents, a.id, ...(f.path === f.title ? [] : [f.path])], words: f.words, place: { section: "agents", agent: a.id, find: at(`agent-${f.id}`) } });
 	}
 	const mine = new Set((lists.modelServers ?? []).map((x) => x.name));
-	for (const p of lists.providers ?? []) if (p.id !== "mock" && !mine.has(p.id)) add({ id: `provider:${p.id}`, title: p.name ?? p.id, path: [LABELS.models, "Subscriptions and API keys"], about: p.signedIn ? "signed in" : undefined, words: `${p.id} provider sign in api key`, place: { section: "models", find: `[data-provider="${p.id}"]`, filter: p.id } });
+	for (const p of lists.providers ?? []) if (p.id !== "mock" && !mine.has(p.id)) add({ id: `provider:${p.id}`, title: providerName(p), path: [LABELS.models, "Subscriptions and API keys"], about: p.signedIn ? "signed in" : undefined, words: `${providerWords(p)} provider sign in api key`, place: { section: "models", find: `[data-provider="${p.id}"]`, filter: p.id } });
 	for (const x of lists.modelServers ?? []) add({ id: `model-server:${x.name}`, title: x.name, path: [LABELS.models, "Models on your own computer"], about: x.baseUrl, words: x.models.map((m) => m.id).join(" "), place: { section: "models", find: at(`model-server:${x.name}`) } });
 	for (const x of lists.mcp ?? []) add({ id: `mcp:${x.scope}:${x.name}`, title: x.name, path: [LABELS.mcp], about: where(x.scope, x.session), words: x.target, place: { section: "mcp", find: at(`mcp:${x.scope}:${x.name}`) } });
 	for (const x of lists.skills ?? []) add({ id: `skill:${x.dir}`, title: x.name, path: [LABELS.skills], about: x.description, place: { section: "skills", find: at(`skill:${x.dir}`) } });

@@ -85,7 +85,7 @@ unless a conversation is subscribed to it anyway.
 | `prompt` | The task text. Default: the payload's `text`, or the payload as JSON. |
 | `label` | A short line for the task in listings (`pine tasks`, the UIs). A template. |
 | `session` | Session key template. Default `main`. `new` for one-off work. |
-| `whenBusy` | `queue` (default): the task waits until the conversation is free. `steer`: if the conversation is working, the text is given to that work, which reads it at its next step; if that work ends first, it is done next as a task of its own. See "Sessions" in [agents.md](agents.md). |
+| `whenBusy` | `steer` (default): if the conversation is working, the event is given to that work, which reads it at its next step, so two events that come close together give one run and one answer; if that work ends first, it is done next as a task of its own. An event whose answer goes somewhere else than the running work's (a Telegram message while the agent works on something else) waits instead, so that it is answered where it came from. `queue`: the task waits until the conversation is free. See "Sessions" in [agents.md](agents.md). |
 | `priority` | Higher runs first when model slots are scarce. Default 10 for owner events, 0 otherwise. |
 | `reply` | Where the agent's answer goes: `{ "topic": "...", "payload": {...} }`. Default: the event's own reply target. `false`: nowhere. |
 | `trust` | Override the event's trust. `"owner"` gives events on this route the agent's full tool set: only for sources nobody else can write to. `pine check` lists such routes. |

@@ -43,6 +43,7 @@ import { AgentColorPicker, AgentNameInput } from "@/components/agent-identity";
 import { BrowserAccess } from "./BrowserAccess.tsx";
 import { Control, CONTROL, Page, Section } from "./settings-parts.tsx";
 import { type Entry, entries, GROUPS, LABELS, type Lists, type Place, search } from "./settings-index.ts";
+import { providerAbout, providerName, providerWords, SUBSCRIPTIONS } from "./providers.ts";
 import { NearbyComputers, PairLinkField } from "./Pairing.tsx";
 
 const SECTIONS: Array<{ id: string; label: string; icon: LucideIcon }> = (
@@ -948,25 +949,15 @@ function SignIn({ provider, type, reload }: { provider: string; type?: "api_key"
 	);
 }
 
-/**
- * Subscriptions people are likely to have already, by the provider's id in pi: shown first, with words they know.
- * Only where the sign-in is the subscription itself (OAuth); everything else is found by searching.
- */
-const SUBSCRIPTIONS: Record<string, { title: string; about: string }> = {
-	anthropic: { title: "Claude", about: "Sign in with your Claude Pro or Max subscription" },
-	"openai-codex": { title: "ChatGPT", about: "Sign in with your ChatGPT Plus or Pro subscription" },
-	"github-copilot": { title: "GitHub Copilot", about: "Sign in with your GitHub Copilot subscription" },
-};
-
 /** One provider: whether you are signed in, and the way in (a sign-in in the browser, or an API key). */
 function ProviderRow({ p, reload }: { p: Provider; reload: () => void }) {
-	const sub = SUBSCRIPTIONS[p.id];
-	const about = p.signedIn ? `Signed in · ${plural(p.models, "model")}` : sub?.about ?? (p.oauth ? "Sign in with your account, or use an API key" : "Needs an API key");
+	const name = providerName(p);
+	const about = p.signedIn ? `Signed in · ${plural(p.models, "model")}` : providerAbout(p) ?? (p.oauth ? "Sign in with your account, or use an API key" : "Needs an API key");
 	return (
 		<SettingsItem
 			data-provider={p.id}
 			title={<>
-					{sub?.title ?? p.name ?? p.id}
+					{name}
 					{p.signedIn ? <Badge>signed in</Badge> : null}
 				</>}
 			description={about}
@@ -977,7 +968,7 @@ function ProviderRow({ p, reload }: { p: Provider; reload: () => void }) {
 						<AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>Sign out</AlertDialogTrigger>
 						<AlertDialogContent>
 							<AlertDialogHeader>
-								<AlertDialogTitle>Sign out of {sub?.title ?? p.name ?? p.id}?</AlertDialogTitle>
+								<AlertDialogTitle>Sign out of {name}?</AlertDialogTitle>
 							</AlertDialogHeader>
 							<AlertDialogFooter>
 								<AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -1141,11 +1132,10 @@ function Models() {
 	const mine = new Set((servers.data ?? []).map((x) => x.name));
 	const hosted = (providers.data ?? []).filter((p) => !mine.has(p.id) && p.id !== "mock");
 	const q = query.trim().toLowerCase();
-	const nameOf = (p: Provider) => SUBSCRIPTIONS[p.id]?.title ?? p.name ?? p.id;
 	// Without a search: what you are signed in to, then the subscriptions people have. With one: each provider whose
-	// name or id has the words.
+	// name, id or what people call it has the words ("gemini" finds Google).
 	const rank = (p: Provider) => (p.signedIn ? 0 : SUBSCRIPTIONS[p.id] ? 1 : p.oauth ? 2 : 3);
-	const listed = (q ? hosted.filter((p) => `${nameOf(p)} ${p.id}`.toLowerCase().includes(q)) : hosted.filter((p) => rank(p) < 2)).sort((a, b) => rank(a) - rank(b) || nameOf(a).localeCompare(nameOf(b)));
+	const listed = (q ? hosted.filter((p) => providerWords(p).includes(q)) : hosted.filter((p) => rank(p) < 2)).sort((a, b) => rank(a) - rank(b) || providerName(a).localeCompare(providerName(b)));
 	const more = hosted.length - listed.length;
 	const anyModel = Boolean(fallback.data) && !stuck.some((a) => !a.model);
 	return (

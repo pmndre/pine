@@ -437,6 +437,80 @@ test("the send button sends what was typed with a click, as Enter does", async (
 	await sees("[data-slot=markdown] >> text=sent by Enter");
 });
 
+test("off a Mac, where the window shows no menu bar, the bar's menu button opens the app's menus below itself; a Mac has none", async () => {
+	const button = page.locator("header [data-slot=app-menu]");
+	if (process.platform === "darwin") {
+		assert.equal(await button.count(), 0);
+		return;
+	}
+	// The menu a system draws cannot be read from the page: where it was asked to open, and with what, is noted instead.
+	await app.evaluate(({ Menu }: any) => {
+		const m = Menu.getApplicationMenu();
+		(globalThis as any).popped = undefined;
+		m.popup = (o: any) => ((globalThis as any).popped = { x: o.x, y: o.y, menus: m.items.map((i: any) => i.label) });
+	});
+	const box = (await button.boundingBox())!;
+	await button.click();
+	for (let i = 0; i < 50 && !(await app.evaluate(() => (globalThis as any).popped)); i++) await new Promise((r) => setTimeout(r, 50));
+	const popped = await app.evaluate(() => (globalThis as any).popped);
+	await app.evaluate(({ Menu }: any) => delete Menu.getApplicationMenu().popup);
+	assert.ok(popped, "the button opened no menu");
+	assert.deepEqual(popped.menus, ["File", "Edit", "View", "Conversation", "Window", "Help"]);
+	assert.ok(Math.abs(popped.x - box.x) <= 1 && Math.abs(popped.y - (box.y + box.height)) <= 1, JSON.stringify({ popped, box }));
+});
+
+test("off a Mac the window's controls stay as tall as the bar when the page is zoomed in and out", { skip: process.platform === "darwin" && "a Mac's buttons lie beside the bar, at a height of their own" }, async () => {
+	const zoom = (label: string) => app.evaluate(({ Menu }: any, l: string) => Menu.getApplicationMenu().items.find((m: any) => m.label === "View").submenu.items.find((i: any) => i.label === l).click(), label);
+	// What the window is told about its controls is noted: under the viewport these tests set, the page's own account of
+	// them (navigator.windowControlsOverlay) no longer follows the window.
+	await app.evaluate(({ BrowserWindow }: any) => {
+		const w = BrowserWindow.getAllWindows()[0];
+		const own = w.setTitleBarOverlay.bind(w);
+		(globalThis as any).overlay = undefined;
+		w.setTitleBarOverlay = (o: any) => (((globalThis as any).overlay = o), own(o));
+	});
+	const bar = await page.$eval("header:has([data-toggle=code])", (h: Element) => h.getBoundingClientRect().height);
+	try {
+		for (const step of ["Zoom In", "Zoom In", "Zoom Out", "Zoom Out", "Zoom Out", "Actual Size"]) {
+			await app.evaluate(() => ((globalThis as any).overlay = undefined));
+			await zoom(step);
+			for (let i = 0; i < 20 && !(await app.evaluate(() => (globalThis as any).overlay)); i++) await new Promise((r) => setTimeout(r, 50));
+			const told = await app.evaluate(({ BrowserWindow }: any) => ({ height: (globalThis as any).overlay?.height, zoom: BrowserWindow.getAllWindows()[0].webContents.getZoomFactor() }));
+			// The window counts in its own pixels: the page's times its zoom.
+			assert.ok(told.height !== undefined && Math.abs(told.height - bar * told.zoom) <= 1, `after ${step}: the controls are ${told.height}px tall, the bar ${bar}px at a zoom of ${told.zoom}`);
+		}
+	} finally {
+		await zoom("Actual Size");
+		await app.evaluate(({ BrowserWindow }: any) => delete BrowserWindow.getAllWindows()[0].setTitleBarOverlay);
+	}
+});
+
+test("no key in the menus does two things, and the window closes as on a Mac: by its own button, ⌘W/Ctrl+W being Close Tab", async () => {
+	const items: Array<{ label: string; key: string }> = await app.evaluate(({ Menu }: any) => {
+		const out: Array<{ label: string; key: string }> = [];
+		const walk = (list: any[]) => {
+			for (const i of list) {
+				const key = i.accelerator ?? i.getDefaultRoleAccelerator?.();
+				if (key) out.push({ label: i.label || i.role, key: String(key) });
+				if (i.submenu) walk(i.submenu.items);
+			}
+		};
+		walk(Menu.getApplicationMenu().items);
+		return out;
+	});
+	// A key as the system reads it: CmdOrCtrl is ⌘ on a Mac and Ctrl elsewhere, and the order of the modifiers says nothing.
+	const mac = process.platform === "darwin";
+	const word: Record<string, string> = { commandorcontrol: mac ? "cmd" : "ctrl", cmdorctrl: mac ? "cmd" : "ctrl", command: "cmd", cmd: "cmd", control: "ctrl", ctrl: "ctrl", option: "alt", alt: "alt", shift: "shift", super: "cmd", meta: "cmd" };
+	const as = (key: string) => key.split("+").map((p) => word[p.toLowerCase()] ?? p.toLowerCase()).sort().join("+");
+	const owners = new Map<string, string[]>();
+	for (const i of items) owners.set(as(i.key), [...(owners.get(as(i.key)) ?? []), i.label]);
+	// Electron's Redo and pine's Take Back Last Message share ⇧⌘Z on a Mac too: that is left as it is there.
+	const twice = [...owners].filter(([key, who]) => who.length > 1 && !(key === as("Shift+CmdOrCtrl+Z") && who.length === 2 && who.includes("Redo") && who.includes("Take Back Last Message")));
+	assert.deepEqual(twice, [], `keys that do two things: ${JSON.stringify(twice)}`);
+	assert.deepEqual(owners.get(as("CmdOrCtrl+W")), ["Close Tab"]);
+	assert.ok(!items.some((i) => i.label === "Close"), "a menu item closes the window");
+});
+
 test("text selected in an answer is quoted: a badge above the input, a markdown quote for the agent, a badge in the sent message that goes back to it, and a badge again after a take-back", async () => {
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ text: "QUOTE-SOURCE The cache held an old copy of the lockfile." }], "say something to quote "));
 	await page.keyboard.press("Enter");
@@ -488,6 +562,37 @@ test("text selected in an answer is quoted: a badge above the input, a markdown 
 	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: "Remove quote" }).click();
 	assert.equal(await page.$("[data-slot=composer] [data-slot=quote-chip]"), null);
 	await page.fill("[data-slot=composer] textarea", "");
+});
+
+test("a long quote given to work that runs is known as the owner's own message: shown once, with its badge and whether the work read it", async () => {
+	const long = `LONG-QUOTE ${"every word of this answer is quoted ".repeat(75).trim()}`;
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ text: long }], "say something long "));
+	await page.keyboard.press("Enter");
+	await sees("[data-slot=markdown] >> text=LONG-QUOTE");
+	// Work that runs until the test lets it go: what is sent meanwhile is given to it.
+	let go = false;
+	mock.state.scripts.held = [{ until: () => go, text: "LONG-QUOTE-HELD-DONE" }];
+	await page.fill("[data-slot=composer] textarea", "@@REF:held@@ hold on ");
+	await page.keyboard.press("Enter");
+	await sees("[data-slot=composer] [aria-label=Stop]");
+	const before = await page.$$eval("[data-item=user]", (els: Element[]) => els.length);
+	await page.evaluate(() => {
+		const answer = [...document.querySelectorAll("[data-item=answer] [data-slot=markdown]")].find((e) => e.textContent!.includes("LONG-QUOTE"))!;
+		const range = document.createRange();
+		range.selectNodeContents(answer);
+		window.getSelection()!.removeAllRanges();
+		window.getSelection()!.addRange(range);
+	});
+	await page.locator("[data-slot=selection-toolbar]").getByRole("button", { name: "Quote" }).click();
+	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=LONG-QUOTE");
+	await page.fill("[data-slot=composer] textarea", "and that? ");
+	await page.press("[data-slot=composer] textarea", "Enter");
+	// Its line says whether the work has read it: the app knew the steered message for its own.
+	await sees("[data-item=user]:has([data-slot=quote-chip]) >> text=/not read yet|read \\d/");
+	go = true;
+	await sees("[data-slot=markdown] >> text=LONG-QUOTE-HELD-DONE");
+	assert.equal(await page.$$eval("[data-item=user]", (els: Element[]) => els.length), before + 1);
+	assert.doesNotMatch(await page.textContent("[data-slot=message-scroller-content]"), /elsewhere/);
 });
 
 test("a click into the composer draws no ring and no brighter border: it looks as it did before", async () => {
@@ -599,6 +704,16 @@ test("a shell block of an answer runs in the conversation's terminal with its bu
 	await page.keyboard.type("echo typed-$((1+1))");
 	await page.keyboard.press("Enter");
 	await terminalShows("typed-2");
+	// On Linux a child keeps whatever its parent did not mark to be closed, and Chromium marks little: the shell holds
+	// none of the app's files, sockets and pipes, only what is its own (bash keeps the terminal at 255 too). (electron/fds.ts)
+	if (process.platform === "linux") {
+		// (Not inside $(…), where bash itself holds the pipe it reads from.)
+		await page.keyboard.type("printf fds-; ls /proc/$$/fd | tr '\\n' ,; echo end");
+		await page.keyboard.press("Enter");
+		await page.waitForFunction(() => /fds-[\d,]+end/.test(document.querySelector("[data-slot=terminal] .xterm-rows")?.textContent ?? ""), undefined, { timeout: 10_000 });
+		const fds = /fds-([\d,]+)end/.exec(await terminalText())![1].split(",").filter(Boolean);
+		assert.deepEqual(fds.filter((fd) => !["0", "1", "2", "255"].includes(fd)), [], `the terminal's shell holds the app's descriptors ${fds.join(", ")}`);
+	}
 	// A block that holds a character that does not show as itself is not typed.
 	await md.locator("[data-run]").nth(1).click();
 	await sees("[data-slot=toast] >> text=does not show as itself (U+202E)");

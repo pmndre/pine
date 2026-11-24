@@ -131,6 +131,9 @@ does `pine model add`. To pick: set `defaults.model` in `pine.json`, for example
 `"opencode-go/deepseek-v4.1-flash"`, or switch in the UI with `/model`. `pine login <unknown>`
 lists every provider pi knows.
 
+Gemini is the provider `google`, with an API key from Google AI Studio. There is no sign-in with
+a Gemini subscription (Gemini CLI, Antigravity): pi took it out, and pine has none of its own.
+
 ### With a model server of your own
 
 llama.cpp, vLLM, LM Studio and anything else that speaks OpenAI's chat API is added by its
@@ -317,8 +320,9 @@ list.
 ### A UI of its own
 
 The terminal UI starts a daemon inside itself when none runs. A UI that is another program (a
-desktop app, an editor plug-in) gets the same with `pine service`, and is then a client of the
-control API like every other:
+desktop app, an editor plug-in) gets the same with `pine service`: it starts the daemon where none
+runs, and says where it answers and its token. That is how the Pine app, a desktop app, starts the
+daemon and gets its token. The UI is then a client of the control API like every other:
 
 ```bash
 pine service
@@ -411,7 +415,7 @@ are JSON with `Content-Type: application/json`.
 | `GET /events/stream?topic=` | Live events as server-sent events |
 | `GET /state?key=` | Shared state |
 | `POST /events` `{ topic, payload }` | Publish an event (as owner; `"trust": "untrusted"` to lower it) |
-| `POST /agents/<id>/prompt` `{ prompt, session?, wait?, attachments?, whenBusy?, mentions?, quotes?, via? }` | Give a task. Waits for the result unless `wait` is false. With `"whenBusy": "steer"`, a message for a conversation that is working is given to that work instead of waiting behind it (the answer then carries `steered`, the id of that task). `mentions` lists files of the conversation's folder that the message points at with `@` (`"src/a.ts"`, `"src/a.ts#20-45"`); the agent is told to read them. `quotes` lists what the owner quoted from the conversation, at most 20, each `{ text, source, reply? }` with at most 10,000 characters of text and as `source` `{ task, part }` (the task whose message, `"prompt"`, or answer, `"answer"`, it was taken from), `"letter"` or `"welcome"`, and as `reply` the owner's answer to that quote (at most 10,000 characters; an empty one is left out): each text goes before `prompt` as a markdown quote (`> `), followed by its reply as a paragraph of its own, which is what the agent reads, and `prompt` may then be empty; the quotes and the text after them are kept in the task's `meta.quotes` and `meta.body`, and come with its `started` event, so that a client shows them as they were sent. `"via": "app"` says the owner reads the answer in the Pine app: the agent is told that a code block marked `bash` gets a Run button there. `attachments` is a list of `{ name, data }` with base64 data, at most 10 files of 20 MB each; the files are saved to `inbox/` in the agent's workspace. With `"cancelOnDisconnect": true` the task is cancelled when the caller closes the connection while it waits |
+| `POST /agents/<id>/prompt` `{ prompt, session?, wait?, attachments?, whenBusy?, mentions?, quotes?, via? }` | Give a task. Waits for the result unless `wait` is false. With `"whenBusy": "steer"`, a message for a conversation that is working is given to that work instead of waiting behind it (the answer then carries `steered`, the id of that task). `mentions` lists files of the conversation's folder that the message points at with `@` (`"src/a.ts"`, `"src/a.ts#20-45"`); the agent is told to read them. `quotes` lists what the owner quoted from the conversation, at most 20, each `{ text, source, reply? }` with at most 10,000 characters of text and as `source` `{ task, part }` (the task whose message, `"prompt"`, or answer, `"answer"`, it was taken from), `"letter"` or `"welcome"`: each text goes before `prompt` as a markdown quote (`> `), followed by what the owner said to it (at most 10,000 characters, left out when empty), which is what the agent reads, and `prompt` may then be empty; quotes that do not fit beside `prompt` in the length a message may have are cut (`…`), what was said to them too, never `prompt`; the quotes and the text after them are kept in the task's `meta.quotes` and `meta.body`, and come with its `started` event, so that a client shows them as they were sent. `"via": "app"` says the owner reads the answer in the Pine app: the agent is told that a code block marked `bash` gets a Run button there. `attachments` is a list of `{ name, data }` with base64 data, at most 10 files of 20 MB each; the files are saved to `inbox/` in the agent's workspace. With `"cancelOnDisconnect": true` the task is cancelled when the caller closes the connection while it waits |
 | `POST /agents/<id>/terminal` `{ session, command, state, code?, seconds?, output? }` | The Pine app: a command from an answer that the owner ran in their terminal with ▶ is still `running` (said once), or has `ended` with exit `code`. The conversation gets a message of pine's own with the command, how it went and the end of `output` quoted, and the agent goes on. Not for a conversation that outside content started |
 | `POST /agents/<id>/reset` `{ session? }` | Reset a session. What it was subscribed to on its own ends too |
 | `POST /agents/<id>/undo` `{ session? }`, `POST /agents/<id>/redo` `{ session? }` | Take back the owner's last message in a conversation, with the files it changed, or bring back what the last undo took. See [coding.md](coding.md) |

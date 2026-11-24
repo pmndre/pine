@@ -110,6 +110,9 @@ const bar = (key: string): Story => ({
 		// A tooltip opens after a moment, the first one of a page later than the next, and fades in.
 		const shown = await within(document.body).findByText(key, undefined, { timeout: 4000 });
 		await waitFor(() => expect(shown).toBeVisible());
+		// Off a Mac the window has no menu bar: the bar has a button that opens its menus.
+		if (key.startsWith("⌘")) await expect(canvas.queryByRole("button", { name: "Menu" })).toBeNull();
+		else await expect(canvas.getByRole("button", { name: "Menu" })).toBeVisible();
 	},
 });
 
@@ -117,7 +120,8 @@ const bar = (key: string): Story => ({
 export const TitleBarOnMac: Story = { ...bar("⌘T"), beforeEach: onSystem("darwin") };
 
 /**
- * Off a Mac (Windows here; Linux is drawn the same): the keys are Ctrl chords, and the bar keeps room at its right for
+ * Off a Mac (Windows here; Linux is drawn the same): the keys are Ctrl chords, the menu button (☰) opens the app's
+ * menus, which the window shows in no menu bar there, and the bar keeps room at its right for
  * the system's window controls, which the window draws over it there (`pr-window-controls`; in an ordinary browser,
  * which has no such controls, the room is the bar's own).
  */

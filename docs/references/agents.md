@@ -427,9 +427,15 @@ event sources and subscriptions, schedules, MCP servers and skills ([setup.md](s
 
 ### A message while the agent works
 
-Tasks for one session queue up. With `"whenBusy": "steer"` on a route, a new message is instead
-shown to the agent in the middle of what it is doing: it reads it at its next step. The terminal
-UI sends your own messages this way (`alt+enter` makes one wait its turn). A steered message
+An event for a conversation that is working is shown to the agent in the middle of what it is
+doing: it reads it at its next step, and the work gives one answer for both. A Slack message
+and a Jira update about the same issue a few seconds apart make one run, not two. An event whose
+answer goes somewhere else than the running work's (a Telegram message while the agent works on
+something else) waits its turn instead. What a source that is not yours reports marks the
+conversation as outside content when it goes into the work, as it would in a turn of its own.
+`"whenBusy": "queue"` on a route makes its events wait
+their turn too. The terminal UI sends your own messages the same way (`alt+enter` makes one wait
+its turn). A steered message
 that the work did not get to read, because it ended or was stopped first, is answered next as
 work of its own.
 

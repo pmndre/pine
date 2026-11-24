@@ -521,7 +521,9 @@ test("sources: a subscription is for one conversation, for the agent, or for all
 	assert.equal(asked.length, 2);
 	// A conversation that subscribes while the agent listens too is told that both are woken.
 	r = await run("main", "third", [{ tools: [call("subscribe", { source: "beep", note: "here as well", throttle: "1h" })] }]);
-	assert.match(r.text, /Subscribed to beep \(local\)\..* Note: your main conversation is subscribed to beep as well \(agent scope\), so each event starts a turn there too\. Tell your owner; unsubscribe with scope "agent" ends that one if it is not wanted\./);
+	// The source's first event can go into this very turn, and the mock then answers the event: what subscribe said is read from the turn's own request.
+	const third = h.mock.state.requests.filter((q: any) => JSON.stringify(q.body.messages).includes("here as well")).at(-1);
+	assert.match(h.toolResults(third)[0], /Subscribed to beep \(local\)\..* Note: your main conversation is subscribed to beep as well \(agent scope\), so each event starts a turn there too\. Tell your owner; unsubscribe with scope "agent" ends that one if it is not wanted\./);
 	assert.deepEqual((await h.pine.agents.removeSession("main", "third")).unsubscribed, ["beep"], "a removed conversation takes its subscription with it");
 
 	// "global" is every agent. Only the main agent may set that up, and the owner confirms it.
@@ -552,6 +554,20 @@ test("sources: a subscription is for one conversation, for the agent, or for all
 	await h.close();
 });
 
+test("sources: an event of a source that is not the owner's, given to the owner's running work, marks that conversation", async () => {
+	const h = await harness({ pine: { sources: { beep: { use: "./sources/beep.ts", word: "hello", description: "says a word" } } }, files: { "sources/beep.ts": BEEP }, agents: { main: {} } });
+	// The owner's turn holds its answer until an event went into it.
+	h.mock.state.scripts.work = [{ text: "done", until: () => eventTasks(h).some((t: any) => t.meta.steered) }];
+	const turn = h.pine.agents.run({ agent: "main", prompt: "@@REF:work@@", ...owner });
+	await until(() => h.pine.agents.status().running.length === 1);
+	await h.pine.sources.subscribe("main", "beep", { throttle: "1h" });
+	await turn;
+	const steered = eventTasks(h).find((t: any) => t.meta.steered);
+	assert.ok(steered && steered.session === "main", "the event went into the running turn");
+	assert.match(String(h.pine.agents.status().sessions.find((x: any) => x.agent === "main" && x.session === "main")?.tainted), /an event from the source "beep"/);
+	await h.close();
+});
+
 test("sources: an agent can be woken in a fresh conversation for every event, so that a source that reports all day does not pile up in one", async () => {
 	const h = await harness({
 		pine: { sources: { beep: { use: "./sources/beep.ts", word: "hello", trust: "owner", description: "says a word" } } },
@@ -577,6 +593,10 @@ test("sources: an agent can be woken in a fresh conversation for every event, so
 	// As an agent it listens in one place: asking for the main conversation ends the fresh one, and unsubscribing as an agent ends whichever there is.
 	r = await run("main", [{ tools: [call("subscribe", { source: "beep", note: "in here", throttle: "1h" })] }]);
 	assert.deepEqual(h.pine.cfg.agents.main.subscribe.map((x: any) => x.session), ["main"]);
+	// Its first event comes at once, into that turn or as one of its own. It is handled before the next turn, whose answer is
+	// read below: an event that went into that turn would be what the mock answers.
+	const inMain = () => eventTasks(h).filter((t: any) => t.session === "main");
+	await until(() => inMain().length > 0 && inMain().every((t: any) => t.status === "done"), 6000, "the event in the main conversation");
 	r = await run("main", [{ tools: [call("subscribe", { source: "beep", note: "fresh again", throttle: "1h", fresh: true })] }, { tools: [call("unsubscribe", { source: "beep", scope: "agent" })] }]);
 	assert.match(r.text, /Ended the agent's subscription to beep\. Nothing of yours is subscribed to beep any more\./);
 	assert.deepEqual(h.pine.cfg.agents.main.subscribe, []);

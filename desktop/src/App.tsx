@@ -1,7 +1,7 @@
 // The window: the list of agents and conversations at the side, the tabs along the top, one
 // conversation in the middle with its panel, and whatever lies over them for a moment (a list
 // to pick from, a question, the palette).
-import { ArrowUpIcon, AudioLinesIcon, DownloadIcon, HourglassIcon, RotateCwIcon, CheckIcon, RadarIcon, ChevronDownIcon, ChevronRightIcon, ChevronsUpDownIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, GlobeIcon, ListIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, Trash2Icon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, AudioLinesIcon, DownloadIcon, HourglassIcon, RotateCwIcon, CheckIcon, RadarIcon, ChevronDownIcon, ChevronRightIcon, ChevronsUpDownIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, GlobeIcon, ListIcon, MenuIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, Trash2Icon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
 import { useMediaQuery } from "usehooks-ts";
 import { Toggle } from "@/components/ui/toggle";
 import { Badge } from "@/components/ui/badge";
@@ -71,7 +71,9 @@ export function Gate() {
 		const code = await bridge.init().catch(() => 1);
 		s.initRunning = false;
 		s.touch();
-		if (code === 0) await bridge.retry();
+		// What needs an administrator (Linux) is printed above, for a terminal: it stays in view until Try again.
+		if (code === "administrator") s.flash("Part of it needs an administrator: run what is shown above in a terminal, then Try again.", "warn", 15000);
+		else if (code === 0) await bridge.retry();
 		else s.flash("pine init did not finish. What it said is shown above.", "bad");
 	};
 	const host = state.host;
@@ -771,6 +773,16 @@ export function TitleBar() {
 			<BesideToggle which="code" label="Side panel: the agent, files, changes, output and what is running" keys="⌥⌘B" icon={<PanelRightIcon />} />
 			<BesideToggle which="aside" label="Browser: the page the agent works in" keys="⇧⌘B" icon={<GlobeIcon />} />
 			{s.hasView ? <BesideToggle which="view" label={`View: all of pine at a glance, drawn by ${s.view}`} keys="⇧⌘O" icon={<RadarIcon />} /> : null}
+			{/* Off a Mac the window shows no menu bar (electron/main.ts): its menus open from here, beside the system's window controls. */}
+			{s.platform !== "darwin" && bridge.appMenu ? (
+				<HoverTooltip>
+					<TooltipTrigger render={<Button variant="ghost" size="icon" className="app-no-drag" data-slot="app-menu" aria-label="Menu" onClick={(e) => {
+						const at = e.currentTarget.getBoundingClientRect();
+						void bridge.appMenu?.(at.left, at.bottom);
+					}} />}><MenuIcon /></TooltipTrigger>
+					<TooltipContent>Menu</TooltipContent>
+				</HoverTooltip>
+			) : null}
 		</header>
 	);
 }

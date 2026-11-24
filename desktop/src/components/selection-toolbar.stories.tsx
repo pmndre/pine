@@ -24,7 +24,8 @@ function Selecting({ onQuote, onReply }: { onQuote: (text: string) => void; onRe
 	const [selected, unselect] = useTextSelection(root);
 	return (
 		<div ref={frame} className="flex h-80 max-w-xl flex-col rounded-xl border bg-background">
-			<div ref={root} className="flex-1 overflow-auto p-7 text-sm leading-relaxed">
+			{/* Selectable as an answer is in the app (the page itself is select-none): selected text outside it reads as none. */}
+			<div ref={root} className="flex-1 overflow-auto p-7 text-sm leading-relaxed select-text">
 				<p data-testid="answer">The build passed on the second run. The first failed because the cache held an old copy of the lockfile, so the install took the versions of last week.</p>
 				<p className="mt-3">Clearing the cache before the install keeps it from happening again.</p>
 			</div>
@@ -41,13 +42,10 @@ function Selecting({ onQuote, onReply }: { onQuote: (text: string) => void; onRe
 export const OverSelectedText: Story = {
 	args: {},
 	render: () => <Selecting onQuote={fn()} onReply={fn()} />,
-	play: async ({ canvas }) => {
-		const text = canvas.getByTestId("answer").firstChild as Text;
-		const range = document.createRange();
-		range.setStart(text, 4);
-		range.setEnd(text, 36);
-		window.getSelection()?.removeAllRanges();
-		window.getSelection()?.addRange(range);
+	// Selected as a person does, with the mouse: pressed, dragged and let go over the words.
+	play: async ({ canvas, userEvent }) => {
+		const answer = canvas.getByTestId("answer");
+		await userEvent.pointer([{ keys: "[MouseLeft>]", target: answer, offset: 4 }, { offset: 36 }, { keys: "[/MouseLeft]" }]);
 		await within(document.body).findByRole("toolbar");
 	},
 };

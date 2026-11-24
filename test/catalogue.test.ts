@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { ease, fit, serverTool, shortDeclarations } from "../src/catalogue.ts";
+import { ease, families, fit, serverTool, shortDeclarations } from "../src/catalogue.ts";
 import { SOURCE_TYPES } from "../src/config.ts";
 import { harness, MCP_STUB, mockMsg, rawTextOf, textOf, until } from "./support/harness.ts";
 
@@ -559,6 +559,40 @@ test("a strict declaration keeps its schema, so that Anthropic takes it", () => 
 	// The same for OpenAI's form.
 	const openai = shortDeclarations({ tools: [{ type: "function", function: { name: "read", description: "r.", strict: true, parameters: schema } }] });
 	assert.deepEqual(openai.tools[0].function.parameters, schema);
+});
+
+test("families: a family is declared with its own schema in every provider's form of a request", () => {
+	// On Vertex the stand-in schema (an object without properties) went out, and Gemini called every family with {}.
+	const fam = families({ servers: [] });
+	const on: Record<string, (e: any) => any> = {};
+	fam.extension({ on: (event: string, fn: (e: any) => any) => (on[event] = fn), getAllTools: () => [] });
+	(fam.tools.find((t: any) => t.name === "pine_list") as any).prepareLoadout({ declared: [{ name: "schedules", description: "What is scheduled.", parameters: { type: "object", properties: {} } }] });
+	const standIn = { type: "object", properties: {}, additionalProperties: true };
+	const long = "Read a file. ".repeat(50);
+	const send = (payload: any) => on.before_provider_request({ payload });
+	const isFamily = (s: any, form: string) => {
+		assert.deepEqual(s?.properties?.what?.items?.enum, ["schedules"], `${form}: ${JSON.stringify(s)}`);
+		assert.deepEqual(s.required, ["what"], form);
+	};
+	// Gemini and Vertex.
+	const gemini = send({ model: "gemini", contents: [], config: { tools: [{ functionDeclarations: [{ name: "read", description: long, parametersJsonSchema: { type: "object", properties: {} } }, { name: "pine_list", description: "x", parametersJsonSchema: standIn }] }, { googleSearch: {} }] } });
+	const said = gemini.config.tools[0].functionDeclarations;
+	isFamily(said.find((d: any) => d.name === "pine_list").parametersJsonSchema, "gemini");
+	assert.ok(said.find((d: any) => d.name === "read").description.length < 300, "Gemini's declarations are short too");
+	assert.deepEqual(gemini.config.tools[1], { googleSearch: {} }, "a provider's own tool is left as it is");
+	// OpenAI's responses: the schema where it is read, and nothing beside it.
+	const responses = send({ tools: [{ type: "function", name: "pine_list", description: "x", parameters: standIn, strict: true }, { type: "web_search" }] });
+	const r = responses.tools.find((t: any) => t.name === "pine_list");
+	isFamily(r.parameters, "responses");
+	assert.equal(r.input_schema, undefined);
+	assert.equal(r.strict, false, "pine's schema is not one a provider samples strictly");
+	assert.ok(responses.tools.some((t: any) => t.type === "web_search"));
+	// Bedrock's Converse.
+	const converse = send({ toolConfig: { tools: [{ toolSpec: { name: "pine_list", description: "x", inputSchema: { json: standIn } } }] } });
+	isFamily(converse.toolConfig.tools[0].toolSpec.inputSchema.json, "converse");
+	// And as before: OpenAI's chat completions and Anthropic's messages.
+	isFamily(send({ tools: [{ type: "function", function: { name: "pine_list", description: "x", parameters: standIn } }] }).tools[0].function.parameters, "chat");
+	isFamily(send({ tools: [{ name: "pine_list", description: "x", input_schema: standIn }] }).tools[0].input_schema, "messages");
 });
 
 test("arguments that are nearly right are taken as what was meant, and only those", () => {

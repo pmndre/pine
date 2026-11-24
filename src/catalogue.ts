@@ -395,32 +395,92 @@ const LAST = ["pine_list", "pine_other", "pine_mcp", "pine_skills", "pine_source
  * (a sub-agent has less, the main agent more), the most widely held first.
  */
 export function shortDeclarations(payload: any, asIs: Set<string> = new Set()): any {
-	if (!payload || !Array.isArray(payload.tools)) return payload;
-	const nameOf = (t: any): string => t?.function?.name ?? t?.name ?? "";
 	// A provider may declare pi's tools by other names (on a Claude subscription, Claude Code's: "Read",
 	// "Bash"): pine's words for a tool are found by its own name all the same.
-	const known = (t: any): string => (FIRST.includes(nameOf(t).toLowerCase()) ? nameOf(t).toLowerCase() : nameOf(t));
-	const rank = (t: any) => (FIRST.includes(known(t)) ? FIRST.indexOf(known(t)) : LAST.includes(nameOf(t)) ? 3000 + LAST.indexOf(nameOf(t)) : nameOf(t).startsWith("mcp__") ? 2000 : 1000);
-	const ordered = [...payload.tools].sort((a: any, b: any) => rank(a) - rank(b) || (nameOf(a) < nameOf(b) ? -1 : nameOf(a) > nameOf(b) ? 1 : 0));
-	return {
-		...payload,
-		tools: ordered.map((t: any) => {
-			if (asIs.has(nameOf(t))) return t;
+	const known = (name: string): string => (FIRST.includes(name.toLowerCase()) ? name.toLowerCase() : name);
+	const rank = (name: string) => (FIRST.includes(known(name)) ? FIRST.indexOf(known(name)) : LAST.includes(name) ? 3000 + LAST.indexOf(name) : name.startsWith("mcp__") ? 2000 : 1000);
+	return withDeclarations(
+		payload,
+		(d) => {
+			if (asIs.has(d.name)) return undefined;
 			// A strict declaration (pi sends its built-in tools that way where the provider samples to the
 			// schema) keeps its schema as pi made it: the provider refuses one without
 			// `additionalProperties: false` on every object, and an optional argument there is one that
 			// may be null. Only its description is shortened.
-			if (t?.function?.name) {
-				const s = shortTool(known(t), t.function.description ?? "", t.function.parameters);
-				return { ...t, function: { ...t.function, description: s.description, ...(t.function.strict ? {} : { parameters: s.parameters }) } };
-			}
-			if (t?.name && t.input_schema) {
-				const s = shortTool(known(t), t.description ?? "", t.input_schema);
-				return { ...t, description: s.description, ...(t.strict ? {} : { input_schema: s.parameters }) };
-			}
-			return t;
-		}),
+			const s = shortTool(known(d.name), d.description, d.schema);
+			return { description: s.description, ...(d.strict ? {} : { schema: s.parameters }) };
+		},
+		(a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0),
+	);
+}
+
+/** A tool's declaration in a request, whatever the form of the provider's API. */
+export interface Declaration {
+	name: string;
+	description: string;
+	schema: any;
+	strict: boolean;
+}
+
+type Form = { read: (t: any) => Declaration | undefined; write: (t: any, d: Declaration) => any };
+
+// The forms pi's providers declare a tool in. Each says where the name, the text and the schema are.
+const CHAT: Form = {
+	read: (t) => (t?.function?.name ? { name: t.function.name, description: t.function.description ?? "", schema: t.function.parameters, strict: t.function.strict === true } : undefined),
+	write: (t, d) => ({ ...t, function: { ...t.function, description: d.description, parameters: d.schema, ...(t.function.strict === undefined ? {} : { strict: d.strict }) } }),
+};
+const MESSAGES: Form = {
+	read: (t) => (t?.name && t.input_schema ? { name: t.name, description: t.description ?? "", schema: t.input_schema, strict: t.strict === true } : undefined),
+	write: (t, d) => ({ ...t, description: d.description, input_schema: d.schema, ...(t.strict === undefined ? {} : { strict: d.strict }) }),
+};
+const RESPONSES: Form = {
+	read: (t) => (t?.type === "function" && t.name && !t.function && t.parameters ? { name: t.name, description: t.description ?? "", schema: t.parameters, strict: t.strict === true } : undefined),
+	write: (t, d) => ({ ...t, description: d.description, parameters: d.schema, ...(t.strict === undefined ? {} : { strict: d.strict }) }),
+};
+// Gemini takes a JSON schema as `parametersJsonSchema`, or its own subset as `parameters`.
+const GEMINI: Form = {
+	read: (t) => {
+		const key = t?.parametersJsonSchema ? "parametersJsonSchema" : t?.parameters ? "parameters" : undefined;
+		return t?.name && key ? { name: t.name, description: t.description ?? "", schema: t[key], strict: false } : undefined;
+	},
+	write: (t, d) => ({ ...t, description: d.description, [t.parametersJsonSchema ? "parametersJsonSchema" : "parameters"]: d.schema }),
+};
+const CONVERSE: Form = {
+	read: (t) => (t?.toolSpec?.name && t.toolSpec.inputSchema?.json ? { name: t.toolSpec.name, description: t.toolSpec.description ?? "", schema: t.toolSpec.inputSchema.json, strict: t.toolSpec.strict === true } : undefined),
+	write: (t, d) => ({ ...t, toolSpec: { ...t.toolSpec, description: d.description, inputSchema: { ...t.toolSpec.inputSchema, json: d.schema }, ...(t.toolSpec.strict === undefined ? {} : { strict: d.strict }) } }),
+};
+
+/**
+ * A request with its tools' declarations changed and put in order, in each form pi's providers
+ * send: OpenAI's chat completions and responses, Anthropic's messages (`tools`), Gemini and Vertex
+ * (`config.tools[].functionDeclarations`), Bedrock's Converse (`toolConfig.tools`). `change` is
+ * handed each declaration and returns what it changes, or nothing. What is no function (a provider's
+ * own tool, such as a web search) keeps its place among the others, by an empty name.
+ *
+ * Only reading `tools` was how Gemini came to be declared a family's stand-in schema, an object
+ * without properties, and to call every family with `{}`.
+ */
+export function withDeclarations(payload: any, change: (d: Declaration) => Partial<Declaration> | undefined, order?: (a: string, b: string) => number): any {
+	if (!payload || typeof payload !== "object") return payload;
+	const list = (items: any[], forms: Form[]): any[] => {
+		const done = items.map((t) => {
+			const form = forms.find((f) => f.read(t));
+			const d = form?.read(t);
+			if (!form || !d) return { name: "", t };
+			const c = change(d);
+			if (!c) return { name: d.name, t };
+			// A schema of pine's in place of a strict one is not strict: the provider would refuse it.
+			const next = { ...d, ...c, strict: c.schema !== undefined && c.schema !== d.schema ? false : d.strict };
+			return { name: next.name, t: form.write(t, next) };
+		});
+		if (order) done.sort((a, b) => order(a.name, b.name));
+		return done.map((x) => x.t);
 	};
+	let out = payload;
+	if (Array.isArray(payload.tools)) out = { ...out, tools: list(payload.tools, [CHAT, MESSAGES, RESPONSES]) };
+	if (Array.isArray(payload.config?.tools)) out = { ...out, config: { ...payload.config, tools: payload.config.tools.map((g: any) => (Array.isArray(g?.functionDeclarations) ? { ...g, functionDeclarations: list(g.functionDeclarations, [GEMINI]) } : g)) } };
+	if (Array.isArray(payload.toolConfig?.tools)) out = { ...out, toolConfig: { ...payload.toolConfig, tools: list(payload.toolConfig.tools, [CONVERSE]) } };
+	return out;
 }
 
 // ---- Arguments that are nearly right --------------------------------------------------------------
@@ -822,18 +882,12 @@ export function families(opts: { servers: Array<{ name: string; namespace: strin
 	});
 
 	const extension = (pi: any) => {
-		pi.on("before_provider_request", (e: any) => {
-			const payload = shortDeclarations(e.payload, names);
-			if (!Array.isArray(payload?.tools)) return payload;
-			return {
-				...payload,
-				tools: payload.tools.map((t: any) => {
-					const f = [...fams.values()].find((x) => x.name === (t?.function?.name ?? t?.name));
-					if (!f || !f.schema) return t;
-					return t.function ? { ...t, function: { ...t.function, description: f.description, parameters: f.schema } } : { ...t, description: f.description, input_schema: f.schema };
-				}),
-			};
-		});
+		pi.on("before_provider_request", (e: any) =>
+			withDeclarations(shortDeclarations(e.payload, names), (d) => {
+				const f = [...fams.values()].find((x) => x.name === d.name);
+				return f?.schema ? { description: f.description, schema: f.schema } : undefined;
+			}),
+		);
 		// A call the model made of a tool that is declared by itself: eased like one through a family.
 		pi.on("tool_call", (e: any) => {
 			ease(e.toolName, e.input);

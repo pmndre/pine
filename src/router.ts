@@ -135,7 +135,8 @@ export class Router {
 					event: { ...e, trust },
 					reply,
 					images: this.imagesOf(e),
-					whenBusy: route.whenBusy,
+					// An event for a conversation that is working goes into that work: one run, one answer.
+					whenBusy: route.whenBusy ?? "steer",
 					trust,
 				});
 			}

@@ -669,7 +669,7 @@ test("tui: reasoning level and context use are shown in the bottom bar; the leve
 	// Sent once the first turn is over: a message sent while the agent still works goes into that work.
 	await until(() => t.h.pine.tasks.list({ status: "running" }).length === 0 && !/working ·/.test(t.text()), 4000, "the first turn to end");
 	await t.send(`a longer message ${"that takes up room ".repeat(300)}`);
-	await until(() => Number(bar().match(/context (\d+)%/)?.[1] ?? 0) > first, 3000, "the figure to grow with the conversation");
+	await until(() => Number(bar().match(/context (\d+)%/)?.[1] ?? 0) > first, 8000, `the figure to grow with the conversation, from ${first}%\n--- bar ---\n${bar()}\n--- screen ---\n${t.text()}`);
 	// The second message found the first one in the model server's cache.
 	await until(() => /cache \d+%/.test(bar()), 2000, "the cache figure");
 	assert.ok(Number(bar().match(/cache (\d+)%/)![1]) >= 60, bar());

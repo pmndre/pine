@@ -27,7 +27,7 @@ import { type Approvals, checkPath, denialTools, gitForWindows, globMatch, grant
 import { type AgentChange, applyAgentChange, checkAgentChange, checkAgentId, countFiles, eraseAgent, renameAgent } from "./admin.ts";
 import { createAgent, type NewAgent } from "./agent-admin.ts";
 import type { Router } from "./router.ts";
-import { type SentQuote, shortQuotes, withQuotes } from "./quotes.ts";
+import { fitQuotes, type SentQuote, shortQuotes, withQuotes } from "./quotes.ts";
 import { Denials, fromOutput, gather, looksFailed, reaches, sortDenials, there, type Want, wantKey, wantText } from "./access.ts";
 import type { Bus, Kv, State, TaskStore } from "./store.ts";
 import { asksAtEnd, type Board, type BoardItem, type Boards, verdictOf } from "./boards.ts";
@@ -826,12 +826,17 @@ export class AgentManager {
 		// at that agent's level ("~safe"; a name of the owner's or a model's never has a "~").
 		// A leading underscore is reserved for one-off sessions ("_t<task id>").
 		const session = ephemeral ? "pending" : `${sessionKey(wanted)}${level ? `~${level}` : ""}${trust === "untrusted" ? "~u" : ""}`;
+		const limit = Math.max(this.cfg.limits.maxEventChars, 1000) * (trust === "owner" ? 10 : 1);
+		// What the owner quoted goes first, as markdown quotes. Quotes give way to what was typed: they are cut
+		// to the room it leaves (half the limit at least), never the typed text to make room for them.
+		const fitted = trust === "owner" && o.quotes?.length ? fitQuotes(o.quotes, Math.max(limit - o.prompt.length - 2, Math.floor(limit / 2))) : [];
+		const quotes = fitted.length ? fitted : undefined;
+		const written = quotes ? withQuotes(quotes, o.prompt) : o.prompt;
 		// A message of the owner's own in a conversation that works on a goal: the goal waits for their word (src/goals.ts).
 		if (trust === "owner" && !ephemeral && !o.parent) this.goals.incoming(agent.id, session, o.kind ?? (o.event ? "event" : "prompt"), Boolean(o.reply));
 		// And one in a conversation whose swarm waits for their answer: the swarm goes on with it (src/swarm.ts).
-		if (trust === "owner" && !ephemeral && !o.parent) this.swarms.incoming(agent.id, session, o.kind ?? (o.event ? "event" : "prompt"), Boolean(o.reply), o.event ? "" : String(o.prompt ?? ""));
-		const quotes = trust === "owner" && o.quotes?.length ? o.quotes : undefined;
-		let prompt = truncate(quotes ? withQuotes(quotes, o.prompt) : o.prompt, Math.max(this.cfg.limits.maxEventChars, 1000) * (trust === "owner" ? 10 : 1));
+		if (trust === "owner" && !ephemeral && !o.parent) this.swarms.incoming(agent.id, session, o.kind ?? (o.event ? "event" : "prompt"), Boolean(o.reply), o.event ? "" : String(written ?? ""));
+		let prompt = truncate(written, limit);
 		let images = o.images;
 		if (o.attachments?.length) {
 			if (trust !== "owner") throw new Error("only the owner can attach files");
@@ -859,10 +864,16 @@ export class AgentManager {
 
 		if (o.whenBusy === "steer" && !ephemeral) {
 			const live = this.lives.get(`${agent.id}:${session}`);
-			if (live?.current && live.session.isStreaming && !this.stopping) {
+			// An answer goes where the running work's answer goes, so a message whose answer goes somewhere else
+			// (a Telegram message during work started elsewhere) waits its turn and is answered where it came from.
+			const sameReply = !o.reply || JSON.stringify(o.reply) === JSON.stringify(live?.current?.task.reply);
+			if (live?.current && live.session.isStreaming && !this.stopping && sameReply) {
 				const into = live.current.task;
-				const steered = this.tasks.insert({ agent: agent.id, session, kind: o.kind ?? "event", prompt, status: "done", priority: o.priority ?? 0, created: Date.now(), event: o.event?.id || undefined, hops: o.event?.hops ?? 0, depth: 0, meta: { trust, images, steered: into.id, label: `steered into #${into.id}`, quotes, body } });
+				const steered = this.tasks.insert({ agent: agent.id, session, kind: o.kind ?? "event", prompt, status: "done", priority: o.priority ?? 0, created: Date.now(), event: o.event?.id || undefined, hops: o.event?.hops ?? 0, depth: 0, meta: { trust, images, steered: into.id, label: `steered into #${into.id}`, quotes, body, tainted: o.tainted } });
 				this.tasks.update(steered.id, { finished: Date.now(), result: `steered into task #${into.id}` });
+				// What a source that is not the owner's reports marks the conversation that reads it, steered in as
+				// when it starts a turn (execute): before the work reads it, so that what it sends next is asked about.
+				if (o.tainted) live.taint(o.tainted);
 				// Nobody but the daemon writes a note; an incoming text that carries the tag loses it.
 				const text = prompt.replace(/<(\/?)pine-note>/gi, "<$1pine_note>");
 				// Kept until the work has read it: work that ends or is stopped first leaves it here, and it

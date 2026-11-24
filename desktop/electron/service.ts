@@ -8,7 +8,7 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { sealed } from "./fds.ts";
+import { withoutFds } from "./fds.ts";
 import { connectRemote, connectWsl, RemoteError, sshHost, wslDistro } from "../../src/remote.ts";
 
 export interface Service {
@@ -90,7 +90,9 @@ export function loginEnv(): Promise<NodeJS.ProcessEnv> {
 		if (process.platform === "win32") return { ...process.env };
 		const shell = loginShell();
 		// Between two marks, so that whatever a profile prints does not get in the way.
-		const { out } = await run(shell, ["-ilc", "printf '\\n__PINE_ENV__\\n'; env; printf '__PINE_END__\\n'"], { timeout: 6000 });
+		// Without the app's open files (fds.ts): whatever the profile leaves running (ssh-agent) would hold them.
+		const [file, ...args] = withoutFds([shell, "-ilc", "printf '\\n__PINE_ENV__\\n'; env; printf '__PINE_END__\\n'"]);
+		const { out } = await run(file, args, { timeout: 6000 });
 		const body = /__PINE_ENV__\n([\s\S]*?)__PINE_END__/.exec(out)?.[1];
 		if (!body) return { ...process.env };
 		const env: NodeJS.ProcessEnv = {};
@@ -192,8 +194,9 @@ export function pineVersion(launch: Launch): string | undefined {
 /** Run a pine command to its end and hand on what it prints, line by line. For `pine init` on a first start. */
 export function runPine(launch: Launch, args: string[], onLine: (line: string) => void, extraEnv: NodeJS.ProcessEnv = {}): Promise<number> {
 	return new Promise((resolve) => {
-		const how = started(launch.argv[0], [...launch.argv.slice(1), ...args]);
-		const child = spawn(how.file, how.args, { env: { ...launch.env, ...extraEnv }, stdio: sealed(["ignore", "pipe", "pipe"]), shell: how.shell, windowsHide: true });
+		const [file, ...rest] = withoutFds([...launch.argv, ...args]);
+		const how = started(file, rest);
+		const child = spawn(how.file, how.args, { env: { ...launch.env, ...extraEnv }, stdio: ["ignore", "pipe", "pipe"], shell: how.shell, windowsHide: true });
 		let buf = "";
 		const take = (d: Buffer) => {
 			buf += d.toString("utf8").replace(/\r/g, "\n");
@@ -216,11 +219,11 @@ export function runPine(launch: Launch, args: string[], onLine: (line: string) =
  */
 export function connect(launch: Launch, opts: { home?: string; keep?: boolean } = {}): Promise<Service> {
 	return new Promise((resolve, reject) => {
-		const args = [...launch.argv.slice(1), "service", ...(opts.home ? ["--home", opts.home] : []), ...(opts.keep ? ["--keep"] : [])];
+		const [file, ...args] = withoutFds([...launch.argv, "service", ...(opts.home ? ["--home", opts.home] : []), ...(opts.keep ? ["--keep"] : [])]);
 		// Its stdin is the leash: when this app dies without a word, the pipe closes and the daemon stops.
 		// (One that is kept gets no pipe it could still be writing into when this app is gone, but for its one line.)
-		const how = started(launch.argv[0], args);
-		const child: ChildProcess = spawn(how.file, how.args, { env: launch.env, stdio: sealed(opts.keep ? ["ignore", "pipe", "ignore"] : ["pipe", "pipe", "pipe"]), detached: Boolean(opts.keep), shell: how.shell, windowsHide: true });
+		const how = started(file, args);
+		const child: ChildProcess = spawn(how.file, how.args, { env: launch.env, stdio: opts.keep ? ["ignore", "pipe", "ignore"] : ["pipe", "pipe", "pipe"], detached: Boolean(opts.keep), shell: how.shell, windowsHide: true });
 		let out = "";
 		let err = "";
 		let settled = false;

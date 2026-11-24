@@ -16,6 +16,7 @@ export const Replied: Story = { args: { text, reply, onOpen: fn(), onReply: fn()
 
 export const Replying: Story = { args: { text, reply, replying: true, onOpen: fn(), onReply: fn(), onRemove: fn() } };
 
+/** In a sent message: no ×. */
 export const Sent: Story = { args: { text, onOpen: fn() } };
 
 export const Short: Story = { args: { text: "Clearing the cache", onOpen: fn() } };

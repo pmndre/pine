@@ -82,11 +82,11 @@ test("updates: a release counts once the app and the feed for this kind of Mac a
 });
 
 test("updates: on Linux the AppImage counts and on Windows the installer, each for its processor; a disk image counts for neither", async () => {
-	assert.deepEqual(["darwin", "linux", "win32", "freebsd"].map((p) => appFile("0.40.0", "x64", p)), ["Pine-0.40.0-x64.dmg", "Pine-0.40.0-x64.AppImage", "Pine-0.40.0-x64-setup.exe", undefined]);
+	assert.deepEqual(["darwin", "linux", "win32", "freebsd"].map((p) => appFile("0.40.0", "x64", p)), ["Pine-0.40.0-x64.dmg", "Pine-0.40.0-x86_64.AppImage", "Pine-0.40.0-x64-setup.exe", undefined]);
 	release("v0.40.0", ["Pine-0.40.0-arm64.dmg", "Pine-0.40.0-x64.dmg"]);
 	assert.equal((await lookForUpdate("0.39.1", "x64", at, undefined, "linux")).status, "latest");
 	assert.equal((await lookForUpdate("0.39.1", "x64", at, undefined, "win32")).status, "latest");
-	release("v0.40.0", ["Pine-0.40.0-x64.AppImage", "Pine-0.40.0-x64.deb", "Pine-0.40.0-arm64-setup.exe"]);
+	release("v0.40.0", ["Pine-0.40.0-x86_64.AppImage", "Pine-0.40.0-amd64.deb", "Pine-0.40.0-arm64-setup.exe"]);
 	assert.deepEqual(await lookForUpdate("0.39.1", "x64", at, undefined, "linux"), { status: "newer", mine: "0.39.1", version: "0.40.0", url: `${RELEASES}/tag/v0.40.0` });
 	assert.equal((await lookForUpdate("0.39.1", "arm64", at, undefined, "linux")).status, "latest");
 	assert.equal((await lookForUpdate("0.39.1", "arm64", at, undefined, "win32")).status, "newer");

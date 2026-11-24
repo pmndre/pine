@@ -35,6 +35,38 @@ test("an event becomes an agent turn and the answer goes back where the event sa
 	await h.close();
 });
 
+test("an event for a conversation that is working goes into that work: one run, one answer", async () => {
+	const h = await harness({
+		pine: {
+			routes: [
+				{ name: "slack", on: "slack/message", agent: "main", session: "issue-{{payload.key}}" },
+				{ name: "jira", on: "jira/issue", agent: "main", session: "issue-{{payload.issue.key}}" },
+				{ name: "chat", on: "chat/message", agent: "main", session: "issue-{{payload.key}}" },
+				{ name: "later", on: "later/#", agent: "main", session: "issue-{{payload.key}}", whenBusy: "queue" },
+			],
+		},
+		agents: { main: {} },
+	});
+	// The work holds its answer until the other three events are in (a run from outside has no shell to keep it busy).
+	h.mock.state.scripts.work = [{ text: "one answer", until: () => h.pine.tasks.list({}).length >= 4 }];
+	h.pine.bus.publish("slack/message", { key: "PROJ-244", text: "PROJ-244 is broken @@REF:work@@" }, { source: "test" });
+	await until(() => h.pine.agents.status().running.length === 1);
+	h.pine.bus.publish("jira/issue", { issue: { key: "PROJ-244" }, text: "JIRA-UPDATE status: blocked" }, { source: "test" });
+	// One whose answer goes somewhere else, and one on a route that queues: both wait their turn.
+	h.pine.bus.publish("chat/message", { key: "PROJ-244", text: "OTHER-REPLY" }, { source: "test", reply: { topic: "out/chat" } });
+	h.pine.bus.publish("later/x", { key: "PROJ-244", text: "QUEUED" }, { source: "test" });
+	await until(() => h.pine.tasks.list({}).length === 4);
+	const [slack, jira, chat, later] = h.pine.tasks.list({}).sort((a, b) => a.id - b.id);
+	assert.equal(jira.meta.steered, slack.id, "Jira went into the work Slack started");
+	assert.equal(chat.meta.steered, undefined);
+	assert.equal(later.meta.steered, undefined);
+	await until(() => h.pine.tasks.list({ status: "pending" }).length === 0 && h.pine.agents.status().running.length === 0);
+	assert.match(h.pine.tasks.get(slack.id)!.result ?? "", /JIRA-UPDATE/, "the work's one answer came after it read the Jira event");
+	assert.equal(h.pine.tasks.get(chat.id)!.status, "done", "it was answered as work of its own");
+	assert.equal(h.pine.tasks.get(later.id)!.status, "done");
+	await h.close();
+});
+
 test("debounce handles only the last event of a burst; throttle only the first", async () => {
 	const h = await harness({
 		pine: {

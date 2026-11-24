@@ -132,7 +132,7 @@ process.stdin.resume();
 		releases.asked++;
 		const version = releases.tag.slice(1);
 		// The app for each system and processor is attached (`appFile` in electron/updates.ts), and the Mac's update feed, so a release counts wherever the test runs.
-		res.writeHead(releases.status, { "content-type": "application/json" }).end(JSON.stringify({ tag_name: releases.tag, html_url: "https://example.invalid/elsewhere", assets: ["arm64", "x64"].flatMap((arch) => [...[".dmg", ".AppImage", "-setup.exe"].map((kind) => ({ name: `Pine-${version}-${arch}${kind}` })), { name: `Pine-${arch}.json` }]) }));
+		res.writeHead(releases.status, { "content-type": "application/json" }).end(JSON.stringify({ tag_name: releases.tag, html_url: "https://example.invalid/elsewhere", assets: ["arm64", "x64"].flatMap((arch) => [...[".dmg", "-setup.exe"].map((kind) => ({ name: `Pine-${version}-${arch}${kind}` })), { name: `Pine-${version}-${arch === "x64" ? "x86_64" : arch}.AppImage` }, { name: `Pine-${arch}.json` }]) }));
 	});
 	await new Promise<void>((r) => github.listen(0, "127.0.0.1", r));
 

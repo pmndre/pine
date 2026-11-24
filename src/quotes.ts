@@ -1,3 +1,9 @@
+// What the owner quotes from a conversation in the Pine app: each quote's text, and where it was taken
+// from (the task whose message or answer it is, or the welcome letter or card). The agent reads the
+// quotes as markdown quotes in front of the message; the daemon keeps them beside it (`TaskMeta.quotes`,
+// `.body`) so that a UI shows them as they were sent and goes back to where each came from. The daemon
+// never reads what a source names: it is a place on the page, not a way to another conversation's text.
+// Pure, with no Node in it: the app's page uses it too.
 export type QuoteSource = { task: number; part: "prompt" | "answer" } | "letter" | "welcome";
 
 export interface SentQuote {
@@ -19,6 +25,39 @@ export function quoteBlock(text: string): string {
 
 export function withQuotes(quotes: ReadonlyArray<{ text: string; reply?: string }>, body: string): string {
 	return [...quotes.flatMap((q) => [quoteBlock(q.text), q.reply?.trim() ?? ""]), body.trim()].filter(Boolean).join("\n\n");
+}
+
+/**
+ * The quotes as they fit in `room` characters of quote blocks, in order: the first that does not fit
+ * whole is cut (with "…"), and those after it are left out.
+ */
+export function fitQuotes(quotes: SentQuote[], room: number): SentQuote[] {
+	const out: SentQuote[] = [];
+	let left = room;
+	const cut = (s: string, fits: (t: string) => boolean): string | undefined => {
+		let keep = Math.min(s.length, left);
+		while (keep > 0 && !fits(`${s.slice(0, keep).trimEnd()}…`)) keep = Math.floor(keep * 0.9);
+		return keep > 0 ? `${s.slice(0, keep).trimEnd()}…` : undefined;
+	};
+	for (const q of quotes) {
+		const block = quoteBlock(q.text).length + 2;
+		const reply = q.reply?.trim();
+		const size = block + (reply ? reply.length + 2 : 0);
+		if (size <= left) {
+			out.push(q);
+			left -= size;
+			continue;
+		}
+		if (reply && block <= left) {
+			const said = cut(reply, (t) => block + t.length + 2 <= left);
+			out.push(said ? { ...q, reply: said } : { text: q.text, source: q.source });
+			break;
+		}
+		const text = cut(q.text, (t) => quoteBlock(t).length + 2 <= left);
+		if (text) out.push({ text, source: q.source });
+		break;
+	}
+	return out;
 }
 
 export function sameSource(a: QuoteSource, b: QuoteSource): boolean {

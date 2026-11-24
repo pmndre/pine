@@ -55,7 +55,8 @@ export function ahead(release: string, mine: string): boolean {
  */
 export function appFile(version: string, arch: string, platform: string): string | undefined {
 	if (platform === "darwin") return `Pine-${version}-${arch}.dmg`;
-	if (platform === "linux") return `Pine-${version}-${arch}.AppImage`;
+	// (The packer names a Linux file by the system's word for the processor: x86_64 for the AppImage of an x64 app.)
+	if (platform === "linux") return `Pine-${version}-${arch === "x64" ? "x86_64" : arch}.AppImage`;
 	if (platform === "win32") return `Pine-${version}-${arch}-setup.exe`;
 	return undefined;
 }

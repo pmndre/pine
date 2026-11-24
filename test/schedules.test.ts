@@ -20,14 +20,18 @@ test("schedules: what is written in the files wakes whom it is for, with the tas
 		pine: { main: "main", schedules: [{ name: "tidy", every: "120ms", task: "Tidy your MEMORY.md." }, { name: "beat", every: "120ms" }] },
 		agents: { main: {}, books: { agent: { schedules: [{ name: "ledger", every: "120ms", task: "Close the ledger for {{today}}.", session: "april" }] } } },
 	});
-	await until(() => woken(h, "main").length && woken(h, "books").length && woken(h, "books", "april").length, 6000, "the schedules to wake the agents");
+	// Turns that ran. A time that comes while the last turn still works goes into that turn (`meta.steered`), and is done before
+	// that turn's request was made.
+	const ran = (agent: string, session?: string) => woken(h, agent, session).filter((t: any) => !t.meta?.steered);
+	await until(() => ran("main").length && ran("books").length && ran("books", "april").length, 6000, "the schedules to wake the agents");
 	// For all agents: each in their main conversation. For one conversation: there.
 	const tidy = h.mock.state.requests.find((q: any) => userText(q).includes("Tidy your MEMORY.md.") && h.system(q).includes("PERSONA-BOOKS"));
 	assert.match(userText(tidy), /^\[It is time for your schedule "tidy" \(every 120ms\)\. It was set up at your owner's wish, and this is what it says to do now\. If there is nothing to do or to tell, say so in one line\.\]\n\nTidy your MEMORY\.md\.$/);
 	assert.ok(!userText(tidy).includes("did not come from your owner") && h.toolsOffered(tidy).includes("bash"), "it is the owner's wish: no frame, the agent's usual tools");
 	const ledger = h.mock.state.requests.find((q: any) => userText(q).includes("Close the ledger"));
 	assert.ok(userText(ledger).endsWith("Close the ledger for {{today}}."), "a task is taken as it was written");
-	assert.equal(woken(h, "books", "april")[0].meta.label, "schedule: ledger");
+	// (A time that comes while the last turn still works goes into that turn, under a label that says so: the turn is what is labelled.)
+	assert.equal(ran("books", "april")[0].meta.label, "schedule: ledger");
 	assert.ok(!h.pine.agents.status().sessions.some((x: any) => x.tainted), "and nothing of it is outside content");
 	// The events are there for routes too; one without a task is only that.
 	assert.deepEqual([...new Set(h.pine.bus.query({ topic: "timer/#" }).map((e: any) => `${e.topic} ${e.trust}`))].sort(), ["timer/beat owner", "timer/ledger@books owner", "timer/tidy owner"]);
