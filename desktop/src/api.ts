@@ -1,6 +1,7 @@
 // The control API, typed. Every call goes through the main process, which holds the token.
 import { bridge, MEDIA_BASE } from "./bridge.ts";
 import type { ThemeEntry } from "./theme.ts";
+import type { SentQuote } from "../../src/quotes.ts";
 
 export class ApiError extends Error {
 	status: number;
@@ -67,7 +68,7 @@ export interface Task {
 	error?: string;
 	parent?: number;
 	depth: number;
-	meta: { images?: unknown[]; label?: string; steered?: number; read?: number; compact?: boolean; chain?: string[]; stats?: Stats; trust?: string };
+	meta: { images?: unknown[]; label?: string; steered?: number; read?: number; compact?: boolean; chain?: string[]; stats?: Stats; trust?: string; quotes?: SentQuote[]; body?: string };
 }
 
 export interface TranscriptEntry {
@@ -477,7 +478,7 @@ export const api = {
 	taskRecord: (task: number) => get<Task>(`/tasks/${task}`),
 	// `via`: the answer is read in this app, where a shell code block has a Run button; the agent is told so. The button runs it
 	// in a terminal of this computer, so an agent of another machine's pine is not told (`runs`: false): it has no terminal here.
-	prompt: (agent: string, prompt: string, session: string, attachments?: Array<{ name: string; data: string }>, whenBusy: "steer" | "queue" = "steer", mentions?: string[], runs = true) => post<{ task: number; steered?: number }>(`${a(agent)}/prompt`, { prompt, session, wait: false, attachments, whenBusy, mentions, ...(runs ? { via: "app" } : {}) }),
+	prompt: (agent: string, prompt: string, session: string, attachments?: Array<{ name: string; data: string }>, whenBusy: "steer" | "queue" = "steer", mentions?: string[], quotes?: SentQuote[], runs = true) => post<{ task: number; steered?: number }>(`${a(agent)}/prompt`, { prompt, session, wait: false, attachments, whenBusy, mentions, quotes, ...(runs ? { via: "app" } : {}) }),
 	transcript: (task: number, full = false) => get<{ task: Task; entries: TranscriptEntry[] }>(`/tasks/${task}/transcript${full ? "?full=1" : ""}`),
 	cancel: (task: number) => post<{ cancelled: boolean }>(`/tasks/${task}/cancel`),
 	sendNow: (task: number) => post<{ sent: boolean }>(`/tasks/${task}/now`),

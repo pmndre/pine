@@ -12,8 +12,8 @@ function Box({ draft = "", files = false, quotes = false, outside = false, pause
 	if (files) tab.attachments.push({ name: "invoice-2026-03.pdf", size: 182_400, data: "" }, { name: "notes.md", size: 2_100, data: "" });
 	if (quotes)
 		tab.quotes.push(
-			{ id: 1, tab: tab.key, item: 1, text: "The March invoices are all filed except the one from Northwind, which still waits for a purchase order number." },
-			{ id: 2, tab: tab.key, item: 2, text: "Total: 4 812.50 EUR\n\nDue on 15 April." },
+			{ id: 1, tab: tab.key, source: { task: 1, part: "answer" }, text: "The March invoices are all filed except the one from Northwind, which still waits for a purchase order number." },
+			{ id: 2, tab: tab.key, source: { task: 2, part: "answer" }, text: "Total: 4 812.50 EUR\n\nDue on 15 April." },
 		);
 	if (outside) store.taints.set("main:main", "a web page");
 	else store.taints.delete("main:main");

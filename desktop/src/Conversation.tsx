@@ -39,9 +39,10 @@ import { bridge } from "./bridge.ts";
 import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
-import { type Item, type Part, type QuoteSource, type Steer, splitQuotes, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
+import { type Item, type Part, type QuoteSource, type SentQuote, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { childKind, clock, count, MODES, oneLine, plural, short, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
+import { sameSource } from "../../src/quotes.ts";
 
 /** A note's tone is information (a warning, a failure), so it colors the note's icon. */
 const NOTE_TONE: Record<string, string | undefined> = { warn: "text-warn", bad: "text-destructive", good: "text-primary", accent: "text-primary" };
@@ -257,7 +258,7 @@ function Work({ item }: { item: Extract<Item, { t: "work" }> }) {
 
 /** The owner's turn (or a task's prompt): a bubble on the owner's side, with the files it brought. */
 /** A message of the owner's. With `menu`, a right click on it offers to branch from it. */
-export function OwnerTurn({ text, from, files, menu, skeleton, footer, onQuote }: { text?: string; from?: string; files?: string[]; menu?: () => void; /** A click on a quote badge of the message: which quote, and the badge. */ onQuote?: (index: number, quote: string, at: HTMLElement) => void; /** While the conversation loads: a bubble's shape on the owner's side, from stock Skeleton. */ skeleton?: boolean; /** A line under the bubble (whether running work read it). */ footer?: ReactNode }) {
+export function OwnerTurn({ text, from, files, menu, skeleton, footer, quotes, onQuote, quoteTask }: { text?: string; from?: string; files?: string[]; menu?: () => void; quotes?: SentQuote[]; onQuote?: (quote: SentQuote) => void; quoteTask?: number; /** While the conversation loads: a bubble's shape on the owner's side, from stock Skeleton. */ skeleton?: boolean; /** A line under the bubble (whether running work read it). */ footer?: ReactNode }) {
 	if (skeleton)
 		return (
 			<Message align="end" data-item="user-skeleton">
@@ -266,17 +267,17 @@ export function OwnerTurn({ text, from, files, menu, skeleton, footer, onQuote }
 				</MessageContent>
 			</Message>
 		);
-	const { quotes, body } = splitQuotes(text ?? "");
+	const body = text ?? "";
 	return (
-		<Message align="end" data-item="user" onContextMenu={menu ? (e) => (e.preventDefault(), menu()) : undefined}>
+		<Message align="end" data-item="user" data-quote-task={quoteTask} data-quote-part={quoteTask === undefined ? undefined : "prompt"} onContextMenu={menu ? (e) => (e.preventDefault(), menu()) : undefined}>
 			<MessageContent>
 				{from ? <MessageHeader>{from}</MessageHeader> : null}
 				<Bubble align="end" variant="muted">
 					<BubbleContent className="text-base leading-snug whitespace-pre-wrap select-text">
-						{quotes.length ? (
+						{quotes?.length ? (
 							<div className={cn("flex flex-wrap gap-1.5 whitespace-normal", body.trim() && "mb-2")}>
 								{quotes.map((q, i) => (
-									<QuoteChip key={i} text={q} className="bg-background" onOpen={onQuote ? (e) => onQuote(i, q, e.currentTarget) : undefined} />
+									<QuoteChip key={i} text={q.text} className="bg-background" onOpen={onQuote ? () => onQuote(q) : undefined} />
 								))}
 							</div>
 						) : null}
@@ -460,48 +461,17 @@ async function branchMenu(tab: Tab, task: number): Promise<void> {
 	if (picked === "branch" || picked === "worktree") await store.branch(tab.agent, tab.session, task, picked === "worktree");
 }
 
-const squash = (text: string) => text.replace(/\s+/g, " ").trim();
-
-function quoteSource(tab: Tab, from: Item, quote: string, at: HTMLElement): { item?: number; source?: QuoteSource } | undefined {
-	const first = quote.split(/\r?\n/).find((line) => line.trim());
-	if (!first) return undefined;
-	const want = squash(first);
-	const scope = at.closest("[data-message-id]")?.parentElement;
-	for (let i = tab.items.indexOf(from) - 1; i >= 0; i--) {
-		const it = tab.items[i];
-		if (it.t === "user") {
-			if (squash(splitQuotes(it.text).body).includes(want)) return { item: it.id };
-			continue;
-		}
-		if ("text" in it && typeof it.text === "string" && squash(it.text).includes(want)) return { item: it.id };
-		const el = scope?.querySelector(`[data-message-id="${it.id}"]`);
-		if (el && squash(el.textContent ?? "").includes(want)) return { item: it.id };
-	}
-	for (const el of scope?.querySelectorAll<HTMLElement>("[data-quote-source]") ?? []) {
-		if (squash(el.textContent ?? "").includes(want)) return { source: el.dataset.quoteSource as QuoteSource };
-	}
-	return undefined;
-}
-
-function openQuote(tab: Tab, item: Extract<Item, { t: "user" }>, index: number, quote: string, at: HTMLElement): void {
-	const sent = item.quotes?.[index];
-	if (sent && squash(sent.text) === squash(quote) && (sent.item !== undefined || sent.source)) return store.showQuote(sent);
-	const found = quoteSource(tab, item, quote, at);
-	if (!found) return store.flash("The quoted message is no longer in this conversation.", "muted");
-	store.showQuote({ id: 0, text: quote, tab: tab.key, ...found });
-}
-
 /** One item of a conversation, drawn as what it is. */
 export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab: Tab }) {
 	switch (item.t) {
 		case "user": {
 			const task = tab.kind === "chat" ? item.task : undefined;
 			const steer = tab.kind === "chat" ? item.steer : undefined;
-			return <OwnerTurn text={item.text} from={item.from} files={item.files} onQuote={tab.kind === "chat" ? (i, quote, at) => openQuote(tab, item, i, quote, at) : undefined} menu={task === undefined ? undefined : () => void branchMenu(tab, task)} footer={steer ? <SteerLine tab={tab} steer={steer} /> : undefined} />;
+			return <OwnerTurn text={item.text} from={item.from} files={item.files} quotes={item.quotes} quoteTask={task ?? steer?.task} onQuote={tab.kind === "chat" ? (q) => store.showQuote(tab.key, q.source) : undefined} menu={task === undefined ? undefined : () => void branchMenu(tab, task)} footer={steer ? <SteerLine tab={tab} steer={steer} /> : undefined} />;
 		}
 		case "answer":
 			return (
-				<Message data-item="answer" className="text-base leading-snug">
+				<Message data-item="answer" data-quote-task={item.task} data-quote-part="answer" className="text-base leading-snug">
 					<MessageContent>
 						<Markdown text={item.text} live={item.live} where={{ agent: item.agent, session: tab.kind === "chat" ? tab.session : undefined, id: `${tab.id}:${item.id}`, arrived: item.arrived }} />
 					</MessageContent>
@@ -978,15 +948,24 @@ function lastOwnerMessage(items: Item[]): number {
 
 let quoteIds = 0;
 
-function sourceOf(node: Node | null | undefined): number | undefined {
-	const el = node instanceof Element ? node : node?.parentElement;
-	const id = el?.closest("[data-message-id]")?.getAttribute("data-message-id");
-	return id ? Number(id) : undefined;
+function selectionSource(root: HTMLElement | null): QuoteSource | undefined {
+	const sel = window.getSelection();
+	if (!root || !sel?.rangeCount) return undefined;
+	const node = sel.getRangeAt(0).startContainer;
+	const el = node instanceof Element ? node : node.parentElement;
+	if (!el || !root.contains(el)) return undefined;
+	const msg = el.closest<HTMLElement>("[data-quote-task]");
+	if (msg) {
+		const task = Number(msg.dataset.quoteTask);
+		const part = msg.dataset.quotePart;
+		return Number.isSafeInteger(task) && (part === "prompt" || part === "answer") ? { task, part } : undefined;
+	}
+	const place = el.closest<HTMLElement>("[data-quote-source]")?.dataset.quoteSource;
+	return place === "letter" || place === "welcome" ? place : undefined;
 }
 
-function placeOf(node: Node | null | undefined): QuoteSource | undefined {
-	const el = node instanceof Element ? node : node?.parentElement;
-	return (el?.closest("[data-quote-source]")?.getAttribute("data-quote-source") as QuoteSource | null) ?? undefined;
+function quoteTarget(root: HTMLElement | null | undefined, source: QuoteSource): HTMLElement | null | undefined {
+	return root?.querySelector<HTMLElement>(typeof source === "string" ? `[data-quote-source="${source}"]` : `[data-quote-task="${source.task}"][data-quote-part="${source.part}"]`);
 }
 
 function QuoteJump({ tab, root }: { tab: Tab; root: RefObject<HTMLElement | null> }) {
@@ -995,9 +974,10 @@ function QuoteJump({ tab, root }: { tab: Tab; root: RefObject<HTMLElement | null
 		const want = store.pendingQuote;
 		if (!want || want.key !== tab.key || store.active !== tab) return;
 		store.pendingQuote = undefined;
-		const el = want.item !== undefined ? root.current?.querySelector<HTMLElement>(`[data-message-id="${want.item}"]`) : want.source ? root.current?.querySelector<HTMLElement>(`[data-quote-source="${want.source}"]`) : null;
-		if (!el) return store.flash("The quoted message is no longer on the page.", "muted");
-		if (want.item !== undefined) scrollToMessage(String(want.item), { align: "center", behavior: "smooth" });
+		const el = quoteTarget(root.current, want.source);
+		if (!el) return store.flash("The quoted message is no longer in this conversation.", "muted");
+		const row = typeof want.source === "string" ? undefined : el.closest<HTMLElement>("[data-message-id]")?.dataset.messageId;
+		if (row) scrollToMessage(row, { align: "center", behavior: "smooth" });
 		else scrollToStart({ behavior: "smooth" });
 		el.animate(
 			[
@@ -1035,13 +1015,12 @@ export function Conversation({ tab }: { tab: Tab }) {
 	const scroller = useRef<HTMLDivElement>(null);
 	const frame = useRef<HTMLDivElement>(null);
 	const [selected, unselect] = useTextSelection(scroller);
+	const source = selected ? selectionSource(scroller.current) : undefined;
 	const quote = () => {
-		if (!selected) return;
+		if (!selected || !source) return;
 		const text = selected.text.trim();
-		const sel = window.getSelection();
-		const item = sourceOf(sel?.anchorNode) ?? sourceOf(sel?.focusNode);
-		const source = item === undefined ? (placeOf(sel?.anchorNode) ?? placeOf(sel?.focusNode)) : undefined;
-		if (!tab.quotes.some((q) => q.text === text && q.item === item && q.source === source)) tab.quotes.push({ id: ++quoteIds, text, tab: tab.key, item, source });
+		if (!text) return;
+		if (!tab.quotes.some((q) => q.text === text && sameSource(q.source, source))) tab.quotes.push({ id: ++quoteIds, text, tab: tab.key, source });
 		tab.touch();
 		window.getSelection()?.removeAllRanges();
 		unselect();
@@ -1059,7 +1038,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 	return (
 		<div ref={frame} className="relative flex min-w-85 flex-1 flex-col overflow-hidden rounded-xl border bg-background">
 			<ConvHead tab={tab} />
-			{selected && chat ? (
+			{selected && chat && source ? (
 				<SelectionToolbar rect={selected.rect} bounds={frame}>
 					<SelectionToolbarButton icon={QuoteIcon} label="Quote" onClick={quote} />
 				</SelectionToolbar>

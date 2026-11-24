@@ -11,6 +11,7 @@ import { type AgentInfo, api, type Approval, type Conversation, type GoalInfo, t
 import { bridge, type Prefs, type ServiceState, type Update } from "./bridge.ts";
 import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, MODES, oneLine, plural, short, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
 import { runnable } from "./runnable.ts";
+import { type QuoteSource, type SentQuote, withQuotes } from "../../src/quotes.ts";
 import { computerWord, deviceWord, homeScreenKeeps, httpService, isPaired, machineName, machinesView, pairingEnded, readPairLink, type MachinesViewName, type NearbyComputer, type PairLink } from "./machines.ts";
 import { applyLook, cleanLook, type ThemeEntry } from "./theme.ts";
 
@@ -56,7 +57,7 @@ interface Base {
 
 export type Item = Base &
 	(
-		| { t: "user"; text: string; from?: string; files?: string[]; quotes?: Quote[]; /** The owner's message as a task, to branch from. */ task?: number; /** It was given to work that was running (`into`), as task `task`: when that work read it. */ steer?: Steer }
+		| { t: "user"; text: string; from?: string; files?: string[]; quotes?: SentQuote[]; /** The owner's message as a task, to branch from. */ task?: number; /** It was given to work that was running (`into`), as task `task`: when that work read it. */ steer?: Steer }
 		| { t: "answer"; task: number; agent: string; text: string; live: boolean; /** It arrived while the owner was looking at its conversation: its first sound plays by itself, once. */ arrived?: { heard: boolean } }
 		| { t: "work"; parts: Part[]; done: boolean; open: boolean; startedAt: number; ms?: number }
 		| { t: "note"; tone: Tone; text: string; lines?: Array<{ text: string; tone?: Tone }>; action?: { label: string; run: () => void } }
@@ -90,37 +91,16 @@ export interface Attachment {
 	preview?: string;
 }
 
-export type QuoteSource = "letter" | "welcome";
+export type { QuoteSource, SentQuote };
 
-export interface Quote {
+export interface Quote extends SentQuote {
 	id: number;
-	text: string;
 	tab: string;
-	item?: number;
-	source?: QuoteSource;
 }
 
-export function quoteBlock(text: string): string {
-	return text
-		.trim()
-		.split(/\r?\n/)
-		.map((line) => (line.trim() ? `> ${line.trimEnd()}` : ">"))
-		.join("\n");
-}
+const said = (it: { text: string; quotes?: SentQuote[] }) => (it.quotes ? withQuotes(it.quotes, it.text) : it.text);
 
-export function splitQuotes(text: string): { quotes: string[]; body: string } {
-	const lines = text.split(/\r?\n/);
-	const quotes: string[] = [];
-	let i = 0;
-	while (i < lines.length && lines[i].startsWith(">")) {
-		const block: string[] = [];
-		while (i < lines.length && lines[i].startsWith(">")) block.push(lines[i++].replace(/^> ?/, ""));
-		const quote = block.join("\n").trim();
-		if (quote) quotes.push(quote);
-		while (i < lines.length && !lines[i].trim()) i++;
-	}
-	return { quotes, body: lines.slice(i).join("\n") };
-}
+const ownerText = (p: { prompt?: unknown; quotes?: unknown; body?: unknown }): { text: string; quotes?: SentQuote[] } => (Array.isArray(p.quotes) && p.quotes.length ? { text: String(p.body ?? ""), quotes: p.quotes as SentQuote[] } : { text: String(p.prompt ?? "") });
 
 export type CodeView = "agent" | "files" | "changes" | "turn" | "output" | "running" | "board" | "terminal";
 
@@ -1534,7 +1514,7 @@ export class Store extends Model {
 		if (t.meta?.compact) return void tab.note(t.status === "done" ? (t.result ?? "The earlier part of the conversation was summarised.") : `Shortening the conversation: ${t.status}${t.error ? ` (${t.error})` : ""}`);
 		if (t.kind === "event" && t.meta?.label) tab.add({ t: "event", label: t.meta.label, body: eventBody(t.prompt) });
 		else if (isGoalRound(t.kind, t.meta?.label)) tab.note(`↻ ${t.meta.label}`);
-		else tab.add({ t: "user", text: t.prompt, from: t.kind === "prompt" ? undefined : t.kind, task: t.kind === "prompt" && t.meta?.trust === "owner" && t.meta?.steered === undefined ? t.id : undefined, steer: t.meta?.steered === undefined ? undefined : { task: t.id, into: t.meta.steered, read: t.meta.read } });
+		else tab.add({ t: "user", text: t.meta?.quotes ? (t.meta.body ?? "") : t.prompt, quotes: t.meta?.quotes, from: t.kind === "prompt" ? undefined : t.kind, task: t.kind === "prompt" && t.meta?.trust === "owner" && t.meta?.steered === undefined ? t.id : undefined, steer: t.meta?.steered === undefined ? undefined : { task: t.id, into: t.meta.steered, read: t.meta.read } });
 		(t.meta?.images ?? []).forEach((_, i) => tab.add({ t: "media", kind: "image", name: `attached picture ${i + 1}`, url: media.task(t.id, i) }));
 		// It was read by work that was already running; the answer is that work's.
 		if (t.meta?.steered !== undefined) return;
@@ -1994,17 +1974,18 @@ export class Store extends Model {
 		if ((!typed && !tab.quotes.length) || tab.kind !== "chat") return;
 		if (typed) tab.inputs.push(typed);
 		const quotes = tab.quotes.splice(0);
-		const text = [...quotes.map((q) => quoteBlock(q.text)), typed].filter(Boolean).join("\n\n");
+		const sent = quotes.length ? quotes.map((q): SentQuote => ({ text: q.text, source: q.source })) : undefined;
+		const text = withQuotes(quotes, typed);
 		const files = tab.attachments.splice(0);
 		tab.draft = "";
-		const mine = tab.add({ t: "user", text, files: files.map((f) => f.name), quotes: quotes.length ? quotes : undefined });
+		const mine = tab.add({ t: "user", text: typed, files: files.map((f) => f.name), quotes: sent });
 		for (const f of files) if (f.preview) tab.add({ t: "media", kind: "image", name: f.name, url: f.preview });
 		tab.awaiting.push(text);
 		tab.touch();
 		try {
 			const busy = tab.busy;
-			const mentions = [...text.matchAll(/(?:^|\s)@([^\s@]+)/g)].map((m) => m[1]).filter((m) => tab.files.has(m.split("#")[0]));
-			const { task, steered } = await api.prompt(tab.agent, text, tab.session, files.length ? files.map((f) => ({ name: f.name, data: f.data })) : undefined, whenBusy, mentions.length ? mentions : undefined, !this.remote);
+			const mentions = [...typed.matchAll(/(?:^|\s)@([^\s@]+)/g)].map((m) => m[1]).filter((m) => tab.files.has(m.split("#")[0]));
+			const { task, steered } = await api.prompt(tab.agent, typed, tab.session, files.length ? files.map((f) => ({ name: f.name, data: f.data })) : undefined, whenBusy, mentions.length ? mentions : undefined, sent, !this.remote);
 			tab.roots.add(task);
 			if (steered === undefined) (mine.task = task), mine.v++;
 			if (steered !== undefined) {
@@ -2460,11 +2441,11 @@ export class Store extends Model {
 		this.touch();
 	}
 
-	pendingQuote?: { key: string; item?: number; source?: QuoteSource };
+	pendingQuote?: { key: string; source: QuoteSource };
 
-	showQuote(quote: Quote): void {
-		const tab = this.tabs.find((t) => t.kind === "chat" && t.key === quote.tab);
-		this.pendingQuote = { key: quote.tab, item: quote.item, source: quote.source };
+	showQuote(key: string, source: QuoteSource): void {
+		const tab = this.tabs.find((t) => t.kind === "chat" && t.key === key);
+		this.pendingQuote = { key, source };
 		if (tab && tab !== this.active) this.activate(tab);
 		this.ask_("show-quote");
 	}
@@ -2724,11 +2705,11 @@ export class Store extends Model {
 			if (i >= 0) {
 				// Ours: the bubble on screen gets its line now, before the answer to the request comes.
 				const text = tab.awaiting.splice(i, 1)[0];
-				const mine = tab.items.findLast((it): it is Of<"user"> => it.t === "user" && it.text === text && !it.steer && it.task === undefined);
+				const mine = tab.items.findLast((it): it is Of<"user"> => it.t === "user" && said(it) === text && !it.steer && it.task === undefined);
 				if (mine) ((mine.steer = steer), mine.v++);
 			} else {
 				this.endWork(tab);
-				tab.add({ t: "user", text: String(p.prompt ?? ""), from: p.kind === "prompt" ? "elsewhere" : p.kind, steer: p.kind === "prompt" ? steer : undefined });
+				tab.add({ t: "user", ...ownerText(p), from: p.kind === "prompt" ? "elsewhere" : p.kind, steer: p.kind === "prompt" ? steer : undefined });
 			}
 			this.dirty.add(tab);
 			return;
@@ -2761,7 +2742,7 @@ export class Store extends Model {
 			} else if (!tab.roots.has(p.task)) {
 				if (p.kind === "event" && p.label) tab.add({ t: "event", label: String(p.label), body: eventBody(String(p.prompt ?? "")) });
 				// A round of a goal was announced by the goal's own line; its text is the same every round.
-				else if (!isGoalRound(p.kind, p.label)) tab.add({ t: "user", text: String(p.prompt ?? ""), from: p.kind === "prompt" ? "elsewhere" : p.kind });
+				else if (!isGoalRound(p.kind, p.label)) tab.add({ t: "user", ...ownerText(p), from: p.kind === "prompt" ? "elsewhere" : p.kind });
 				// What came with it and was not typed here: a photo sent on Telegram, a picture a camera saved.
 				for (let n = 0; n < Number(p.images ?? 0); n++) tab.add({ t: "media", kind: "image", name: `picture ${n + 1}`, url: media.task(p.task, n) });
 			}

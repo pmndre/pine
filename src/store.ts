@@ -299,6 +299,7 @@ export class TaskStore {
 			const meta = { ...(t.meta ?? {}) } as Task["meta"];
 			if (meta.root !== undefined) meta.root = ids.get(meta.root);
 			if (meta.root === undefined) delete meta.root;
+			if (meta.quotes) meta.quotes = meta.quotes.map((q) => (typeof q.source === "string" || !ids.has(q.source.task) ? q : { ...q, source: { ...q.source, task: ids.get(q.source.task) as number } }));
 			const parent = t.parent !== undefined ? ids.get(t.parent) : undefined;
 			const r = insert.run(t.agent, session, t.kind, t.prompt, t.status, t.priority, t.created, t.started ?? null, t.finished ?? null, t.result ?? null, t.error ?? null, t.event ?? null, t.hops, parent ?? null, t.depth, t.reply ? JSON.stringify(t.reply) : null, JSON.stringify(meta));
 			ids.set(t.id, Number(r.lastInsertRowid));

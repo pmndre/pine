@@ -1,5 +1,6 @@
 import type { Level } from "./config.ts";
 import type { CallTiming } from "./util.ts";
+import type { SentQuote } from "./quotes.ts";
 /** Where a handler's answer should go: an event on `topic` whose payload is `payload` plus `text`. */
 export interface ReplyTarget {
 	topic: string;
@@ -52,6 +53,8 @@ export interface ImageRef {
 }
 
 export interface TaskMeta {
+	quotes?: SentQuote[];
+	body?: string;
 	images?: ImageRef[];
 	/** Deliver the result to this agent session as a new message when the task ends. */
 	notify?: { agent: string; session: string };

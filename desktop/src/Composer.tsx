@@ -329,7 +329,7 @@ export function Composer({ tab }: { tab: Tab }) {
 					{tab.attachments.length || tab.quotes.length || over ? (
 						<InputGroupAddon align="block-start" className="flex-wrap">
 							{tab.quotes.map((q, i) => (
-								<QuoteChip key={`quote:${q.id}`} text={q.text} onOpen={() => store.showQuote(q)} onRemove={() => (tab.quotes.splice(i, 1), tab.touch())} />
+								<QuoteChip key={`quote:${q.id}`} text={q.text} onOpen={() => store.showQuote(q.tab, q.source)} onRemove={() => (tab.quotes.splice(i, 1), tab.touch())} />
 							))}
 							{tab.attachments.map((f, i) => (
 								<Chip size="sm" key={`${f.name}:${i}`}>

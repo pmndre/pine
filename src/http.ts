@@ -12,6 +12,7 @@ import { type LoginRunner, OwnerApi, Refusal, settleModel } from "./owner.ts";
 import type { Router } from "./router.ts";
 import type { SourceHost } from "./sources.ts";
 import { pineVersion } from "./service.ts";
+import { readQuotes } from "./quotes.ts";
 import type { Scheduler } from "./timers.ts";
 import { errText, type Logger, topicMatches } from "./util.ts";
 
@@ -280,9 +281,11 @@ export class HttpServer {
 				return send(202, { id: e.id });
 			}
 			if (parts[0] === "agents" && parts[2] === "prompt" && parts.length === 3) {
-				if (typeof body.prompt !== "string" || !body.prompt) throw new HttpError(400, "prompt required");
+				const quotes = body.quotes === undefined ? undefined : readQuotes(body.quotes);
+				if (typeof quotes === "string") throw new HttpError(400, quotes);
+				if (typeof body.prompt !== "string" || (!body.prompt && !quotes?.length)) throw new HttpError(400, "prompt required");
 				// "steer": if the conversation is working, the message goes into that work instead of waiting behind it.
-				const task = this.manager.submit({ agent: parts[1], prompt: body.prompt, session: body.session, trust: "owner", kind: "prompt", priority: 10, attachments: Array.isArray(body.attachments) ? body.attachments : undefined, whenBusy: body.whenBusy === "steer" ? "steer" : undefined, mentions: Array.isArray(body.mentions) ? body.mentions : undefined, via: body.via === "app" ? "app" : undefined });
+				const task = this.manager.submit({ agent: parts[1], prompt: body.prompt, session: body.session, trust: "owner", kind: "prompt", priority: 10, attachments: Array.isArray(body.attachments) ? body.attachments : undefined, whenBusy: body.whenBusy === "steer" ? "steer" : undefined, mentions: Array.isArray(body.mentions) ? body.mentions : undefined, quotes: quotes?.length ? quotes : undefined, via: body.via === "app" ? "app" : undefined });
 				if (body.wait === false) return send(202, { task: task.id, steered: task.meta.steered });
 				res.setTimeout(0);
 				req.on("close", () => !res.writableEnded && body.cancelOnDisconnect && this.manager.cancel(task.id));
