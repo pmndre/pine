@@ -4,7 +4,7 @@
 // is Message Scroller, a turn is Message (and Bubble for the owner's), the work of a turn is Trace
 // (Task, Tool, Reasoning, Subagent and Plan), a request is an Item (Confirmation), a note is a Marker.
 import { ArrowUpIcon, ArrowUpRightIcon, BrainIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, QuoteIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
-import { Fragment, memo, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, memo, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Sound } from "@/components/sound";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Attachment, AttachmentContent, AttachmentGroup, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
@@ -24,7 +24,7 @@ import { Item as Card, ItemActions, ItemContent, ItemDescription, ItemFooter, It
 import { Kbd } from "@/components/ui/kbd";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
-import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller";
+import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller } from "@/components/ui/message-scroller";
 import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Toggle } from "@/components/ui/toggle";
@@ -934,14 +934,36 @@ function lastOwnerMessage(items: Item[]): number {
 	return -1;
 }
 
-function quoted(draft: string, text: string): string {
-	const quote = text
-		.trim()
-		.split(/\r?\n/)
-		.map((line) => (line.trim() ? `> ${line.trimEnd()}` : ">"))
-		.join("\n");
-	const before = draft.trimEnd();
-	return `${before ? `${before}\n\n` : ""}${quote}\n\n`;
+let quoteIds = 0;
+
+function sourceOf(node: Node | null | undefined): number | undefined {
+	const el = node instanceof Element ? node : node?.parentElement;
+	const id = el?.closest("[data-message-id]")?.getAttribute("data-message-id");
+	return id ? Number(id) : undefined;
+}
+
+function QuoteJump({ tab, root }: { tab: Tab; root: RefObject<HTMLElement | null> }) {
+	const { scrollToMessage } = useMessageScroller();
+	const go = () => {
+		const want = store.pendingQuote;
+		if (!want || want.key !== tab.key || store.active !== tab) return;
+		store.pendingQuote = undefined;
+		const el = want.item === undefined ? null : root.current?.querySelector<HTMLElement>(`[data-message-id="${want.item}"]`);
+		if (!el || want.item === undefined) return store.flash("The quoted message is no longer on the page.", "muted");
+		scrollToMessage(String(want.item), { align: "center", behavior: "smooth" });
+		el.animate(
+			[
+				{ borderRadius: "0.75rem", backgroundColor: "color-mix(in oklab, var(--primary) 12%, transparent)", boxShadow: "inset 0 0 0 2px color-mix(in oklab, var(--primary) 45%, transparent)" },
+				{ borderRadius: "0.75rem", backgroundColor: "transparent", boxShadow: "inset 0 0 0 2px transparent" },
+			],
+			{ duration: 1500, delay: 250, easing: "ease-out", fill: "backwards" },
+		);
+	};
+	useSignal("show-quote", go);
+	useEffect(() => {
+		if (store.pendingQuote?.key === tab.key) requestAnimationFrame(go);
+	}, []);
+	return null;
 }
 
 export function Conversation({ tab }: { tab: Tab }) {
@@ -967,7 +989,10 @@ export function Conversation({ tab }: { tab: Tab }) {
 	const [selected, unselect] = useTextSelection(scroller);
 	const quote = () => {
 		if (!selected) return;
-		tab.draft = quoted(tab.draft, selected.text);
+		const text = selected.text.trim();
+		const sel = window.getSelection();
+		const item = sourceOf(sel?.anchorNode) ?? sourceOf(sel?.focusNode);
+		if (!tab.quotes.some((q) => q.text === text && q.item === item)) tab.quotes.push({ id: ++quoteIds, text, tab: tab.key, item });
 		tab.touch();
 		window.getSelection()?.removeAllRanges();
 		unselect();
@@ -997,6 +1022,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 				// Message Scroller follows what arrives while the reader is at the end, holds still when
 				// they went up, and brings them back with its button. A tab opens at its end.
 				<MessageScrollerProvider autoScroll defaultScrollPosition="end">
+					<QuoteJump tab={tab} root={scroller} />
 					<MessageScroller className="flex-1">
 						<MessageScrollerViewport ref={scroller}>
 							{/* The column of the conversation, under the head and above the input. */}

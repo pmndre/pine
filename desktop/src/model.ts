@@ -90,6 +90,21 @@ export interface Attachment {
 	preview?: string;
 }
 
+export interface Quote {
+	id: number;
+	text: string;
+	tab: string;
+	item?: number;
+}
+
+export function quoteBlock(text: string): string {
+	return text
+		.trim()
+		.split(/\r?\n/)
+		.map((line) => (line.trim() ? `> ${line.trimEnd()}` : ">"))
+		.join("\n");
+}
+
 export type CodeView = "agent" | "files" | "changes" | "turn" | "output" | "running" | "board" | "terminal";
 
 /** What can be shown beside a conversation: the side panel, the browser's aside, and the view of all of pine
@@ -168,6 +183,7 @@ export class Tab extends Model {
 	// the composer
 	draft = "";
 	attachments: Attachment[] = [];
+	quotes: Quote[] = [];
 	inputs: string[] = [];
 	files = new Set<string>();
 
@@ -381,7 +397,7 @@ export class Store extends Model {
 	/** The tabs of last time are open (there may be none): until then the window shows that pine is starting. */
 	opened = false;
 	/** What was typed into a conversation's input and not sent when its tab closed, given back when it opens again. */
-	private drafts = new Map<string, { draft: string; attachments: Attachment[] }>();
+	private drafts = new Map<string, { draft: string; attachments: Attachment[]; quotes: Quote[] }>();
 	asked = new Set<string>();
 	initLines: string[] = [];
 	initRunning = false;
@@ -1412,7 +1428,7 @@ export class Store extends Model {
 		if (!this.agent(agent)) return this.flash(`There is no agent called ${agent}.`, "bad");
 		const tab = new Tab("chat", agent, session);
 		const kept = this.drafts.get(tab.key);
-		if (kept) ((tab.draft = kept.draft), (tab.attachments = kept.attachments), this.drafts.delete(tab.key));
+		if (kept) ((tab.draft = kept.draft), (tab.attachments = kept.attachments), (tab.quotes = kept.quotes), this.drafts.delete(tab.key));
 		this.tabs.push(tab);
 		if (front) this.activate(tab);
 		else {
@@ -1624,7 +1640,7 @@ export class Store extends Model {
 		this.tabs = before.filter((t) => !tabs.includes(t));
 		for (const tab of tabs) {
 			if (tab.kind !== "chat") continue;
-			if (tab.draft.trim() || tab.attachments.length) this.drafts.set(tab.key, { draft: tab.draft, attachments: tab.attachments });
+			if (tab.draft.trim() || tab.attachments.length || tab.quotes.length) this.drafts.set(tab.key, { draft: tab.draft, attachments: tab.attachments, quotes: tab.quotes });
 			// The conversation's terminal ends with its last tab.
 			if (!this.tabs.some((t) => t.kind === "chat" && t.key === tab.key)) void bridge.termClose(tab.key).catch(() => {});
 			// What a conversation was subscribed to on its own ends when its tab closes (not for an agent's main one).
@@ -1957,9 +1973,11 @@ export class Store extends Model {
 	// ---- what the owner does in a conversation -----------------------------------------------------
 
 	async submit(tab: Tab, raw: string, whenBusy: "steer" | "queue" = "steer"): Promise<void> {
-		const text = raw.trim();
-		if (!text || tab.kind !== "chat") return;
-		tab.inputs.push(text);
+		const typed = raw.trim();
+		if ((!typed && !tab.quotes.length) || tab.kind !== "chat") return;
+		if (typed) tab.inputs.push(typed);
+		const quotes = tab.quotes.splice(0);
+		const text = [...quotes.map((q) => quoteBlock(q.text)), typed].filter(Boolean).join("\n\n");
 		const files = tab.attachments.splice(0);
 		tab.draft = "";
 		const mine = tab.add({ t: "user", text, files: files.map((f) => f.name) });
@@ -1981,8 +1999,9 @@ export class Store extends Model {
 		} catch (e) {
 			tab.awaiting = tab.awaiting.filter((p) => p !== text);
 			tab.attachments.unshift(...files);
+			tab.quotes.unshift(...quotes);
 			tab.remove(mine);
-			tab.draft = text;
+			tab.draft = typed;
 			tab.note(`Not sent: ${errText(e)}`, "bad");
 			tab.touch();
 		}
@@ -2422,6 +2441,15 @@ export class Store extends Model {
 		if (this.shown(which)) this.close(which);
 		else this.open(which);
 		this.touch();
+	}
+
+	pendingQuote?: { key: string; item?: number };
+
+	showQuote(quote: Quote): void {
+		const tab = this.tabs.find((t) => t.kind === "chat" && t.key === quote.tab);
+		this.pendingQuote = { key: quote.tab, item: quote.item };
+		if (tab && tab !== this.active) this.activate(tab);
+		this.ask_("show-quote");
 	}
 
 	/** Ask the parts of the page for something only they can do. */

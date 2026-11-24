@@ -1,9 +1,9 @@
 // Where the owner writes: the message, the files that go with it, and under it what the
 // conversation runs on (folder, model, reasoning, mode), each a click away.
 import { Combobox as ComboboxPrimitive } from "@base-ui/react";
-import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CpuIcon, EyeIcon, FileIcon, FolderIcon, MicIcon, PlusIcon, ShieldIcon, SparkleIcon, SquareIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CpuIcon, EyeIcon, FileIcon, FolderIcon, MicIcon, PlusIcon, QuoteIcon, ShieldIcon, SparkleIcon, SquareIcon, XIcon } from "lucide-react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Attachment as Chip, AttachmentAction, AttachmentActions, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
+import { Attachment as Chip, AttachmentAction, AttachmentActions, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle, AttachmentTrigger } from "@/components/ui/attachment";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Combobox, ComboboxContent, ComboboxItem, ComboboxList } from "@/components/ui/combobox";
@@ -21,6 +21,11 @@ import { type Attachment, REASONING_ABOUT, store, type Tab, useModel, useSignal 
 import { baseName, MODES, size, tilde } from "./text.ts";
 
 const MAX_FILE = 20 * 1024 * 1024;
+
+function opening(text: string, max = 40): string {
+	const line = text.replace(/\s+/g, " ").trim();
+	return line.length > max ? `${line.slice(0, max).trimEnd()}…` : line;
+}
 const MAX_FILES = 10;
 
 const toBase64 = (buf: ArrayBuffer) => {
@@ -180,10 +185,11 @@ export function Composer({ tab }: { tab: Tab }) {
 
 	const send = async (whenBusy: "steer" | "queue") => {
 		const value = text.trim();
-		if (!value) return;
+		const command = value.startsWith("/") && !value.startsWith("//");
+		if (!value && !tab.quotes.length) return;
 		recall.current = -1;
 		close();
-		if (value.startsWith("/") && !value.startsWith("//")) {
+		if (command) {
 			tab.inputs.push(value);
 			set("");
 			return runSlash(value.slice(1), tab);
@@ -323,8 +329,28 @@ export function Composer({ tab }: { tab: Tab }) {
 				onDrop={(e) => void onDrop(e)}
 			>
 				<InputGroup>
-					{tab.attachments.length || over ? (
+					{tab.attachments.length || tab.quotes.length || over ? (
 						<InputGroupAddon align="block-start" className="flex-wrap">
+							{tab.quotes.map((q, i) => (
+								<Chip size="sm" key={`quote:${q.id}`} className="max-w-72 min-w-0">
+									<HoverTooltip>
+										<TooltipTrigger render={<AttachmentTrigger onClick={() => store.showQuote(q)} aria-label={`Go to where you quoted: ${opening(q.text)}`} />} />
+										<TooltipContent className="max-w-sm">
+											<div className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words">{q.text}</div>
+										</TooltipContent>
+									</HoverTooltip>
+									<AttachmentMedia><QuoteIcon /></AttachmentMedia>
+									<AttachmentContent>
+										<AttachmentTitle>{opening(q.text)}</AttachmentTitle>
+									</AttachmentContent>
+									<AttachmentActions>
+										<HoverTooltip>
+											<TooltipTrigger render={<AttachmentAction onClick={() => (tab.quotes.splice(i, 1), tab.touch())} aria-label="Remove quote" />}><XIcon /></TooltipTrigger>
+											<TooltipContent>Remove quote</TooltipContent>
+										</HoverTooltip>
+									</AttachmentActions>
+								</Chip>
+							))}
 							{tab.attachments.map((f, i) => (
 								<Chip size="sm" key={`${f.name}:${i}`}>
 									<AttachmentMedia variant={f.preview ? "image" : "icon"}>{f.preview ? <img src={f.preview} alt="" /> : <FileIcon />}</AttachmentMedia>
@@ -484,7 +510,7 @@ export function Composer({ tab }: { tab: Tab }) {
 								</TooltipContent>
 							</HoverTooltip>
 						) : null}
-						{tab.busy && !text.trim() ? (
+						{tab.busy && !text.trim() && !tab.quotes.length ? (
 							<HoverTooltip>
 								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full" onClick={() => void store.stop(tab)} aria-label="Stop" />}><SquareIcon /></TooltipTrigger>
 								<TooltipContent>
@@ -496,7 +522,7 @@ export function Composer({ tab }: { tab: Tab }) {
 							<HoverTooltip>
 								{/* Said as disabled, not disabled: a disabled button inside an InputGroup dims the whole
 								    composer (`has-disabled:`). With nothing to send, `send` does nothing. */}
-								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} aria-disabled={!text.trim() || undefined} aria-label={tab.busy ? "Give it to the agent while it works · ⌥↩ waits until it is done" : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
+								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} aria-disabled={(!text.trim() && !tab.quotes.length) || undefined} aria-label={tab.busy ? "Give it to the agent while it works · ⌥↩ waits until it is done" : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
 								<TooltipContent>
 									{tab.busy ? "Give it to the agent while it works · ⌥↩ waits until it is done" : "Send"}
 									<Kbd>↩</Kbd>
