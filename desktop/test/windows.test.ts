@@ -278,199 +278,223 @@ test("set_conversation tab opens, approvals, notifications, and Dock badges rout
 		app.setBadgeCount = (count: number) => (g.badges.push(count), true);
 	});
 
-	await focusWindow(app, page);
-	const win2 = await openNewWindow(app, () => clickMenuItem(app, "File", "New Window"));
-	await win2.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
-	// Make Window 1 the primary (most recently focused) window while Window 2 stays on NoTab.
-	await focusWindow(app, page);
+	const extraWindows: Page[] = [];
+	const blurAll = () =>
+		app.evaluate(({ BrowserWindow }: any) => {
+			for (const bw of BrowserWindow.getAllWindows()) {
+				if (bw.isDestroyed()) continue;
+				if (bw.isVisible()) bw.blur();
+				bw.emit("blur");
+			}
+		});
 
-	// 1. set_conversation (pine/conversation change: "open") opens the tab in the primary window only, leaving NoTab untouched.
-	await page.fill(
-		"[data-slot=composer] textarea",
-		mockMsg(
-			[
-				{ tools: [{ name: "pine_conversations", args: { action: "set_conversation", agent: "scout", name: "main", tab: true } }], text: "Opening scout." },
-				{ text: "Opened scout." },
-			],
-			"open scout tab ",
-		),
-	);
-	await page.keyboard.press("Enter");
-	await page.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 2);
-	await new Promise((r) => setTimeout(r, 150));
-	assert.equal(await win2.locator("[data-slot=tab]").count(), 0, "NoTab window must not adopt set_conversation tab opens");
+	try {
+		await focusWindow(app, page);
+		const win2 = await openNewWindow(app, () => clickMenuItem(app, "File", "New Window"));
+		extraWindows.push(win2);
+		await win2.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
+		// Make Window 1 the primary (most recently focused) window while Window 2 stays on NoTab.
+		await focusWindow(app, page);
 
-	// 2. Approval in a conversation held by win2 & win3 routes only to win2 & win3 (not page), deduplicates notifications, and counts badge as 1.
-	await page.evaluate(() => (window as any).pine.call("POST", "/agents/main/prompt", { prompt: "side setup", session: "side", wait: true }));
-	const win3 = await openNewWindow(app, () => clickMenuItem(app, "File", "New Window"));
-	await win3.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
+		// 1. set_conversation (pine/conversation change: "open") opens the tab in the primary window only, leaving NoTab untouched.
+		await page.fill(
+			"[data-slot=composer] textarea",
+			mockMsg(
+				[
+					{ tools: [{ name: "pine_conversations", args: { action: "set_conversation", agent: "scout", name: "main", tab: true } }], text: "Opening scout." },
+					{ text: "Opened scout." },
+				],
+				"open scout tab ",
+			),
+		);
+		await page.keyboard.press("Enter");
+		await page.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 2);
+		await new Promise((r) => setTimeout(r, 150));
+		assert.equal(await win2.locator("[data-slot=tab]").count(), 0, "NoTab window must not adopt set_conversation tab opens");
 
-	for (const w of [win2, win3]) {
-		await w.locator("[data-slot=no-tab] button").nth(1).click();
-		await w.waitForSelector("[data-slot=tab][data-active]", { timeout: 20_000 });
-		await w.fill("[data-slot=composer] textarea", "/sessions side");
-		await w.press("[data-slot=composer] textarea", "Enter");
-		await w.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 2);
-		// Close main:main in win2 and win3 so they hold only main:side.
-		await w.locator("[data-slot=tab]").first().locator("button[aria-label='Close this tab']").click();
-		await w.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 1);
-	}
+		// 2. Approval in a conversation held by win2 & win3 routes only to win2 & win3 (not page), deduplicates notifications, and counts badge as 1.
+		await page.evaluate(() => (window as any).pine.call("POST", "/agents/main/prompt", { prompt: "side setup", session: "side", wait: true }));
+		const win3 = await openNewWindow(app, () => clickMenuItem(app, "File", "New Window"));
+		extraWindows.push(win3);
+		await win3.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
 
-	// Blur all windows so background notifications fire, and reset recorded notifications/badges.
-	await app.evaluate(({ BrowserWindow }: any) => {
-		for (const bw of BrowserWindow.getAllWindows()) if (!bw.isDestroyed()) bw.emit("blur");
-		(globalThis as any).quiet.notified.length = 0;
-		(globalThis as any).badges.length = 0;
-	});
+		for (const w of [win2, win3]) {
+			await w.locator("[data-slot=no-tab] button").nth(1).click();
+			await w.waitForSelector("[data-slot=tab][data-active]", { timeout: 20_000 });
+			await w.fill("[data-slot=composer] textarea", "/sessions side");
+			await w.press("[data-slot=composer] textarea", "Enter");
+			await w.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 2);
+			// Close main:main in win2 and win3 so they hold only main:side.
+			await w.locator("[data-slot=tab]").first().locator("button[aria-label='Close this tab']").click();
+			await w.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 1);
+		}
 
-	await win2.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo shared-check" } }], text: "Checking." }, { text: "Checked." }], "run shared check "));
-	await win2.keyboard.press("Enter");
+		// Blur all windows so background notifications fire, and reset recorded notifications/badges.
+		await blurAll();
+		await app.evaluate(() => {
+			(globalThis as any).quiet.notified.length = 0;
+			(globalThis as any).badges.length = 0;
+		});
 
-	await win2.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
-	await win3.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
-	await new Promise((r) => setTimeout(r, 200));
+		await page.evaluate(
+			(promptText: string) => (window as any).pine.call("POST", "/agents/main/prompt", { prompt: promptText, session: "side", wait: false }),
+			mockMsg([{ tools: [{ name: "bash", args: { command: "echo shared-check" } }], text: "Checking." }, { text: "Checked." }], "run shared check "),
+		);
 
-	assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0, "Window 1 does not hold main:side and must not receive its approval");
-	const notifiedShared = await app.evaluate(() => (globalThis as any).quiet.notified.filter((n: any) => /approval/.test(n.body)));
-	assert.equal(notifiedShared.length, 1, `expected 1 deduplicated approval notification across win2 & win3, got ${JSON.stringify(notifiedShared)}`);
-	const lastBadge = await app.evaluate(() => (globalThis as any).badges.at(-1));
-	assert.equal(String(lastBadge), "1", "Dock badge counts the single unique approval once across windows");
+		await win2.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
+		await win3.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
+		await new Promise((r) => setTimeout(r, 200));
 
-	// Decide in win2 (dismiss modal if open or click Allow in modal/card); win3 updates too and badge clears.
-	if (await win2.locator("[role=dialog], [role=alertdialog]").count()) {
-		await win2.locator("[role=dialog], [role=alertdialog]").getByRole("button", { name: /^Allow/ }).first().click();
-	} else {
-		await win2.click('[data-item="approval"][data-state="open"] button:has-text("Allow")');
-	}
-	await win2.waitForSelector('[data-item="approval"][data-state="allowed"]', { timeout: 20_000 });
-	await win3.waitForSelector('[data-item="approval"][data-state="allowed"]', { timeout: 20_000 });
-	await win2.waitForSelector("[data-slot=markdown] >> text=Checked.", { timeout: 20_000 });
-	const clearedBadge = await app.evaluate(() => (globalThis as any).badges.at(-1));
-	assert.ok(clearedBadge === "" || clearedBadge === 0, `expected cleared badge, got ${JSON.stringify(clearedBadge)}`);
+		assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0, "Window 1 does not hold main:side and must not receive its approval");
+		const notifiedShared = await app.evaluate(() => (globalThis as any).quiet.notified.filter((n: any) => /approval/.test(n.body)));
+		assert.equal(notifiedShared.length, 1, `expected 1 deduplicated approval notification across win2 & win3, got ${JSON.stringify(notifiedShared)}`);
+		const lastBadge = await app.evaluate(() => (globalThis as any).badges.at(-1));
+		assert.equal(String(lastBadge), "1", "Dock badge counts the single unique approval once across windows");
 
-	// Close win3, put win2 back on NoTab, and make Window 1 the most recently focused window (then blur all).
-	await focusWindow(app, win3);
-	await clickMenuItem(app, "File", "Close Window");
-	await waitClosed(win3);
+		// Decide in win2 (dismiss modal if open or click Allow in modal/card); win3 updates too and badge clears.
+		if (await win2.locator("[role=dialog], [role=alertdialog]").count()) {
+			await win2.locator("[role=dialog], [role=alertdialog]").getByRole("button", { name: /^Allow/ }).first().click();
+		} else {
+			await win2.click('[data-item="approval"][data-state="open"] button:has-text("Allow")');
+		}
+		await win2.waitForSelector('[data-item="approval"][data-state="allowed"]', { timeout: 20_000 });
+		await win3.waitForSelector('[data-item="approval"][data-state="allowed"]', { timeout: 20_000 });
+		await win2.waitForSelector("[data-slot=markdown] >> text=Checked.", { timeout: 20_000 });
+		const clearedBadge = await app.evaluate(() => (globalThis as any).badges.at(-1));
+		assert.ok(clearedBadge === "" || clearedBadge === 0, `expected cleared badge, got ${JSON.stringify(clearedBadge)}`);
 
-	await focusWindow(app, win2);
-	await clickMenuItem(app, "File", "Close Tab");
-	await win2.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
+		// Close win3, put win2 back on NoTab, and make Window 1 the most recently focused window (then blur all).
+		await focusWindow(app, win3);
+		await clickMenuItem(app, "File", "Close Window");
+		await waitClosed(win3);
 
-	await focusWindow(app, page);
-	await page.locator("[data-slot=tab]").first().click();
-	await app.evaluate(({ BrowserWindow }: any) => {
-		for (const bw of BrowserWindow.getAllWindows()) if (!bw.isDestroyed()) bw.emit("blur");
-	});
+		await focusWindow(app, win2);
+		await clickMenuItem(app, "File", "Close Tab");
+		await win2.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
 
-	// 3. Orphan approval (conversation open in zero windows) routes only to primary Window 1, and a newly opened NoTab window does not adopt it on boot.
-	await page.evaluate(
-		(promptText: string) => (window as any).pine.call("POST", "/agents/main/prompt", { prompt: promptText, session: "orphan", wait: false }),
-		mockMsg([{ tools: [{ name: "bash", args: { command: "echo orphan-check" } }], text: "Orphan asking." }, { text: "Orphan done." }], "orphan task "),
-	);
+		await focusWindow(app, page);
+		await page.locator("[data-slot=tab]").first().click();
+		await blurAll();
 
-	await page.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
-	await new Promise((r) => setTimeout(r, 150));
-	assert.equal(await win2.locator("[data-slot=tab]").count(), 0, "unfocused NoTab window must not adopt orphan approval");
+		// 3. Orphan approval (conversation open in zero windows) routes only to primary Window 1, and a newly opened NoTab window does not adopt it on boot.
+		await page.evaluate(
+			(promptText: string) => (window as any).pine.call("POST", "/agents/main/prompt", { prompt: promptText, session: "orphan", wait: false }),
+			mockMsg([{ tools: [{ name: "bash", args: { command: "echo orphan-check" } }], text: "Orphan asking." }, { text: "Orphan done." }], "orphan task "),
+		);
 
-	const win4 = await openNewWindow(app, () => clickMenuItem(app, "File", "New Window"));
-	await win4.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
-	await new Promise((r) => setTimeout(r, 150));
-	assert.equal(await win4.locator("[data-slot=tab]").count(), 0, "newly opened NoTab window must not adopt pending orphan approval from GET /approvals");
+		await page.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
+		await new Promise((r) => setTimeout(r, 150));
+		assert.equal(await win2.locator("[data-slot=tab]").count(), 0, "unfocused NoTab window must not adopt orphan approval");
 
-	if (await page.locator("[role=dialog], [role=alertdialog]").count()) {
-		await page.locator("[role=dialog], [role=alertdialog]").getByRole("button", { name: /^Allow/ }).first().click();
-	} else {
-		await page.click('[data-item="approval"][data-state="open"] button:has-text("Allow")');
-	}
-	await page.waitForSelector('[data-item="approval"][data-state="allowed"]', { timeout: 20_000 });
+		const win4 = await openNewWindow(app, () => clickMenuItem(app, "File", "New Window"));
+		extraWindows.push(win4);
+		await win4.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
+		await new Promise((r) => setTimeout(r, 150));
+		assert.equal(await win4.locator("[data-slot=tab]").count(), 0, "newly opened NoTab window must not adopt pending orphan approval from GET /approvals");
 
-	await focusWindow(app, win4);
-	await clickMenuItem(app, "File", "Close Window");
-	await waitClosed(win4);
+		if (await page.locator("[role=dialog], [role=alertdialog]").count()) {
+			await page.locator("[role=dialog], [role=alertdialog]").getByRole("button", { name: /^Allow/ }).first().click();
+		} else {
+			await page.click('[data-item="approval"][data-state="open"] button:has-text("Allow")');
+		}
+		await page.waitForSelector('[data-item="approval"][data-state="allowed"]', { timeout: 20_000 });
 
-	// 4. Moving a tab with an open approval transfers ownership to the new window, and switching host or closing the owning window re-dispatches stranded approvals.
-	await focusWindow(app, page);
-	if ((await page.locator("[data-slot=tab]").count()) > 1) {
-		await page.locator("[data-slot=tab]").nth(1).locator("button[aria-label='Close this tab']").click();
+		await focusWindow(app, win4);
+		await clickMenuItem(app, "File", "Close Window");
+		await waitClosed(win4);
+
+		// 4. Moving a tab with an open approval transfers ownership to the new window, and switching host or closing the owning window re-dispatches stranded approvals.
+		await focusWindow(app, page);
+		if ((await page.locator("[data-slot=tab]").count()) > 1) {
+			await page.locator("[data-slot=tab]").nth(1).locator("button[aria-label='Close this tab']").click();
+			await page.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 1);
+		}
+		await page.fill("[data-slot=composer] textarea", "/sessions side");
+		await page.press("[data-slot=composer] textarea", "Enter");
+		await page.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 2);
+
+		await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo move-rehome-check" } }], text: "Move asking." }, { text: "Move done." }], "run move check "));
+		await page.keyboard.press("Enter");
+		await page.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
+		if (await page.locator("[role=dialog], [role=alertdialog]").count()) {
+			await page.keyboard.press("Escape");
+			await page.waitForSelector("[role=dialog], [role=alertdialog]", { state: "detached", timeout: 5_000 }).catch(() => {});
+		}
+
+		const winMoved = await openNewWindow(app, async () => {
+			await page.locator("[data-slot=tab]").nth(1).click({ button: "right" });
+			await page.locator('[role=menu][aria-label="Tab"] [role=menuitem]').nth(4).click();
+		});
+		extraWindows.push(winMoved);
+		await winMoved.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
 		await page.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 1);
-	}
-	await page.fill("[data-slot=composer] textarea", "/sessions side");
-	await page.press("[data-slot=composer] textarea", "Enter");
-	await page.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 2);
+		assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0, "moved tab approval leaves the source window");
+		assert.equal(await win2.locator("[data-slot=tab]").count(), 0);
 
-	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo move-rehome-check" } }], text: "Move asking." }, { text: "Move done." }], "run move check "));
-	await page.keyboard.press("Enter");
-	await page.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
-	if (await page.locator("[role=dialog], [role=alertdialog]").count()) {
-		await page.keyboard.press("Escape");
-		await page.waitForSelector("[role=dialog], [role=alertdialog]", { state: "detached", timeout: 5_000 }).catch(() => {});
-	}
+		// Switching winMoved to another environment strands the local approval and re-dispatches it to primary local Window 1 (page).
+		await focusWindow(app, page);
+		await page.evaluate(() => (window as any).pine.addHost("you@elsewhere"));
+		await winMoved.evaluate(() => (window as any).pine.use("you@elsewhere"));
+		await page.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 10_000 });
+		assert.equal(await win2.locator("[data-slot=tab]").count(), 0, "unfocused NoTab window must not adopt re-dispatched approval");
 
-	const winMoved = await openNewWindow(app, async () => {
-		await page.locator("[data-slot=tab]").nth(1).click({ button: "right" });
-		await page.locator('[role=menu][aria-label="Tab"] [role=menuitem]').nth(4).click();
-	});
-	await winMoved.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
-	await page.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 1);
-	assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0, "moved tab approval leaves the source window");
-	assert.equal(await win2.locator("[data-slot=tab]").count(), 0);
+		if (await page.locator("[role=dialog], [role=alertdialog]").count()) {
+			await page.keyboard.press("Escape");
+			await page.waitForSelector("[role=dialog], [role=alertdialog]", { state: "detached", timeout: 5_000 }).catch(() => {});
+		}
+		await page.fill("[data-slot=composer] textarea", "/approve");
+		await page.press("[data-slot=composer] textarea", "Enter");
+		await page.waitForFunction(() => document.querySelectorAll('[data-item="approval"][data-state="open"]').length === 0);
 
-	// Switching winMoved to another environment strands the local approval and re-dispatches it to primary local Window 1 (page).
-	await focusWindow(app, page);
-	await page.evaluate(() => (window as any).pine.addHost("you@elsewhere"));
-	await winMoved.evaluate(() => (window as any).pine.use("you@elsewhere"));
-	await page.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 10_000 });
-	assert.equal(await win2.locator("[data-slot=tab]").count(), 0, "unfocused NoTab window must not adopt re-dispatched approval");
+		// Closing the only window holding a conversation with an open approval re-dispatches it to the remaining window on that environment.
+		await win2.locator("[data-slot=no-tab] button").nth(1).click();
+		await win2.waitForSelector("[data-slot=tab][data-active]", { timeout: 20_000 });
+		await win2.fill("[data-slot=composer] textarea", "/sessions side");
+		await win2.press("[data-slot=composer] textarea", "Enter");
+		await win2.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 2);
+		await win2.locator("[data-slot=tab]").first().locator("button[aria-label='Close this tab']").click();
+		await win2.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 1);
 
-	if (await page.locator("[role=dialog], [role=alertdialog]").count()) {
-		await page.keyboard.press("Escape");
-		await page.waitForSelector("[role=dialog], [role=alertdialog]", { state: "detached", timeout: 5_000 }).catch(() => {});
-	}
-	await page.fill("[data-slot=composer] textarea", "/approve");
-	await page.press("[data-slot=composer] textarea", "Enter");
-	await page.waitForFunction(() => document.querySelectorAll('[data-item="approval"][data-state="open"]').length === 0);
+		await focusWindow(app, page);
+		await blurAll();
 
-	// Closing the only window holding a conversation with an open approval re-dispatches it to the remaining window on that environment.
-	await win2.locator("[data-slot=no-tab] button").nth(1).click();
-	await win2.waitForSelector("[data-slot=tab][data-active]", { timeout: 20_000 });
-	await win2.fill("[data-slot=composer] textarea", "/sessions side");
-	await win2.press("[data-slot=composer] textarea", "Enter");
-	await win2.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 2);
-	await win2.locator("[data-slot=tab]").first().locator("button[aria-label='Close this tab']").click();
-	await win2.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 1);
+		await page.evaluate(
+			(promptText: string) => (window as any).pine.call("POST", "/agents/main/prompt", { prompt: promptText, session: "side", wait: false }),
+			mockMsg([{ tools: [{ name: "bash", args: { command: "echo close-rehome-check" } }], text: "Close asking." }, { text: "Close done." }], "run close check "),
+		);
+		await win2.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
+		assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0);
 
-	await focusWindow(app, page);
-	await app.evaluate(({ BrowserWindow }: any) => {
-		for (const bw of BrowserWindow.getAllWindows()) if (!bw.isDestroyed()) bw.emit("blur");
-	});
+		await focusWindow(app, win2);
+		await clickMenuItem(app, "File", "Close Window");
+		await waitClosed(win2);
 
-	await win2.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo close-rehome-check" } }], text: "Close asking." }, { text: "Close done." }], "run close check "));
-	await win2.keyboard.press("Enter");
-	await win2.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
-	assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0);
+		await page.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 10_000 });
+		if (await page.locator("[role=dialog], [role=alertdialog]").count()) {
+			await page.keyboard.press("Escape");
+			await page.waitForSelector("[role=dialog], [role=alertdialog]", { state: "detached", timeout: 5_000 }).catch(() => {});
+		}
+		await page.fill("[data-slot=composer] textarea", "/approve");
+		await page.press("[data-slot=composer] textarea", "Enter");
+		await page.waitForFunction(() => document.querySelectorAll('[data-item="approval"][data-state="open"]').length === 0);
 
-	await focusWindow(app, win2);
-	await clickMenuItem(app, "File", "Close Window");
-	await waitClosed(win2);
-
-	await page.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 10_000 });
-	if (await page.locator("[role=dialog], [role=alertdialog]").count()) {
-		await page.keyboard.press("Escape");
-		await page.waitForSelector("[role=dialog], [role=alertdialog]", { state: "detached", timeout: 5_000 }).catch(() => {});
-	}
-	await page.fill("[data-slot=composer] textarea", "/approve");
-	await page.press("[data-slot=composer] textarea", "Enter");
-	await page.waitForFunction(() => document.querySelectorAll('[data-item="approval"][data-state="open"]').length === 0);
-
-	await focusWindow(app, winMoved);
-	await clickMenuItem(app, "File", "Close Window");
-	await waitClosed(winMoved);
-	await page.evaluate(() => (window as any).pine.forgetHost("you@elsewhere"));
-	await focusWindow(app, page);
-	if ((await page.locator("[data-slot=tab]").count()) > 1) {
-		await page.locator("[data-slot=tab]").nth(1).locator("button[aria-label='Close this tab']").click();
-		await page.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 1);
+		await focusWindow(app, winMoved);
+		await clickMenuItem(app, "File", "Close Window");
+		await waitClosed(winMoved);
+	} finally {
+		for (const w of extraWindows) {
+			if (!w.isClosed()) {
+				await focusWindow(app, w).catch(() => {});
+				await clickMenuItem(app, "File", "Close Window").catch(() => {});
+				await waitClosed(w).catch(() => {});
+			}
+		}
+		await page.evaluate(() => (window as any).pine.forgetHost("you@elsewhere")).catch(() => {});
+		await focusWindow(app, page).catch(() => {});
+		while ((await page.locator("[data-slot=tab]").count().catch(() => 0)) > 1) {
+			await page.locator("[data-slot=tab]").nth(1).locator("button[aria-label='Close this tab']").click().catch(() => {});
+			await page.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 1).catch(() => {});
+		}
 	}
 });
 
