@@ -158,7 +158,7 @@ export type UpdateCalls = "installUpdate" | "onUpdate";
  * The agent's real browser laid over the panel (electron/browser-host.ts): only the desktop app's bridge has these
  * calls, and only for this computer's pine. Elsewhere the panel draws the pictures the daemon hands over.
  */
-export type BrowserCalls = "browserShow" | "browserFocus" | "browserPicture";
+export type BrowserCalls = "browserShow" | "browserFocus" | "browserPicture" | "onBrowserPreempted";
 
 /** Multi-window lifecycle and coordination calls: only the desktop app's bridge provides these. */
 export type WindowCalls = "newWindow" | "closeWindow" | "windowLayout" | "onOpenHosts" | "onPrefs";

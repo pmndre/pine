@@ -88,6 +88,8 @@ const bridge = {
 	browserFocus: () => ipcRenderer.invoke("pine:browser-focus") as Promise<void>,
 	/** A still picture of the page laid over the panel (a data: address), for while something of the app's own covers that place. */
 	browserPicture: () => ipcRenderer.invoke("pine:browser-picture") as Promise<string | undefined>,
+	/** Pushed when another window claims the embedded browser tab this window was showing, so it can switch cleanly to canvas fallback. */
+	onBrowserPreempted: on("pine:browser-preempted") as (fn: () => void) => () => void,
 	/** Browser access (Settings > Browser access): its state, as access/control.ts gives it. */
 	access: () => ipcRenderer.invoke("pine:access") as Promise<AccessState>,
 	/** Turns it on or off, names the service's address (empty: the official one), sets open at login. What comes back is the state now. */

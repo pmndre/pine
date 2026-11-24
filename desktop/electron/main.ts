@@ -326,8 +326,12 @@ function persistOpenWindows(): void {
 	savePrefs();
 }
 
-/** The agents' browsers, in the primary local window: for this computer's pine only, whose browser servers can reach it. */
-const browsers = new BrowserHost(() => primaryWindowForHost(undefined)?.win ?? focusedWindow()?.win);
+/** The agents' browsers, tracked per local BrowserWindow: for this computer's pine only, whose browser servers can reach it. */
+const browsers = new BrowserHost({
+	onPreempted: (win) => {
+		if (!win.isDestroyed()) win.webContents.send("pine:browser-preempted");
+	},
+});
 let launch: Launch | undefined;
 let quitting = false;
 let listening: Listening | undefined;
@@ -444,6 +448,7 @@ async function useInWindow(w: ManagedWindow, host: string | undefined): Promise<
 	prefs.use = host;
 	persistOpenWindows();
 	broadcastOpenHosts();
+	if (wasLocal && host) browsers.detach(w.win);
 	// Only close local terminals when no local window remains open.
 	if (wasLocal && host && windowsForHost(undefined).length === 0) terminals.closeAll();
 	pruneStreams();
@@ -858,6 +863,7 @@ function createWindow(opts: CreateWindowOptions = {}): ManagedWindow {
 	win.on("resize", keep);
 	win.on("move", keep);
 	win.on("close", () => {
+		browsers.detach(win);
 		if (!quitting) {
 			prefs.use = w.host;
 			if (w.bounds) prefs.bounds = w.bounds;
@@ -877,6 +883,7 @@ function createWindow(opts: CreateWindowOptions = {}): ManagedWindow {
 	});
 	win.on("blur", () => sendTo(w, "pine:focus", false));
 	win.on("closed", () => {
+		browsers.detach(win);
 		windows.delete(w.id);
 		byContents.delete(wcId);
 		if (listeningWindow === w) {
@@ -1268,10 +1275,10 @@ function wire(): void {
 		// (The page's places are in its own points, which the window's zoom makes larger or smaller.)
 		const zoom = w.win.webContents.getZoomFactor() ?? 1;
 		const scaled = place && { x: Math.round(place.x * zoom), y: Math.round(place.y * zoom), width: Math.round(place.width * zoom), height: Math.round(place.height * zoom) };
-		return browsers.show(typeof key === "string" && !w.service?.host ? key : undefined, fine(index, 99) ? index : 0, scaled);
+		return browsers.show(w.win, typeof key === "string" && !w.service?.host ? key : undefined, fine(index, 99) ? index : 0, scaled);
 	});
-	handle("pine:browser-focus", () => browsers.focus());
-	handle("pine:browser-picture", () => browsers.picture());
+	handle("pine:browser-focus", (w) => browsers.focus(w.win));
+	handle("pine:browser-picture", (w) => browsers.picture(w.win));
 	handle("pine:retry", (w) => startService(w));
 	handle("pine:update", (_w, again?: boolean) => update(again === true));
 	handle("pine:install-update", () => installUpdate());

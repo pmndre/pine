@@ -63,20 +63,25 @@ export interface Bounds {
 	height: number;
 }
 
+export interface BrowserHostOptions {
+	/** Called when a window's currently attached WebContentsView is claimed by another window. */
+	onPreempted?: (win: BrowserWindow) => void;
+}
+
 export class BrowserHost {
 	private readonly token = crypto.randomBytes(32).toString("hex");
 	private readonly rooms = new Map<string, Room>();
 	private server?: WebSocketServer;
 	private port = 0;
-	private shown?: { view: WebContentsView; key: string };
+	private readonly shownByWindow = new Map<BrowserWindow, { view: WebContentsView; key: string }>();
 	/** The last place the panel had: a tab that is made while nothing is shown is laid out for it. */
 	private room: Bounds = { x: 0, y: 0, width: 560, height: 800 };
 	private n = 0;
 
-	private readonly window: () => BrowserWindow | undefined;
+	private readonly onPreempted?: (win: BrowserWindow) => void;
 
-	constructor(window: () => BrowserWindow | undefined) {
-		this.window = window;
+	constructor(options?: BrowserHostOptions) {
+		this.onPreempted = options?.onPreempted;
 	}
 
 	/** Where a browser server connects, with the word: for the daemon alone, which hands it to its browser servers. */
@@ -98,40 +103,72 @@ export class BrowserHost {
 		return (this.rooms.get(key)?.tabs.length ?? 0) > 0;
 	}
 
+	private detachView(win: BrowserWindow, view: WebContentsView): void {
+		if (!win.isDestroyed()) {
+			try {
+				win.contentView.removeChildView(view);
+			} catch {}
+		}
+	}
+
+	/** Detaches any WebContentsView currently attached to `win` (e.g. on window close or switching away from local). */
+	detach(win: BrowserWindow | undefined): void {
+		if (!win) return;
+		const current = this.shownByWindow.get(win);
+		if (!current) return;
+		this.detachView(win, current.view);
+		this.shownByWindow.delete(win);
+	}
+
 	/**
-	 * The page says where the panel is and which tab is in front (the browser server's order, which
+	 * The page in `win` says where the panel is and which tab is in front (the browser server's order, which
 	 * is the order the tabs were made in). Nothing: the panel is closed, covered or shows something else.
 	 */
-	show(key: string | undefined, index: number, bounds: Bounds | undefined): boolean {
-		const win = this.window();
+	show(win: BrowserWindow | undefined, key: string | undefined, index: number, bounds: Bounds | undefined): boolean {
 		const tab = key !== undefined && bounds ? this.rooms.get(key)?.tabs[index] : undefined;
-		if (this.shown && (this.shown.view !== tab?.view || !win)) {
-			win?.contentView.removeChildView(this.shown.view);
-			this.shown = undefined;
+		const current = win ? this.shownByWindow.get(win) : undefined;
+		if (current && (current.view !== tab?.view || !win || win.isDestroyed())) {
+			this.detachView(win!, current.view);
+			this.shownByWindow.delete(win!);
 		}
-		if (!tab || !win || !bounds) return false;
+		if (!tab || !win || win.isDestroyed() || !bounds) return false;
+		// A WebContentsView can only belong to one BrowserWindow at a time.
+		for (const [ownerWin, entry] of [...this.shownByWindow]) {
+			if (ownerWin === win || entry.view !== tab.view) continue;
+			if (ownerWin.isDestroyed()) {
+				this.shownByWindow.delete(ownerWin);
+				continue;
+			}
+			// If the current owner is focused and the requester is not, keep it there so the requester falls back to canvas.
+			if (ownerWin.isFocused() && !win.isFocused()) return false;
+			this.detachView(ownerWin, tab.view);
+			this.shownByWindow.delete(ownerWin);
+			this.onPreempted?.(ownerWin);
+		}
 		this.room = bounds;
-		if (!this.shown) win.contentView.addChildView(tab.view);
-		this.shown = { view: tab.view, key: key! };
+		if (!this.shownByWindow.has(win)) win.contentView.addChildView(tab.view);
+		this.shownByWindow.set(win, { view: tab.view, key: key! });
 		tab.view.setBounds(bounds);
 		return true;
 	}
 
-	/** The tab in front as a still picture (a data: address of a JPEG), for while the app's own menus lie over its place. */
-	async picture(): Promise<string | undefined> {
-		const wc = this.shown?.view.webContents;
+	/** The tab in front in `win` as a still picture (a data: address of a JPEG), for while the app's own menus lie over its place. */
+	async picture(win: BrowserWindow | undefined): Promise<string | undefined> {
+		const wc = win ? this.shownByWindow.get(win)?.view.webContents : undefined;
 		if (!wc || wc.isDestroyed()) return undefined;
 		const image = await wc.capturePage().catch(() => undefined);
 		return image && !image.isEmpty() ? `data:image/jpeg;base64,${image.toJPEG(85).toString("base64")}` : undefined;
 	}
 
-	/** Puts the keys into the tab in front, after a click on the panel's own frame around it. */
-	focus(): void {
-		this.shown?.view.webContents.focus();
+	/** Puts the keys into the tab in front in `win`, after a click on the panel's own frame around it. */
+	focus(win: BrowserWindow | undefined): void {
+		const wc = win ? this.shownByWindow.get(win)?.view.webContents : undefined;
+		if (wc && !wc.isDestroyed()) wc.focus();
 	}
 
 	close(): void {
 		for (const room of this.rooms.values()) this.drop(room);
+		this.shownByWindow.clear();
 		this.server?.close();
 	}
 
@@ -230,9 +267,11 @@ export class BrowserHost {
 		if (at < 0) return;
 		room.tabs.splice(at, 1);
 		for (const [s, t] of room.inner) if (t === tab) room.inner.delete(s);
-		if (this.shown?.view === tab.view) {
-			this.window()?.contentView.removeChildView(tab.view);
-			this.shown = undefined;
+		for (const [win, entry] of [...this.shownByWindow]) {
+			if (entry.view === tab.view) {
+				this.detachView(win, tab.view);
+				this.shownByWindow.delete(win);
+			}
 		}
 		this.send(room, { method: "Target.detachedFromTarget", params: { sessionId: tab.session, targetId: tab.id } });
 		this.send(room, { method: "Target.targetDestroyed", params: { targetId: tab.id } });

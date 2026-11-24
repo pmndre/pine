@@ -61,11 +61,24 @@ export function BrowserView({ tab }: { tab: Tab }) {
 	/** How many pixels of the picture make one point of the page (2: as sharp as a Retina display draws). */
 	const scale = useRef(1);
 	scale.current = state?.scale ?? 1;
-	/** The app could not lay its own browser over the panel (another machine's pine): pictures, then. */
+	/** The app could not lay its own browser over the panel (another machine's pine, or another window owns the tab): pictures, then. */
 	const [noPage, setNoPage] = useState(false);
 	/** The browser is the app's own, and this bridge lays its page over the panel: the page itself is there, not pictures. */
 	const inApp = state?.open && state.room && bridge?.browserShow && !noPage ? state.room : undefined;
 	const hosted = Boolean(state?.room);
+
+	// Reset canvas fallback when switching conversation, browser room, or browser tab.
+	useEffect(() => {
+		setNoPage(false);
+	}, [tab.agent, tab.session, state?.room, state?.current]);
+
+	// Re-claim the native browser view when this window regains focus after being preempted.
+	useEffect(() => {
+		if (!noPage || !state?.room) return;
+		return bridge?.onFocus?.((focused: boolean) => {
+			if (focused) setNoPage(false);
+		});
+	}, [noPage, state?.room]);
 	const front = state?.tabs[state.current];
 	/** What the empty view offers: the ports of the conversation's running programs, and what the agent opened that is not one of those. */
 	const running = tab.programs.flatMap((p) => p.ports.map((port) => ({ port, command: p.command })));
@@ -382,11 +395,20 @@ function HostedPage({ room, index, title, refused }: { room: string; index: numb
 	useEffect(() => {
 		const show = bridge!.browserShow!;
 		let over = false;
+		let preempted = false;
 		let last = "";
 		let misses = 0;
 		let frame = 0;
 		let timer: number | undefined;
 		const hide = () => void show(undefined, 0, undefined).catch(() => {});
+		const unsubPreempted = bridge?.onBrowserPreempted?.(() => {
+			if (over) return;
+			over = true;
+			preempted = true;
+			cancelAnimationFrame(frame);
+			window.clearTimeout(timer);
+			refused();
+		});
 		const tick = async () => {
 			const el = place.current;
 			let wait = 0;
@@ -406,10 +428,10 @@ function HostedPage({ room, index, title, refused }: { room: string; index: numb
 						hide();
 					} else {
 						const shown = await show(room, index, box).catch(() => false);
-						if (over) return hide();
+						if (over) return preempted ? undefined : hide();
 						if (shown) (setStill(undefined), (misses = 0));
 						else {
-							// The tab is not there yet (the browser is being moved into the app), or never will be.
+							// The tab is not there yet (the browser is being moved into the app), or another focused window holds it.
 							last = "";
 							wait = 300;
 							if (++misses > 20) return refused();
@@ -424,9 +446,10 @@ function HostedPage({ room, index, title, refused }: { room: string; index: numb
 		void tick();
 		return () => {
 			over = true;
+			unsubPreempted?.();
 			cancelAnimationFrame(frame);
 			window.clearTimeout(timer);
-			hide();
+			if (!preempted) hide();
 		};
 	}, [room, index]);
 	return (
