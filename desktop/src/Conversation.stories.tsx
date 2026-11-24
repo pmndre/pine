@@ -158,7 +158,6 @@ const quoted: Made[] = [
 	},
 ];
 
-/** Quotes sent with a message stay badges at the top of its bubble: a click goes back to where they were taken from. With replies, each quote is followed by its reply. */
 export const Quoted: Story = { args: { items: quoted } };
 
 /** A conversation that has not loaded yet: its shape, from stock Skeleton blocks. */

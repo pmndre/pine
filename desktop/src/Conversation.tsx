@@ -279,7 +279,12 @@ export function OwnerTurn({ text, from, files, menu, skeleton, footer, quotes, o
 								{quotes.map((q, i) => (
 									<div key={i} data-slot="quote-with-reply" className="flex min-w-0 flex-col items-start gap-1">
 										<QuoteChip text={q.text} className="bg-background whitespace-normal" onOpen={onQuote ? () => onQuote(q) : undefined} />
-										{q.reply?.trim() ? <div data-slot="quote-reply-text" className="break-words">{q.reply.trim()}</div> : null}
+										{q.reply?.trim() ? (
+											<div data-slot="quote-reply-text" className="flex min-w-0 gap-1.5 self-stretch border-l-2 border-border pl-2">
+												<ReplyIcon className="mt-1 size-3.5 shrink-0 text-muted-foreground" />
+												<span className="min-w-0 break-words">{q.reply.trim()}</span>
+											</div>
+										) : null}
 									</div>
 								))}
 							</div>

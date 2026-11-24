@@ -1,4 +1,4 @@
-import { QuoteIcon, ReplyIcon, XIcon } from "lucide-react";
+import { CheckIcon, QuoteIcon, ReplyIcon, XIcon } from "lucide-react";
 import type { KeyboardEvent, MouseEvent, Ref } from "react";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { Attachment, AttachmentAction, AttachmentActions, AttachmentContent, AttachmentMedia, AttachmentTitle, AttachmentTrigger } from "@/components/ui/attachment";
@@ -27,7 +27,7 @@ export function QuoteChip({ text, reply, replying, onOpen, onReply, onRemove, cl
 			<AttachmentContent>
 				<AttachmentTitle>{opening(text)}</AttachmentTitle>
 				{said && onReply ? (
-					<button type="button" data-slot="quote-chip-reply" onClick={onReply} aria-label={`Edit your reply: ${opening(said)}`} className="relative z-20 mt-0.5 flex max-w-full min-w-0 items-center gap-1 text-left text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground">
+					<button type="button" tabIndex={-1} data-slot="quote-chip-reply" onClick={onReply} aria-label={`Edit your reply: ${opening(said)}`} className="relative z-20 mt-0.5 flex max-w-full min-w-0 items-center gap-1 text-left text-muted-foreground outline-none hover:text-foreground focus-visible:text-foreground">
 						<ReplyIcon className="size-3 shrink-0" />
 						<span className="truncate">{opening(said)}</span>
 					</button>
@@ -78,7 +78,7 @@ export function QuoteReply({ text, value, onChange, onDone, inputRef, autoFocus,
 					</TooltipContent>
 				</HoverTooltip>
 				<HoverTooltip>
-					<TooltipTrigger render={<Button variant="ghost" size="icon-xs" className="-my-1 -mr-1 shrink-0" onClick={onDone} aria-label="Done with this reply" />}><XIcon /></TooltipTrigger>
+					<TooltipTrigger render={<Button variant="ghost" size="icon-xs" className="-my-1 -mr-1 shrink-0" onClick={onDone} aria-label="Done with this reply" />}><CheckIcon /></TooltipTrigger>
 					<TooltipContent>
 						Done with this reply
 						<Kbd>↩</Kbd>
@@ -93,7 +93,7 @@ export function QuoteReply({ text, value, onChange, onDone, inputRef, autoFocus,
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
 				onKeyDown={onKey}
-				placeholder="Your reply to this quote · ↩ done · ⇧↩ new line"
+				placeholder="Reply to this quote"
 				aria-label={`Your reply to: ${opening(text)}`}
 				className="max-h-40 min-h-0 resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-snug shadow-none focus-visible:ring-0 dark:bg-transparent md:text-sm"
 			/>

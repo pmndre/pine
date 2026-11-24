@@ -242,6 +242,7 @@ export class Tab extends Model {
 }
 
 const STOP_GRACE = 3000;
+const PROMPT_SHOWN = 2000;
 /** What the gate says of a pine that answered with no agent at all, until one is made there. */
 const NO_AGENTS = "This pine has no agents.";
 /** Kept once the home-screen suggestion was made, so that it is never made again. */
@@ -2711,7 +2712,7 @@ export class Store extends Model {
 			const tab = this.tabs.find((t) => t.kind === "chat" && t.agent === p.agent && t.session === p.session);
 			if (!tab || tab.roots.has(p.by)) return;
 			tab.roots.add(p.by);
-			const i = tab.awaiting.findIndex((x) => String(p.prompt ?? "").startsWith(x));
+			const i = tab.awaiting.findIndex((x) => String(p.prompt ?? "").startsWith(x.slice(0, PROMPT_SHOWN)));
 			const steer = { task: Number(p.by), into: Number(p.task) };
 			if (i >= 0) {
 				// Ours: the bubble on screen gets its line now, before the answer to the request comes.
@@ -2739,7 +2740,7 @@ export class Store extends Model {
 				void this.refreshConversations(p.agent);
 				return;
 			}
-			const i = tab.awaiting.findIndex((x) => String(p.prompt ?? "").startsWith(x));
+			const i = tab.awaiting.findIndex((x) => String(p.prompt ?? "").startsWith(x.slice(0, PROMPT_SHOWN)));
 			if (i >= 0) {
 				tab.awaiting.splice(i, 1);
 				// It waited behind work that was just stopped: the next stop is not meant for it.

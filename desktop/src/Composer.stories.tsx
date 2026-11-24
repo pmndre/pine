@@ -40,7 +40,6 @@ export const Written: Story = { args: { draft: "Sum up the invoice and say what 
 /** Parts of the conversation quoted from its selection toolbar, as badges above the input beside a file. */
 export const Quoted: Story = { args: { draft: "Why is that one still open?", quotes: true, files: true } };
 
-/** A reply to a quote being written, under the badges: a badge with a reply shows its opening as a second line. */
 export const Replying: Story = { args: { draft: "And file the rest.", quotes: true, replying: true } };
 
 /** A goal that waits: its banner (an Alert) above the input, with Resume and Clear. */
