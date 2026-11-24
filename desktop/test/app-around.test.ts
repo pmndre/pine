@@ -9,7 +9,7 @@ import path from "node:path";
 import { before, test } from "node:test";
 import { mockMsg } from "../../baseline/tests/mock.mjs";
 import { daemonGone, ours } from "./support/daemon.ts";
-import { activeOption, announced, api, app, BROWSER_TOGGLE, closed, CODE_EDGE, CODE_TOGGLE, confirm, far, folder, home, json, menu, mock, named, page, sees, shot, SIDE_EDGE, started, stillInside, visit, write } from "./support/window.ts";
+import { activeOption, HERE, announced, api, app, BROWSER_TOGGLE, closed, CODE_EDGE, CODE_TOGGLE, confirm, far, folder, home, json, menu, mock, named, page, sees, shot, SIDE_EDGE, started, stillInside, visit, write } from "./support/window.ts";
 
 // The question about the browser for the web tools is app.test.ts's: here it is answered and gone.
 before(() => started());
@@ -398,7 +398,7 @@ test("an event is published from the event log with a form: a topic, and a paylo
 	assert.equal(await page.getAttribute("#publish-payload", "aria-invalid"), "true");
 	await shot("11b-publish-wrong");
 	await page.getByLabel("Payload").fill('{"value": "away"}');
-	await page.getByLabel("Payload").press("Meta+Enter");
+	await page.getByLabel("Payload").press("ControlOrMeta+Enter");
 	await page.waitForSelector("[data-slot=publish-form]", { state: "detached" });
 	await sees("[data-slot=toast] >> text=on house/mode");
 	await sees("[aria-label=Events] [data-slot=collapsible-trigger] >> text=house/mode");
@@ -804,7 +804,10 @@ test("a phone-wide window lays the side bar and the panel over the conversation,
 		// Wide again: the side bar is a column as wide as it was.
 		await size(1280, 820);
 		await sees("#sidebar-panel [data-slot=sidebar]");
-		assert.equal(Math.round(await page.$eval("#sidebar-panel [data-slot=sidebar]", (el: Element) => el.getBoundingClientRect().width)), wide);
+		// (The panels settle over a few frames after the window changed: waited for, then said as it is.)
+		const sideWidth = () => page.$eval("#sidebar-panel [data-slot=sidebar]", (el: Element) => Math.round(el.getBoundingClientRect().width));
+		for (let i = 0; i < 40 && (await sideWidth()) !== wide; i++) await new Promise((r) => setTimeout(r, 50));
+		assert.equal(await sideWidth(), wide);
 	} finally {
 		// The tests after this one have the width the start of this file set, whatever failed here.
 		await size(1280, 820);
@@ -867,7 +870,7 @@ test("what was typed in a file and not saved stays when the panel becomes a shee
 		}
 		await sees("[data-slot=code-panel] .cm-content");
 		await page.click("[data-slot=code-panel] .cm-content");
-		await page.keyboard.press("Meta+End");
+		await page.keyboard.press("ControlOrMeta+End");
 		await page.keyboard.type("unsaved draft");
 		const save = page.locator("[data-slot=code-panel]").getByRole("button", { name: "Save" });
 		assert.ok(await save.isEnabled());
@@ -878,7 +881,7 @@ test("what was typed in a file and not saved stays when the panel becomes a shee
 		assert.ok(await save.isEnabled());
 		// Escape that closes the editor's search is the editor's, and so is one in the editor itself: the sheet stays.
 		await page.click("[data-slot=code-panel] .cm-content");
-		await page.keyboard.press("Meta+F");
+		await page.keyboard.press("ControlOrMeta+F");
 		await sees("[data-slot=code-panel] .cm-search");
 		await page.keyboard.press("Escape");
 		await page.waitForSelector("[data-slot=code-panel] .cm-search", { state: "detached" });
@@ -981,7 +984,7 @@ test("another machine's pine is used from the foot of the side bar, and this Mac
 
 	// The foot of the side bar lists both machines; the other one is picked, and the window shows its pine.
 	await page.click("[data-slot=service-status]");
-	await sees("[data-slot=dropdown-menu-radio-item] >> text=This Mac");
+	await sees(`[data-slot=dropdown-menu-radio-item] >> text=This ${HERE}`);
 	// The menu opens over the side bar, which moves the window: it is no part of that, or a click on it would move the
 	// window instead (the system takes it, so a click of the driver's, which goes to the page, cannot show this).
 	const region = await page.$$eval("[data-slot=dropdown-menu-content], [data-slot=dropdown-menu-radio-item]", (els: Element[]) => els.map((e) => getComputedStyle(e).getPropertyValue("-webkit-app-region")));
@@ -1014,7 +1017,7 @@ test("another machine's pine is used from the foot of the side bar, and this Mac
 	// Back to this Mac: its own agents and conversation, as they were; the other pine goes on, held by the app.
 	const farPort = daemonOf(far).port;
 	await page.click("[data-slot=service-status]");
-	await page.click("[data-slot=dropdown-menu-radio-item] >> text=This Mac");
+	await page.click(`[data-slot=dropdown-menu-radio-item] >> text=This ${HERE}`);
 	await page.waitForFunction(() => [...document.querySelectorAll("[data-slot=agent-label] > :first-child")].map((e) => e.textContent?.trim()).includes("scout"), undefined, { timeout: 30_000 });
 	assert.doesNotMatch(await agents(), /helper/);
 	assert.match(await page.textContent("[data-slot=service-status]"), /started here/);

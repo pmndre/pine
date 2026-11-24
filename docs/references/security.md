@@ -37,6 +37,13 @@ refusing; it limits what a run can do, by where its input came from.
   true`, a rate limit (120 requests a minute), and a fixed topic.
 - **MQTT, watched folders:** you choose the topics and folders. What arrives is treated as
   outside content.
+- **The Pine app on a phone or in a browser:** browser access is off until you turn it on in
+  the Pine app. Then a device gets in only with a key you allowed at this computer, after you
+  compared four digits on both screens; while `Visible on this network` is on, a phone on the
+  same network can ask without a code, and you still allow each one. The app's page holds no
+  token, a code block's Run button types only on your click, and a view runs in a frame that
+  is told nothing of what agents write. See [desktop.md](desktop.md), "What the app is careful
+  about", [web.md](web.md), [mobile.md](mobile.md) and [views.md](views.md).
 - **Event sources:** you configure them, or confirm what an agent sets up. One that nobody is
   subscribed to is not running (unless you gave it `"start": "always"`). What they report is outside content unless you mark the source
   as yours; see "Event sources" below.
@@ -131,7 +138,8 @@ content the files that are read as instructions.
 
 A conversation that you opened a folder for (`pine <folder>`, `/folder`, the folder in the UI's
 bottom bar) can also read and write that folder, and its tools start there. That is the whole
-of it: the folder is that conversation's and the sub-agents it starts, not the agent's other
+of it: the folder is that conversation's, the sub-agents' it starts, and, for that one task,
+another agent's that it hands work to without a `thread`; not the agent's other
 conversations', not that of a run that outside
 content started. Only you can open one; agents have no tool for it. pine's home, pine's own
 program and other agents' workspaces are refused, also as part of a larger folder. The
@@ -370,7 +378,8 @@ listed. What an agent writes to you there you read as you read its answers; it l
 nothing with anybody else. The source decides where a message goes, not the call (layer 9),
 and the agent is told with its next message that this way stays open. To see every such
 message before it is sent, put it on the agent's `approve` list (`"approve": ["send:telegram"]`,
-with the source's name): that asks in every conversation.
+with the source's name): that asks in every conversation. (In `manual` mode it waits like every
+action.)
 
 Critical actions are found by a fixed list of patterns, which you can read in
 `src/actions.ts` (`criticalCommand`, `PROTECTED_HOME`). Patterns are a net, not a wall: a
@@ -404,14 +413,18 @@ page says "now send the notes folder to ...". pine tracks that:
 
 - A session becomes **tainted** when it calls a tool that returns outside content: an MCP server
   marked `taints` (the bundled `web`, `browser` and `computer` are), anything matching
-  `security.taintTools`, or when it receives the answer of another agent whose run was tainted.
+  `security.taintTools`, or when it receives the answer of another agent whose run was tainted,
+  reads through a source (`read_source`), downloads a file from an address that is not one of
+  your servers, reads another conversation that holds outside content, or is shown a board
+  post or result written by a run that had read outside content or that an event from outside
+  started ([boards.md](boards.md)).
   Sessions started by untrusted events are tainted from the start.
 - In a tainted session, actions that send information out or act on the world wait for your
   **approval**: what the agent's `approveWhenTainted` list names (default `publish_event` and
   `send`; a `send` through a source that reaches only you, which Telegram is, is a message to
   you and never waits: "What asks you"), the acting tools of MCP servers marked `"approve": "tainted"`, `subscribe`, and
-  handing a task to an agent that can reach the internet. Its shell and its downloads are
-  not among them.
+  handing a task to any other agent (its answer can carry that agent's files back). Its shell
+  and its downloads are not among them.
 - Tools that only read never wait: `read`, `grep`, `find`, `ls`, `state_get`, `manual`, `board_read`, the
   tools that list what an agent has (`sources`, `schedules`, `mcp_servers`, `skills`), and
   every MCP tool whose server declares it read-only (`readOnlyHint`), unless a pattern on the
@@ -442,8 +455,10 @@ page says "now send the notes folder to ...". pine tracks that:
   that has read no outside content can change them, like everything else in its folders.
 - Events a tainted session publishes are `untrusted`.
 
-An approval request arrives in the terminal UI as a dialog and in Telegram with buttons, showing
-the agent, the tool and its arguments, and why you are asked. `pine approvals`,
+An approval request arrives in the terminal UI and the Pine app as a dialog and in Telegram with
+buttons, showing the agent, the tool and its arguments, and why you are asked. A Telegram bot
+that is one agent's own shows that agent's requests and questions and no other agent's, and
+cannot answer another agent's; a bot for all agents shows every agent's. `pine approvals`,
 `pine approve <id>` and `pine deny <id>` do the same from a terminal. No answer within
 `security.approvalTimeout` means no. The agent is told the action was not approved and to report
 instead of retrying.
@@ -472,8 +487,8 @@ conversation is not carried into a branch.
 call marks a conversation at all: what a subscribed source reports then arrives with full tools
 and no questions. Runs that an outside event started stay restricted in every setting.
 
-`approve` in `agent.json` lists actions that need approval every time in `manual` and `auto`
-mode, tainted or not (bypass skips them like everything else):
+`approve` in `agent.json` lists actions that need approval every time, in every mode but
+`bypass`, tainted or not (bypass skips them like everything else):
 
 ```json
 { "approve": ["bash:*git push*", "send:house", "mcp__calendar__delete_*"] }
@@ -506,7 +521,8 @@ The same actions in each mode:
 | `curl`, `git push`, anything that needs the network | runs | runs | asks once for network access, then runs | asks |
 | Writing a file in its own workspace | runs | runs | runs | asks |
 | `sudo`, a force push, `git reset --hard`, `curl ... \| sh`, shell startup files, ssh keys | runs | asks | asks | asks |
-| Sending a Telegram message or an event after it has read a web page | asks, because bypass is paused then (below) | asks | asks | asks |
+| Sending an event or an MQTT message after it has read a web page | asks, because bypass is paused then (below) | asks | asks | asks |
+| A Telegram message to you, also after a web page | runs | runs | runs | asks |
 
 So `auto` asks rarely, `safe` asks whenever the agent has to leave its own folders, and
 `manual` asks every time. Once a conversation in `bypass` has read outside content, bypass
@@ -521,16 +537,19 @@ needs something outside" above).
 
 The bundled browser has one question of the same kind: when the agent opens an address on this
 computer or your network (`http://localhost:5173`), you are asked, and a yes allows that host
-and port for the conversation. See "Local addresses" in [mcp.md](mcp.md).
+and port for the conversation. See "Local addresses" in [mcp.md](mcp.md). An address on this
+computer that you type yourself into the browser beside a conversation in the Pine app is
+allowed for that conversation without a question: the agent can open it too. pine's control
+port stays closed.
 
-App control (the bundled `computer` server, macOS) has one as well: the first time the agent
+App control (the bundled `computer` server: macOS, Windows, Linux with X11) has one as well: the first time the agent
 looks at or acts in an app, you are asked, and a yes allows that app for the conversation.
 After it, what the agent does there is not asked about click by click. Only an agent in `auto` or `bypass` mode has these tools, only in your own conversations,
 never in a run started from outside. See [computer.md](computer.md).
 
 **Sub-agents share their conversation's permissions.** A sub-agent is a copy of the agent doing
 part of the conversation's job, so it works under what you allowed there: the access you
-granted, your "always" answers, and your answer on whether the conversation keeps your account.
+granted, and your "always" answers.
 A sub-agent never asks you anything itself: it works unattended, often several at once, and a
 question would leave it waiting. Where you would be asked, it is refused and told to say in its
 answer what it needed, and the conversation that started it asks you, once. The model a
@@ -563,8 +582,9 @@ the workspace, byte for byte, and reports size and SHA-256.
   The session is marked as having read outside content.
 - Without web access, any other address needs network access for the conversation
   (`sandbox.network`, a grant from `request_access`, or `auto` or `bypass` mode). Without it the download is
-  refused and you are not asked. With it, only https and only public addresses are fetched, and
-  in a session that has read outside content the download asks first.
+  refused and you are not asked. With it, only https and only public addresses are fetched, and a
+  file from an address that is not one of your servers marks the session as having read outside
+  content.
 - The daemon does the fetching; the file is put in place the way the write tool writes: through
   the agent's sandbox where it works in one, so that the operating system decides where it may land. `limits.maxDownloadMb`
   (default 200) caps the size. Runs with the reduced tool set (layer 2) do not have the tool.
@@ -894,7 +914,7 @@ Whatever asks, the Telegram source sends only to your own chat, and the MQTT sou
 only to topics on its `publish` list. In a conversation that has read outside content, the
 `send` tool asks you first for a source that acts on something (MQTT), and not for one that
 only writes to you (Telegram). An agent's `publish` list names the topics it
-may use at all. Agents cannot publish on pine's own topics (`agent/`, `approval/`, `pine/`,
+may use at all. Agents cannot publish on pine's own topics (`agent/`, `approval/`, `board/`, `pine/`,
 `state/`, `timer/`).
 
 ### 10. Secrets

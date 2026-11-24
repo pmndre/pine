@@ -8,7 +8,7 @@ import { sandboxAvailable } from "../src/security.ts";
 const users = (req: any) => req.body.messages.filter((m: any) => m.role === "user").map((m: any) => textOf(m.content));
 const owner = { trust: "owner" as const };
 
-test("each agent has its own workspace, instructions and tools in one process", async () => {
+test("each agent has its own workspace, instructions and tools in one process", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const h = await harness({
 		agents: {
 			main: { files: { "AGENTS.md": "WORKSPACE-RULES-MAIN\n" } },
@@ -215,9 +215,10 @@ test("sub-agents run on the model and at the reasoning level their conversation 
 });
 
 test("sub-agents run in parallel with fresh contexts, even when only one model slot exists", async () => {
+	const took: Record<number, number> = {};
 	for (const maxConcurrentRuns of [1, 3]) {
 		const h = await harness({ pine: { limits: { maxConcurrentRuns } }, agents: { main: { files: { "AGENTS.md": "WS-MAIN\n" } } } });
-		for (const n of [1, 2, 3]) h.mock.state.scripts[`s${n}`] = [{ delayMs: 150, text: `answer ${n}` }];
+		for (const n of [1, 2, 3]) h.mock.state.scripts[`s${n}`] = [{ delayMs: 300, text: `answer ${n}` }];
 		const t0 = Date.now();
 		const r = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "subagent", args: { tasks: ["@@REF:s1@@", "@@REF:s2@@", "@@REF:s3@@"] } }] }], "PARENT-CONTEXT "), ...owner });
 		const ms = Date.now() - t0;
@@ -284,16 +285,19 @@ test("a message for a busy session can be queued or steered into the running tas
 test("a steered message can be sent now: the step under way stops, the work reads it and goes on", async () => {
 	const h = await harness({ agents: { main: {} } });
 	const started = Date.now();
-	const first = h.pine.agents.submit({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: "sleep 4; echo slept" } }] }, { text: "first done" }]), ...owner });
+	const first = h.pine.agents.submit({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: "sleep 6; echo slept" } }] }, { text: "first done" }]), ...owner });
 	await until(() => h.pine.bus.query({ topic: "agent/main/started" }).length === 1 && h.mock.state.requests.length >= 1);
 	await sleep(150);
 	const steered = h.pine.agents.submit({ agent: "main", prompt: "STATUS?", whenBusy: "steer", ...owner });
 	assert.equal(steered.meta.steered, first.id);
 	assert.equal(h.pine.tasks.get(steered.id)!.meta.read, undefined, "the command still runs: not read yet");
+	const sent = Date.now();
 	assert.equal(h.pine.agents.sendNow(steered.id), true);
 	const r = await h.pine.agents.wait(first.id);
 	assert.equal(r.status, "done", String(r.error));
-	assert.ok(Date.now() - started < 3500, "the command was stopped, not waited for");
+	// Counted from the press, not from the start, which a busy computer makes long: a command that was
+	// waited for would end some six seconds after it began.
+	assert.ok(Date.now() - sent < 4000, `the command was stopped, not waited for (${Date.now() - sent} ms after the press, ${Date.now() - started} ms in all)`);
 	// pi may hand the message over itself as the step is cut off; either way it comes before pine's words.
 	const said = JSON.stringify(h.mock.state.requests.at(-1).body.messages.slice(-3));
 	assert.ok(said.includes("STATUS?") && said.includes("Your owner stopped your work") && said.indexOf("STATUS?") > said.indexOf("Command aborted"), `the work went on with the message: ${said}`);
@@ -361,7 +365,8 @@ test("agents are told how pine works and can read its manual, but not pi's or pi
 	assert.ok(out[0].includes("If you are an agent running inside pine"), out[0].slice(0, 200));
 	assert.ok(out[1].includes("configuration.md") && out[1].includes("globalMcp"), out[1].slice(0, 200));
 	if (sandboxAvailable()) assert.ok(out[2].includes("# MCP servers"), out[2]);
-	assert.match(out[3], /outside the paths this agent may read/);
+	// (Without a sandbox, as on Windows, pine's code is read as any file of the owner's; pine's home stays closed.)
+	if (sandboxAvailable()) assert.match(out[3], /outside the paths this agent may read/);
 	assert.match(out[4], /not accessible to agents/);
 	await h.close();
 });
@@ -431,7 +436,7 @@ test("a model chosen for an agent is saved and still set after a restart", async
 	await h.close();
 });
 
-test("what a model server has already read never changes: later requests only add to the end", async () => {
+test("what a model server has already read never changes: later requests only add to the end", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const stub = path.resolve(import.meta.dirname, "../baseline/tests/mcp-stdio-server.mjs");
 	const h = await harness({ agents: { main: { agent: { state: { inject: ["house/#"] }, mcp: { notes: { command: process.execPath, args: [stub] } } } } } });
 	h.pine.state.set("house/mode", "home");

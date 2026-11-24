@@ -12,6 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, afterEach, before } from "node:test";
 import { startMock } from "../../../baseline/tests/mock.mjs";
+import { sandboxMissing } from "../../../src/security.ts";
 import { launchApp } from "./app.ts";
 
 export const root = path.resolve(import.meta.dirname, "..", "..");
@@ -90,6 +91,10 @@ export const api = (method: string, url: string, body?: unknown) => page.evaluat
 
 /** Makes the home, the stand-ins and the app, and waits for its window. */
 async function open(): Promise<void> {
+	// The agents here work in `safe` mode, in the sandbox, as an owner's do. On Linux it is bubblewrap,
+	// which `pine init` sets up: without it they get no shell and see no folder, and half of what is
+	// tested here cannot happen. That is said once, here, and not as a dozen timeouts.
+	if (process.platform === "linux" && sandboxMissing()) throw new Error(`No sandbox on this computer: ${sandboxMissing()}. The app's tests need one: run "node src/cli.ts init --yes" at the root first.`);
 	mock = await startMock({ strip: /<pine-note>[\s\S]*?<\/pine-note>\s*/g, promptTokens: (body: any, raw: string) => contextAt(body) ?? Math.ceil(raw.length / 4) });
 	home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-desktop-")));
 	write(path.join(home, "models.json"), JSON.stringify({ providers: { mock: { name: "Mock", baseUrl: mock.baseUrl, api: "openai-completions", apiKey: "sk-mock", models: [{ id: "m", name: "Mock", contextWindow: 128000, maxTokens: 4096, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } }));
@@ -126,7 +131,8 @@ process.stdin.resume();
 	github = http.createServer((_req, res) => {
 		releases.asked++;
 		const version = releases.tag.slice(1);
-		res.writeHead(releases.status, { "content-type": "application/json" }).end(JSON.stringify({ tag_name: releases.tag, html_url: "https://example.invalid/elsewhere", assets: ["arm64", "x64"].flatMap((arch) => [{ name: `Pine-${version}-${arch}.dmg` }, { name: `Pine-${arch}.json` }]) }));
+		// The app for each system and processor is attached (`appFile` in electron/updates.ts), and the Mac's update feed, so a release counts wherever the test runs.
+		res.writeHead(releases.status, { "content-type": "application/json" }).end(JSON.stringify({ tag_name: releases.tag, html_url: "https://example.invalid/elsewhere", assets: ["arm64", "x64"].flatMap((arch) => [...[".dmg", ".AppImage", "-setup.exe"].map((kind) => ({ name: `Pine-${version}-${arch}${kind}` })), { name: `Pine-${arch}.json` }]) }));
 	});
 	await new Promise<void>((r) => github.listen(0, "127.0.0.1", r));
 
@@ -230,6 +236,8 @@ export function contextAt(body: any): number | undefined {
 }
 
 /** The edge between the side bar and the rest of the window, and the one before the panel beside a conversation. */
+/** How the app calls this computer: "This Mac" on a Mac, "This computer" elsewhere. */
+export const HERE = process.platform === "darwin" ? "Mac" : "computer";
 export const SIDE_EDGE = "#sidebar-panel + [data-slot=resizable-handle]";
 export const CODE_EDGE = "[data-slot=resizable-handle]:has(+ #code-panel)";
 /** The edge before the browser's aside, and the toggles of the panel and of the browser at the top right of the title bar. */
@@ -248,7 +256,7 @@ export const closed = () => void (app = undefined);
 export async function started(): Promise<void> {
 	await opened.promise;
 	await sees("[data-slot=empty] h1");
-	await sees("[data-slot=dialog-title] >> text=The browser for the web tools is not on this Mac");
+	await sees(`[data-slot=dialog-title] >> text=The browser for the web tools is not on this ${HERE}`);
 	await page.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" }).click();
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
 }

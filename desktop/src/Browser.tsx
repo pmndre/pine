@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type BrowserState, media } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { ROOM, store, type Tab, useModel } from "./model.ts";
-import { errText } from "./text.ts";
+import { errText, macKeys, shortcut } from "./text.ts";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { EmptyView } from "@/components/empty-view";
@@ -27,9 +27,15 @@ import { cn } from "@/lib/utils";
 
 type Op = Record<string, unknown> & { do: string };
 
-/** A key as the browser's own keyboard names it, with what is held down with it; nothing for a key that only types its letter. */
+/**
+ * A key as the browser's own keyboard names it, with what is held down with it; nothing for a key that only types its letter.
+ * The key of shortcuts here (⌘ on a Mac, Ctrl elsewhere) goes as the shortcut key of the system the agent's browser runs
+ * on (`ControlOrMeta`, which that browser's Playwright resolves), so that select all or undo mean the same with a pine on
+ * another machine. The other of the two goes as itself.
+ */
 function keyOf(e: React.KeyboardEvent): string | undefined {
-	const held = `${e.metaKey ? "Meta+" : ""}${e.ctrlKey ? "Control+" : ""}${e.altKey ? "Alt+" : ""}`;
+	const mac = macKeys();
+	const held = `${(mac ? e.metaKey : e.ctrlKey) ? "ControlOrMeta+" : ""}${mac && e.ctrlKey ? "Control+" : ""}${!mac && e.metaKey ? "Meta+" : ""}${e.altKey ? "Alt+" : ""}`;
 	const named = ["Enter", "Backspace", "Tab", "Escape", "Delete", "Home", "End", "PageUp", "PageDown", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "F5"].includes(e.key);
 	if (named) return `${held}${e.shiftKey ? "Shift+" : ""}${e.key}`;
 	// A letter or a digit with Cmd or Ctrl: select all, copy inside the page, undo.
@@ -502,7 +508,7 @@ export function BrowserAside({ tab }: BrowserTabProps) {
 				<>
 					<GlobeIcon className="size-3.5 text-muted-foreground" />
 					<span className="min-w-0 flex-1 truncate">Browser</span>
-					<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => void store.command("browser")} aria-label="Close the browser"><XIcon /></Button>} /><TooltipContent>Close the browser<Kbd>⇧⌘B</Kbd></TooltipContent></HoverTooltip>
+					<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => void store.command("browser")} aria-label="Close the browser"><XIcon /></Button>} /><TooltipContent>Close the browser<Kbd>{shortcut("⇧⌘B")}</Kbd></TooltipContent></HoverTooltip>
 				</>
 			}
 		>

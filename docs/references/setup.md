@@ -43,9 +43,9 @@ pine, you ask it for, and it does it with tools that check what they are given, 
 you or an agent editing files. See "The main agent administers pine" below. The other agents do not have `create_agent`,
 `update_agent`, `rename_agent`, `remove_agent`, `agents`, `settings`, `set_setting`, `routes`, `add_route`,
 `remove_route`, `add_source_type`, `remove_source_type`, `add_model_server`, `remove_model_server`,
-`conversations`, `read_conversation`, `set_conversation` or `remove_conversation`,
-and they are refused when they ask for the global scope. Their instructions tell them who can do it, so
-an agent you ask for something that is not its to do sends you to the main agent instead of
+`conversations`, `read_conversation`, `set_conversation`, `remove_conversation`, `rename_group`,
+`remove_group`, `sign_in`, `sign_out` or `sign_in_mcp_server`, and they are refused when they
+ask for the global scope. Their instructions tell them who can do it, so an agent you ask for something that is not its to do sends you to the main agent instead of
 trying.
 
 ## Three scopes
@@ -98,7 +98,9 @@ there without a question, and the agent says what it would set up. The tools tha
 In a conversation that has read outside content two things are stricter, because what they
 write is read back as instructions or runs as a program. `add_skill` is put to you first,
 with its instructions ([security.md](security.md), "Skills are instructions").
-`add_source_type` and `add_model_server` are refused: start a new conversation for it.
+`add_source_type` and `add_model_server` are refused, and so are the main agent's tools listed
+under "Not from a conversation that has read outside content" below: start a new conversation
+for it.
 
 Runs with the reduced tool set, which outside events start through a route or a subscription
 marked `separate`, have none of these tools, and neither have sub-agents.
@@ -162,8 +164,8 @@ Which model the agent runs on is told to it with your message, so it needs no to
 | `sign_in_mcp_server` `name` [`agent`] | Main agent only. Signs in to a remote MCP server that needs one: you confirm it, and the server's page opens in the browser of the computer pine runs on, where you sign in. pine keeps the token. The same as Sign in under Settings > MCP servers and `pine mcp login <name>`. |
 | **Not setup: the other tools pine gives an agent** | |
 | `request_access` [`path`] [`write`] [`network`] `reason` | Asks you for access the conversation does not have: a file or folder outside the workspace (`path`; with `write: true` also to change it), or the network from the shell (`network: true`). You decide; a yes holds for the conversation until it is reset or pine restarts. pine's home is never granted. An agent does not have to call it: when a file tool or a shell command needs something outside, pine asks you the same question itself. See "When a call needs something outside" and "Modes" in [security.md](security.md). |
-| `delegate` `agent` `task` [`wait`] [`thread`] | Hands a task to another agent and gets its answer. Only there when the agent's `delegates` list is not empty, which by default names every agent but the main one. The other agent works in its own mode or the caller's, whichever is stricter. See [agents.md](agents.md). |
-| `subagent` `tasks` [`model`] [`thinking`] [`pool`] [`ids`] [`note`] [`check`] | Runs several copies of the agent side by side, one task each, and returns their answers. With `pool` there can be many more tasks than run at once: they are worked through on the conversation's board ([boards.md](boards.md)). With `ids` the copies work tasks that are on a board already and settle them there. With `model` the copies run on another model than the agent's, with `thinking` at another reasoning level. They never ask you anything. See [agents.md](agents.md), "Sub-agents". |
+| `delegate` `agent` `task` [`wait`] [`thread`] [`worktree`] | Hands a task to another agent and gets its answer. Only there when the agent's `delegates` list is not empty, which by default names every agent but the main one. The other agent works in its own mode or the caller's, whichever is stricter. See [agents.md](agents.md). |
+| `subagent` `tasks` [`stages`] [`model`] [`thinking`] [`worktree`] [`pool`] [`ids`] [`note`] [`check`] [`verify`] | Runs several copies of the agent side by side, one task each, and returns their answers. With `pool` there can be many more tasks than run at once: they are worked through on the conversation's board ([boards.md](boards.md)). With `ids` the copies work tasks that are on a board already and settle them there. With `model` the copies run on another model than the agent's, with `thinking` at another reasoning level. They never ask you anything. See [agents.md](agents.md), "Sub-agents". |
 | `models` | Lists the models that are set up, as `provider/model`, with what each can do (see pictures, reason) and which one is the agent's own. This is how an agent answers "which models are there", and where it finds what `subagent` takes as `model`. |
 | `download` `url` `path` | Fetches a file from a web address into the workspace, byte for byte. It is how an agent gets a file that a remote MCP server made: by the link in the tool's answer, never by a file path from it. See "Downloads" in [security.md](security.md) and "Files and pictures from a remote server" in [mcp.md](mcp.md). |
 | `boards`, `board_read`, `board_post`, `board_claim`, `board_done`, `board_answer`, `board_remove` | The tasks of a job that several work on: a conversation and its sub-agents, or several agents. A task is taken by one at a time, its result stays on the board, and one that cannot be done without a decision asks and is answered. A board whose work is finished is removed with `board_remove`; one that others use only after your yes. See [boards.md](boards.md). |
@@ -247,19 +249,20 @@ agent, not a pine that does not start.
 | Types of event source, model servers | `add_source_type`, `remove_source_type`, `add_model_server`, `remove_model_server` |
 | pine's settings | `settings` (list), `set_setting` |
 | Routes: rules of your own in pine.json | `routes` (list), `add_route`, `remove_route` |
-| Conversations: your tabs, and each agent's list of them | `conversations` (list), `read_conversation`, `set_conversation`, `remove_conversation` |
+| Conversations: your tabs, and each agent's list of them | `conversations` (list), `read_conversation`, `set_conversation`, `remove_conversation`, `rename_group`, `remove_group` |
+| Sign-ins: model providers, remote MCP servers | `sign_in`, `sign_out`, `sign_in_mcp_server` |
 
 The ones only it has:
 
 | Tool | Does |
 |---|---|
 | `agents` [`id`] | Lists the agents: what each is for, its model, reasoning, mode and reach, and what it has (conversations, event sources, MCP servers, schedules, skills, files in its workspace). With `id`, one agent in full, with its workspace and its instructions. Asks nobody. |
-| `update_agent` `id` [`color`] [`instructions`] [`model`] [`thinking`] [`mode`] [`tools`] [`delegates`] [`scope`] [`network`] [`read`] [`write`] [`forget`] | Changes an agent's settings; only what is given changes. You see the change line by line and confirm it. See "Changing and removing an agent". |
+| `update_agent` `id` [`color`] [`instructions`] [`soul`] [`tooling`] [`model`] [`thinking`] [`mode`] [`tools`] [`delegates`] [`network`] [`read`] [`write`] [`forget`] | Changes an agent's settings; only what is given changes. You see the change line by line and confirm it. See "Changing and removing an agent". |
 | `rename_agent` `id` `to` | Gives an agent another id, and everything that names it follows. You see what follows and confirm it. Not the main agent itself. See "Renaming an agent". |
 | `remove_agent` `id` [`keep_files`] | Removes an agent for good, with everything it has. You see what goes and confirm it. See "Changing and removing an agent". |
 | `settings` | Lists the settings it can change, with what is in force and what each means. Asks nobody. |
 | `set_setting` `key` `value` | Changes one setting in `pine.json`; `"default"` takes the entry out. You see the old and the new value and confirm. See "pine's settings". |
-| `agent`, `conversation` (parameters) | Every tool under event sources, MCP servers, skills and schedules above takes `agent`: the call is then done for that agent, as if it had made it in its main conversation. With `conversation`, for one of its conversations. See "The main agent administers pine". |
+| `agent`, `conversation` (parameters) | Every tool that lists, adds, removes or subscribes under event sources, MCP servers, skills and schedules above (not `send`, `read_source` or the source types) takes `agent`: the call is then done for that agent, as if it had made it in its main conversation. With `conversation`, for one of its conversations. See "The main agent administers pine". |
 
 **For another agent.** "Add a schedule for books: every Monday at eight, sum up the week" is
 one call of the main agent: `add_schedule` with `agent: "books"`. It is carried out by that
@@ -272,7 +275,8 @@ agent (`remove_source`, `remove_mcp_server`, `remove_skill`, `remove_schedule`, 
 asks you every time, and the question says that the main agent asks.
 
 **Not from a conversation that has read outside content.** `update_agent`, `rename_agent`, `remove_agent`,
-`set_setting`, `add_route`, `remove_route`, `set_conversation` and `remove_conversation` are refused there without a question to you: a web page that says "remove the
+`set_setting`, `add_route`, `remove_route`, `set_conversation`, `remove_conversation`, `rename_group`,
+`remove_group`, `sign_in`, `sign_out` and `sign_in_mcp_server` are refused there without a question to you: a web page that says "remove the
 agent" must not get as far as your approval dialog. A new
 conversation, or `/reset`, does it.
 
@@ -297,7 +301,7 @@ Tell the main agent what to change about another agent ("give the books agent an
 You see every line of the change before it is made, with a note where it gives the agent more
 (the account, the network, bypass mode). It holds from the agent's next message on. pine's own
 folder, pine's code and another agent's workspace are refused as folders. `pine agent update
-<id>` does the same from a shell, each value a flag (`--model`, `--tools`, `--scope`, ...); a
+<id>` does the same from a shell, each value a flag (`--model`, `--tools`, `--mode`, ...); a
 model change needs a running daemon, which checks the model exists ([operations.md](operations.md)).
 
 `remove_agent` takes an agent out of pine, and nothing of it is left. You are shown what goes
@@ -436,6 +440,7 @@ What holds for them:
 | `security.taint` | Outside content: how long pine asks before an agent sends something out, after its conversation has read something from outside |
 | `security.bypassWhenTainted` | Bypass after outside content: whether bypass mode stays in force in such a conversation |
 | `ui.theme` | Theme: the colors of the Pine app, a theme in the `themes` folder of pine's home by its name (`dracula`, `github-light`). Any VS Code color theme file put there can be chosen |
+| `ui.view` | View: what the Pine app's panel draws, a view in the `views` folder of pine's home by its name (`office` for `office.ts`); `off`: no panel. Not set: the view whose name comes first |
 
 A value is checked for what it has to be (a model that exists, one of a few words, a number in
 a range, a time), you see the old and the new value, and where the new one gives something up

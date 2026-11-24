@@ -1,7 +1,7 @@
 // Settings: everything about pine that is otherwise a command in a shell or a sentence to the
 // main agent. Each page asks the daemon what there is and tells it what to change; the daemon
 // checks every change as it checks the main agent's, and nothing here writes a file itself.
-import { ArrowLeftIcon, AudioLinesIcon, BookIcon, MonitorSmartphoneIcon, LaptopIcon, ServerIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PlugIcon, PlusIcon, RotateCwIcon, SearchIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { ArrowLeftIcon, AudioLinesIcon, BookIcon, MonitorSmartphoneIcon, LaptopIcon, ServerIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PlugIcon, PlusIcon, RotateCwIcon, SearchIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon, TerminalSquareIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +23,7 @@ import { type AgentDetail, api, type LoginState, type ModelServer, type Provider
 import { bridge } from "./bridge.ts";
 import { Editor } from "./CodePanel.tsx";
 import { store, type UpdatePhase, useModel, useSignal } from "./model.ts";
-import { ago, errText, MODES, plural, REASONING, short, tilde } from "./text.ts";
+import { ago, errText, MODES, newApp, plural, REASONING, short, tilde } from "./text.ts";
 import type { DialogRootActions } from "@base-ui/react/dialog";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block";
@@ -2421,6 +2421,39 @@ export function MachineList() {
 	const here = `This ${computerWord(s.platform)}`;
 	// How to pair, or the user@host machines over SSH: never both at once (`machinesView`).
 	const shown = s.machinesShown;
+	// WSL on Windows: the distributions this computer has, and what the app says when it brings pine into one.
+	const [distros, setDistros] = useState<string[]>([]);
+	const [installed, setInstalled] = useState<{ distro: string; sandbox: string }>();
+	const [installing, setInstalling] = useState<string>();
+	useEffect(() => {
+		// (A bridge without WSL, or a stand-in, may answer with anything: only a list of names counts.)
+		if (s.local)
+			Promise.resolve(bridge.wslDistros?.())
+				.then((d) => setDistros(Array.isArray(d) ? d.filter((x): x is string => typeof x === "string") : []))
+				.catch(() => setDistros([]));
+	}, [s.local]);
+	const addWsl = async (d: string) => {
+		setError(undefined);
+		try {
+			s.prefs = await bridge.addHost(`wsl:${d}`);
+			s.touch();
+		} catch (e) {
+			setError(errText(e));
+		}
+	};
+	const install = async (d: string) => {
+		setError(undefined);
+		setInstalling(d);
+		try {
+			const r = await bridge.wslInstall!(d);
+			setInstalled({ distro: d, sandbox: r.sandbox });
+			void bridge.retry();
+		} catch (e) {
+			setError(errText(e));
+		} finally {
+			setInstalling(undefined);
+		}
+	};
 	const add = async () => {
 		setError(undefined);
 		try {
@@ -2449,7 +2482,7 @@ export function MachineList() {
 		<SettingsItem
 			key={h ?? ""}
 			data-environment={h ?? "local"}
-			media={h && !isPaired(h) ? <ServerIcon /> : <LaptopIcon />}
+			media={h?.startsWith("wsl:") ? <TerminalSquareIcon /> : h && !isPaired(h) ? <ServerIcon /> : <LaptopIcon />}
 			mediaVariant="icon"
 			// The text asks for 20rem before it shares its line: where the buttons would leave it less (a phone, the Gate, the four of a machine in error), the Item wraps them onto a line of their own.
 			contentClassName="flex-[1_1_20rem]"
@@ -2457,14 +2490,19 @@ export function MachineList() {
 			titleClassName="name line-clamp-none flex w-full min-w-0 flex-wrap"
 			title={<>
 					{/* A machine with a name (a paired computer, one the owner renamed) is shown by it; user@host without one as written, in mono. */}
-					<span className={cn("min-w-0 wrap-anywhere", h && !isPaired(h) && !s.prefs.names?.[h] && "font-mono")}>{h ? isPaired(h) || s.prefs.names?.[h] ? s.nameOf(h) : <Breakable host={h} /> : here}</span>
+					<span className={cn("min-w-0 wrap-anywhere", h && !isPaired(h) && !h.startsWith("wsl:") && !s.prefs.names?.[h] && "font-mono")}>{h?.startsWith("wsl:") ? `${h.slice(4)} (WSL)` : h ? isPaired(h) || s.prefs.names?.[h] ? s.nameOf(h) : <Breakable host={h} /> : here}</span>
 					{status(h)}
 					{h && state.host !== h && s.openHosts.includes(h) ? <Badge variant="outline" data-slot="in-another-window">in another window</Badge> : null}
 				</>}
-			description={state.host === h && state.status === "error" ? state.message : h ? about(h) : "The pine on this computer: the one that runs, or one this app starts."}
+			description={state.host === h && state.status === "error" ? state.message : h?.startsWith("wsl:") ? `The pine in ${h.slice(4)}, a Linux of WSL on this computer, where pine has its sandbox.` : h ? about(h) : "The pine on this computer: the one that runs, or one this app starts."}
 			descriptionClassName="line-clamp-none wrap-anywhere"
 			actions={<>
 				{key && key.host === h ? <Button size="sm" data-slot="trust-host-key" onClick={() => void s.trustHostKey(key)}>Trust this key</Button> : null}
+				{h?.startsWith("wsl:") && state.host === h && state.status === "error" && /is not installed in/.test(state.message ?? "") && bridge.wslInstall ? (
+					<Button size="sm" data-slot="wsl-install" disabled={installing === h.slice(4)} onClick={() => void install(h.slice(4))}>
+						{installing === h.slice(4) ? <Pulse label="Installing" data-icon="inline-start" /> : null}Bring pine in
+					</Button>
+				) : null}
 				{state.host === h && state.status === "error" ? <Button variant="outline" size="sm" onClick={() => void bridge.retry()}>Try again</Button> : null}
 				{state.host === h ? null : <Button variant="outline" size="sm" onClick={() => void s.useMachine(h)}>Use</Button>}
 				{s.canManageWindows ? <Button variant="outline" size="sm" data-slot="open-in-new-window" onClick={() => void s.attempt(() => bridge.newWindow!({ host: h ?? null }))}>Open in new window</Button> : null}
@@ -2490,6 +2528,32 @@ export function MachineList() {
 					{s.local ? row(undefined) : null}
 					{s.prefs.hosts.map(row)}
 				</ItemGroup>
+				{installed ? (
+					<Alert data-slot="wsl-installed">
+						<InfoIcon />
+						<AlertDescription>
+							<p>pine is in {installed.distro}, with a home. Its sandbox needs bubblewrap there, which takes the password of your user in {installed.distro}: run this once in a terminal of Windows, and answer its question.</p>
+							<p className="font-mono text-xs select-text">{installed.sandbox}</p>
+						</AlertDescription>
+					</Alert>
+				) : null}
+				{distros.filter((d) => !s.prefs.hosts.includes(`wsl:${d}`)).length ? (
+					<FieldSet data-slot="wsl-distros">
+						<FieldLegend>WSL on this computer</FieldLegend>
+						<FieldDescription>A Linux of WSL runs pine with its sandbox, which pine on Windows itself does not have yet.</FieldDescription>
+						<ItemGroup>
+							{distros
+								.filter((d) => !s.prefs.hosts.includes(`wsl:${d}`))
+								.map((d) => (
+									<Item key={d} variant="outline" data-environment={`wsl:${d}`}>
+										<ItemMedia variant="icon"><TerminalSquareIcon /></ItemMedia>
+										<ItemContent><ItemTitle>{d}</ItemTitle></ItemContent>
+										<ItemActions><Button variant="outline" size="sm" onClick={() => void addWsl(d)}><PlusIcon data-icon="inline-start" />Add</Button></ItemActions>
+									</Item>
+								))}
+						</ItemGroup>
+					</FieldSet>
+				) : null}
 				{/* The pairing view has no user@host to add, nor a key for one. */}
 				{shown.view === "pair" ? <PairHowTo /> : s.local ? null : <DeviceKey />}
 				{shown.toSsh ? (
@@ -2602,7 +2666,7 @@ const UPDATE_TEXT: Record<UpdatePhase["phase"], (u: UpdatePhase) => string> = {
 	waiting: () => "The new app is downloaded, and Pine restarts to update once no conversation is at work. Call off the wait to restart or quit when you like. Your pine home stays as it is.",
 	ready: () => "The new app is downloaded. Restart to update, or it is installed when you next quit Pine. Your pine home stays as it is.",
 	downloading: () => "The new app is being downloaded.",
-	link: (u) => `${u.reason ? `${u.reason} ` : ""}The new app is a disk image on the release's page on GitHub: download it and put the app in place of this one. Your pine home stays as it is.`,
+	link: (u) => `${u.reason ? `${u.reason} ` : ""}The new app is ${newApp().what} on the release's page on GitHub: ${newApp().how}. Your pine home stays as it is.`,
 };
 
 /**
@@ -2619,7 +2683,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 	const update = s.updatePhase;
 	// `pine` for a terminal: what the shell has, as the app's main process sees it.
 	// (null: the bridge failed to answer, and the field is left out.)
-	const [command, setCommand] = useState<{ state: "none" | "here" | "other" | "unavailable"; why?: string; text: string } | null>();
+	const [command, setCommand] = useState<{ state: "none" | "here" | "other" | "unavailable"; why?: string; managed?: boolean; text: string } | null>();
 	// Under a bridge with no local machine (`s.local`), what only this computer has is neither asked nor shown:
 	// its home folder, Keep running, Restart, the pine command, the browser build, the Electron version.
 	const local = s.local;
@@ -2723,7 +2787,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 								</FieldTitle>
 								<FieldDescription>{command.text}</FieldDescription>
 							</FieldContent>
-							{command.state === "none" || command.state === "here" ? (
+							{(command.state === "none" || command.state === "here") && !command.managed ? (
 								<Control>
 									{command.state === "none" ? <Button variant="outline" onClick={() => void bridge.command("install").then(setCommand)}>Set up</Button> : <Button variant="outline" onClick={() => void bridge.command("remove").then(setCommand)}>Remove</Button>}
 								</Control>

@@ -83,6 +83,7 @@ unless a conversation is subscribed to it anyway.
 | `call` | One model call: `{ "prompt": "...", "system": "...", "model": "provider/id" }`. Its answer is `{{result}}`. |
 | `agent` | Give an agent a task. |
 | `prompt` | The task text. Default: the payload's `text`, or the payload as JSON. |
+| `label` | A short line for the task in listings (`pine tasks`, the UIs). A template. |
 | `session` | Session key template. Default `main`. `new` for one-off work. |
 | `whenBusy` | `queue` (default): the task waits until the conversation is free. `steer`: if the conversation is working, the text is given to that work, which reads it at its next step; if that work ends first, it is done next as a task of its own. See "Sessions" in [agents.md](agents.md). |
 | `priority` | Higher runs first when model slots are scarce. Default 10 for owner events, 0 otherwise. |
@@ -96,7 +97,7 @@ route start the agent, as in the example below.
 
 ### Templates
 
-`{{path}}` is replaced in `prompt`, `session`, `key`, `set`, `publish`, `reply` and `call`.
+`{{path}}` is replaced in `prompt`, `label`, `session`, `key`, `set`, `publish`, `reply` and `call`.
 
 | Path | Value |
 |---|---|

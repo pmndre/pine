@@ -12,7 +12,7 @@ import { browserSession } from "../src/agents.ts";
 import { keptAddress, VISITED } from "../src/browser-view.ts";
 import { localTarget } from "../src/net.ts";
 import { effectiveMcp, loadConfig, mcpTaints, toPiMcp } from "../src/config.ts";
-import { harness, mockMsg, notesOf, until } from "./support/harness.ts";
+import { assertPrivate, harness, mockMsg, notesOf, until } from "./support/harness.ts";
 
 test("browser: tools that run code or read local files are never offered", () => {
 	for (const name of ALWAYS_BLOCKED) for (const tools of ["core", "all", [name]] as const) assert.equal(toolAllowed(name, { tools: tools as any }), false, `${name} with ${tools}`);
@@ -276,7 +276,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 	fs.appendFileSync(log + ".raw", m.params.name + (a.action ? " " + a.action : "") + "\\n");
 	// What pine's own server does for the owner's window: a picture into a file it names, the owner's hand as code.
 	if (m.params.name === "browser_run_code_unsafe") {
-		const dir = log.slice(0, log.lastIndexOf("/"));
+		const dir = log.slice(0, Math.max(log.lastIndexOf("/"), log.lastIndexOf("\\\\")));
 		if (!fs.existsSync(dir + "/first-code.txt")) fs.writeFileSync(dir + "/first-code.txt", a.code);
 		fs.writeFileSync(dir + "/last-code.txt", a.code);
 		const ops = JSON.parse(a.code.match(/const ops = (.*);\\n/)[1]);
@@ -288,7 +288,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 	}
 	if (m.params.name === "browser_take_screenshot" && a.filename) {
 		note(m.params.name + " " + a.scale);
-		const file = log.slice(0, log.lastIndexOf("/")) + "/" + a.filename;
+		const file = log.slice(0, Math.max(log.lastIndexOf("/"), log.lastIndexOf("\\\\"))) + "/" + a.filename;
 		const url = tabs[at];
 		fs.writeFileSync(file, Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("picture of " + url)]));
 		return setTimeout(() => (url.includes("slow.") && note("picture taken"), reply("### Result\\n- [Screenshot of viewport](" + file + ")")), url.includes("slow.") ? 300 : 0);
@@ -447,7 +447,7 @@ test("browser: the bundled server is configured like the others and marks sessio
 	const server = effectiveMcp(cfg, cfg.agents.main).browser;
 	assert.equal(mcpTaints(server), true);
 	const pi = toPiMcp("browser", server) as any;
-	assert.ok(pi.args[0].endsWith("mcp/browser.ts"));
+	assert.ok(pi.args[0].endsWith(path.join("mcp", "browser.ts")));
 	assert.deepEqual(JSON.parse(pi.env.PINE_MCP_OPTIONS), { headed: true });
 	// What pine adds for a conversation wins over the options: a run started from outside gets no window and no local addresses.
 	const set = { ...server, options: { window: true, localFile: "/tmp/anything" } };
@@ -707,7 +707,7 @@ test("browser view: the door answers the daemon and nobody else", async (t) => {
 	// It says where it is in the file pine named, for the owner's account alone, and listens on the loopback only.
 	const said = JSON.parse(fs.readFileSync(file, "utf8"));
 	assert.deepEqual({ port: said.port, pid: said.pid, token: /^[0-9a-f]{64}$/.test(said.token) }, { port: door.port, pid: process.pid, token: true });
-	if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+	if (process.platform !== "win32") assertPrivate(file, 0o600);
 	const base = `http://127.0.0.1:${door.port}`;
 	const word = { authorization: `Bearer ${said.token}` };
 	// Without the word, with a wrong one, or from a page in some browser: nothing.

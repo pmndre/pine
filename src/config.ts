@@ -185,8 +185,8 @@ export interface HookConfig {
  * One setting says both.
  * bypass: no sandbox, and nothing asks.
  * auto:   no sandbox: the owner's whole user account and the network, like the owner at the
- *         terminal. Critical actions are checked, and after outside content what reaches out,
- *         sends something or changes the agent's memory.
+ *         terminal. Critical actions are checked, and after outside content what sends
+ *         something out.
  * safe:   in the sandbox: its own folders, and what the owner grants. Critical actions are checked.
  * manual: in the sandbox where the machine has one; every action that changes or sends something
  *         waits for approval.

@@ -6,6 +6,44 @@ export const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
 export const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+/**
+ * The system the page runs on, as the bridge said when the page started (`data-platform` on the
+ * root element: darwin, win32, linux, or a phone's or the web client's). A page that was told
+ * nothing (Storybook before a story sets it) is drawn as a Mac's.
+ */
+export const platform = (): string => (typeof document === "undefined" ? undefined : document.documentElement.dataset.platform) || "darwin";
+
+/** Whether the app's keys are the Mac's (⌘ is the key of its shortcuts): a Mac, and an iPad with a keyboard. Elsewhere it is Ctrl. */
+export const macKeys = (p = platform()) => p === "darwin" || p === "ios";
+
+/** What a newer app is on the release's page for this system, and what to do with it. */
+export function newApp(p = platform()): { what: string; how: string } {
+	if (p === "win32") return { what: "an installer", how: "download it, quit Pine and run it" };
+	if (p === "linux") return { what: "an AppImage and a .deb package", how: "download the kind you installed, quit Pine and put it in place of this one" };
+	return { what: "a disk image", how: "download it, quit Pine and put the new app in place of this one" };
+}
+
+const HELD: Record<string, string> = { "⌃": "Ctrl", "⌘": "Ctrl", "⌥": "Alt", "⇧": "Shift" };
+const NAMED: Record<string, string> = { "↩": "Enter", "⇥": "Tab" };
+
+/**
+ * A shortcut as this system writes it. Shortcuts are written the Mac's way, "⇧⌘T" or "⌘1 … ⌘9"
+ * (each word one shortcut), and a Mac shows them so; elsewhere they are "Ctrl+Shift+T", the
+ * words of the keys joined with "+", Ctrl first, as the menus there say them.
+ */
+export function shortcut(keys: string, p = platform()): string {
+	if (macKeys(p)) return keys;
+	return keys
+		.split(" ")
+		.map((word) => {
+			const m = /^([⌃⌥⇧⌘]+)(.+)$/.exec(word);
+			if (!m) return NAMED[word] ?? word;
+			const held = new Set([...m[1]].map((c) => HELD[c]));
+			return [...["Ctrl", "Alt", "Shift"].filter((k) => held.has(k)), NAMED[m[2]] ?? m[2]].join("+");
+		})
+		.join(" ");
+}
+
 let home = "";
 /** The owner's home folder, learned from a path the daemon names (an agent's workspace under ~/.pine, say). */
 export function learnHome(p: string | undefined): void {

@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { isResolved, parseJsonc, resolveTheme, ROLE_NAMES } from "../src/theme-colors.ts";
 import { listThemes, seedThemes, themeInForce } from "../src/themes.ts";
-import { type Harness, harness, until } from "./support/harness.ts";
+import { assertPrivate, type Harness, harness, until } from "./support/harness.ts";
 
 // The themes of the owner's UIs (src/themes.ts, src/theme-colors.ts): VS Code color theme files in
 // <home>/themes, resolved into pine's colors, chosen with `ui.theme`.
@@ -76,7 +76,7 @@ test("a home gets pine's themes once; after that the folder is the owner's, and 
 	seedThemes(home);
 	const dir = path.join(home, "themes");
 	assert.ok(fs.existsSync(path.join(dir, "pmndre.json")));
-	assert.equal(fs.statSync(path.join(dir, "dracula.json")).mode & 0o777, 0o600);
+	assertPrivate(path.join(dir, "dracula.json"), 0o600);
 	fs.rmSync(path.join(dir, "dracula.json"));
 	fs.rmSync(path.join(dir, "pmndre.json"));
 	seedThemes(home);

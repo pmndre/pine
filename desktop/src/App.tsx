@@ -33,7 +33,7 @@ import { PairConfirm } from "./Pairing.tsx";
 import { PickDialog } from "./PickDialog.tsx";
 import { PublishDialog } from "./PublishDialog.tsx";
 import { QuestionDialog } from "./QuestionDialog.tsx";
-import { ago, until } from "./text.ts";
+import { ago, newApp, shortcut, until } from "./text.ts";
 import { Listbox, ListboxItem } from "@ui-sdk/react/listbox";
 import { LISTBOX, onPick } from "./lists.tsx";
 import { Logo } from "@/components/logo";
@@ -569,14 +569,14 @@ export function Sidebar() {
 	return (
 		<SidebarRoot collapsible={isMobile ? "offcanvas" : "none"} className="w-full min-w-0 bg-transparent app-drag">
 			<SidebarHeader className="h-11 flex-none flex-row items-center justify-end gap-0.5 py-0 pr-2 pl-window-buttons app-drag">
-				<HoverTooltip><TooltipTrigger render={<SidebarTrigger size="icon" className="app-no-drag" aria-label="Hide the sidebar" />} /><TooltipContent>Hide the sidebar<Kbd>⌘B</Kbd></TooltipContent></HoverTooltip>
+				<HoverTooltip><TooltipTrigger render={<SidebarTrigger size="icon" className="app-no-drag" aria-label="Hide the sidebar" />} /><TooltipContent>Hide the sidebar<Kbd>{shortcut("⌘B")}</Kbd></TooltipContent></HoverTooltip>
 			</SidebarHeader>
 			<SidebarContent>
 				<ScrollArea className="flex min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade flex-1">
 					<SidebarGroup className="pt-1 pb-0">
 						<SidebarMenu>
 							<SidebarMenuItem className="app-no-drag">
-								<HoverTooltip><TooltipTrigger render={<SidebarMenuButton onClick={() => void s.command("palette")} />}><SearchIcon /><span className="grow min-w-0 flex-1">Search</span><Kbd>⌘K</Kbd></TooltipTrigger><TooltipContent>Find a conversation by name or by what was said in it, or a command, an agent, a settings page</TooltipContent></HoverTooltip>
+								<HoverTooltip><TooltipTrigger render={<SidebarMenuButton onClick={() => void s.command("palette")} />}><SearchIcon /><span className="grow min-w-0 flex-1">Search</span><Kbd>{shortcut("⌘K")}</Kbd></TooltipTrigger><TooltipContent>Find a conversation by name or by what was said in it, or a command, an agent, a settings page</TooltipContent></HoverTooltip>
 							</SidebarMenuItem>
 						</SidebarMenu>
 					</SidebarGroup>
@@ -599,7 +599,7 @@ export function Sidebar() {
 						<SidebarMenuButton isActive={front?.kind === "events"} onClick={() => void s.openEvents()}><AudioLinesIcon /><span className="grow min-w-0 flex-1">Events</span></SidebarMenuButton>
 					</SidebarMenuItem>
 					<SidebarMenuItem className="app-no-drag">
-						<SidebarMenuButton isActive={front?.kind === "settings"} onClick={() => s.openSettings()}><SettingsIcon /><span className="grow min-w-0 flex-1">Settings</span><Kbd>⌘,</Kbd></SidebarMenuButton>
+						<SidebarMenuButton isActive={front?.kind === "settings"} onClick={() => s.openSettings()}><SettingsIcon /><span className="grow min-w-0 flex-1">Settings</span><Kbd>{shortcut("⌘,")}</Kbd></SidebarMenuButton>
 					</SidebarMenuItem>
 					<Machines />
 				</SidebarMenu>
@@ -794,7 +794,7 @@ function BesideToggle({ which, label, keys, icon }: { which: Beside; label: stri
 	return (
 		<HoverTooltip>
 			<TooltipTrigger render={<Toggle size="sm" data-toggle={which === "aside" ? "browser" : which} data-behind={behind || undefined} className="app-no-drag aria-pressed:bg-background aria-pressed:ring-1 aria-pressed:ring-border data-behind:bg-transparent data-behind:text-muted-foreground" disabled={which !== "view" && s.active?.kind !== "chat"} pressed={s.isOpen(which)} onPressedChange={() => s.toggle(which)} aria-label={label} />}>{icon}</TooltipTrigger>
-			<TooltipContent>{label}<Kbd>{keys}</Kbd></TooltipContent>
+			<TooltipContent>{label}<Kbd>{shortcut(keys)}</Kbd></TooltipContent>
 		</HoverTooltip>
 	);
 }
@@ -855,8 +855,8 @@ export function TitleBar() {
 	// a menu), and when the window gets wide. A click on the conversation already in front puts it away too (ConversationRow).
 	useEffect(() => setOpenMobile(false), [s.active?.id, isMobile, setOpenMobile]);
 	return (
-		<header className={cn("flex h-11 flex-none items-center gap-1 pr-2 app-drag", column ? "pl-0.5" : "pl-window-buttons")}>
-			{column ? null : <HoverTooltip><TooltipTrigger render={<SidebarTrigger size="icon" className="app-no-drag" aria-label="Show the sidebar" />} /><TooltipContent>Show the sidebar<Kbd>⌘B</Kbd></TooltipContent></HoverTooltip>}
+		<header className={cn("flex h-11 flex-none items-center gap-1 app-drag", s.platform === "darwin" ? "pr-2" : "pr-window-controls", column ? "pl-0.5" : "pl-window-buttons")}>
+			{column ? null : <HoverTooltip><TooltipTrigger render={<SidebarTrigger size="icon" className="app-no-drag" aria-label="Show the sidebar" />} /><TooltipContent>Show the sidebar<Kbd>{shortcut("⌘B")}</Kbd></TooltipContent></HoverTooltip>}
 			{/* A row that scrolls cuts off what a tab draws outside itself (the line around the tab in front, the mark where a dragged tab
 			    would land): the padding is the room for both, and the margin keeps the tabs where they were. It scrolls without a bar;
 			    the fade at a cut end says there is more. */}
@@ -865,7 +865,7 @@ export function TitleBar() {
 					{s.tabs.map((t, i) => <TabButton key={t.id} tab={t} index={i} />)}
 				</div>
 			</ScrollArea>
-			<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon" className="app-no-drag" onClick={() => void s.newConversation()} aria-label={with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent"} />}><PlusIcon /></TooltipTrigger><TooltipContent>{with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent"}<Kbd>⌘T</Kbd></TooltipContent></HoverTooltip>
+			<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon" className="app-no-drag" onClick={() => void s.newConversation()} aria-label={with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent"} />}><PlusIcon /></TooltipTrigger><TooltipContent>{with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent"}<Kbd>{shortcut("⌘T")}</Kbd></TooltipContent></HoverTooltip>
 			<span className="min-w-0 flex-1" />
 			{showEnvironment ? <WindowEnvironmentPill /> : null}
 			<BesideToggle which="code" label="Side panel: the agent, files, changes, output and what is running" keys="⌥⌘B" icon={<PanelRightIcon />} />
@@ -887,7 +887,7 @@ function NoTab() {
 				<EmptyDescription>All conversations are still in the side bar. Open one there, or start a new one.</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent className="flex-row justify-center">
-				<Button onClick={() => void s.newConversation()}>New conversation<Kbd className="bg-black/15 text-current">⌘T</Kbd></Button>
+				<Button onClick={() => void s.newConversation()}>New conversation<Kbd className="bg-black/15 text-current">{shortcut("⌘T")}</Kbd></Button>
 				{main ? <Button variant="outline" onClick={() => void s.openTab(main.id, "main")}>Open {main.id}</Button> : null}
 			</EmptyContent>
 		</Empty>
@@ -928,14 +928,14 @@ function Help({ close }: { close: () => void }) {
 				<div className="flex flex-col gap-1.5 px-4 text-xs select-text">
 					{keys.map(([k, about]) => (
 						<Field key={k} orientation="horizontal" className="items-baseline">
-							<span className="w-24 flex-none"><Kbd>{k}</Kbd></span>
+							<span className="w-24 flex-none"><Kbd>{shortcut(k)}</Kbd></span>
 							<span className="text-muted-foreground">{about}</span>
 						</Field>
 					))}
 					{COMMANDS.filter((c) => !c.windows || store.canManageWindows).map((c) => (
 						<Field key={c.name} orientation="horizontal" className="items-baseline">
 							<span className="w-24 flex-none font-mono">/{c.name}</span>
-							<span className="text-muted-foreground">{c.about}{c.keys ? <> <Kbd>{c.keys}</Kbd></> : null}</span>
+							<span className="text-muted-foreground">{c.about}{c.keys ? <> <Kbd>{shortcut(c.keys)}</Kbd></> : null}</span>
 						</Field>
 					))}
 				</div>
@@ -959,7 +959,7 @@ function UpdateButton({ update: u }: { update: UpdatePhase }) {
 		case "downloading":
 			return <SidebarMenuButton disabled><DownloadIcon /><span className="grow min-w-0 flex-1 truncate">Downloading Pine {u.version}…</span></SidebarMenuButton>;
 		case "link":
-			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton className="text-primary hover:text-primary" onClick={() => void bridge.open(u.url)} />}><ArrowUpIcon /><span className="grow min-w-0 flex-1 truncate">Pine {u.version} is available</span><ExternalLinkIcon /></TooltipTrigger><TooltipContent>{`${u.reason ? `${u.reason} ` : ""}This is Pine ${u.mine}. Opens the release's page on GitHub in your browser: download the disk image there and put the app in place of this one.`}</TooltipContent></HoverTooltip>;
+			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton className="text-primary hover:text-primary" onClick={() => void bridge.open(u.url)} />}><ArrowUpIcon /><span className="grow min-w-0 flex-1 truncate">Pine {u.version} is available</span><ExternalLinkIcon /></TooltipTrigger><TooltipContent>{`${u.reason ? `${u.reason} ` : ""}This is Pine ${u.mine}. Opens the release's page on GitHub in your browser. The new app is ${newApp().what} there: ${newApp().how}.`}</TooltipContent></HoverTooltip>;
 	}
 }
 
@@ -982,7 +982,7 @@ function UpdateAsk() {
 					</DialogHeader>
 					<div className="select-text">
 						{u.reason ? <p className="mb-2.5 text-muted-foreground">{u.reason}</p> : null}
-						<p className="text-muted-foreground">This is Pine {u.mine}. The new app is a disk image on the release's page on GitHub: download it, quit Pine and put the new app in place of this one. Your pine home, with your agents, conversations and settings, stays as it is.</p>
+						<p className="text-muted-foreground">This is Pine {u.mine}. The new app is {newApp().what} on the release's page on GitHub: {newApp().how}. Your pine home, with your agents, conversations and settings, stays as it is.</p>
 						<p className="mt-2.5 cursor-auto font-mono text-xs text-faint select-text">{u.url}</p>
 					</div>
 					<DialogFooter>

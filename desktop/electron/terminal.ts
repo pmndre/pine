@@ -131,6 +131,50 @@ export function shellEnv(base: NodeJS.ProcessEnv): Record<string, string> {
 	return env;
 }
 
+/** A variable of an environment by its name, which Windows does not tell apart by case (Path, PATH). */
+const named = (env: NodeJS.ProcessEnv, name: string) => env[name] ?? Object.entries(env).find(([k]) => k.toUpperCase() === name)?.[1];
+
+/** A program on the PATH of `env`, by its file name (Windows: with its extension). */
+function onPath(file: string, env: NodeJS.ProcessEnv): string | undefined {
+	for (const dir of String(named(env, "PATH") ?? "").split(path.delimiter)) {
+		if (dir && fs.existsSync(path.join(dir, file))) return path.join(dir, file);
+	}
+	return undefined;
+}
+
+/**
+ * The owner's own shell and its arguments, as a terminal app of theirs would start it: $SHELL as a
+ * login shell; where there is none, the account's shell (Linux), zsh (a Mac), and on Windows
+ * PowerShell, the newer one where it is installed.
+ */
+export function ownShell(env: NodeJS.ProcessEnv, platform: string = process.platform): string[] {
+	const exists = (f: string | undefined): f is string => Boolean(f && path.isAbsolute(f) && fs.existsSync(f));
+	const shell = named(env, "SHELL");
+	if (platform === "win32") return [exists(shell) ? shell : (onPath("pwsh.exe", env) ?? "powershell.exe")];
+	let account: string | undefined;
+	try {
+		account = os.userInfo().shell ?? undefined;
+	} catch {
+		// no entry for this user
+	}
+	return [exists(shell) ? shell : platform === "darwin" ? "/bin/zsh" : exists(account) ? account : "/bin/bash", "-l"];
+}
+
+/**
+ * Whether a key pressed while the terminal has the keyboard is the shell's and not a shortcut of the
+ * app's menu. Off a Mac the app's shortcuts are Ctrl chords, and so are the shell's own keys (Ctrl-W
+ * deletes a word, Ctrl-K the rest of the line, Ctrl-R searches): Ctrl and a letter, or one of the
+ * few other keys a terminal sends as a control character, is the shell's, and so are Ctrl+Shift+C
+ * and Ctrl+Shift+V, which copy and paste in a terminal there. Ctrl+Shift and a letter, Ctrl and a
+ * digit, Ctrl+Tab, Ctrl+, and Ctrl+` stay the app's. On a Mac the app's key is ⌘: nothing changes.
+ */
+export function shellKeeps(input: { control?: boolean; shift?: boolean; alt?: boolean; meta?: boolean; code?: string }, platform: string = process.platform): boolean {
+	if (platform === "darwin" || !input.control || input.alt || input.meta) return false;
+	const code = String(input.code ?? "");
+	if (input.shift) return code === "KeyC" || code === "KeyV";
+	return /^Key[A-Z]$/.test(code) || ["BracketLeft", "BracketRight", "Backslash", "Space", "Slash"].includes(code);
+}
+
 const size = (n: unknown, least: number, most: number) => Math.max(least, Math.min(most, Math.floor(Number(n)) || least));
 
 export interface TerminalOptions {
@@ -138,7 +182,7 @@ export interface TerminalOptions {
 	env: () => Promise<NodeJS.ProcessEnv>;
 	/** Where the files of the shell hooks are written (the app's own data). */
 	hooks: string;
-	/** The shell to run; the owner's own ($SHELL, as a login shell) when not given. A shell named here (tests) reads none of the owner's startup files. */
+	/** The shell to run; the owner's own (`ownShell`) when not given. A shell named here (tests) reads none of the owner's startup files. */
 	shell?: string[];
 	/** After how long a block that runs on is said to be running (tests make it short). */
 	stillRunningMs?: number;
@@ -176,7 +220,7 @@ export class Terminals {
 		}
 		const pty = ptyModule();
 		const env = shellEnv(await this.opts.env());
-		const [file, ...args] = this.opts.shell ?? [env.SHELL && fs.existsSync(env.SHELL) ? env.SHELL : process.platform === "win32" ? "powershell.exe" : "/bin/zsh", ...(process.platform === "win32" ? [] : ["-l"])];
+		const [file, ...args] = this.opts.shell ?? ownShell(env);
 		const launch = withHooks(file, args, env, this.opts.hooks, Boolean(this.opts.shell));
 		const dir = startIn(cwd);
 		// Another call may have opened it while the environment was being asked for.
@@ -254,6 +298,8 @@ export class Terminals {
 			for (const wake of shell.waiting.splice(0)) wake();
 			return;
 		}
+		// Where a prompt ends (PowerShell's hooks say it): nothing to do.
+		if (mark.kind === "B") return;
 		if (mark.kind === "C") {
 			shell.busy = true;
 			if (!run) return;

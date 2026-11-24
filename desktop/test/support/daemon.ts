@@ -90,7 +90,10 @@ export async function daemonGone(port: number | string, home: string, timeoutMs 
  */
 export async function stopKept(port: number | string, home: string, timeoutMs = 15_000): Promise<void> {
 	try {
-		execFileSync("/usr/bin/pkill", ["-TERM", "-f", `service --home ${home}`]);
+		if (process.platform === "win32") {
+			// No signal on Windows: the process is ended. The home goes in through the environment, never as a part of the command.
+			execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains(\"service --home $env:PINE_KEPT_HOME\") } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"], { env: { ...process.env, PINE_KEPT_HOME: home }, windowsHide: true });
+		} else execFileSync(fs.existsSync("/usr/bin/pkill") ? "/usr/bin/pkill" : "pkill", ["-TERM", "-f", `service --home ${home}`]);
 	} catch {
 		// nothing left to stop
 	}

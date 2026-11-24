@@ -193,13 +193,15 @@ export function bwrapArgs(jail: Jail): string[] {
 	const opened = [...jail.read, ...jail.write, ...own];
 	const hidden = (p: string) => (isInside(jail.pineHome, p) ? !own.some((r) => isInside(r, p)) : isInside(jail.userHome, p) && !opened.some((r) => isInside(r, p)));
 	for (const p of shallowFirst(jail.closed)) if (!hidden(p)) close(p);
+	// Whether the agent writes there. In pine's home only its own folders count: the home is closed
+	// even where it lies inside a folder the agent writes (a home in the shared temp folder).
+	const writable = (p: string) => (isInside(jail.pineHome, p) ? jail.ownedWrite : [...jail.write, ...jail.ownedWrite]).some((r) => isInside(r, p));
 	// What its event sources received is put back for reading, after everything was closed. A
 	// folder the agent writes anyway (a watched one in its workspace) is left as it is.
-	for (const p of shallowFirst(jail.sources ?? [])) if (![...jail.write, ...jail.ownedWrite].some((r) => isInside(r, p))) ro(p);
+	for (const p of shallowFirst(jail.sources ?? [])) if (!writable(p)) ro(p);
 	// The services of the machine and of the desktop: what the macOS profile denies by name
 	// (keychain, clipboard, other programs) is reached through sockets here.
 	for (const p of sockets(jail.shared ?? SHARED, jail.closed)) if (!jail.closed.some((c) => isInside(c, p))) args.push("--ro-bind", "/dev/null", p);
-	const writable = (p: string) => (isInside(jail.pineHome, p) ? jail.ownedWrite : [...jail.write, ...jail.ownedWrite]).some((r) => isInside(r, p));
 	// Read-only where the agent writes otherwise; elsewhere a mount would open what is closed to it.
 	for (const p of shallowFirst(jail.fixed ?? [])) if (exists(p) && writable(p)) ro(p);
 	if (jail.variant === "restricted" && jail.frozen) {

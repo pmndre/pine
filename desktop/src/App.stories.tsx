@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, within } from "storybook/test";
+import { expect, fn, waitFor, within } from "storybook/test";
 import { useEffect } from "react";
 import { SidebarFooter, SidebarMenu, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import type { AgentInfo, Conversation } from "./api.ts";
@@ -74,6 +74,54 @@ export const MachinesWithoutLocal: Story = {
 		await meta.play(context);
 	},
 };
+
+/**
+ * The page as it is drawn on a system: what the bridge's `state()` says (`store.platform`, and
+ * `data-platform` on the root element, which the shortcuts are written by). Put back after the story.
+ */
+const onSystem = (platform: string) => () => {
+	const was = { store: store.platform, root: document.documentElement.dataset.platform };
+	store.platform = platform;
+	document.documentElement.dataset.platform = platform;
+	return () => {
+		store.platform = was.store;
+		if (was.root === undefined) delete document.documentElement.dataset.platform;
+		else document.documentElement.dataset.platform = was.root;
+	};
+};
+
+/** The bar along the top, without tabs: its buttons, and the tooltip of the one that starts a conversation, with its key. */
+const bar = (key: string): Story => ({
+	args: { local: true },
+	parameters: { layout: "fullscreen" },
+	render: () => (
+		<SidebarProvider className="min-h-0 w-full" open={false}>
+			<div className="flex w-full flex-col bg-sunk">
+				<TitleBar />
+			</div>
+		</SidebarProvider>
+	),
+	// Reached with the keyboard, as a tooltip shows for a button the keyboard brought it to.
+	play: async ({ canvas, userEvent }) => {
+		// (In a phone-wide window the button that shows the side bar comes first.)
+		const button = canvas.getByRole("button", { name: /^New conversation/ });
+		for (let i = 0; i < 4 && document.activeElement !== button; i++) await userEvent.tab();
+		await expect(document.activeElement).toBe(button);
+		// A tooltip opens after a moment, the first one of a page later than the next, and fades in.
+		const shown = await within(document.body).findByText(key, undefined, { timeout: 4000 });
+		await waitFor(() => expect(shown).toBeVisible());
+	},
+});
+
+/** On a Mac: the keys as the Mac writes them. */
+export const TitleBarOnMac: Story = { ...bar("⌘T"), beforeEach: onSystem("darwin") };
+
+/**
+ * Off a Mac (Windows here; Linux is drawn the same): the keys are Ctrl chords, and the bar keeps room at its right for
+ * the system's window controls, which the window draws over it there (`pr-window-controls`; in an ordinary browser,
+ * which has no such controls, the room is the bar's own).
+ */
+export const TitleBarOffMac: Story = { ...bar("Ctrl+T"), beforeEach: onSystem("win32") };
 
 // The side bar itself, with agents as the daemon would list them. An agent with one conversation is one
 // line that opens it; one with more is a group that says how many it holds.

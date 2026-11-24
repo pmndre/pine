@@ -62,7 +62,7 @@ test("given: an MCP server, a skill, an event source and a schedule are each lis
 
 	// ---- a skill
 	r = await run([call("add_skill", { name: "invoices", description: "File an invoice. Use when a PDF invoice arrives.", instructions: "1. Read the total.\n2. Move it to books/." })]);
-	const at = /It is at (\S+\/SKILL\.md)\./.exec(r.results.at(-1)!)?.[1];
+	const at = /It is at (\S+[\\/]SKILL\.md)\./.exec(r.results.at(-1)!)?.[1];
 	assert.ok(at, String(r.results.at(-1)));
 	r = await run([call("skills"), call("read", { path: at })]);
 	assert.match(r.results.at(-2)!, /^Your skills in this conversation[^\n]*:\n- invoices: File an invoice\. Use when a PDF invoice arrives\.\n    only this conversation has it\n/);

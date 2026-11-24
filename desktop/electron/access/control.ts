@@ -271,13 +271,19 @@ export function createAccessControl(options: AccessControlOptions): AccessContro
 	};
 
 	let scheduled = false;
+	// The state is read asynchronously: a read that started earlier can end later, and the page would
+	// be told a state that has passed ("cannot reach the service" after "waiting"). Only the newest read is sent.
+	let newest = 0;
 	const emit = () => {
 		if (scheduled) return;
 		scheduled = true;
 		setImmediate(() => {
 			scheduled = false;
 			announce();
-			void state().then(options.changed, () => {});
+			const mine = ++newest;
+			void state().then((s) => {
+				if (mine === newest) options.changed(s);
+			}, () => {});
 		});
 	};
 

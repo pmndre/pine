@@ -9,7 +9,7 @@ import { loadConfig } from "../src/config.ts";
 import { Logins } from "../src/owner.ts";
 import { sandboxAvailable } from "../src/security.ts";
 import { putInto } from "../src/workspace-view.ts";
-import { type Harness, harness, until } from "./support/harness.ts";
+import { assertPrivate, type Harness, harness, until } from "./support/harness.ts";
 
 // What the owner does to pine's setup through the control API (src/owner.ts): the same things
 // the main agent does by tool, without the question, because the token is the owner.
@@ -29,7 +29,7 @@ const tmp = (t: { after(fn: () => void): void }, name: string) => {
 	return dir;
 };
 
-test("the owner reads how pine is set up: overview, settings, an agent in full, the files for all agents", async () => {
+test("the owner reads how pine is set up: overview, settings, an agent in full, the files for all agents", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const h = await harness({
 		pine: { http: { port: 0 } },
 		agents: { main: { files: { "AGENTS.md": "I keep the house.\n", "MEMORY.md": "The boiler is new.\n" } }, books: { agent: { description: "Keeps the books", delegates: [], sandbox: { network: true } } } },
@@ -110,7 +110,7 @@ test("the owner changes a setting and a file for all agents", async () => {
 	// A file for all agents: one of three names, never a path.
 	assert.deepEqual((await a.post("/shared", { name: "USER.md", text: "Call me Ms Okapi." })).body, { ok: true });
 	assert.equal(fs.readFileSync(path.join(h.home, "USER.md"), "utf8"), "Call me Ms Okapi.\n");
-	assert.equal(fs.statSync(path.join(h.home, "USER.md")).mode & 0o777, 0o600);
+	assertPrivate(path.join(h.home, "USER.md"), 0o600);
 	for (const name of ["pine.json", "../USER.md", "agents/main/agent.json", ".env", ""]) {
 		const no = await a.post("/shared", { name, text: "{}" });
 		assert.equal(no.status, 400, name);
@@ -370,7 +370,7 @@ test("a sign-in to a model provider is driven over several requests: its questio
 	assert.ok(view.models.length > 0 && view.models.every((m: string) => m.startsWith("opencode/")));
 	assert.ok(!JSON.stringify(view).includes("sk-opencode-test-55120"));
 	assert.ok(!h.logs.join("\n").includes("sk-opencode-test-55120"));
-	assert.equal(fs.statSync(path.join(h.home, "auth.json")).mode & 0o777, 0o600);
+	assertPrivate(path.join(h.home, "auth.json"), 0o600);
 	assert.equal(((await a.get("/models/providers")).body as any[]).find((p) => p.id === "opencode").signedIn, true);
 	assert.ok(((await a.get("/models")).body as string[]).some((m) => m.startsWith("opencode/")), "the running pine has its models at once");
 	assert.equal((await a.post(`/models/login/${started.id}`, { answer: "x" })).status, 409, "it waits for nothing any more");
@@ -434,7 +434,8 @@ test("the list of agents says why an agent's model cannot answer: no sign-in, or
 	process.env.PATH = bin;
 	assert.match((await problem("scout")) ?? "", /dev\/claude-haiku is Claude through the "claude" command.*no such command/);
 	assert.equal(await problem("main"), undefined);
-	fs.writeFileSync(path.join(bin, "claude"), "#!/bin/sh\n", { mode: 0o755 });
+	// (Windows finds a command by its ending: claude.cmd, as npm installs it there.)
+	fs.writeFileSync(path.join(bin, process.platform === "win32" ? "claude.cmd" : "claude"), "#!/bin/sh\n", { mode: 0o755 });
 	assert.equal(await problem("scout"), undefined, "with the command there, nothing is said");
 	process.env.PATH = before;
 

@@ -12,7 +12,10 @@ pine comes with three views. `office` is pine as a little tower house in pixels,
 each agent, main under the roof. `workshop` is the same pine as Santa's workshop at the North Pole:
 the main agent is Santa, the others are elves, each in a workshop of another kind. `overview` is no
 picture but a page to read: what triggers agents, the agents with what each is doing, and the tools
-they use, with a line between two of them while something happens there. An agent that leads a
+they use, with a line between two of them while something happens there. The three stand side by
+side; in a panel that is taller than wide, one under the other, with the cards of each side by side
+in rows as wide as the panel. When the panel changes size, it glides to show everything, laid out anew so that all of it is
+as large as the panel allows. An agent that leads a
 swarm says so on its card ("swarm · round 2 of 8", "Checking the answer", "Swarm needs your
 answer") and stays among the agents at work between its turns. It is the one the
 panel shows until you pick another ([desktop.md](desktop.md), "The view", says what is what in each). These
@@ -69,8 +72,8 @@ export default defineView((host) => {
 
 pine keeps the module a view imports beside the views, as `views/.pine/view.ts`, and writes a
 `views/tsconfig.json` that points `pine/view` at it: open `~/.pine/views` in your editor and the types,
-the completion and the checks are there. `.pine/` and the tsconfig are pine's, brought up to date at
-every start; they are no views.
+the completion and the checks are there. `.pine/` is pine's, brought up to date at every start, and the
+tsconfig is put there when there is none; they are no views.
 
 The folder also has a guide, `views/AGENTS.md`: the rules of a view, the smallest one, what the host
 gives it and how to try it. It is there for you and for a coding agent you open in that folder to
@@ -86,7 +89,7 @@ types that can simply be erased: no `enum`, no `namespace`, no parameter propert
 | Name | What it is |
 |---|---|
 | `defineView` | `defineView((host) => { ... })`, the default export of every view. Called once when the panel opens, with the `host`; what it returns is called when the panel closes |
-| `ViewHost`, `host.root`, `host.state`, `host.on`, `host.select`, `host.open` | What the panel gives a view. `root`: the element to draw in, the middle of the panel, empty and sized by it; a canvas, SVG or HTML. `state()`: all of pine now, a `ViewState`. `on("state", fn)`: `fn(state)` with every new state, a few times a second while work runs and once a second at rest; `on("happening", fn)`: what just happened, as it happens, for a view that animates. Both return the function that stops them. `select({ agent: "books" })`, `select({ work: 12 })` or `select({ board: 7, task: 3 })` (a board, with or without one of its tasks) shows that under the view with its details in words, `select()` the log again; what is selected comes back as `state.selected`. For a task, the panel shows there what the task says, its result and its notes: the app draws them itself, and the view that asked is told none of it. `open(...)` opens an agent, or a piece of work on its own, in a tab |
+| `ViewHost`, `host.root`, `host.state`, `host.on`, `host.select`, `host.open` | What the panel gives a view. `root`: the element to draw in, the middle of the panel, empty and sized by it; a canvas, SVG or HTML. `state()`: all of pine now, a `ViewState`. `on("state", fn)`: `fn(state)` with every new state, at most five times a second while something changes and every few seconds while all is quiet (a view that animates counts time from its own clock); `on("happening", fn)`: what just happened, as it happens, for a view that animates. Both return the function that stops them. `select({ agent: "books" })`, `select({ work: 12 })` or `select({ board: 7, task: 3 })` (a board, with or without one of its tasks) shows that under the view with its details in words, `select()` the log again; what is selected comes back as `state.selected`. For a task, the panel shows there what the task says, its result and its notes: the app draws them itself, and the view that asked is told none of it. `open(...)` opens an agent, or a piece of work on its own, in a tab |
 | `Detail`, `detailAt` | Levels of detail, for a view that shows more the closer it is looked at. `detailAt(zoom, was?, at?)` gives `far`, `mid` or `near` for a zoom, where 1 is the size the view was drawn for: `far` below `at.far` (0.5), `near` above `at.near` (1.2). Give the level the view is at as `was`, and it is kept until the zoom is clearly past a limit, so that the picture does not flicker at one. What each level shows is the view's own business. Levels are one way; pine's `overview` has none: its cards keep their size at each zoom while their words keep theirs, so a card looked at more closely has more room, and fills it the way a page fills a wider window, the most important first |
 | `running`, `unsettled`, `progress`, `tasksOf`, `frame`, `ease`, `union`, `inside`, `along`, `lengthOf`, `seeded`, `hashOf`, `mix`, `shade`, `rgb` | Helpers. `running(state.work)`: the work that has not ended. A camera: `frame(aim, view, whole, { zMax, min, step?, zMin? })` says where to look to show a box (`step: 1` zooms in whole steps, for pixels that are to stay whole), `ease(cam, target, ms)` moves a camera a frame's time towards another. Boxes and paths: the box around boxes, a point in a box, a point along a path of straight pieces, a path's length. `seeded(n)`: random numbers that are the same for the same seed, `hashOf(name)`: a number from a name, for a look that is the same every time. Colors as `#rrggbb`: between two, lighter or darker, as numbers |
 
@@ -119,8 +122,9 @@ cannot tell anybody what it saw. What it asks the panel to show or open is check
 work the panel knows; anything else is ignored.
 
 A view that throws is stopped, and the panel says why under it. A file pine cannot hand on (a name with
-capitals or spaces, more than a megabyte, TypeScript that cannot be erased) is greyed out in the list at the top of the panel, with
-what is wrong with it.
+capitals or spaces, more than a megabyte) is greyed out in the list at the top of the panel, with
+what is wrong with it. A view whose TypeScript cannot be erased is shown in the panel as "cannot
+be shown", with the reason.
 
 The folder lies in pine's home, which no agent writes: an agent cannot put a view there or change one.
 The main agent can choose which view is shown (`ui.view`), and you are asked first.

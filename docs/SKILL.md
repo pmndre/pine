@@ -1,6 +1,6 @@
 ---
 name: pine
-description: Run, configure and extend pine, the event-driven multi-agent daemon built on the pi coding agent SDK. Use when setting up agents and their workspaces, subscribing agents to event sources (Telegram, folders, MQTT, webhooks, FTP uploads, web addresses, commands, feeds, calendars, mail, Slack, Matrix, Discord, pushed streams, syslog, cameras, Modbus devices, serial ports, the computer itself), scheduling what happens at a time, adding MCP servers and skills, routing events to agents, reaching agents on Telegram, delegating between agents, reviewing what is protected against prompt injection, or changing pine's code.
+description: Run, configure and extend pine, the event-driven multi-agent daemon built on the pi coding agent SDK. Use when setting up agents and their workspaces, subscribing agents to event sources (Telegram, folders, MQTT, webhooks, FTP uploads, web addresses, commands, feeds, calendars, mail, Slack, Matrix, Discord, pushed streams, syslog, cameras, Modbus devices, serial ports, the computer itself), scheduling what happens at a time, adding MCP servers and skills, routing events to agents, reaching agents on Telegram, delegating between agents, letting sub-agents work through a board of tasks or an agent lead a job as a swarm, using pine from the Pine app (on a Mac, a phone or in a web browser), reviewing what is protected against prompt injection, or changing pine's code.
 ---
 
 # pine
@@ -150,6 +150,14 @@ swarm, tell them to type `/swarm` with the job: you then lead it on your board
 ([references/boards.md](references/boards.md), "A swarm"). In plan mode you only look and
 answer with a plan; your owner switches the mode when it is to be carried out.
 
+When a job falls into pieces that do not depend on each other (one per file, one per page, one
+per customer), start sub-agents yourself with `subagent`, one task per piece, each task saying
+everything it needs: nothing has to be created first, and it is not the main agent's job. More
+pieces than run at once become a pool: they are put on your conversation's board and worked
+through a few at a time, and the call comes back to you when a sub-agent asks something or
+fails ([references/boards.md](references/boards.md), "A pool of sub-agents"). `boards` lists the
+boards you have, and `board_read` shows what is on one.
+
 If you are the main agent and your owner asks for a new agent, call `create_agent` with an id,
 one line on what it is for, and its instructions written to the agent itself ("You are ..."):
 its job, what it should and should not do, how it reports. Your owner confirms it, and the agent
@@ -171,7 +179,7 @@ hand work to the agents listed in your prompt, and write shared state under your
 | You want to | Read |
 |---|---|
 | See what an agent is given (events, schedules, MCP servers, skills) and how events, tasks and sessions fit together | [references/overview.md](references/overview.md) |
-| Chat with agents in the terminal: tabs, slash commands (`/goal`, `/compact`, `/copy`, `/export`, `/undo`), keys, the five modes (auto, safe, manual, bypass, plan), approvals, an agent's questions and its list of steps, what a model thinks, pictures, parts of an answer that are folded away, switching models | [references/tui.md](references/tui.md) |
+| Chat with agents in the terminal: tabs, slash commands (`/goal`, `/swarm`, `/board`, `/branch`, `/group`, `/compact`, `/copy`, `/export`, `/undo`), keys, the five modes (auto, safe, manual, bypass, plan), approvals, an agent's questions and its list of steps, what a model thinks, pictures, parts of an answer that are folded away, switching models | [references/tui.md](references/tui.md) |
 | Use the desktop app (macOS): the window with its side bar and tabs, the code panel with an editor for a conversation's folder, the settings panel (agents, models, MCP servers, skills, events, instructions), how it starts or reuses the daemon, browser access (a phone or another computer paired by QR code, or found on the same network without a code with "Visible on this network", Add a Device from the menu, the Dock or `pine://pair`, the question as a toast or a notification, its devices, the service address, a relay server (TURN) of your own for a phone that cannot connect from mobile data), where to download it, the `pine` command it gives a terminal, how to build, pack and sign it | [references/desktop.md](references/desktop.md) |
 | Write a view: a script of your own that draws all of pine in the Pine app's panel (`~/.pine/views`), the `pine/view` module it imports, what it is told and what it cannot do | [references/views.md](references/views.md) |
 | Use pine from an Android phone or an iPhone: installing the app from a release (the APK, or the IPA with AltStore or Sideloadly and its 7-day renewal on a free Apple ID), the phone's SSH key and `authorized_keys`, a new key under another Apple ID, pairing by QR code, pairing without a code with a computer found on the same network ("On this network"), the `Pairing link` field, App Links and the `pine:` address, `Forget` (which leaves its access open until the Pine app takes it off), adding a machine, the iPhone's local network prompt, confirming its host key, reaching it from away (same Wi-Fi, a VPN such as Tailscale, ZeroTier or WireGuard, a server with public SSH), what the phone does not do, how the APK and the IPA are built, the iOS simulator | [references/mobile.md](references/mobile.md) |
@@ -206,8 +214,10 @@ pine init
 pine
 ```
 
-One agent, `main` (the main agent), with web search and a browser, and the terminal UI to talk to it. Everything
-below is added on top of that when you need it.
+One agent, `main` (the main agent), with web search and a browser, and the terminal UI to talk
+to it (or the Pine app, which shows the same conversations in a window:
+[references/desktop.md](references/desktop.md)). Everything below is added on top of that when
+you need it.
 
 `~/.pine/pine.json`:
 
@@ -259,6 +269,8 @@ pine start
 | route | A rule in `pine.json` that reacts to topics |
 | source | A named thing that reports events from outside: a folder, an MQTT broker, a web address, a command, a webhook, an FTP drop, a Telegram bot. It runs only while something is subscribed to it (or always, with `"start": "always"`) |
 | schedule | Something done at a time: at set times, every so often, or once. With a task it wakes an agent to do it |
+| sub-agent | A copy of an agent that does one task with an empty conversation and returns only its answer. An agent starts several at once with `subagent` |
+| board | A shared place for the tasks and notes of one job: whoever works on it takes a task, so that no two do the same, and leaves what it found. A pool is a call of `subagent` that works through a board's tasks a few at a time |
 | goal | An objective you give a conversation with `/goal`: the agent is called again, round after round, until a judge says it is met |
 | swarm | A job you give a conversation with `/swarm`: its agent leads it, sub-agents work it through on the conversation's board (a job of a few steps the agent does itself), pine calls the agent again while tasks are not done, and has its answer checked before it is done |
 | subscription | A conversation of an agent listens to a source: each event arrives there as a message and wakes the agent |
@@ -267,6 +279,6 @@ pine start
 | owner | You. Content is "owner" only when it entered through a channel that authenticated you |
 | untrusted | Everything else: data that may contain instructions it has no right to give |
 | tainted | A session that has seen outside content (a web page, an MCP result, an untrusted task) |
-| approval | Your yes or no to one tool call, asked in the terminal UI and over Telegram, or answered with `pine approve` |
-| mode | How much an agent does without asking: `auto` (the default), `plan` (it only looks and answers with a plan), `manual` (every action waits for your yes), `bypass` (nothing waits) |
+| approval | Your yes or no to one tool call, asked in the terminal UI, in the Pine app and over Telegram, or answered with `pine approve` |
+| mode | How much an agent does without asking, and how far it reaches: `safe` (in its sandbox, its own folders; the default for every agent but the main one), `auto` (your whole account, no sandbox; the main agent's default), `manual` (in the sandbox, and every action waits for your yes), `bypass` (your whole account, and nothing waits). `plan` lies on top of any of them: the agent only looks and answers with a plan |
 | extension | A pi extension: pi's own plug-in format, usable in pine sessions |

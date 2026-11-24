@@ -5,7 +5,7 @@ import { COMMANDS } from "./commands.ts";
 import { computerWord } from "./machines.ts";
 import { useNamedLine } from "./lists.tsx";
 import { store, useModel } from "./model.ts";
-import { ago, fuzzy } from "./text.ts";
+import { ago, fuzzy, shortcut } from "./text.ts";
 import { goTo, useSettingsIndex } from "./Settings.tsx";
 import { search } from "./settings-index.ts";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -80,7 +80,7 @@ export function Palette() {
 									<CommandItem key={r.id} value={r.id} onSelect={() => run(r)}>
 										<span className="max-w-3/5 flex-none truncate">{r.conv && !s.titleKnown(r.conv.agent, r.conv.session) ? <>{r.conv.agent} · <Skeleton className="inline-block h-3 w-24 align-middle" /></> : r.label}</span>
 										{r.about ? <span className="min-w-0 truncate text-xs text-muted-foreground">{r.about}</span> : null}
-										{r.keys ? <CommandShortcut>{r.keys}</CommandShortcut> : null}
+										{r.keys ? <CommandShortcut>{shortcut(r.keys)}</CommandShortcut> : null}
 									</CommandItem>
 								))}
 							</CommandGroup>

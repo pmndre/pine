@@ -1,23 +1,29 @@
 // The owner's terminal beside a conversation (electron/terminal.ts) and what an answer's Run button
-// may type into it (src/runnable.ts). Without a window: a real pseudo-terminal with /bin/sh, in a
-// folder of the test's own.
+// may type into it (src/runnable.ts). Without a window: a real pseudo-terminal with /bin/sh (bash
+// and zsh where they are installed; PowerShell on Windows), in a folder of the test's own.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { MarkReader } from "../electron/shell-hooks.ts";
-import { type RunReport, shellEnv, startIn, Terminals } from "../electron/terminal.ts";
+import { MarkReader, withHooks } from "../electron/shell-hooks.ts";
+import { ownShell, type RunReport, shellEnv, shellKeeps, startIn, Terminals } from "../electron/terminal.ts";
 import { runnable } from "../src/runnable.ts";
 
-function world(shell = "/bin/sh") {
+/** The tests that type POSIX shell into the terminal: a POSIX shell there is not, on Windows. */
+const posix = process.platform === "win32" ? "Windows has no /bin/sh: PowerShell is tested below" : false;
+
+function world(shell = "/bin/sh", stillRunningMs = 400) {
 	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-terminal-")));
 	const out = new Map<string, string>();
 	const ended = new Map<string, number>();
 	const runs: Array<RunReport & { id: string }> = [];
-	const terms = new Terminals({ data: (id, data) => out.set(id, (out.get(id) ?? "") + data), exit: (id, code) => ended.set(id, code), run: (id, r) => runs.push({ id, ...r }) }, { env: async () => ({ ...process.env, HOME: dir, PS1: "$ " }), hooks: path.join(dir, ".hooks"), shell: [shell], stillRunningMs: 400 });
+	// What a terminal answers by itself: PowerShell asks where the cursor is (DSR, ESC [6n) and waits
+	// for the answer, which xterm.js gives in the app. Here nothing draws, so the cursor is at the top.
+	const terms: Terminals = new Terminals({ data: (id, data) => (out.set(id, (out.get(id) ?? "") + data), data.split("\x1b[6n").slice(1).forEach(() => terms.write(id, "\x1b[1;1R"))), exit: (id, code) => ended.set(id, code), run: (id, r) => runs.push({ id, ...r }) }, { env: async () => ({ ...process.env, HOME: dir, PS1: "$ " }), hooks: path.join(dir, ".hooks"), shell: [shell], stillRunningMs });
 	const until = async (what: () => boolean, ms = 5000) => {
-		const end = Date.now() + ms;
+		// (GitHub's runners are slower than a desk: PINE_TEST_PATIENCE there.)
+		const end = Date.now() + ms * Math.max(1, Number(process.env.PINE_TEST_PATIENCE) || 1);
 		while (!what()) {
 			if (Date.now() > end) throw new Error(`waited in vain; the terminal says: ${JSON.stringify([...out])}`);
 			await new Promise((r) => setTimeout(r, 20));
@@ -26,7 +32,7 @@ function world(shell = "/bin/sh") {
 	return { dir, out, ended, runs, terms, until, done: () => (terms.closeAll(), fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })) };
 }
 
-test("terminal: a shell starts in the folder it is given, runs what is typed, and is handed back with what it printed", async () => {
+test("terminal: a shell starts in the folder it is given, runs what is typed, and is handed back with what it printed", { skip: posix }, async () => {
 	const w = world();
 	try {
 		const first = await w.terms.open("main:okapi", w.dir, 80, 24);
@@ -48,7 +54,7 @@ test("terminal: a shell starts in the folder it is given, runs what is typed, an
 	}
 });
 
-test("terminal: a shell that ends says so; one that is closed does not, and its name starts a new one", async () => {
+test("terminal: a shell that ends says so; one that is closed does not, and its name starts a new one", { skip: posix }, async () => {
 	const w = world();
 	try {
 		await w.terms.open("a:1", w.dir, 80, 24);
@@ -66,7 +72,7 @@ test("terminal: a shell that ends says so; one that is closed does not, and its 
 	}
 });
 
-test("terminal: a name that is not a conversation's, a folder that is not one, and the app's own variables are refused", async () => {
+test("terminal: a name that is not a conversation's, a folder that is not one, and the app's own variables are refused", { skip: posix }, async () => {
 	const w = world();
 	try {
 		await assert.rejects(w.terms.open("../x y", w.dir, 80, 24), /not a terminal's name/);
@@ -112,7 +118,8 @@ for (const shell of ["/bin/bash", "/bin/zsh"].filter((s) => fs.existsSync(s))) {
 			assert.equal(r.command, "echo one-$((40+2))\nls /nowhere-at-all");
 			// What the owner types is theirs: it is not reported.
 			w.terms.write("main:c", "echo by-hand\r");
-			await w.until(() => /by-hand[\s\S]*by-hand[\s\S]*133;D/.test(w.out.get("main:c") ?? ""));
+			// The output's line, then the end of the command. (Its echo may be redrawn in pieces as it is typed: zsh on a slow machine.)
+			await w.until(() => /(\x07|\n)by-hand\r?\n[\s\S]*133;D/.test(w.out.get("main:c") ?? ""));
 			await new Promise((res) => setTimeout(res, 500));
 			assert.equal(w.runs.length, 1);
 			// The history is the owner's, not in the folder of the hooks.
@@ -152,7 +159,7 @@ for (const shell of ["/bin/bash", "/bin/zsh"].filter((s) => fs.existsSync(s))) {
 	});
 }
 
-test("terminal: a shell without the hooks runs the block and says it will not report", async () => {
+test("terminal: a shell without the hooks runs the block and says it will not report", { skip: posix }, async () => {
 	const w = world("/bin/sh");
 	try {
 		await w.terms.open("main:p", w.dir, 80, 24);
@@ -173,7 +180,7 @@ test("marks: read out of output however it is cut", () => {
 	assert.equal(pieces.filter((p) => typeof p === "string").join(""), "aout\x1b]0;title\x07b");
 });
 
-test("terminal: shells are isolated per window and move cleanly across windows with transfer", async () => {
+test("terminal: shells are isolated per window and move cleanly across windows with transfer", { skip: posix }, async () => {
 	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-terminal-win-")));
 	const out = new Map<string, string>();
 	const ended = new Map<string, number>();
@@ -256,3 +263,100 @@ test("terminal: shells are isolated per window and move cleanly across windows w
 		fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 	}
 });
+
+test("marks: where a prompt ends (PowerShell's B) is read and is no output", () => {
+	const r = new MarkReader();
+	const pieces = r.read("\x1b]133;D;0\x07\x1b]133;A\x07PS C:\\> \x1b]133;B\x07");
+	assert.deepEqual(pieces.filter((p) => typeof p !== "string"), [{ kind: "D", code: 0 }, { kind: "A", code: undefined }, { kind: "B", code: undefined }]);
+	assert.equal(pieces.filter((p) => typeof p === "string").join(""), "PS C:\\> ");
+});
+
+test("terminal: off a Mac the shell's Ctrl keys are the shell's while it has the keyboard, and the app's own chords stay the app's", () => {
+	const ctrl = (code: string, more: { shift?: boolean; alt?: boolean; meta?: boolean } = {}) => ({ control: true, code, ...more });
+	for (const platform of ["linux", "win32"]) {
+		// Ctrl-W deletes a word, Ctrl-K the rest of the line, Ctrl-R searches, Ctrl-T, Ctrl-B, Ctrl-F and Ctrl-O are readline's: not the menu's.
+		for (const code of ["KeyW", "KeyK", "KeyR", "KeyT", "KeyB", "KeyF", "KeyO", "KeyC", "KeyD", "BracketLeft", "Backslash"]) assert.equal(shellKeeps(ctrl(code), platform), true, `${platform} Ctrl+${code}`);
+		// Copy and paste in a terminal there.
+		assert.equal(shellKeeps(ctrl("KeyC", { shift: true }), platform), true);
+		assert.equal(shellKeeps(ctrl("KeyV", { shift: true }), platform), true);
+		// The app's chords: another tab, a tab by its number, the palette's Ctrl+Shift, the settings, the terminal's own key.
+		for (const input of [ctrl("Tab"), ctrl("Digit1"), ctrl("KeyT", { shift: true }), ctrl("KeyB", { alt: true }), ctrl("Comma"), ctrl("Backquote"), { code: "KeyW" }, { meta: true, code: "KeyW" }]) assert.equal(shellKeeps(input, platform), false, `${platform} ${JSON.stringify(input)}`);
+	}
+	// On a Mac the app's key is ⌘: Ctrl is the shell's anyway, and nothing is taken from the menu.
+	assert.equal(shellKeeps(ctrl("KeyW"), "darwin"), false);
+});
+
+test("terminal: the owner's own shell, for each system: $SHELL as a login shell, else the system's own, PowerShell on Windows", () => {
+	assert.deepEqual(ownShell({ SHELL: "/bin/sh" }, "linux"), ["/bin/sh", "-l"]);
+	assert.deepEqual(ownShell({ SHELL: "/bin/sh" }, "darwin"), ["/bin/sh", "-l"]);
+	assert.deepEqual(ownShell({ SHELL: "/nowhere/fish" }, "darwin"), ["/bin/zsh", "-l"]);
+	// Off a Mac with no $SHELL: the account's shell, which is a shell this computer has.
+	const [linux, login] = ownShell({}, "linux");
+	assert.equal(login, "-l");
+	assert.ok(path.isAbsolute(linux));
+	// Windows: PowerShell 7 where it is on the PATH (named in any case), else the PowerShell every Windows has.
+	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-shell-")));
+	try {
+		assert.deepEqual(ownShell({ Path: dir }, "win32"), ["powershell.exe"]);
+		fs.writeFileSync(path.join(dir, "pwsh.exe"), "");
+		assert.deepEqual(ownShell({ Path: dir }, "win32"), [path.join(dir, "pwsh.exe")]);
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("terminal: the hooks go to bash however it is named (Git Bash's bash.exe) and to PowerShell as its command; cmd.exe runs without", () => {
+	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-hooks-")));
+	try {
+		const bash = withHooks("C:\\Program Files\\Git\\bin\\bash.exe", [], {}, dir);
+		assert.equal(bash.marks, true);
+		assert.equal(bash.args[0], "--rcfile");
+		for (const name of ["pwsh.exe", "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "/usr/local/bin/pwsh"]) {
+			const ps = withHooks(name, [], {}, dir, true);
+			assert.equal(ps.marks, true, name);
+			assert.deepEqual(ps.args.slice(0, 4), ["-NoLogo", "-NoProfile", "-NoExit", "-EncodedCommand"]);
+			const script = Buffer.from(ps.args[4], "base64").toString("utf16le");
+			assert.match(script, /function Global:prompt/);
+			assert.match(script, /function Global:PSConsoleHostReadLine/);
+			assert.match(script, /133;C/);
+		}
+		// The owner's profile is read where a test does not ask for none.
+		assert.equal(withHooks("pwsh", [], {}, dir).args.includes("-NoProfile"), false);
+		assert.equal(withHooks("C:\\Windows\\System32\\cmd.exe", [], {}, dir).marks, false);
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+// PowerShell on Windows, and PowerShell 7 wherever it is installed (GitHub's Linux runners have it).
+const pwsh = process.env.PATH?.split(path.delimiter).map((d) => path.join(d, "pwsh")).find((f) => fs.existsSync(f));
+for (const shell of process.platform === "win32" ? ["powershell.exe"] : pwsh ? [pwsh] : []) {
+	test(`terminal (${path.basename(shell)}): a block run with its button says when it has ended, how, and what it printed`, async () => {
+		// PowerShell's first commands take a while on a busy machine (each cmdlet is compiled the first time
+		// it runs): what is tested here is the report at the end, so the notice of a block that runs on comes late.
+		const w = world(shell, 15_000);
+		try {
+			await w.terms.open("main:ps", w.dir, 80, 24);
+			assert.deepEqual(await w.terms.run("main:ps", `Write-Output "one-$(40+2)"; ${process.platform === "win32" ? "cmd /c exit 3" : "sh -c 'exit 3'"}`), { reports: true });
+			await w.until(() => w.runs.length > 0, 20_000);
+			const [r] = w.runs;
+			assert.equal(r.state, "ended");
+			assert.equal(r.code, 3);
+			assert.match(r.output, /one-42/);
+			// A cmdlet that fails is a failure too, and one that succeeds says so.
+			await w.terms.run("main:ps", "Get-Item ./nowhere-at-all");
+			await w.until(() => w.runs.length === 2, 20_000);
+			assert.equal(w.runs[1].code, 1);
+			await w.terms.run("main:ps", "Write-Output fine");
+			await w.until(() => w.runs.length === 3, 20_000);
+			assert.equal(w.runs[2].code, 0);
+			// What the owner types is theirs: it is not reported.
+			w.terms.write("main:ps", "Write-Output by-hand\r");
+			await w.until(() => /by-hand[\s\S]*by-hand/.test(w.out.get("main:ps") ?? ""), 20_000);
+			await new Promise((res) => setTimeout(res, 500));
+			assert.equal(w.runs.length, 3);
+		} finally {
+			w.done();
+		}
+	});
+}

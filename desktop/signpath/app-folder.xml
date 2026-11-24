@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "app-folder" (paste it into the project at signpath.io; this file is
+  what it should say). The artifact is the folder of the Windows app for each processor, as
+  desktop/scripts/pack.mjs packs it (a folder, before any installer), side by side: x64/ and arm64/
+  (the job app-windows-sign in release.yml).
+
+  Only what is built from pine's own source is signed: Pine.exe (the app; its version information is
+  written by the packer) and the three C# helpers (src/csharp.ts). Electron's own DLLs, Node and the
+  terminal's native module come from their projects and stay as they are, as SignPath Foundation's
+  terms ask ("sign your own binaries only").
+
+  Every signed file must say the product name and the release's version: the job passes the version
+  as the parameter "version".
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <directory-set>
+      <include path="x64" />
+      <include path="arm64" />
+      <for-each>
+        <pe-file path="Pine.exe" product-name="Pine" product-version="${version}">
+          <authenticode-sign />
+        </pe-file>
+        <pe-file-set product-name="Pine" product-version="${version}">
+          <include path="resources/pine/src/sources/prebuilt/pine-system-*.exe" />
+          <include path="resources/pine/src/tui/prebuilt/pine-voice-*.exe" />
+          <include path="resources/pine/mcp/prebuilt/pine-computer-*.exe" />
+          <for-each>
+            <authenticode-sign />
+          </for-each>
+        </pe-file-set>
+      </for-each>
+    </directory-set>
+  </zip-file>
+</artifact-configuration>

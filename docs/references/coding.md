@@ -87,7 +87,9 @@ In the Pine app: File › New Conversation in a Worktree… (⌥⌘T), Conversat
 into a Worktree" on a conversation in the side bar and "Branch from here into a worktree" on a
 message of yours. The conversation's header shows the branch instead of the folder; a click opens
 the list. The Changes view of the panel shows how far the worktree is ahead of what it was made
-from, with a button to merge.
+from, with a button to merge. In the terminal UI the bar shows `⎇ pine/<name>` in place of the
+folder, a click on it opens the same list, and the code pane's second line says how far the
+worktree is ahead and behind.
 
 A conversation that is open in the Pine app and in a terminal UI at once shows the same in both:
 a folder opened or a worktree made, merged away or discarded in one appears in the other's bar
@@ -148,7 +150,7 @@ when no folder is open. In a terminal of 100 columns or more it takes half the w
 ```
  pine  1 ★ main ×  2 main·shop ×   +                                                ▤ code
 ───────────────────────────────────────────────────────────────────────────────────────────
- make the total include shipping          │  Changes  Files  Output  Running           ↻  ×
+ make the total include shipping          │  Changes  Files  Output  Running  Board    ↻  ×
                                           │ main · 2 changed · ~/dev/shop
  ✓ edit src/cart.ts 12 ms                 │─────────────────────────────────────────────────
  ✓ bash npm test 2.1 s                    │ M src/cart.ts  +4 −1
@@ -162,12 +164,14 @@ when no folder is open. In a terminal of 100 columns or more it takes half the w
 | **Files** | The folder as a tree | on a folder opens or closes it; on a file shows its text with line numbers and colors, or a picture as a picture |
 | **Output** | Every tool call of the conversation's last 8 messages, newest first: the tool, what it was called with, how long it took | on a call shows everything it printed, not only the first lines the conversation shows |
 | **Running** | What the conversation's commands started and left running: a development server, a watcher. Each with its command, the ports it listens on and how long it has run. A command the agent put into the background is listed too, with the file its output goes to | on `■ stop` ends it |
+| **Board** | The conversation's own board first, then the boards with a name it can use (up to six): for each how its tasks stand, every task with who has it, and the notes for all ([boards.md](boards.md)). It is read again when a board changes | on a task shows it in full: what it says, what came of it or what it asks, and the notes about it |
 
 The pane follows the agent: when a tool call finishes, what is shown is read again, so a diff
 grows while the agent edits. `↻` reads it again by hand, `×` closes the pane. The wheel scrolls
 whichever side the pointer is over. Whether the pane was open is remembered for the next start.
 
-`/code changes`, `/code files`, `/code output` and `/code running` open it on that view;
+`/code changes`, `/code files`, `/code output`, `/code running` and `/code board` (or `/board`)
+open it on that view;
 `/code turn` opens the changes of your last message; `/code off` closes it.
 
 ### What an agent left running
@@ -384,6 +388,7 @@ The control API ([operations.md](operations.md)) has the same things:
 | `POST /agents/<id>/view/write` `{ session?, path, text }` | Write a file of the conversation's folder: what you changed in an editor of a UI. The path is from the conversation's folder. At most 2 MB of text; a missing file is made, a missing folder is not. The new text is put into a new file that takes the place of the old one, with the rights the old one had. A path that leads out of the folder is refused, and the write happens inside a sandbox that can write in that folder only: a link an agent left there does not get anything outside it changed. On a system without a sandbox it is refused |
 | `GET /agents/<id>/view/find?session=&q=` | The files of the conversation's folder whose name fits a few letters: what `@` offers |
 | `GET /tasks/<id>/transcript?full=1` | A task's steps with the whole output of each tool call |
+| `GET /agents/<id>/worktree?session=`, `POST /agents/<id>/worktree`, `POST /agents/<id>/worktree/merge`, `/update`, `/remove` | A conversation's worktree: where it stands, make one, merge or squash it, bring it up to date, discard it ([operations.md](operations.md)) |
 | `GET /agents/<id>/programs?session=`, `POST /agents/<id>/programs/stop` `{ session, id }` | What the conversation's commands left running, background commands among them, and stopping one |
 | `POST /agents/<id>/undo` `{ session }` | Take back your last message in a conversation. The answer has the message's text (`prompt`), what was restored (`restored`: `root`, the counts `changed`, `removed` and `back`, the first `files`, and `left` for files too large to record), a `note` when no file was restored, `stopped`, how many messages a redo can bring back (`redo`), and whether there is another message to take back (`more`) |
 | `POST /agents/<id>/redo` `{ session }` | Bring back what the last undo took. The same answer |
