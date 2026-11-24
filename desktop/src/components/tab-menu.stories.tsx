@@ -46,3 +46,9 @@ export const MainAlone: Story = {
 	args: { trigger: tab("scout"), pin: "main", others: false, right: false, onAction: fn() },
 	play: rightClick,
 };
+
+/** A conversation tab in the desktop app, where `Move to New Window` splits it out into a window of its own. */
+export const MoveToNewWindow: Story = {
+	args: { trigger: tab("scout", "the landing page"), pin: "pin", moveToWindow: true, onAction: fn() },
+	play: rightClick,
+};

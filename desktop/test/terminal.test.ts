@@ -172,3 +172,87 @@ test("marks: read out of output however it is cut", () => {
 	assert.deepEqual(marks, [{ kind: "C", code: undefined }, { kind: "D", code: 2 }]);
 	assert.equal(pieces.filter((p) => typeof p === "string").join(""), "aout\x1b]0;title\x07b");
 });
+
+test("terminal: shells are isolated per window and move cleanly across windows with transfer", async () => {
+	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-terminal-win-")));
+	const out = new Map<string, string>();
+	const ended = new Map<string, number>();
+	const runs: Array<RunReport & { id: string; windowId: string }> = [];
+	const shellBin = fs.existsSync("/bin/zsh") ? "/bin/zsh" : fs.existsSync("/bin/bash") ? "/bin/bash" : "/bin/sh";
+	const terms = new Terminals(
+		{
+			data: (id, data, windowId) => out.set(`${windowId}:${id}`, (out.get(`${windowId}:${id}`) ?? "") + data),
+			exit: (id, code, windowId) => ended.set(`${windowId}:${id}`, code),
+			run: (id, r, windowId) => runs.push({ id, windowId, ...r }),
+		},
+		{ env: async () => ({ ...process.env, HOME: dir, PS1: "$ " }), hooks: path.join(dir, ".hooks"), shell: [shellBin], stillRunningMs: 400 },
+	);
+	const until = async (what: () => boolean, ms = 5000) => {
+		const end = Date.now() + ms;
+		while (!what()) {
+			if (Date.now() > end) throw new Error(`waited in vain; out=${JSON.stringify([...out])}`);
+			await new Promise((r) => setTimeout(r, 20));
+		}
+	};
+	try {
+		// Two windows open the same conversation key independently and run separate shells.
+		const firstW1 = await terms.open("main:shared", dir, 80, 24, "w1");
+		const firstW2 = await terms.open("main:shared", dir, 100, 30, "w2");
+		assert.equal(firstW1.fresh, true);
+		assert.equal(firstW2.fresh, true);
+		assert.equal(terms.has("main:shared", "w1"), true);
+		assert.equal(terms.has("main:shared", "w2"), true);
+		assert.equal(terms.has("main:shared"), false);
+
+		terms.write("main:shared", "WIN_TAG=one; echo from-w1-$((10+1))\r", "w1");
+		terms.write("main:shared", "WIN_TAG=two; echo from-w2-$((20+2))\r", "w2");
+		await until(() => /from-w1-11/.test(out.get("w1:main:shared") ?? "") && /from-w2-22/.test(out.get("w2:main:shared") ?? ""));
+		assert.doesNotMatch(out.get("w1:main:shared") ?? "", /from-w2-22/);
+		assert.doesNotMatch(out.get("w2:main:shared") ?? "", /from-w1-11/);
+
+		// Resizing w2 does not resize w1.
+		terms.resize("main:shared", 132, 40, "w2");
+		terms.write("main:shared", "stty size\r", "w1");
+		terms.write("main:shared", "stty size\r", "w2");
+		await until(() => /24 80/.test(out.get("w1:main:shared") ?? "") && /40 132/.test(out.get("w2:main:shared") ?? ""));
+
+		// Closing w2's shells leaves w1's shell alive.
+		terms.closeWindow("w2");
+		assert.equal(terms.has("main:shared", "w2"), false);
+		assert.equal(terms.has("main:shared", "w1"), true);
+
+		// Transferring main:shared from w1 to w3 moves the live shell, its kept output, and future events to w3.
+		assert.equal(terms.transfer("w1", "w3", "main:missing"), false);
+		assert.equal(terms.transfer("w1", "w3", "main:shared"), true);
+		assert.equal(terms.has("main:shared", "w1"), false);
+		assert.equal(terms.has("main:shared", "w3"), true);
+
+		// Closing w1 after transfer does not affect the transferred shell in w3.
+		terms.closeWindow("w1");
+		const reopenedInW3 = await terms.open("main:shared", "/", 90, 28, "w3");
+		assert.equal(reopenedInW3.fresh, false);
+		assert.equal(reopenedInW3.cwd, dir);
+		assert.match(reopenedInW3.kept, /from-w1-11/);
+
+		const w1Before = out.get("w1:main:shared") ?? "";
+		terms.write("main:shared", "echo moved-$WIN_TAG\r", "w3");
+		await until(() => /moved-one/.test(out.get("w3:main:shared") ?? ""));
+		assert.equal(out.get("w1:main:shared") ?? "", w1Before);
+
+		if (shellBin !== "/bin/sh") {
+			await terms.run("main:shared", "echo run-in-w3-$WIN_TAG", "w3");
+			await until(() => runs.length === 1);
+			assert.equal(runs[0].windowId, "w3");
+			assert.match(runs[0].output, /run-in-w3-one/);
+		}
+
+		// Natural exit routes to w3.
+		terms.write("main:shared", "exit 7\r", "w3");
+		await until(() => ended.has("w3:main:shared"));
+		assert.equal(ended.get("w3:main:shared"), 7);
+		assert.equal(ended.has("w1:main:shared"), false);
+	} finally {
+		terms.closeAll();
+		fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+	}
+});

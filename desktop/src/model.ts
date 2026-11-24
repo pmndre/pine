@@ -1801,6 +1801,51 @@ export class Store extends Model {
 		this.touch();
 	}
 
+	/**
+	 * Moves a conversation tab out of this window into a new window on the same environment,
+	 * preserving its unsent draft, attachments, session subscriptions, and local shell terminal.
+	 * @param tab Conversation tab to split into a new window.
+	 */
+	async moveTabToNewWindow(tab: Tab): Promise<void> {
+		if (tab.kind !== "chat" || !this.canManageWindows || !this.tabs.includes(tab)) return;
+		const draft = tab.draft.trim() || tab.attachments.length ? { draft: tab.draft, attachments: [...tab.attachments] } : undefined;
+		const opened = await this.attempt(async () => {
+			await bridge.newWindow!({
+				host: this.service.host ?? null,
+				tab: { agent: tab.agent, session: tab.session },
+				moveFrom: true,
+				draft,
+			});
+			return true;
+		});
+		if (!opened || !this.tabs.includes(tab)) return;
+		const before = this.tabs;
+		this.tabs = before.filter((t) => t !== tab);
+		this.drafts.delete(tab.key);
+		for (const id of tab.approvals.keys()) {
+			this.asked.delete(id);
+			if (this.asking === id) this.asking = undefined;
+		}
+		tab.approvals.clear();
+		if (this.active === tab) {
+			const was = before.indexOf(tab);
+			const next = before.slice(0, was).reverse().find((t) => this.tabs.includes(t)) ?? this.tabs[0];
+			if (next) this.activate(next);
+			else {
+				this.active = undefined;
+				this.saveTabs();
+				this.touch();
+				this.badge();
+				this.askNext();
+			}
+		} else {
+			this.saveTabs();
+			this.touch();
+			this.badge();
+		}
+		void this.refreshConversations(tab.agent);
+	}
+
 	cycle(by: number): void {
 		if (this.tabs.length < 2 || !this.active) return;
 		this.activate(this.tabs[(this.tabs.indexOf(this.active) + by + this.tabs.length) % this.tabs.length]);
