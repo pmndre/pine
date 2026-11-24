@@ -242,7 +242,8 @@ test("undo: what runs is stopped first, sub-agents belong to the message that st
 	const { task } = await client.prompt("main", `LONG job ${mockMsg([{ tools: [bash("echo PLAN-2 > plan.md"), call("subagent", { tasks: ["@@REF:child@@"] })] }, { tools: [bash("sleep 30")] }])}`, "main");
 	await until(() => fs.existsSync(path.join(ws, "child.txt")) && h.toolResults().some((x) => x.includes("child done")), 8000, "the sub-agent's file and its answer");
 	await until(() => h.pine.agents.status().running.some((r) => r.task === task), 2000, "the long command");
-	await sleep(200);
+	// The model has handed it the long command: what is taken back is a command that runs.
+	await until(() => h.mock.state.requests.some((q: any) => JSON.stringify(q.reply ?? {}).includes("sleep 30")), 5000, "the model to ask for the long command");
 
 	const r = await client.undo("main", "main");
 	assert.ok(r.prompt.startsWith("LONG job"));
@@ -331,7 +332,9 @@ test("undo: work handed to another agent belongs to the message that started it,
 	assert.deepEqual(said(h, "talk"), ["JUST talk"]);
 
 	// The helper works in the conversation's folder after the message that asked it has been answered; its answer arrives as a message later.
-	h.mock.state.scripts.slow = [{ delayMs: 80, tools: [bash("echo by-helper > helped.txt")] }, { text: "HELPER-ANSWER" }];
+	// The helper begins once main has answered: by what happened, not by a time, which a busy machine can outlast.
+	const answered = () => h.pine.tasks.list({ agent: "main", session: "talk" }).some((x) => x.kind === "prompt" && x.prompt.startsWith("HAND it on") && x.status === "done");
+	h.mock.state.scripts.slow = [{ until: answered, tools: [bash("echo by-helper > helped.txt")] }, { text: "HELPER-ANSWER" }];
 	await say("HAND it on", [{ tools: [call("delegate", { agent: "helper", task: "@@REF:slow@@", wait: false })] }, { text: "handed on" }]);
 	await until(() => h.pine.tasks.list({ agent: "main", session: "talk" }).some((x) => x.kind === "notify" && x.status === "done"), 5000, "the helper's answer");
 	assert.equal(read(dir, "helped.txt"), "by-helper\n");
@@ -359,13 +362,17 @@ test("undo: work handed to another agent belongs to the message that started it,
 test("undo: a message that still waits its turn is withdrawn, and what runs before it goes on", mac, async () => {
 	const h = await harness({ pine: { http: { port: 0 } }, agents: { main: {} } });
 	const client = new Client(`http://127.0.0.1:${h.pine.http!.port}`, h.pine.token);
-	const first = await client.prompt("main", `BUSY ${mockMsg([{ delayMs: 400, text: "busy done" }])}`, "main");
+	// The first message is answered once the second was taken back, so that it is still at work then.
+	let undone = false;
+	h.mock.state.scripts.busy = [{ until: () => undone, text: "busy done" }];
+	const first = await client.prompt("main", "BUSY @@REF:busy@@", "main");
 	await until(() => h.pine.agents.status().running.length === 1, 3000, "the first message to be worked on");
 	await client.prompt("main", "WAITING behind it", "main");
 	const r = await client.undo("main", "main");
+	undone = true;
 	assert.deepEqual([r.prompt, r.waiting, r.stopped, r.redo], ["WAITING behind it", true, 0, 0]);
 	assert.equal((await h.pine.agents.wait(first.task)).text, "busy done", "the message before it was not stopped");
-	assert.deepEqual(said(h, "main"), ["BUSY"]);
+	assert.deepEqual(said(h, "main"), ["BUSY @@REF:busy@@"]);
 	assert.equal(h.mock.state.requests.length, 1, "the withdrawn message never reached the model");
 	await h.close();
 });

@@ -50,7 +50,8 @@ test("an event for a conversation that is working goes into that work: one run, 
 	// The work holds its answer until the other three events are in (a run from outside has no shell to keep it busy).
 	h.mock.state.scripts.work = [{ text: "one answer", until: () => h.pine.tasks.list({}).length >= 4 }];
 	h.pine.bus.publish("slack/message", { key: "PROJ-244", text: "PROJ-244 is broken @@REF:work@@" }, { source: "test" });
-	await until(() => h.pine.agents.status().running.length === 1);
+	// At work once the model has been asked: before that the run has started but not yet its session's stream.
+	await until(() => h.pine.agents.status().running.length === 1 && h.mock.state.requests.some((q: any) => JSON.stringify(q.body).includes("PROJ-244 is broken")));
 	h.pine.bus.publish("jira/issue", { issue: { key: "PROJ-244" }, text: "JIRA-UPDATE status: blocked" }, { source: "test" });
 	// One whose answer goes somewhere else, and one on a route that queues: both wait their turn.
 	h.pine.bus.publish("chat/message", { key: "PROJ-244", text: "OTHER-REPLY" }, { source: "test", reply: { topic: "out/chat" } });
@@ -71,20 +72,20 @@ test("debounce handles only the last event of a burst; throttle only the first",
 	const h = await harness({
 		pine: {
 			routes: [
-				{ name: "burst", on: "cam/+/motion", debounceMs: 80, publish: { topic: "seen/debounced", payload: { n: "{{payload.n}}", cam: "{{topic}}" } } },
+				{ name: "burst", on: "cam/+/motion", debounceMs: 600, publish: { topic: "seen/debounced", payload: { n: "{{payload.n}}", cam: "{{topic}}" } } },
 				{ name: "first", on: "door/bell", throttleMs: 3000, publish: { topic: "seen/throttled", payload: "{{payload}}" } },
 			],
 		},
 		agents: { main: {} },
 	});
-	// (The throttle's window is far longer than the burst: a busy computer may pause between two publishes.)
+	// (Both windows are far longer than the burst: a busy computer may pause between two publishes.)
 	for (const n of [1, 2, 3]) {
 		h.pine.bus.publish("cam/front/motion", { n });
 		h.pine.bus.publish("door/bell", { n });
 		await sleep(15);
 	}
 	h.pine.bus.publish("cam/back/motion", { n: 9 });
-	await sleep(160);
+	await until(() => h.pine.bus.query({ topic: "seen/debounced" }).length >= 2, 4000, "the end of both bursts");
 	const debounced = h.pine.bus.query({ topic: "seen/debounced" }).map((e) => e.payload);
 	assert.deepEqual(debounced, [{ n: 3, cam: "cam/front/motion" }, { n: 9, cam: "cam/back/motion" }]);
 	assert.deepEqual(h.pine.bus.query({ topic: "seen/throttled" }).map((e) => e.payload), [{ n: 1 }]);
@@ -130,7 +131,7 @@ test("an agent that keeps triggering itself through events is cut off", async ()
 	});
 	h.pine.bus.publish("loop/ping", { text: "start" }, { trust: "owner" });
 	await until(() => h.logs.some((l) => /dropped loop\/ping .* after \d+ hops/.test(l)), 8000, "the loop to be cut");
-	await sleep(60);
+	await until(() => h.pine.agents.status().running.length === 0, 4000, "the last run to end");
 	const pings = h.pine.bus.query({ topic: "loop/ping" });
 	assert.ok(pings.length >= 3 && pings.length <= 6, `loop stopped after ${pings.length} events`);
 	assert.equal(h.pine.agents.status().running.length, 0);

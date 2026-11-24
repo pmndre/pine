@@ -132,8 +132,7 @@ test("tui: tabs, slash commands and keys", { skip: process.platform === "win32" 
 	assert.equal(t.h.pine.tasks.list({})[0].session, "notes");
 
 	t.term.type([KEY.tab]);
-	await sleep(20);
-	assert.ok(!t.text().includes("only in notes"), "each tab has its own transcript");
+	await until(() => !t.text().includes("only in notes"), 2000, "each tab has its own transcript");
 	t.term.type([KEY.tab]);
 	await t.sees("only in notes");
 
@@ -168,7 +167,7 @@ test("tui: tabs, slash commands and keys", { skip: process.platform === "win32" 
 	await t.send("/events");
 	await t.sees(/4 events/);
 	t.term.type([KEY.alt(1)]);
-	await sleep(20);
+	await until(() => /^ main · main · /.test(t.app.screen().at(-1) ?? ""), 2000, "the main tab to be in front");
 	await t.send("ping");
 	await done(t.h, 2);
 	t.term.type([KEY.alt(4)]);
@@ -177,8 +176,7 @@ test("tui: tabs, slash commands and keys", { skip: process.platform === "win32" 
 	await t.sees("this tab only shows events");
 
 	t.term.type([KEY.ctrlW]);
-	await sleep(20);
-	assert.ok(!/4 events/.test(t.text()));
+	await until(() => !/4 events/.test(t.text()), 2000, "the events tab to close");
 	t.term.type([KEY.alt(1)]);
 	await t.send("/status");
 	await t.sees("model slots 0/8 busy");
@@ -230,6 +228,8 @@ test("tui: enter on a highlighted suggestion picks it and runs the command", asy
 	t.term.type("/agent gol");
 	await t.sees(/→ golem\s+clay/);
 	t.term.type([KEY.tab]);
+	await t.sees("/agent golem");
+	// Nothing more comes of it: a short look for a tab that should not open.
 	await sleep(40);
 	assert.ok(!/3 golem/.test(t.text()), "tab only completes");
 	t.term.type([KEY.enter]);
@@ -252,7 +252,10 @@ test("tui: esc stops a running task; an approval is asked in a dialog and answer
 	// because the status line says "working" again, does not take that message with it.
 	await t.send(mockMsg([{ tools: [{ name: "bash", args: { command: "sleep 5; echo never" } }] }]));
 	await t.sees("● bash sleep 5");
-	await t.send(mockMsg([{ delayMs: 600, text: "This is the answer to the correction." }]));
+	// The correction's answer waits until the test is done pressing esc, so that it is still at work when the second esc comes.
+	let pressed = false;
+	t.h.mock.state.scripts.correction = [{ until: () => pressed, text: "This is the answer to the correction." }];
+	await t.send("correct it @@REF:correction@@");
 	t.term.type([KEY.esc]);
 	const stoppedAt = Date.now();
 	await until(() => count(t.text(), "■ stopped") === 2, 4000, "the running work to stop");
@@ -264,6 +267,7 @@ test("tui: esc stops a running task; an approval is asked in a dialog and answer
 		t.term.type([KEY.esc]);
 		await t.sees("This is your next message being answered");
 	}
+	pressed = true;
 	await t.sees("This is the answer to the correction.");
 	assert.equal(count(t.text(), "■ stopped"), 2, "the correction was not stopped");
 
@@ -620,10 +624,13 @@ test("tui: a click on a web address opens it, also when the address wraps over l
 		t.term.click(lines()[y].indexOf(needle) + offset, y);
 		await sleep(20);
 	};
+	const opens = (n: number) => until(() => opened.length >= n, 2000, `address ${n} to be opened`);
 	// The prompt line shows the same addresses; click the ones in the answer (second occurrence).
 	await clickOn("https://example.com/docs", 3, 2);
+	await opens(1);
 	assert.equal(opened.at(-1), "https://example.com/docs/page?x=1", "the comma after it is not part of the address");
 	await clickOn("example.org/manual", 3, 2);
+	await opens(2);
 	assert.equal(opened.at(-1), "https://example.org/manual", "a markdown link shows its target, and that is what opens");
 	await t.sees("opened https://example.org/manual");
 
@@ -631,7 +638,7 @@ test("tui: a click on a web address opens it, also when the address wraps over l
 	const tail = lines().findLastIndex((l) => l.includes("&scope=read"));
 	assert.ok(tail > 0 && !lines()[tail].includes("https://"), "the address is wrapped");
 	t.term.click(lines()[tail].indexOf("&scope=read") + 2, tail);
-	await sleep(20);
+	await opens(3);
 	assert.equal(opened.at(-1), long);
 
 	const before = opened.length;
@@ -788,7 +795,7 @@ test("tui: two values asked for at once are two blocks: a name, what it is, a ba
 	assert.ok(!t.text().includes("abcd"), "and nothing typed is shown");
 	t.term.type([KEY.esc]);
 	await until(() => !t.text().includes("Approval needed, and something only you have"));
-	await sleep(300);
+	await t.sees("waiting for your approval");
 	await t.send("/deny");
 	await until(() => t.h.pine.approvals.pending().length === 0);
 	await t.close();
@@ -1650,7 +1657,7 @@ test("tui: the agent's list of steps is shown and kept up to date, and the agent
 	await until(() => count(t.text(), "steps · 1 of 3 done") === 2, 4000, `the steps in the pane too\n${t.text()}`);
 	assert.equal(count(t.text(), "◐ change it"), 2);
 	await t.send("/code files");
-	await sleep(150);
+	await until(() => !/│ ✓ todo/.test(t.text()) && !t.text().includes("reading …"), 4000, `the files view\n${t.text()}`);
 	assert.equal(count(t.text(), "steps · 1 of 3 done"), 2, "also in another view");
 	await t.send("/code off");
 	await until(() => count(t.text(), "steps · 1 of 3 done") === 1, 4000, "the pane to close");

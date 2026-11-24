@@ -109,7 +109,9 @@ test("modbus: types, scale and word order are read as the device means them; a v
 
 	// Less than a step: quiet. A step from what was last reported, not from what was last read: reported once.
 	holding.set(10, 0x10000 - 1450);
-	await sleep(150);
+	// A look that read it: the device answers from what is set at the moment it is asked.
+	const asked = dev.state.asked.filter((a) => a.address === 10).length;
+	await until(() => dev.state.asked.filter((a) => a.address === 10).length > asked, 4000, "a look at the smaller change");
 	holding.set(10, 0x10000 - 1380);
 	input.set(20, 216);
 	coil.set(5, false);
@@ -343,6 +345,7 @@ test("onvif: the state at the start is the starting point, a change is reported 
 	assert.deepEqual(events()[0], { topic: "RuleEngine/CellMotionDetector/Motion", source: WHERE, data: { IsMotion: true }, time: "2026-11-16T10:00:00Z", active: true });
 	assert.equal(eventsOf(h, "cam")[0].trust, "untrusted");
 	cam.state.queue.push(note(TOPIC, WHERE, { IsMotion: "true" }, "Changed"), note("tns1:RuleEngine/TamperDetector/Tamper", WHERE, { IsTamper: "true" }, "Changed"));
+	await until(() => cam.state.queue.length === 0, 4000, "the camera to be asked for them");
 	await sleep(150);
 	assert.equal(events().length, 1);
 	// Something that happens rather than is: reported every time it does.
@@ -354,6 +357,7 @@ test("onvif: the state at the start is the starting point, a change is reported 
 	// The camera forgets the subscription (a restart): a new one is made, and the state it repeats is not news.
 	cam.state.fault = true;
 	await until(() => cam.state.subs >= 2 && /subscribed to the camera/.test(info("cam").status ?? ""), 5000, "a new subscription");
+	await until(() => cam.state.queue.length === 0, 4000, "the camera to be asked for what it repeats");
 	await sleep(120);
 	assert.equal(events().length, 3);
 	cam.state.motion = false;
@@ -464,7 +468,8 @@ test("presence: who is there at the start is not reported; a device that came an
 	// The loopback is asked for real; an address that should lead nowhere may still be answered for by
 	// the network the test runs on (a router that takes every connection to port 80), so it answers nothing.
 	netStandIn.answers = (ip) => (ip === "127.0.0.1" ? answers(ip) : Promise.resolve(false));
-	const net2 = { type: "presence", hosts: { here: "127.0.0.1", nobody: "192.0.2.1" }, every: "50ms", away: "200ms" };
+	// (Gone after five silent seconds: far longer than a busy computer may pause between two looks.)
+	const net2 = { type: "presence", hosts: { here: "127.0.0.1", nobody: "192.0.2.1" }, every: "50ms", away: "5s" };
 	const h = await harness({ pine: { sources: { lan: { ...net2, start: "always" }, known: net2 } }, agents: { main: {} } });
 	await until(() => /1 of 2 there$/.test(infoOf(h, "lan").status ?? ""), 6000, "the first look");
 	await sleep(150);

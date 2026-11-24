@@ -392,6 +392,8 @@ test("voice: ctrl+r dictates into the message, after what was typed; enter ends 
 	await ui.sees("keep this which bill is due first");
 	ui.term.type([KEY.esc]);
 	await until(() => !ui.text().includes("listening"), 3000, "the listening to end");
+	await until(() => /^ keep this +🎤$/.test(ui.app.screen().find((l) => l.includes("keep this")) ?? ""), 3000, `what was typed before, alone in the input\n${ui.text()}`);
+	// Nothing heard comes after it: a short look for words that should not arrive.
 	await sleep(120);
 	assert.ok(/^ keep this +🎤$/.test(ui.app.screen().find((l) => l.includes("keep this")) ?? "") && !ui.text().includes("keep this which"), ui.text());
 	assert.equal(tasks(), 2);

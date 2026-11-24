@@ -5,7 +5,7 @@ import net from "node:net";
 import path from "node:path";
 import { test } from "node:test";
 import { parseLine } from "../src/sources/syslog.ts";
-import { harness, mockMsg, sleep, until } from "./support/harness.ts";
+import { harness, mockMsg, PATIENCE, sleep, until } from "./support/harness.ts";
 import { png } from "./support/png.ts";
 
 const owner = { trust: "owner" as const };
@@ -37,7 +37,7 @@ async function smtpClient(port: number) {
 		waiting?.();
 	});
 	const reply = async (): Promise<string> => {
-		const end = Date.now() + 4000;
+		const end = Date.now() + 4000 * PATIENCE;
 		for (;;) {
 			const lines = buffer.split("\r\n");
 			const last = lines.findIndex((l) => /^\d{3}(?: |$)/.test(l));

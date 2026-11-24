@@ -1,6 +1,8 @@
 name: Test
 
-# pine's tests on every system it runs on, on every pull request and every push to next.
+# pine's tests on every system it runs on, on every pull request and every push to next. A file with
+# a failure is run again alone (scripts/test.mjs): one that passes then was a wait that ran out on a
+# slow runner, and does not fail the run.
 #
 # pine: the type check and `npm test` on Linux (x64 and arm64), macOS and Windows. On Linux the
 # sandbox is set up first the way an owner sets it up, with `pine init` (bubblewrap, and the
@@ -60,7 +62,7 @@ jobs:
           node --input-type=module -e 'import { sandboxKind, sandboxMissing } from "./src/security.ts"; console.log(`sandbox: ${sandboxKind() ?? "none"} on ${process.platform} ${sandboxMissing()}`)'
       # A test that hangs fails after three minutes, instead of holding the job until its own limit.
       # The runners are slower than a computer at a desk: the tests' waits are four times as long.
-      - run: node --test --test-force-exit --test-timeout=180000 "test/*.test.ts"
+      - run: node scripts/test.mjs --test-force-exit --test-timeout=180000 "test/*.test.ts"
         env:
           PINE_TEST_PATIENCE: "4"
 

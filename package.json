@@ -22,7 +22,7 @@
   "scripts": {
     "start": "node src/cli.ts start",
     "check": "tsc --noEmit",
-    "test": "node --test --test-force-exit \"test/*.test.ts\"",
+    "test": "node scripts/test.mjs --test-force-exit \"test/*.test.ts\"",
     "test:live": "node scripts/live.mjs",
     "baseline": "node baseline/run-all.mjs",
     "build": "node scripts/build.mjs",

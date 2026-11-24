@@ -4,7 +4,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../src/config.ts";
 import { localTime } from "../src/timers.ts";
-import { harness, MCP_STUB, mockMsg, sleep, until } from "./support/harness.ts";
+import { harness, MCP_STUB, mockMsg, until } from "./support/harness.ts";
 
 const owner = { trust: "owner" as const };
 const call = (name: string, args: any) => ({ name, args });
@@ -76,7 +76,8 @@ test("schedules: asked for a time, an agent schedules it for the conversation, f
 	assert.equal(asked.length, 0);
 	await until(() => woken(h, "books", "april").length === 1, 6000, "the reminder");
 	assert.ok(userText(h.mock.state.requests.at(-1)).endsWith("Remind the owner to call the dentist."));
-	await sleep(50);
+	// It takes itself out of the file once it has fired, a moment after the agent was woken.
+	await until(() => file("books") === undefined, 3000, "the schedule to leave the file");
 	assert.equal(file("books"), undefined, "the file is as it was before");
 	assert.equal(woken(h, "books", "april").length, 1);
 
@@ -133,7 +134,7 @@ test("schedules: asked for a time, an agent schedules it for the conversation, f
 	assert.deepEqual(h.pine.schedules.list().map((s) => s.name).sort(), ["hourly", "missed", "sunday"]);
 	await until(() => woken(h, "books").length === had + 1, 6000, "the missed one");
 	assert.match(userText(h.mock.state.requests.at(-1)), /Water the plants\.\n\n\(This was due at \d{4}-\d\d-\d\d \d\d:\d\d(:\d\d)? and comes late: pine was not running then\.\)$/);
-	await sleep(50);
+	await until(() => file("books") === undefined, 3000, "the missed one to leave the file");
 	assert.equal(file("books"), undefined);
 	await h.close();
 });

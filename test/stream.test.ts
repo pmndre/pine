@@ -221,7 +221,8 @@ test("stream (WebSocket): says hello with the token, reports what is sent, and c
 	const everything = JSON.stringify([h.pine.bus.query({}), h.pine.sources.list()]);
 	for (const secret of ["ha-long-lived", "ws-header-token-xyz"]) assert.ok(!everything.includes(secret), "a token is in no event and no status line");
 	await h.close();
-	await sleep(50);
+	// The server hears of a closed connection a moment later.
+	await until(() => ws.live().length === 0, 3000, "the connections to be closed");
 	assert.equal(ws.live().length, 0, "a stopped source lets go of its connections");
 });
 

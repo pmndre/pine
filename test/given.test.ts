@@ -2,8 +2,25 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { harness, mockMsg, sleep, until } from "./support/harness.ts";
+import { harness, type Harness, mockMsg, sleep, until } from "./support/harness.ts";
 import { httpMcp } from "./support/http-mcp.ts";
+
+/**
+ * Writes a file into the folder a new folder source watches, and again while the source has not
+ * reported it: the OS takes a moment before a new watcher sees changes, and on a busy machine longer.
+ * Once it is reported nothing is written, so it is reported once.
+ */
+function dropUntilReported(h: Harness, file: string, content: string, what: string): Promise<void> {
+	let last = 0;
+	return until(() => {
+		if (h.pine.bus.query({ topic: "source/#" }).some((e: any) => e.payload?.file === path.basename(file))) return true;
+		if (Date.now() - last > 500) {
+			fs.writeFileSync(file, content);
+			last = Date.now();
+		}
+		return false;
+	}, 6000, what);
+}
 
 const owner = { trust: "owner" as const };
 const call = (name: string, args: any = {}) => ({ name, args });
@@ -80,8 +97,7 @@ test("given: an MCP server, a skill, an event source and a schedule are each lis
 	assert.match(r.results.at(-1)!, /Added the event source "papers" \(folder\)\. It is this conversation's own/);
 	r = await run([call("sources")]);
 	assert.match(r.results.at(-1)!, /papers \(folder: scanned papers\) - [^\n]*\n    local: THIS conversation is subscribed and is woken here\. Note: Say which paper arrived\./);
-	await sleep(150);
-	fs.writeFileSync(path.join(inbox, "bill.pdf"), "%PDF");
+	await dropUntilReported(h, path.join(inbox, "bill.pdf"), "%PDF", "the file to be reported");
 	await until(() => woken().length === 1, 6000, "the file to wake the conversation");
 	const heard = h.mock.state.requests.find((q: any) => userText(q).includes("bill.pdf"));
 	assert.ok(heard && userText(heard).includes("Say which paper arrived."), "woken with the event and the note");

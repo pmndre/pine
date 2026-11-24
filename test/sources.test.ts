@@ -24,6 +24,25 @@ const userText = (req: any) => {
 };
 const eventTasks = (h: any) => h.pine.tasks.list({}).filter((t: any) => t.kind === "event");
 
+/**
+ * Write files into a folder that a source has just begun to watch, and wait until `seen()`. The system takes a
+ * moment before a new watcher reports anything, longer on a busy machine, so until then the files are touched
+ * again now and then: their mode is set as it is, which leaves their time of change alone, and the folder
+ * source reports a file once for each time it was changed. So nothing is reported twice.
+ */
+async function dropUntil(files: Array<[string, string | Buffer]>, seen: () => boolean, what: string) {
+	for (const [file, content] of files) fs.writeFileSync(file, content);
+	let touched = Date.now();
+	await until(() => {
+		if (seen()) return true;
+		if (Date.now() - touched > 300) {
+			touched = Date.now();
+			for (const [file] of files) fs.chmodSync(file, fs.statSync(file).mode);
+		}
+		return false;
+	}, 8000, what);
+}
+
 const freePort = () =>
 	new Promise<number>((resolve) => {
 		const s = net.createServer().listen(0, "127.0.0.1", () => {
@@ -60,9 +79,7 @@ test("sources: a configured source does nothing until an agent subscribes; then 
 	assert.deepEqual([info().running, info().subscribers], [true, ["main"]]);
 
 	// Now a file wakes the agent: in the conversation it subscribed from, with its usual tools, as outside content, with its note.
-	await sleep(150); // the OS needs a moment before a new watcher reports changes
-	drop("letter.pdf");
-	await until(() => eventTasks(h).some((t: any) => t.status === "done"), 6000, "the agent to be woken");
+	await dropUntil([[path.join(h.home, "scans", "letter.pdf"), "x"]], () => eventTasks(h).some((t: any) => t.status === "done"), "the agent to be woken");
 	const woken = eventTasks(h)[0];
 	assert.equal(woken.session, "main");
 	assert.equal(woken.meta.label, "scans: source/scans/added");
@@ -79,7 +96,9 @@ test("sources: a configured source does nothing until an agent subscribes; then 
 	// A burst is one turn; after the pause the next event counts again.
 	drop("b1.pdf");
 	drop("b2.pdf");
-	await sleep(400);
+	await until(() => info().events >= 3, 6000, "the burst to be reported");
+	// A moment more, for a turn the burst should not start.
+	await sleep(200);
 	const afterBurst = eventTasks(h).length;
 	assert.ok(afterBurst <= 2, `a burst does not start a turn per file (${afterBurst})`);
 	assert.ok(info().events >= 3 && info().last?.topic === "source/scans/added");
@@ -97,10 +116,9 @@ test("sources: a configured source does nothing until an agent subscribes; then 
 	assert.equal(h.pine.tasks.list({}).length, before, "unsubscribed: the source is stopped and nobody is woken");
 	assert.match(await pine("subscribe", "main", "scans", "--note", "from the shell", "--when", '{"payload.file":{"regex":"\\\\.pdf$"}}'), /main is subscribed to scans \(running\)/);
 	assert.deepEqual(h.pine.cfg.agents.main.subscribe.find((x) => x.source === "scans")!.when, { "payload.file": { regex: "\\.pdf$" } });
-	await sleep(150);
-	drop("skip.txt");
-	drop("take.pdf");
-	await until(() => userText(h.mock.state.requests.at(-1)).includes("take.pdf"), 6000, "the pdf to wake the agent");
+	// Both are reported, so that the text file not waking the agent means something.
+	const reported = (file: string) => h.pine.bus.query({ topic: "source/scans/added" }).some((e: any) => e.payload.file === file);
+	await dropUntil([[path.join(h.home, "scans", "skip.txt"), "x"], [path.join(h.home, "scans", "take.pdf"), "x"]], () => reported("skip.txt") && userText(h.mock.state.requests.at(-1)).includes("take.pdf"), "the pdf to wake the agent");
 	await sleep(100);
 	assert.equal(h.pine.tasks.list({}).length, before + 1, "the text file did not");
 	await h.close();
@@ -144,6 +162,8 @@ test("sources: webhook and mqtt", async (t) => {
 	t.after(() => new Promise<void>((r) => broker.close(() => server.close(() => r()))));
 	await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
 	const url = `mqtt://127.0.0.1:${(server.address() as any).port}`;
+	const subscribed: string[] = [];
+	broker.on("subscribe", (subs) => void subscribed.push(...subs.map((s) => s.topic)));
 	const h = await harness({
 		pine: {
 			http: { port: 0 },
@@ -178,7 +198,8 @@ test("sources: webhook and mqtt", async (t) => {
 
 	// The printer talks all the time; the subscription only wants to hear when a print is finished.
 	await until(() => h.logs.some((l) => /connected to 127.0.0.1/.test(l)));
-	await sleep(40);
+	// What is published before the broker has the source's subscription goes nowhere.
+	await until(() => subscribed.includes("device/+/report"), 4000, "the source's subscription at the broker");
 	const outside = await mqtt.connectAsync(url);
 	await outside.publishAsync("device/A1/report", JSON.stringify({ state: "RUNNING", percent: 40 }));
 	await outside.publishAsync("device/A1/report", JSON.stringify({ state: "FINISH" })); // inside minInterval: dropped by the source
@@ -417,14 +438,13 @@ test("sources: asked to watch something, an agent sets the source up itself, the
 	assert.deepEqual(file().sandbox.read, [project]);
 
 	// A change in the project wakes the agent, which can read the file; what git and npm churn out does not.
-	await sleep(200);
+	// (The change first: once it is seen, the watcher is known to be listening when the churn comes.)
+	await dropUntil([[path.join(project, "notes.md"), "PROJECT-NOTES-CONTENT\n"]], () => eventTasks(h).some((x: any) => x.meta.label === "project: source/project@main/added" && x.status === "done"), "the change to wake the agent");
+	assert.ok(userText(h.mock.state.requests.at(-1)).includes('"file": "notes.md"'));
 	fs.writeFileSync(path.join(project, ".git", "index.lock"), "x");
 	fs.writeFileSync(path.join(project, "node_modules", "junk.js"), "x");
 	await sleep(350);
-	assert.equal(h.pine.bus.query({ topic: "source/project@main/#" }).length, 0);
-	fs.writeFileSync(path.join(project, "notes.md"), "PROJECT-NOTES-CONTENT\n");
-	await until(() => eventTasks(h).some((x: any) => x.meta.label === "project: source/project@main/added" && x.status === "done"), 6000, "the change to wake the agent");
-	assert.ok(userText(h.mock.state.requests.at(-1)).includes('"file": "notes.md"'));
+	assert.deepEqual(h.pine.bus.query({ topic: "source/project@main/#" }).map((e: any) => e.payload.file), ["notes.md"]);
 	// (The event is the script for the model, and nothing else: a report with a text among its fields is shown whole, as JSON.)
 	h.pine.bus.publish("source/project@main/added", mockMsg([{ tools: [call("read", { path: path.join(project, "notes.md") })] }]), { source: "source:project@main", trust: "untrusted" });
 	await until(() => h.toolResults().some((x: string) => x.includes("PROJECT-NOTES-CONTENT")), 6000, "the woken agent to read the file");
@@ -483,8 +503,10 @@ test("sources: a subscription is for one conversation, for the agent, or for all
 	});
 	const run = (agent: string, session: string, steps: any[]) => h.pine.agents.run({ agent, prompt: mockMsg(steps), session, ...owner });
 	const woken = () => eventTasks(h).map((t: any) => `${t.agent}/${t.session}`).sort();
-	const settle = async () => {
-		await sleep(250);
+	// The conversations that are to be woken are waited for; then a moment more for one that should not be, and the turns to end.
+	const settle = async (...expected: string[]) => {
+		await until(() => expected.every((w) => woken().includes(w)), 6000, `${expected.join(", ")} to be woken`);
+		await sleep(150);
 		await until(() => eventTasks(h).every((t: any) => t.status === "done"), 6000, "the woken turns to finish");
 	};
 
@@ -493,7 +515,7 @@ test("sources: a subscription is for one conversation, for the agent, or for all
 	assert.match(h.toolResults()[0], /Subscribed to beep \(local\)\. It is running\. Each event it reports \(source\/beep\/\.\.\.\) will arrive here, in this conversation, as a message that starts a turn of yours\. The subscription ends when this conversation is closed or reset/);
 	assert.match(h.toolResults()[1], /"scope" must be local, agent or global; leave it out for this conversation\./);
 	assert.ok(JSON.stringify(h.mock.state.requests[0].body.tools).includes("whom it is for; leave it out unless your owner says it is for you as an agent, or for all agents"));
-	await settle();
+	await settle("main/side");
 	assert.deepEqual(woken(), ["main/side"], "the main conversation is not woken by what a side conversation subscribed to");
 	assert.deepEqual(h.pine.sources.list()[0].subscribers, ["main/side"]);
 	assert.equal(asked.length, 0);
@@ -511,7 +533,7 @@ test("sources: a subscription is for one conversation, for the agent, or for all
 	answer = true;
 	r = await run("main", "other", [{ tools: [call("subscribe", { source: "beep", scope: "agent", note: "for the agent", throttle: "1h" })] }, { tools: [call("sources", {})] }]);
 	assert.match(r.text, /agent: your MAIN conversation is subscribed, NOT this one: the source's events arrive there and do not wake you here\. Note: for the agent\n    other conversations of yours are subscribed on their own: side/);
-	await settle();
+	await settle("main/main", "main/side");
 	assert.deepEqual(woken(), ["main/main", "main/side"]);
 	assert.deepEqual(JSON.parse(fs.readFileSync(path.join(h.home, "agents", "main", "agent.json"), "utf8")).subscribe, [{ source: "beep", note: "only here", throttle: "1h", session: "side" }, { source: "beep", note: "for the agent", throttle: "1h" }]);
 	// In the main conversation itself the agent and "here" are the same, and nothing is asked.
@@ -536,7 +558,7 @@ test("sources: a subscription is for one conversation, for the agent, or for all
 	r = await run("main", "main", [{ tools: [call("subscribe", { source: "beep", scope: "global", note: "for everyone", throttle: "1h" })] }]);
 	assert.match(r.text, /Subscribed to beep \(global\)\. .* will wake gonzo, each in their main conversation/);
 	assert.deepEqual([asked[2].tool, asked[2].summary.split("\n")[0]], ["subscribe", 'subscribe ALL agents to the event source "beep"']);
-	await settle();
+	await settle("gonzo/main", "main/main", "main/side");
 	assert.deepEqual(woken(), ["gonzo/main", "main/main", "main/side"], "an agent with an entry of its own is not woken twice");
 	assert.deepEqual(JSON.parse(fs.readFileSync(path.join(h.home, "pine.json"), "utf8")).subscribe, [{ source: "beep", note: "for everyone", throttle: "1h" }]);
 	assert.deepEqual(h.pine.sources.list()[0].subscribers, ["all agents", "main/side", "main"]);
@@ -686,10 +708,8 @@ test("sources: a type says what it takes, add_source works from that; a file mas
 	r = await h.pine.agents.run({ agent: "main", session: "desk", prompt: mockMsg([{ tools: [call("add_source", { name: "papers", type: "folder", options: { dir: "inbox", mask: "*.pdf", settle: "50ms" }, description: "scanned papers", note: "file it", throttle: "0s" })] }]), ...owner });
 	assert.deepEqual(file().sources.papers, { type: "folder", description: "scanned papers", session: "desk", dir: fs.realpathSync(inbox), mask: "*.pdf", settle: "50ms" });
 	assert.equal(asked.length, 0, "a folder in its own workspace is nothing new");
-	await sleep(150);
-	fs.writeFileSync(path.join(inbox, "notes.txt"), "x");
-	fs.writeFileSync(path.join(inbox, "bill.pdf"), "%PDF");
-	await until(() => h.pine.bus.query({ topic: "source/papers@main/#" }).length > 0, 6000, "the pdf to be reported");
+	await dropUntil([[path.join(inbox, "notes.txt"), "x"], [path.join(inbox, "bill.pdf"), "%PDF"]], () => h.pine.bus.query({ topic: "source/papers@main/#" }).length > 0, "the pdf to be reported");
+	// A moment more, for a report of the text file that should not come.
 	await sleep(300);
 	assert.deepEqual(h.pine.bus.query({ topic: "source/papers@main/#" }).map((e: any) => e.payload.file), ["bill.pdf"]);
 

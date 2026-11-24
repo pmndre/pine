@@ -5,8 +5,25 @@ import path from "node:path";
 import { test } from "node:test";
 import { checkSetting, SETTINGS } from "../src/admin.ts";
 import { loadConfig } from "../src/config.ts";
-import { harness, MCP_STUB, mockMsg, sleep, until } from "./support/harness.ts";
+import { harness, type Harness, MCP_STUB, mockMsg, sleep, until } from "./support/harness.ts";
 import { httpMcp } from "./support/http-mcp.ts";
+
+/**
+ * Writes a file into the folder a new folder source watches, and again while the source has not
+ * reported it: the OS takes a moment before a new watcher sees changes, and on a busy machine longer.
+ * Once it is reported nothing is written, so it is reported once.
+ */
+function dropUntilReported(h: Harness, file: string, content: string, what: string): Promise<void> {
+	let last = 0;
+	return until(() => {
+		if (h.pine.bus.query({ topic: "source/#" }).some((e: any) => e.payload?.file === path.basename(file))) return true;
+		if (Date.now() - last > 500) {
+			fs.writeFileSync(file, content);
+			last = Date.now();
+		}
+		return false;
+	}, 6000, what);
+}
 
 const owner = { trust: "owner" as const };
 const call = (name: string, args: any = {}) => ({ name, args });
@@ -425,8 +442,7 @@ test("admin: the main agent does for another agent what that agent can do for it
 	out = mine(await main(call("add_source", { agent: "helper", name: "papers", type: "folder", options: { dir: "inbox", settle: "50ms" }, description: "scanned papers", note: "Say which paper arrived.", throttle: "0s" }), call("sources", { agent: "helper" })));
 	assert.match(out[0], /^DONE: Added the event source "papers" \(folder\)\./);
 	assert.match(out[1], /papers \(folder: scanned papers\)[^\n]*\n    agent: you are subscribed as an agent and are woken here, in your main conversation\. Note: Say which paper arrived\./);
-	await sleep(150);
-	fs.writeFileSync(path.join(h.workspace("helper"), "inbox", "bill.pdf"), "%PDF");
+	await dropUntilReported(h, path.join(h.workspace("helper"), "inbox", "bill.pdf"), "%PDF", "the file to be reported");
 	await until(() => h.pine.tasks.list({ agent: "helper" }).some((x: any) => x.kind === "event" && x.status === "done"), 6000, "the file to wake helper");
 	await idle();
 	const before = asked.length;

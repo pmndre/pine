@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { checkModelLimit } from "../src/admin.ts";
 import { loadConfig, MAX_MODEL_RUNS } from "../src/config.ts";
 import { removeModelServer } from "../src/models.ts";
-import { harness, mockMsg } from "./support/harness.ts";
+import { harness, mockMsg, until } from "./support/harness.ts";
 
 const owner = { trust: "owner" as const };
 const call = (name: string, args: any) => ({ name, args });
@@ -21,21 +21,27 @@ function watch(h: Awaited<ReturnType<typeof harness>>) {
 }
 
 test("limits: a model with a number of runs of its own takes that many at a time, in a queue of its own; the others wait their turn", async () => {
-	// Three messages at once, each a while at the model: with pine's own limit they run side by side.
-	const slow = () => mockMsg([{ delayMs: 150, text: "done" }]);
+	// Three messages at once, each at the model until all three are: with pine's own limit they run side by side.
+	// (Held by what happened, not for a time: on a busy machine one could be done before the last has started.
+	// Where they cannot all be at the model, the model answers after ten seconds and the count says so.)
 	const free = await harness({ pine: { limits: { maxConcurrentRuns: 8 } }, agents: { main: {} } });
 	const side = watch(free);
-	await Promise.all(["a", "b", "c"].map((session) => free.pine.agents.run({ agent: "main", session, prompt: slow(), ...owner })));
+	free.mock.state.scripts.slow = [{ until: () => side() === 3, text: "done" }];
+	await Promise.all(["a", "b", "c"].map((session) => free.pine.agents.run({ agent: "main", session, prompt: "go @@REF:slow@@", ...owner })));
 	assert.equal(side(), 3);
 	assert.equal(free.pine.agents.limiterOf("mock/m"), free.pine.agents.limiter, "without a number of its own a model is in the queue for all");
 	await free.close();
 
 	// The same with the model held to one: one after the other, and pine says how its queue stands.
 	const h = await harness({ pine: { limits: { maxConcurrentRuns: 8, models: { "mock/m": 1 } } }, agents: { main: {} } });
+	// The first one stays at the model until the queue has been looked at.
 	const most = watch(h);
-	const all = Promise.all(["a", "b", "c"].map((session) => h.pine.agents.run({ agent: "main", session, prompt: slow(), ...owner })));
-	await new Promise((r) => setTimeout(r, 60));
+	let looked = false;
+	h.mock.state.scripts.slow = [{ until: () => looked, text: "done" }];
+	const all = Promise.all(["a", "b", "c"].map((session) => h.pine.agents.run({ agent: "main", session, prompt: "go @@REF:slow@@", ...owner })));
+	await until(() => h.pine.agents.status().models["mock/m"]?.waiting === 2, 5000, "two runs to wait in the model's queue");
 	assert.deepEqual(h.pine.agents.status().models, { "mock/m": { active: 1, waiting: 2, max: 1 } });
+	looked = true;
 	assert.deepEqual((await all).map((r) => r.status), ["done", "done", "done"]);
 	assert.equal(most(), 1);
 	assert.notEqual(h.pine.agents.limiterOf("mock/m"), h.pine.agents.limiter);
@@ -116,12 +122,14 @@ test("limits: the models of one endpoint each have their own number or pine's, a
 	assert.deepEqual([agents.limiterOf("mock/small").max, agents.limiterOf("mock/m") === agents.limiter, agents.limiterOf("mock/small") === agents.limiter], [1, true, false]);
 	assert.equal(agents.limiterOf("elsewhere/small"), agents.limiter);
 	// Sub-agents on that model run one after the other, while the conversation's own model is held to nothing but pine's limit.
-	// (Three at 80 ms each: side by side they would be through in little more than 80.)
+	// (Three at 80 ms each: side by side they would reach the model within a few ms of each other, one after the
+	// other each comes 80 ms or more after the one before. The bound leaves room for a timer that fires a little early.)
 	h.mock.state.scripts.piece = [{ delayMs: 80, text: "piece done" }];
-	const t0 = Date.now();
 	const r = await agents.run({ agent: "main", session: "job", prompt: mockMsg([{ tools: [call("subagent", { tasks: ["one @@REF:piece@@", "two @@REF:piece@@", "three @@REF:piece@@"], model: "small" })] }, { text: "IN" }]), ...owner });
 	assert.equal(r.text, "IN");
-	assert.ok(Date.now() - t0 >= 240, `one after the other: ${Date.now() - t0} ms`);
+	const arrived = h.mock.state.requests.filter((q: any) => q.body.model === "small").map((q: any) => q.t as number);
+	assert.equal(arrived.length, 3);
+	assert.ok(arrived.slice(1).every((t: number, i: number) => t - arrived[i] >= 70), `one after the other: ${arrived.map((t: number) => t - arrived[0]).join(", ")} ms`);
 	assert.ok(h.pine.tasks.list({ limit: 20 }).filter((t) => t.kind === "subagent").every((t) => t.meta.model === "mock/small"));
 	assert.deepEqual(agents.status().models, { "mock/small": { active: 0, waiting: 0, max: 1 } });
 	// Through the control API: set for a model, said with the model, taken off again; a model the server has not is refused.

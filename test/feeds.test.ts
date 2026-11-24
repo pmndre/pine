@@ -305,9 +305,13 @@ test("feed: the first look reports nothing, then one event for each new entry, t
 
 	// An entry that leaves the feed and comes back is not new. Twelve at once: the ten newest, oldest first, and how many were left out.
 	state.n = [3, 1];
-	await sleep(150);
+	// Two looks begun after the change: the first of them has been read by the time the second asks.
+	const asked = web.seen.filter((r) => r.url === "/rss").length;
+	await until(() => web.seen.filter((r) => r.url === "/rss").length >= asked + 2, 4000, "a look at the feed without entry 2");
 	state.n = [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
 	await until(() => events(h, "rel").length === 11, 4000, "the burst");
+	// The source with a pattern looks on its own clock.
+	await until(() => events(h, "sec").length >= 7, 4000, "the burst through the pattern");
 	await sleep(150);
 	const burst = events(h, "rel").slice(1);
 	assert.deepEqual(burst.map((e: any) => e.payload.title), [6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((n) => `Release ${n}`));
@@ -381,21 +385,26 @@ test("calendar: what a calendar file says, read without a library", () => {
 test("calendar: reports what is added, changed and removed, not what is far away and not what has passed", async (t) => {
 	const now = Date.now();
 	const H = 3_600_000;
-	// Over within a second or so: in the calendar at the first look, passed soon after.
-	const brief = Math.floor(now / 1000) * 1000 + (1000 - (now % 1000) > 500 ? 1000 : 2000);
-	const state: { entries: Record<string, string>; html: boolean } = {
+	// Over within two seconds or so of the first look: in the calendar then, passed soon after. It is
+	// set when the first look asks, so that a slow start of pine cannot let it pass before that look.
+	let brief = 0;
+	const briefEntry = () => {
+		if (!brief) brief = Math.ceil((Date.now() + 1500) / 1000) * 1000;
+		return vevent("brief@x", "Just now", stamp(now - H), `DTEND:${stamp(brief)}\r\n`);
+	};
+	const state: { entries: Record<string, string>; html: boolean; brief: boolean } = {
 		entries: {
 			past: vevent("past@x", "Long ago", stamp(now - 48 * H), `DTEND:${stamp(now - 47 * H)}\r\n`),
 			dentist: vevent("dentist@x", "Dentist", stamp(now + 24 * H), `DTEND:${stamp(now + 25 * H)}\r\nLOCATION:Main St 1\r\n`),
 			trip: vevent("trip@x", "Trip", `;VALUE=DATE:${day(now + 5 * 24 * H)}`, `DTEND;VALUE=DATE:${day(now + 8 * 24 * H)}\r\n`),
 			far: vevent("far@x", "Next year", stamp(now + 300 * 24 * H)),
 			weekly: vevent("weekly@x", "Standup", stamp(now - 400 * 24 * H), "RRULE:FREQ=WEEKLY\r\n"),
-			brief: vevent("brief@x", "Just now", stamp(now - H), `DTEND:${stamp(brief)}\r\n`),
 		},
 		html: false,
+		brief: true,
 	};
 	const web = await site((req, _body, res) => {
-		if (req.url === "/family.ics") return tagged(req, res, "text/calendar; charset=utf-8", ics(Object.values(state.entries).join("")));
+		if (req.url === "/family.ics") return tagged(req, res, "text/calendar; charset=utf-8", ics(Object.values(state.entries).join("") + (state.brief ? briefEntry() : "")));
 		if (req.url === "/page") return void res.writeHead(200, { "content-type": "text/html" }).end("<html><body>Subscribe to our calendar</body></html>");
 		res.writeHead(404).end("no");
 	});
@@ -430,7 +439,7 @@ test("calendar: reports what is added, changed and removed, not what is far away
 	// Removed: said for what was still ahead. What has simply passed, or was never ahead, leaves without a word.
 	await until(() => Date.now() > brief + 50, 3000, "the brief entry to pass");
 	delete state.entries.trip;
-	delete state.entries.brief;
+	state.brief = false;
 	delete state.entries.past;
 	delete state.entries.later;
 	delete state.entries.weekly;

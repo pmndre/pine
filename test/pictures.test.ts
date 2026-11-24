@@ -500,9 +500,9 @@ test("sound: the line shows the levels as bars that follow the clock while it pl
 	assert.equal(top(line()), low, plain(line()));
 	assert.ok(line().includes(c.accent(bars(prepared.levels!, 0))));
 	assert.match(plain(line()), /^ ‖ pause {2}\S{24} {2}♪ two tones · 0:00 \/ 0:02 {3}▸ open in player$/);
+	// Twice a second would be once in the first half second: twice there is the bars' pace. (until stretches the time on a slow runner.)
 	const before = redraws;
-	await sleep(450);
-	assert.ok(redraws - before >= 2, `drawn again as the bars move, not twice a second (${redraws - before} times in 450 ms)`);
+	await until(() => redraws - before >= 2, 450, "the line to be drawn again as the bars move, not twice a second");
 
 	// A narrower terminal has fewer bars, each for several bands; one with room for fewer than eight has the line without them.
 	assert.equal(shown(line(80))?.length, 24, "80 columns are just enough for all of them");
@@ -586,6 +586,8 @@ test("tui: a sound an answer points at is played when it arrives, by the system'
 
 	// It arrives and is played from the start: the player gets the file's bytes, and the line says how far it is.
 	// The file is silence, so the bars beside the control lie flat.
+	// The clock cannot have started before the message is sent: how far it can have come by the pause is measured from here.
+	const sentAt = Date.now();
 	term.type(mockMsg([{ text: "Here it is: ![hello world](hello.wav) and ![gone](nope.wav)" }]));
 	term.type([KEY.enter]);
 	await sees(new RegExp(`‖ pause  ${FLAT}  ♪ hello world · 0:00 / 0:02\\s+▸ open in player`));
@@ -597,6 +599,7 @@ test("tui: a sound an answer points at is played when it arrives, by the system'
 
 	// Pause ends the player and keeps the place; play starts one from there, not from the beginning.
 	await sleep(300);
+	const pausedAt = Date.now();
 	clickWord("‖ pause");
 	await sees(`▶ play  ${FLAT}  ♪ hello world · 0:00 / 0:02`);
 	await until(() => !playing(), 3000, "the player to be gone");
@@ -606,7 +609,8 @@ test("tui: a sound an answer points at is played when it arrives, by the system'
 	await sees(`‖ pause  ${FLAT}  ♪ hello world`);
 	await until(() => played().length === 2, 3000, "a player to go on");
 	const from = Number(played()[1][1]);
-	assert.ok(from >= 0.3 && from < 0.9, `it goes on where it was (${from})`);
+	// Not before the 0.3 s it played, and not past the time from the message to the pause (a busy computer starts the player late, so the bound is measured).
+	assert.ok(from >= 0.3 && from <= (pausedAt - sentAt) / 1000 + 0.1, `it goes on where it was (${from}, paused ${pausedAt - sentAt} ms after the message)`);
 
 	// When the player is done, the line is back at the start, and a click plays it from there.
 	await sees(new RegExp(`▶ play  ${FLAT}  ♪ hello world · 0:02\\s+▸ open in player`));

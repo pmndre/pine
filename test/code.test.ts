@@ -247,7 +247,8 @@ test("tui: the code pane shows changes, files and tool output; the folder is set
 	await until(async () => (await client.tabs()).code === true);
 	await send("/code off");
 	await until(() => !paneOpen());
-	await sleep(30);
+	// The UI tells pine after it has closed the pane.
+	await until(async () => (await client.tabs()).code === false, 3000, "the closed pane to be remembered");
 	assert.equal((await client.tabs()).code, false);
 	await send("/code files");
 	await sees("▾ src/");

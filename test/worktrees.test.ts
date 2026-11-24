@@ -363,7 +363,7 @@ test("tui: /worktree moves a conversation into one, the bar names its branch, an
 	assert.equal((await client.worktree("main", "try")).worktree?.branch, "pine/try");
 	await send(mockMsg([{ tools: [bash(`echo MERGED > a.txt && ${agentGit} commit -qam work`)] }, { text: "committed" }]));
 	await until(() => !text().includes("working ·") && git("log", "-1", "--format=%s", "pine/try").trim() === "work", 8000, "the agent to have committed");
-	await sleep(50);
+	await until(() => h.pine.agents.status().running.length === 0, 5000, "the run to end");
 
 	await send("/worktree");
 	await sees("Merge into main");

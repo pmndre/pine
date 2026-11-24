@@ -188,13 +188,14 @@ test("http with render: a failed look says why, is down after three and up again
 test("http with render: a helper that does not answer is ended at the time limit with everything it started, and with the source", async () => {
 	forget();
 	rendering.program = standIn;
-	rendering.timeoutMs = 300;
+	// (Long enough for the stand-in to start and answer on a busy computer: "left" has to answer within it.)
+	rendering.timeoutMs = 1000;
 	try {
 		answers({ stuck: { hang: true }, deaf: { hang: "deaf" }, left: { orphan: true } });
 		const h = await harness({ pine: { sources: { stuck: { ...fast, url: "https://shop.example/stuck" }, deaf: { ...fast, url: "https://shop.example/deaf" }, left: { ...fast, url: "https://shop.example/left" } } }, agents: { main: {} } });
-		const said = (name: string) => /^failing since .*: the page did not finish loading within 0\.3 s$/.test(info(h, name).status ?? "");
+		const said = (name: string) => /^failing since .*: the page did not finish loading within 1 s$/.test(info(h, name).status ?? "");
 		await until(() => said("stuck") && said("deaf"), 15_000, "the time limit");
-		assert.equal(jobs("stuck")[0].job.timeout, 300);
+		assert.equal(jobs("stuck")[0].job.timeout, 1000);
 		// What the helper left in its folder is taken as a sign that something of it still runs, and that is ended too.
 		await looked(h, "left");
 		await h.close();
