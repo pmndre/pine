@@ -219,9 +219,9 @@ test("a right click on an agent renames it in place, colors it, and offers to re
 	};
 	// Both agents have one conversation here, so each line is that conversation too: what its row would offer comes first, and one conversation is not sorted.
 	// The main agent has nothing to remove it with.
-	assert.deepEqual(await shown("main"), ["Open", "Move to Group…", "Start over…", "New conversation with main", "Open a folder with main…", "New Group…", "Rename…", "Color…", "Agent settings…"]);
+	assert.deepEqual(await shown("main"), ["Open", "Open in New Window", "Move to Group…", "Start over…", "New conversation with main", "Open a folder with main…", "New Group…", "Rename…", "Color…", "Agent settings…"]);
 	// Rename turns its name in the side bar into a field: Escape keeps the name, Enter gives it the new one, and everything follows it.
-	assert.deepEqual(await shown("spare", "rename"), ["Open", "Move to Group…", "Start over…", "New conversation with spare", "Open a folder with spare…", "New Group…", "Rename…", "Color…", "Agent settings…", "Remove spare…"]);
+	assert.deepEqual(await shown("spare", "rename"), ["Open", "Open in New Window", "Move to Group…", "Start over…", "New conversation with spare", "Open a folder with spare…", "New Group…", "Rename…", "Color…", "Agent settings…", "Remove spare…"]);
 	await page.getByLabel("New name for spare").press("Escape");
 	await sees("[data-slot=agent-label] >> text=spare");
 	await shown("spare", "rename");
