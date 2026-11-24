@@ -16,6 +16,7 @@ import { startStandIn } from "./access/stand-in.ts";
 import { type Command, install, look, remove, said } from "./command.ts";
 import { callDaemon, followEvents, mediaFromDaemon, pageCsp, VIEW_CSP } from "./daemon.ts";
 import type { NewWindowOptions, WindowLayout } from "./preload.ts";
+import { droppedHosts, notePrefs, readPrefsFile, setAside, writePrefsFile } from "./prefs-file.ts";
 import { connect, connectSsh, findPine, hostOf, type Launch, loginEnv, onPath, pineRoot, pineVersion, readHosts, runPine, type Service, ServiceError } from "./service.ts";
 import { fromWsl, install as installIntoWsl, toWsl } from "./wsl.ts";
 import { wslDistros } from "../../src/remote.ts";
@@ -132,6 +133,13 @@ interface Prefs {
 const prefsFile = () => path.join(app.getPath("userData"), "prefs.json");
 let prefs: Prefs = { keepRunning: false, hosts: [], notify: true, updates: true, autoUpdate: true, commandTried: false, access: readAccessPrefs(undefined) };
 
+/**
+ * Whether prefs.json may be written: not before it was read (what is in memory then is the defaults,
+ * which would replace the owner's machines), and not over a file that could not be read and could
+ * not be set aside.
+ */
+let prefsWritable = false;
+
 function cleanBounds(raw: unknown): WindowBounds | undefined {
 	if (!raw || typeof raw !== "object") return undefined;
 	const b = raw as Record<string, unknown>;
@@ -230,8 +238,14 @@ function cleanWindowSnapshot(raw: unknown, hosts: string[]): WindowSnapshot | un
 }
 
 function loadPrefs(): void {
-	try {
-		const raw = JSON.parse(fs.readFileSync(prefsFile(), "utf8"));
+	const read = readPrefsFile(prefsFile());
+	if (read.unreadable) {
+		const aside = setAside(prefsFile());
+		notePrefs(prefsFile(), `prefs.json could not be read (${read.unreadable}): ${aside ? "set aside as prefs.json.unreadable, and the app starts from its defaults" : "left as it is, and nothing is saved over it until the app starts again"}`);
+		prefsWritable = aside;
+	} else prefsWritable = true;
+	const raw = read.raw;
+	if (raw) {
 		const hosts = readHosts(raw.hosts);
 		const savedWindows = Array.isArray(raw.windows)
 			? raw.windows.map((w: unknown) => cleanWindowSnapshot(w, hosts)).filter((w: WindowSnapshot | undefined): w is WindowSnapshot => Boolean(w)).slice(0, 30)
@@ -253,8 +267,7 @@ function loadPrefs(): void {
 		};
 		// Only a machine that is in the list: what else might be written there is not connected to.
 		if (typeof raw.use === "string" && prefs.hosts.includes(raw.use)) prefs.use = raw.use;
-	} catch {
-		// first start
+		for (const host of droppedHosts(raw.hosts, prefs.hosts)) notePrefs(prefsFile(), `machine ${host} left the list: it is not a host for ssh, or past the limit of 20`);
 	}
 	nativeTheme.themeSource = prefs.look?.kind ?? "dark";
 }
@@ -291,9 +304,9 @@ function refreshBackground(entry: WindowEntry): void {
 }
 
 function savePrefs(): void {
+	if (!prefsWritable) return;
 	try {
-		fs.mkdirSync(path.dirname(prefsFile()), { recursive: true });
-		fs.writeFileSync(prefsFile(), `${JSON.stringify(prefs, null, 2)}\n`);
+		writePrefsFile(prefsFile(), prefs);
 	} catch {
 		// a preference that is not kept is not worth an error
 	}
@@ -1680,6 +1693,7 @@ function wire(): void {
 		if (host === caller.host) throw new Error("The app uses this machine now. Use another one first.");
 		const others = [...windows.values()].filter((w) => w !== caller && !w.closing && !w.win.isDestroyed() && w.host === host);
 		if (others.length && !options?.closeWindows) throw new Error("Another window uses this machine now. Close it first.");
+		if (prefs.hosts.includes(host)) notePrefs(prefsFile(), `machine ${host} left the list: forgotten in Settings > Environments`);
 		prefs.hosts = prefs.hosts.filter((h) => h !== host);
 		if (prefs.use === host) prefs.use = undefined;
 		for (const w of others) {

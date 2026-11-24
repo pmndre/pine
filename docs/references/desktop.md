@@ -314,13 +314,17 @@ does the same for the terminal UI ([tui.md](tui.md#the-pine-of-another-machine))
 | Connecting | Connecting to another machine's pine is one wait: the first screen says "Connecting to <host>", with the list of machines, and stays until that pine's agents are loaded ("Loading the agents…"), so the window never shows an empty pine in between |
 | One that is not reached | The first screen says why (ssh's own words, and what to do), with Try again and Use this Mac (Use this computer elsewhere), or Disconnect where it is offered |
 | Agents that do not load | When the pine was reached but its agents could not be loaded, the first screen says "Could not load the agents of <host>" ("Could not load your agents" for this computer's) with the reason, Try again, and the list of machines with Disconnect where it is offered |
-| Forget a machine | Forget on its line (not the current window's own machine). When another open window uses that machine, the row shows `in another window` and Forget asks first (**Close its window and forget** / **Cancel**), then closes those windows and ends its connection |
+| Forget a machine | Forget on its line (not the current window's own machine). When another open window uses that machine, the row shows `in another window` and Forget asks to confirm (**Close its window and forget** / **Cancel**), then closes those windows and ends its connection |
 | Disconnect | Only where the page runs without a machine of its own and its bridge offers it (`disconnect`): the web client today, not the Pine app, and not the mobile app yet. It lets go of the machine in use and goes back to the list of machines; the machine and its trusted host key stay, unlike Forget. It is in the machines menu at the foot of the side bar and in the title bar, on the line of the machine in use in Settings > Environments, and on the first screen, also while the machine is not reached or its agents did not load |
-| Quitting | Every connection ends, and the set of open windows is remembered for the next start. A pine the app started on another machine stops with it; one that was already running there goes on. This computer's pine follows Keep pine running, as before |
+| Quitting | Every connection ends, and the set of open windows is remembered for when it opens again. A pine the app started on another machine stops with it; one that was already running there goes on. This computer's pine follows Keep pine running, as before |
 
 What is chosen is kept in the app's `prefs.json`: `hosts`, the machines you added, `windows`, the
 windows that were open when the app quit, and `use`, the last active window's machine (none: this
-computer's).
+computer's). The file (on a Mac in `~/Library/Application Support/Pine`) is written whole or not at
+all, and one that cannot be read is never written over: it is moved to `prefs.json.unreadable`, with
+the machines it still names. `prefs.log` beside it says why a machine was dropped (forgotten in
+Settings, or no host for ssh) and when a `prefs.json` could not be read: look there when a machine
+you added is missing.
 
 How it connects (`src/remote.ts`): one ssh connection to the machine runs `pine service` there,
 with the PATH of your login shell there (sh, bash, zsh, fish, csh or tcsh) and nvm's node when
