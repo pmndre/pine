@@ -120,10 +120,9 @@ function cleanPositive(v: unknown): number | undefined {
 	return Number.isFinite(n) && n > 0 ? Math.round(n) : undefined;
 }
 
-function cleanWindowSnapshot(raw: unknown, hosts: string[]): WindowSnapshot | undefined {
+function cleanWindowLayout(raw: unknown, host: string | undefined): WindowLayout | undefined {
 	if (!raw || typeof raw !== "object") return undefined;
 	const w = raw as Record<string, unknown>;
-	const host = typeof w.host === "string" && hosts.includes(w.host) ? w.host : undefined;
 	return {
 		host,
 		tabs: cleanTabs(w.tabs),
@@ -136,8 +135,16 @@ function cleanWindowSnapshot(raw: unknown, hosts: string[]): WindowSnapshot | un
 		aside: w.aside === true,
 		asideWidth: cleanPositive(w.asideWidth),
 		folded: Array.isArray(w.folded) ? w.folded.filter((f): f is string => typeof f === "string") : [],
-		bounds: cleanBounds(w.bounds),
 	};
+}
+
+function cleanWindowSnapshot(raw: unknown, hosts: string[]): WindowSnapshot | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const w = raw as Record<string, unknown>;
+	const host = typeof w.host === "string" && hosts.includes(w.host) ? w.host : undefined;
+	const layout = cleanWindowLayout(w, host);
+	if (!layout) return undefined;
+	return { ...layout, bounds: cleanBounds(w.bounds) };
 }
 
 function loadPrefs(): void {
@@ -441,10 +448,10 @@ function ensureStream(s: Service): EnvStream {
 						if (holders.length > 0) {
 							if (!holders.includes(w)) continue;
 							const primaryHolder = targetWindow(holders);
-							forWin.push({ ...ev, payload: { ...p, _askModal: w === primaryHolder } });
+							forWin.push({ ...ev, askModal: w === primaryHolder });
 						} else {
 							if (w !== primaryAll) continue;
-							forWin.push({ ...ev, payload: { ...p, _askModal: true } });
+							forWin.push({ ...ev, askModal: true });
 						}
 					} else if (ev?.topic === "pine/conversation" && ev.payload?.change === "open") {
 						const agent = String(ev.payload.agent ?? "");
@@ -515,6 +522,8 @@ async function useInWindow(mw: ManagedWindow, host: string | undefined): Promise
 	mw.host = host;
 	mw.layout = undefined;
 	mw.noTab = false;
+	mw.initialTab = undefined;
+	mw.initialDraft = undefined;
 	mw.approvalIds.clear();
 	mw.badgeCount = 0;
 	prefs.use = host;
@@ -995,21 +1004,12 @@ function wire(): void {
 		});
 	});
 	handle("pine:window-layout", (mw, snapshot: WindowLayout) => {
-		if (!snapshot || typeof snapshot !== "object") return;
-		mw.layout = {
-			host: mw.host,
-			tabs: cleanTabs(snapshot.tabs),
-			active: Math.max(0, Math.floor(Number(snapshot.active) || 0)),
-			code: snapshot.code === true,
-			noTab: snapshot.noTab === true,
-			sidebar: snapshot.sidebar !== false,
-			sidebarWidth: cleanPositive(snapshot.sidebarWidth),
-			codeWidth: cleanPositive(snapshot.codeWidth),
-			aside: snapshot.aside === true,
-			asideWidth: cleanPositive(snapshot.asideWidth),
-			folded: Array.isArray(snapshot.folded) ? snapshot.folded.filter((f): f is string => typeof f === "string") : [],
-		};
-		mw.noTab = mw.layout.noTab;
+		const layout = cleanWindowLayout(snapshot, mw.host);
+		if (!layout) return;
+		mw.layout = layout;
+		mw.noTab = layout.noTab;
+		mw.initialTab = undefined;
+		mw.initialDraft = undefined;
 		syncOpenWindowsPrefs();
 		savePrefs();
 	});
@@ -1018,14 +1018,6 @@ function wire(): void {
 		if (method === "POST" && url === "/ui/tabs" && body && typeof body === "object") {
 			const b = body as { tabs?: TabRef[]; active?: number; code?: boolean };
 			const mine = cleanTabs(b.tabs);
-			if (mw.layout) {
-				mw.layout.tabs = mine;
-				mw.layout.active = Math.max(0, Math.floor(Number(b.active) || 0));
-				mw.layout.code = b.code === true;
-				mw.layout.noTab = mine.length === 0;
-			} else {
-				mw.layout = { host: mw.host, tabs: mine, active: Math.max(0, Math.floor(Number(b.active) || 0)), code: b.code === true, noTab: mine.length === 0, sidebar: true, aside: false, folded: [] };
-			}
 			const union = unionTabsForEnv(envKeyOf(mw.host), mw, mine);
 			return callDaemon(mw.service, method, url, { ...b, tabs: union });
 		}
@@ -1035,7 +1027,7 @@ function wire(): void {
 			const sess = typeof (body as any).session === "string" ? (body as any).session : undefined;
 			if (closeMatch && sess) {
 				const agent = decodeURIComponent(closeMatch[1]);
-				const heldElsewhere = windowsOnEnv(envKeyOf(mw.host)).some((w) => w !== mw && ((w.layout?.tabs ?? []).some((t) => t.agent === agent && t.session === sess) || (w.initialTab?.agent === agent && w.initialTab?.session === sess)));
+				const heldElsewhere = windowsOnEnv(envKeyOf(mw.host)).some((w) => w !== mw && (w.layout ? w.layout.tabs.some((t) => t.agent === agent && t.session === sess) : w.initialTab?.agent === agent && w.initialTab?.session === sess));
 				if (heldElsewhere) return { ok: true, status: 200, data: { unsubscribed: [] } };
 			}
 		}
@@ -1083,19 +1075,20 @@ function wire(): void {
 		return publicPrefs();
 	});
 	handle("pine:hosts-forget", async (mw, host: string, options?: { closeWindows?: boolean }) => {
+		if (typeof host !== "string" || !host || !prefs.hosts.includes(host)) return publicPrefs();
 		if (host === mw.host) throw new Error("This window uses this machine now. Use another one first.");
-		const others = windowsOnEnv(String(host)).filter((w) => w !== mw);
+		const others = windowsOnEnv(host).filter((w) => w !== mw);
 		if (others.length && !options?.closeWindows) throw new Error("Another window uses this machine now. Close it first.");
 		for (const w of others) if (!w.win.isDestroyed()) w.win.close();
 		prefs.hosts = prefs.hosts.filter((h) => h !== host);
 		if (prefs.use === host) prefs.use = undefined;
 		savePrefs();
 		// Its connection ends, and a pine it started there with it.
-		const s = held.get(String(host));
+		const s = held.get(host);
 		if (s) {
-			streams.get(String(host))?.controller.abort();
-			streams.delete(String(host));
-			held.delete(String(host));
+			streams.get(host)?.controller.abort();
+			streams.delete(host);
+			held.delete(host);
 			await letGo(s).catch(() => {});
 		}
 		broadcastPrefs();
@@ -1320,6 +1313,9 @@ else {
 			}
 		} else {
 			createWindow({ host: prefs.use, bounds: prefs.bounds });
+		}
+		if (pendingGlobalFolders.length > 0 && windowsOnEnv("").length === 0) {
+			createWindow({ host: undefined, bounds: cascadedBounds() });
 		}
 		void firstCommand();
 		app.on("activate", () => {

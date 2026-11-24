@@ -87,6 +87,7 @@ after(async () => {
 	await app?.close().catch(() => {});
 	await mock?.close?.().catch(() => {});
 	if (home) fs.rmSync(home, { recursive: true, force: true });
+	assert.deepEqual(pageErrors, [], "unexpected renderer errors");
 });
 
 test("New Window opens cascaded on NoTab when another window views the same environment, and Close Tab / Close Window behave properly", async () => {

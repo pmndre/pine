@@ -8,7 +8,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
 import { type AgentInfo, api, type Approval, type Conversation, type GoalInfo, type GroupList, media, type WorktreeMade, type PineEvent, type Program, type Stats, type Task, type Todo, type TranscriptEntry } from "./api.ts";
-import { bridge, type DraftAttachment, type Prefs, type ServiceState, type Update, type WindowLayout } from "./bridge.ts";
+import { bridge, type DesktopPineEvent, type DraftAttachment, type Prefs, type ServiceState, type Update, type WindowLayout } from "./bridge.ts";
 import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, MODES, oneLine, plural, short, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
 import { runnable } from "./runnable.ts";
 import { applyLook, cleanLook, type Look, type ThemeEntry } from "./theme.ts";
@@ -323,7 +323,8 @@ export class Store extends Model {
 	voiceLanguage?: string;
 
 	private restoring = false;
-	private loading = false;
+	private loadEpoch = 0;
+	private loadingEpoch = -1;
 	private started = false;
 	private timers: number[] = [];
 
@@ -333,7 +334,7 @@ export class Store extends Model {
 		if (this.started) return;
 		this.started = true;
 		bridge.onService((s: ServiceState) => void this.onService(s));
-		bridge.onEvents((batch: PineEvent[]) => this.onEvents(batch));
+		bridge.onEvents((batch: DesktopPineEvent[]) => this.onEvents(batch));
 		bridge.onConnection((up: boolean) => {
 			const back = up && !this.connected;
 			this.connected = up;
@@ -525,10 +526,16 @@ export class Store extends Model {
 
 	/** What the page knew of the pine it used, let go of when it uses another. */
 	private forgetPine(): void {
+		this.loadEpoch++;
+		this.restoring = false;
+		this.opened = false;
 		this.agents = [];
 		this.tabs = [];
 		this.active = undefined;
 		this.conversations = new Map();
+		this.groups.clear();
+		this.placed.clear();
+		this.drafts.clear();
 		this.taints = new Map();
 		this.sessionModes = new Map();
 		this.pins = new Set();
@@ -536,6 +543,10 @@ export class Store extends Model {
 		this.said = [];
 		this.titles = new Map();
 		this.saidAt = 0;
+		if (this.saidLater !== undefined) {
+			clearTimeout(this.saidLater);
+			this.saidLater = undefined;
+		}
 		this.asking = undefined;
 		this.asked = new Set();
 		this.pendingFind = undefined;
@@ -585,21 +596,26 @@ export class Store extends Model {
 
 	/** Everything that is asked once the daemon answers: the agents, the tabs of last time, what waits for an answer. */
 	private async load(): Promise<void> {
-		if (this.loading) return;
-		this.loading = true;
+		const epoch = this.loadEpoch;
+		if (this.loadingEpoch === epoch) return;
+		this.loadingEpoch = epoch;
 		try {
-			await this.loadInner();
+			await this.loadInner(epoch);
 		} finally {
-			this.loading = false;
+			if (this.loadingEpoch === epoch) this.loadingEpoch = -1;
 		}
 	}
 
-	private async loadInner(): Promise<void> {
+	private async loadInner(epoch: number): Promise<void> {
+		let agents: AgentInfo[];
 		try {
-			this.agents = await this.askAgents();
+			agents = await this.askAgents();
 		} catch (e) {
+			if (epoch !== this.loadEpoch) return;
 			return this.flash(errText(e), "bad");
 		}
+		if (epoch !== this.loadEpoch) return;
+		this.agents = agents;
 		for (const a of this.agents) learnHome(a.workspace);
 		// The browser build is fetched onto this computer: another machine's pine is not asked about it here.
 		if (!this.remote) void this.checkBrowser(true);
@@ -624,36 +640,57 @@ export class Store extends Model {
 		this.active = undefined;
 		this.opened = false;
 		let startedEmpty = false;
+		const restoreFromDaemon = async (useCode: boolean) => {
+			const saved = await api.tabs().catch(() => ({ tabs: [] as Array<{ agent: string; session: string }>, active: 0, code: false }));
+			if (epoch !== this.loadEpoch) return;
+			const again = saved.tabs.filter((t) => this.agents.some((a) => a.id === t.agent));
+			if (!again.length) {
+				await this.openTab(first.id, "main");
+				if (epoch !== this.loadEpoch) return;
+			}
+			for (const t of again) {
+				await this.openTab(t.agent, t.session, false);
+				if (epoch !== this.loadEpoch) return;
+			}
+			const chats = this.tabs.filter((t) => t.kind === "chat");
+			this.activate(chats[again.length ? Math.min(saved.active, chats.length - 1) : 0] ?? this.tabs[0]);
+			if (useCode) this.code = saved.code === true;
+		};
 		this.restoring = true;
 		try {
 			if (initTab && this.agents.some((a) => a.id === initTab.agent)) {
 				if (initDraft) this.drafts.set(`${initTab.agent}:${initTab.session}`, { draft: initDraft.text, attachments: initDraft.attachments });
 				await this.openTab(initTab.agent, initTab.session, true);
+				if (epoch !== this.loadEpoch) return;
 			} else if (initLayout) {
 				const again = initLayout.tabs.filter((t) => this.agents.some((a) => a.id === t.agent));
-				if (initLayout.noTab || !again.length) {
+				if (initLayout.noTab) {
 					startedEmpty = true;
-				} else {
-					for (const t of again) await this.openTab(t.agent, t.session, false);
+				} else if (again.length) {
+					for (const t of again) {
+						await this.openTab(t.agent, t.session, false);
+						if (epoch !== this.loadEpoch) return;
+					}
 					const chats = this.tabs.filter((t) => t.kind === "chat");
 					this.activate(chats[Math.min(initLayout.active, Math.max(0, chats.length - 1))] ?? this.tabs[0]);
+				} else {
+					await restoreFromDaemon(false);
+					if (epoch !== this.loadEpoch) return;
 				}
 				this.code = initLayout.code === true;
 			} else if (initNoTab) {
 				startedEmpty = true;
 			} else {
-				const saved = await api.tabs().catch(() => ({ tabs: [] as Array<{ agent: string; session: string }>, active: 0, code: false }));
-				const again = saved.tabs.filter((t) => this.agents.some((a) => a.id === t.agent));
-				if (!again.length) await this.openTab(first.id, "main");
-				for (const t of again) await this.openTab(t.agent, t.session, false);
-				const chats = this.tabs.filter((t) => t.kind === "chat");
-				this.activate(chats[again.length ? Math.min(saved.active, chats.length - 1) : 0] ?? this.tabs[0]);
-				this.code = saved.code === true;
+				await restoreFromDaemon(true);
+				if (epoch !== this.loadEpoch) return;
 			}
 		} finally {
-			this.restoring = false;
-			this.opened = true;
+			if (epoch === this.loadEpoch) {
+				this.restoring = false;
+				this.opened = true;
+			}
 		}
+		if (epoch !== this.loadEpoch) return;
 		this.saveTabs();
 		void this.refreshTaints();
 		void this.refreshConversations();
@@ -2089,7 +2126,7 @@ export class Store extends Model {
 
 	private dirty = new Set<Model>();
 
-	onEvents(batch: PineEvent[]): void {
+	onEvents(batch: DesktopPineEvent[]): void {
 		for (const e of batch) {
 			try {
 				this.onEvent(e);
@@ -2101,7 +2138,7 @@ export class Store extends Model {
 		this.dirty.clear();
 	}
 
-	private onEvent(e: PineEvent): void {
+	private onEvent(e: DesktopPineEvent): void {
 		const p = (e.payload ?? {}) as any;
 		const [ns, , kind] = e.topic.split("/");
 		const log = this.tabs.find((t) => t.kind === "events");
@@ -2113,7 +2150,7 @@ export class Store extends Model {
 
 		if (ns === "approval") {
 			if (e.topic === "approval/requested") {
-				const askModal = p._askModal !== false;
+				const askModal = e.askModal !== false;
 				const tab = this.tabFor(p) ?? this.tabs.find((t) => t.kind === "chat" && t.agent === p.agent) ?? this.active;
 				// With no tab open, one is opened for it: what is asked is never left without a place to be answered.
 				if (!tab) return void this.holderFor(p).then((to) => to && this.takeAsk(to, p, true, askModal));

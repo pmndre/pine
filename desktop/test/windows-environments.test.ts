@@ -147,6 +147,7 @@ after(async () => {
 	await app?.close().catch(() => {});
 	await mock?.close?.().catch(() => {});
 	for (const dir of [home, home2, far, folder]) if (dir) fs.rmSync(dir, { recursive: true, force: true });
+	assert.deepEqual(pageErrors, [], "unexpected renderer errors");
 });
 
 test("dynamic window titles, concurrent local + SSH messaging, and per-window pine-media: isolation", async () => {

@@ -1,8 +1,12 @@
 // What the page has of the world outside itself: the bridge the preload script exposes.
 import type { Bridge, DraftAttachment, NewWindowOptions, WindowLayout } from "../electron/preload.ts";
+import type { PineEvent } from "./api.ts";
 import type { Look } from "./theme.ts";
 
 export type { DraftAttachment, NewWindowOptions, WindowLayout };
+
+/** A daemon event delivered through the desktop bridge, with optional main-process routing hints. */
+export type DesktopPineEvent = PineEvent & { askModal?: boolean };
 
 declare global {
 	interface Window {

@@ -48,3 +48,13 @@ export const Error: Story = {
 		connected: false,
 	},
 };
+
+/** Title bar environment pill with the machine switcher menu open, showing per-machine open-in-new-window buttons. */
+export const MenuOpen: Story = {
+	args: Remote.args,
+	tags: ["!autodocs"],
+	play: async ({ canvasElement, userEvent }) => {
+		const trigger = canvasElement.querySelector("[data-slot=window-environment]");
+		if (trigger) await userEvent.click(trigger);
+	},
+};

@@ -468,6 +468,9 @@ function MachineMenu({ trigger, side = "top", align = "start" }: { trigger: Reac
 				onClick={(e) => {
 					if (e.metaKey || e.ctrlKey) {
 						modClickRef.current = true;
+						queueMicrotask(() => {
+							modClickRef.current = false;
+						});
 						e.preventDefault();
 						setOpen(false);
 						void s.openMachineWindow(host);
@@ -494,7 +497,13 @@ function MachineMenu({ trigger, side = "top", align = "start" }: { trigger: Reac
 		</div>
 	);
 	return (
-		<DropdownMenu open={open} onOpenChange={setOpen}>
+		<DropdownMenu
+			open={open}
+			onOpenChange={(next) => {
+				modClickRef.current = false;
+				setOpen(next);
+			}}
+		>
 			<DropdownMenuTrigger render={trigger} />
 			<DropdownMenuContent side={side} align={align} className="min-w-60">
 				<DropdownMenuGroup>
