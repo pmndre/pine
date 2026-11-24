@@ -186,6 +186,7 @@ export class Tab extends Model {
 	draft = "";
 	attachments: Attachment[] = [];
 	quotes: Quote[] = [];
+	replying?: number;
 	inputs: string[] = [];
 	files = new Set<string>();
 
@@ -1979,8 +1980,9 @@ export class Store extends Model {
 		if ((!typed && !tab.quotes.length) || tab.kind !== "chat") return;
 		if (typed) tab.inputs.push(typed);
 		const quotes = tab.quotes.splice(0);
-		const sent = quotes.length ? quotes.map((q): SentQuote => ({ text: q.text, source: q.source })) : undefined;
-		const text = withQuotes(quotes, typed);
+		tab.replying = undefined;
+		const sent = quotes.length ? quotes.map((q): SentQuote => ({ text: q.text, source: q.source, ...(q.reply?.trim() ? { reply: q.reply.trim() } : {}) })) : undefined;
+		const text = withQuotes(sent ?? [], typed);
 		const files = tab.attachments.splice(0);
 		tab.draft = "";
 		const mine = tab.add({ t: "user", text: typed, files: files.map((f) => f.name), quotes: sent });
@@ -2043,7 +2045,8 @@ export class Store extends Model {
 		tab.note(`${redo ? "↷" : "↶"} ${said.head}`, "accent", { lines: said.lines });
 		if (!redo) {
 			tab.draft = r.quotes?.length ? (r.body ?? "") : r.prompt;
-			tab.quotes = (r.quotes ?? []).map((q) => ({ id: quoteId(), text: q.text, tab: tab.key, source: q.source }));
+			tab.quotes = (r.quotes ?? []).map((q) => ({ id: quoteId(), text: q.text, tab: tab.key, source: q.source, ...(q.reply ? { reply: q.reply } : {}) }));
+			tab.replying = undefined;
 		}
 		tab.codeTick++;
 		tab.touch();

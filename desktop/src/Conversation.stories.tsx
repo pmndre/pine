@@ -146,9 +146,19 @@ const quoted: Made[] = [
 	},
 	{ t: "user", text: "", task: 3, quotes: [{ text: "The build passed on the second run.", source: { task: 1, part: "answer" } }] },
 	{ t: "user", text: "> Typed as a quote by hand, without the Quote button: it stays text.", task: 4 },
+	{
+		t: "user",
+		text: "And check the other workflows too.",
+		task: 5,
+		quotes: [
+			{ text: "The first failed because the cache held an old copy of the lockfile.", source: { task: 1, part: "answer" }, reply: "Which cache: npm's or the runner's?" },
+			{ text: "Clearing the cache before the install keeps it from happening again.", source: { task: 1, part: "answer" }, reply: "Do that, but only on main.\nThe pull requests can keep theirs." },
+			{ text: "The build passed on the second run.", source: { task: 1, part: "answer" } },
+		],
+	},
 ];
 
-/** Quotes sent with a message stay badges at the top of its bubble: a click goes back to where they were taken from. */
+/** Quotes sent with a message stay badges at the top of its bubble: a click goes back to where they were taken from. With replies, each quote is followed by its reply. */
 export const Quoted: Story = { args: { items: quoted } };
 
 /** A conversation that has not loaded yet: its shape, from stock Skeleton blocks. */

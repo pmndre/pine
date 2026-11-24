@@ -11,10 +11,12 @@ export type Selected = { text: string; rect: DOMRect };
 const GAP = 8;
 const MARGIN = 8;
 
+const FIELD = "input, textarea, [contenteditable=''], [contenteditable='true']";
+
 function within(root: HTMLElement, node: Node | null): boolean {
 	if (!node || !root.contains(node)) return false;
 	const el = node instanceof Element ? node : node.parentElement;
-	return !el?.closest("input, textarea, [contenteditable=''], [contenteditable='true']");
+	return !el?.closest(FIELD);
 }
 
 function read(root: HTMLElement | null): Selected | undefined {
@@ -64,7 +66,7 @@ export function useTextSelection(root: RefObject<HTMLElement | null>): [Selected
 			settle(150);
 		};
 		const key = (e: KeyboardEvent) => {
-			if (e.key !== "Escape" || !shown.current) return;
+			if (e.key !== "Escape" || !shown.current || (e.target instanceof Element && e.target.closest(FIELD))) return;
 			e.stopPropagation();
 			setSelected(undefined);
 		};
@@ -129,14 +131,14 @@ export function SelectionToolbar({ rect, bounds, className, style, children, ...
 	return rect ? createPortal(bar, document.body) : bar;
 }
 
-export function SelectionToolbarButton({ icon: Icon, label, ...props }: ComponentProps<typeof Button> & { icon: ComponentType; label: string }) {
+export function SelectionToolbarButton({ icon: Icon, label, hint, ...props }: ComponentProps<typeof Button> & { icon: ComponentType; label: string; hint?: string }) {
 	return (
 		<HoverTooltip>
 			<TooltipTrigger render={<Button variant="ghost" size="sm" className="rounded-md!" {...props} />}>
 				<Icon data-icon="inline-start" />
 				{label}
 			</TooltipTrigger>
-			<TooltipContent>{label} the selected text</TooltipContent>
+			<TooltipContent>{hint ?? `${label} the selected text`}</TooltipContent>
 		</HoverTooltip>
 	);
 }

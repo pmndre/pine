@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
 import { HoverTooltip } from "@/components/hover-tooltip";
-import { QuoteChip } from "@/components/quote-chip";
+import { QuoteChip, QuoteReply } from "@/components/quote-chip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "usehooks-ts";
@@ -68,6 +68,7 @@ export function Composer({ tab }: { tab: Tab }) {
 	useModel(store);
 	const area = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
+	const replyArea = useRef<HTMLTextAreaElement>(null);
 	const [over, setOver] = useState(false);
 	const [items, setItems] = useState<Suggestion[]>([]);
 	const highlighted = useRef<Suggestion | undefined>(undefined);
@@ -149,6 +150,19 @@ export function Composer({ tab }: { tab: Tab }) {
 	useSignal("voice", () => void dictate());
 	useSignal("attach", () => picker.current?.click());
 	useSignal("focus-input", () => area.current?.focus());
+	useSignal("focus-reply", () => replyArea.current?.focus());
+
+	const replying = tab.quotes.find((q) => q.id === tab.replying);
+	const openReply = (id: number) => {
+		if (tab.replying === id) return replyArea.current?.focus();
+		tab.replying = id;
+		tab.touch();
+	};
+	const doneReply = () => {
+		tab.replying = undefined;
+		tab.touch();
+		area.current?.focus();
+	};
 
 	/** What is being typed right before the cursor: a command at the start of the input, or a file after an @. */
 	const suggest = async (value: string, cursor: number) => {
@@ -341,7 +355,19 @@ export function Composer({ tab }: { tab: Tab }) {
 					{tab.attachments.length || tab.quotes.length || over ? (
 						<InputGroupAddon align="block-start" className="flex-wrap">
 							{tab.quotes.map((q, i) => (
-								<QuoteChip key={`quote:${q.id}`} text={q.text} onOpen={() => store.showQuote(q.tab, q.source)} onRemove={() => (tab.quotes.splice(i, 1), tab.touch())} />
+								<QuoteChip
+									key={`quote:${q.id}`}
+									text={q.text}
+									reply={q.reply}
+									replying={q.id === tab.replying}
+									onOpen={() => store.showQuote(q.tab, q.source)}
+									onReply={() => openReply(q.id)}
+									onRemove={() => {
+										tab.quotes.splice(i, 1);
+										if (tab.replying === q.id) tab.replying = undefined;
+										tab.touch();
+									}}
+								/>
 							))}
 							{tab.attachments.map((f, i) => (
 								<Chip size="sm" key={`${f.name}:${i}`}>
@@ -367,6 +393,17 @@ export function Composer({ tab }: { tab: Tab }) {
 										<AttachmentDescription>a folder is opened for the conversation</AttachmentDescription>
 									</AttachmentContent>
 								</Chip>
+							) : null}
+							{replying ? (
+								<QuoteReply
+									key={`reply:${replying.id}`}
+									autoFocus
+									inputRef={replyArea}
+									text={replying.text}
+									value={replying.reply ?? ""}
+									onChange={(value) => ((replying.reply = value), tab.touch())}
+									onDone={doneReply}
+								/>
 							) : null}
 						</InputGroupAddon>
 					) : null}

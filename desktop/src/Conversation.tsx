@@ -3,7 +3,7 @@
 // The parts are shadcn's chat components, composed the way its AI Elements pages show: the thread
 // is Message Scroller, a turn is Message (and Bubble for the owner's), the work of a turn is Trace
 // (Task, Tool, Reasoning, Subagent and Plan), a request is an Item (Confirmation), a note is a Marker.
-import { ArrowUpIcon, ArrowUpRightIcon, BrainIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, QuoteIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { ArrowUpIcon, ArrowUpRightIcon, BrainIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
 import { Fragment, memo, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Sound } from "@/components/sound";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -274,7 +274,16 @@ export function OwnerTurn({ text, from, files, menu, skeleton, footer, quotes, o
 				{from ? <MessageHeader>{from}</MessageHeader> : null}
 				<Bubble align="end" variant="muted">
 					<BubbleContent className="text-base leading-snug whitespace-pre-wrap select-text">
-						{quotes?.length ? (
+						{quotes?.length && quotes.some((q) => q.reply?.trim()) ? (
+							<div className={cn("flex flex-col gap-3", body.trim() && "mb-3")}>
+								{quotes.map((q, i) => (
+									<div key={i} data-slot="quote-with-reply" className="flex min-w-0 flex-col items-start gap-1">
+										<QuoteChip text={q.text} className="bg-background whitespace-normal" onOpen={onQuote ? () => onQuote(q) : undefined} />
+										{q.reply?.trim() ? <div data-slot="quote-reply-text" className="break-words">{q.reply.trim()}</div> : null}
+									</div>
+								))}
+							</div>
+						) : quotes?.length ? (
 							<div className={cn("flex flex-wrap gap-1.5 whitespace-normal", body.trim() && "mb-2")}>
 								{quotes.map((q, i) => (
 									<QuoteChip key={i} text={q.text} className="bg-background" onOpen={onQuote ? () => onQuote(q) : undefined} />
@@ -1014,15 +1023,17 @@ export function Conversation({ tab }: { tab: Tab }) {
 	const frame = useRef<HTMLDivElement>(null);
 	const [selected, unselect] = useTextSelection(scroller);
 	const source = selected ? selectionSource(scroller.current) : undefined;
-	const quote = () => {
+	const quote = (reply: boolean) => {
 		if (!selected || !source) return;
 		const text = selected.text.trim();
 		if (!text) return;
-		if (!tab.quotes.some((q) => q.text === text && sameSource(q.source, source))) tab.quotes.push({ id: quoteId(), text, tab: tab.key, source });
+		let it = tab.quotes.find((q) => q.text === text && sameSource(q.source, source));
+		if (!it) tab.quotes.push((it = { id: quoteId(), text, tab: tab.key, source }));
+		if (reply) tab.replying = it.id;
 		tab.touch();
 		window.getSelection()?.removeAllRanges();
 		unselect();
-		store.ask_("focus-input");
+		store.ask_(reply ? "focus-reply" : "focus-input");
 	};
 	// What the conversation held when this view of it was opened: its history, or what was said while another tab
 	// was in front. Message Scroller goes to a message of the owner's when it arrives (`scrollAnchor`), and takes
@@ -1038,7 +1049,8 @@ export function Conversation({ tab }: { tab: Tab }) {
 			<ConvHead tab={tab} />
 			{selected && chat && source ? (
 				<SelectionToolbar rect={selected.rect} bounds={frame}>
-					<SelectionToolbarButton icon={QuoteIcon} label="Quote" onClick={quote} />
+					<SelectionToolbarButton icon={QuoteIcon} label="Quote" onClick={() => quote(false)} />
+					<SelectionToolbarButton icon={ReplyIcon} label="Reply" hint="Quote the selected text and reply to it" onClick={() => quote(true)} />
 				</SelectionToolbar>
 			) : null}
 			{finding && loaded ? <FindBar key={looked ?? ""} initial={looked} root={() => scroller.current} close={() => (setFinding(false), setLooked(undefined))} /> : null}
