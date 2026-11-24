@@ -237,7 +237,7 @@ test("a right click on an agent renames it in place, colors it, and offers to re
 	for (let i = 0; i < 100 && !json(kept)?.color; i++) await new Promise((r) => setTimeout(r, 30));
 	assert.match(json(kept)?.color, /^#[0-9a-f]{6}$/);
 	await page.keyboard.press("Escape");
-	assert.deepEqual(await shown("spare-hands", "remove"), ["Open", "Move to Group…", "Start over…", "New conversation with spare-hands", "Open a folder with spare-hands…", "New Group…", "Rename…", "Color…", "Agent settings…", "Remove spare-hands…"]);
+	assert.deepEqual(await shown("spare-hands", "remove"), ["Open", "Open in New Window", "Move to Group…", "Start over…", "New conversation with spare-hands", "Open a folder with spare-hands…", "New Group…", "Rename…", "Color…", "Agent settings…", "Remove spare-hands…"]);
 	// It asks first, and how: nothing is removed by the menu alone.
 	// It is an alert dialog: it does not go away with a stray click beside it.
 	await sees("[role=alertdialog] [data-slot=alert-dialog-title] >> text=Remove the agent spare-hands?");
