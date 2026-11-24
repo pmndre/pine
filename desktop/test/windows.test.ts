@@ -337,7 +337,9 @@ test("set_conversation tab opens, approvals, notifications, and Dock badges rout
 		});
 
 		await page.evaluate(
-			(promptText: string) => (window as any).pine.call("POST", "/agents/main/prompt", { prompt: promptText, session: "side", wait: false }),
+			(promptText: string) => {
+				void (window as any).pine.call("POST", "/agents/main/prompt", { prompt: promptText, session: "side", wait: false });
+			},
 			mockMsg([{ tools: [{ name: "bash", args: { command: "echo shared-check" } }], text: "Checking." }, { text: "Checked." }], "run shared check "),
 		);
 
@@ -459,7 +461,9 @@ test("set_conversation tab opens, approvals, notifications, and Dock badges rout
 		await blurAll();
 
 		await page.evaluate(
-			(promptText: string) => (window as any).pine.call("POST", "/agents/main/prompt", { prompt: promptText, session: "side", wait: false }),
+			(promptText: string) => {
+				void (window as any).pine.call("POST", "/agents/main/prompt", { prompt: promptText, session: "side", wait: false });
+			},
 			mockMsg([{ tools: [{ name: "bash", args: { command: "echo close-rehome-check" } }], text: "Close asking." }, { text: "Close done." }], "run close check "),
 		);
 		await win2.waitForSelector('[data-item="approval"][data-state="open"]', { timeout: 20_000 });
