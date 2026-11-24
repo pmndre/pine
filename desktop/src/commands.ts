@@ -20,8 +20,6 @@ const chat = (tab: Tab | undefined): Tab | undefined => (tab?.kind === "chat" ? 
 const menu = (name: string) => () => store.command(name);
 
 export const COMMANDS: Command[] = [
-	{ name: "new-window", title: "New window", about: "Open another Pine window", keys: "⌘N", run: menu("new-window") },
-	{ name: "close-window", title: "Close window", about: "Close this window", keys: "⇧⌘W", run: menu("close-window") },
 	{ name: "new", title: "New conversation", about: "A new conversation with this agent, in a new tab", hint: "[name]", keys: "⌘T", run: (args, tab) => (args.trim() && tab ? store.openTab(tab.agent, args.trim()) : store.newConversation()) },
 	{
 		name: "agent", title: "New conversation with another agent", about: "Open a tab with another agent", hint: "<id> [session]", keys: "⇧⌘T",
@@ -43,6 +41,8 @@ export const COMMANDS: Command[] = [
 			if (session) await store.openTab(t.agent, session);
 		},
 	},
+	{ name: "new-window", title: "New window", about: "Open another Pine window", keys: "⌘N", run: menu("new-window") },
+	{ name: "close-window", title: "Close window", about: "Close this window", keys: "⇧⌘W", run: menu("close-window") },
 	{ name: "close", title: "Close tab", about: "Close this tab; the conversation stays in the list", keys: "⌘W", run: menu("close") },
 	{ name: "close-others", title: "Close other tabs", about: "Close every tab but this one; the conversations stay in the list", run: (_a, tab) => store.closeTabs("others", tab) },
 	{ name: "close-right", title: "Close tabs to the right", about: "Close the tabs to the right of this one", run: (_a, tab) => store.closeTabs("right", tab) },

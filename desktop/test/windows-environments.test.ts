@@ -214,6 +214,10 @@ test("dynamic window titles, concurrent local + SSH messaging, and per-window pi
 	assert.equal(localMedia.otherOk, false, "local window should not load remote-only.png");
 	assert.equal(remoteMedia.ownOk, true, "remote window should load remote-only.png");
 	assert.equal(remoteMedia.otherOk, false, "remote window should not load local-only.png");
+	// Expected 404 console errors from the negative cross-daemon image probes above
+	for (let i = pageErrors.length - 1; i >= 0; i--) {
+		if (pageErrors[i].includes("404 (Not Found)")) pageErrors.splice(i, 1);
+	}
 
 	// Closing last tab on remote shows NoTab and updates title to `<host> — Pine`
 	await remotePage.locator("[data-slot=tab] button[aria-label='Close this tab']").first().click();
