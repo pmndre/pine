@@ -437,6 +437,59 @@ test("the send button sends what was typed with a click, as Enter does", async (
 	await sees("[data-slot=markdown] >> text=sent by Enter");
 });
 
+test("text selected in an answer is quoted: a badge above the input, a markdown quote for the agent, a badge in the sent message that goes back to it, and a badge again after a take-back", async () => {
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ text: "QUOTE-SOURCE The cache held an old copy of the lockfile." }], "say something to quote "));
+	await page.keyboard.press("Enter");
+	await sees("[data-slot=markdown] >> text=QUOTE-SOURCE");
+	const source = await page.$eval("[data-item=answer]:has-text('QUOTE-SOURCE')", (el: Element) => el.closest("[data-message-id]")!.getAttribute("data-message-id"));
+	// Whether the message quoted from lights up, as a click on a badge makes it.
+	const lit = () => page.waitForFunction((id: string) => (document.querySelector(`[data-message-id="${id}"]`)?.getAnimations().length ?? 0) > 0, source);
+	const unlit = () => page.$eval(`[data-message-id="${source}"]`, (el: Element) => el.getAnimations().forEach((a) => a.cancel()));
+	await page.evaluate(() => {
+		const answer = [...document.querySelectorAll("[data-item=answer]")].find((e) => e.textContent!.includes("QUOTE-SOURCE"))!;
+		const walk = document.createTreeWalker(answer, NodeFilter.SHOW_TEXT);
+		let node: Node | null;
+		while ((node = walk.nextNode()) && !node.textContent!.includes("old copy"));
+		const at = node!.textContent!.indexOf("old copy");
+		const range = document.createRange();
+		range.setStart(node!, at);
+		range.setEnd(node!, at + "old copy of the lockfile".length);
+		window.getSelection()!.removeAllRanges();
+		window.getSelection()!.addRange(range);
+	});
+	await page.locator("[data-slot=selection-toolbar]").getByRole("button", { name: "Quote" }).click();
+	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=old copy of the lockfile");
+	assert.equal(await page.$("[data-slot=selection-toolbar]"), null);
+	// A click on the badge above the input goes back to the answer.
+	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: /Go to where you quoted/ }).click();
+	await lit();
+	await unlit();
+	// Sent, the quote goes first, as markdown: that is what the agent reads.
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ text: "QUOTE-ANSWER" }], "why is that? "));
+	await page.press("[data-slot=composer] textarea", "Enter");
+	await sees("[data-slot=markdown] >> text=QUOTE-ANSWER");
+	const said = JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "user").at(-1) ?? "");
+	assert.match(said, /> old copy of the lockfile\\n\\nwhy is that\? /);
+	assert.equal(await page.$("[data-slot=composer] [data-slot=quote-chip]"), null);
+	// In the sent message it is a badge, not a line starting with ">", and a click goes back to the answer too.
+	const sent = page.locator("[data-item=user]").last();
+	assert.equal(await sent.locator("[data-slot=quote-chip]").count(), 1);
+	assert.doesNotMatch(await sent.textContent(), /> old copy/);
+	await sent.locator("[data-slot=quote-chip]").getByRole("button", { name: /Go to where you quoted/ }).click();
+	await lit();
+	await unlit();
+	// Taken back, the quote is a badge above the input again and the rest is in the input, and the badge still finds its answer.
+	await menu("undo");
+	await sees("[data-slot=marker][data-tone=accent] >> text=Taken back");
+	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=old copy of the lockfile");
+	assert.match(await page.inputValue("[data-slot=composer] textarea"), /^why is that\? /);
+	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: /Go to where you quoted/ }).click();
+	await page.waitForFunction(() => [...document.querySelectorAll("[data-item=answer]")].some((e) => e.textContent!.includes("QUOTE-SOURCE") && (e.closest("[data-message-id]")?.getAnimations().length ?? 0) > 0));
+	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: "Remove quote" }).click();
+	assert.equal(await page.$("[data-slot=composer] [data-slot=quote-chip]"), null);
+	await page.fill("[data-slot=composer] textarea", "");
+});
+
 test("a click into the composer draws no ring and no brighter border: it looks as it did before", async () => {
 	const look = () =>
 		page.$eval("[data-slot=composer] [data-slot=input-group]", (el: Element) => {

@@ -39,7 +39,7 @@ import { bridge } from "./bridge.ts";
 import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
-import { type Item, type Part, type QuoteSource, type Steer, splitQuotes, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
+import { type Item, type Part, type QuoteSource, quoteId, type Steer, splitQuotes, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { childKind, clock, count, MODES, oneLine, plural, short, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
 
@@ -462,13 +462,15 @@ async function branchMenu(tab: Tab, task: number): Promise<void> {
 
 const squash = (text: string) => text.replace(/\s+/g, " ").trim();
 
-function quoteSource(tab: Tab, from: Item, quote: string, at: HTMLElement): { item?: number; source?: QuoteSource } | undefined {
+/** Where a quote was taken from, found by its first line: the last message before `from` (or of all) that holds it. */
+function quoteSource(tab: Tab, from: Item | undefined, quote: string, scope: ParentNode | null | undefined): { item?: number; source?: QuoteSource } | undefined {
 	const first = quote.split(/\r?\n/).find((line) => line.trim());
 	if (!first) return undefined;
 	const want = squash(first);
-	const scope = at.closest("[data-message-id]")?.parentElement;
-	for (let i = tab.items.indexOf(from) - 1; i >= 0; i--) {
+	for (let i = (from ? tab.items.indexOf(from) : tab.items.length) - 1; i >= 0; i--) {
 		const it = tab.items[i];
+		// A note of pine's can repeat what was said ("Taken back: …"): it is never where a quote came from.
+		if (it.t === "note") continue;
 		if (it.t === "user") {
 			if (squash(splitQuotes(it.text).body).includes(want)) return { item: it.id };
 			continue;
@@ -486,7 +488,7 @@ function quoteSource(tab: Tab, from: Item, quote: string, at: HTMLElement): { it
 function openQuote(tab: Tab, item: Extract<Item, { t: "user" }>, index: number, quote: string, at: HTMLElement): void {
 	const sent = item.quotes?.[index];
 	if (sent && squash(sent.text) === squash(quote) && (sent.item !== undefined || sent.source)) return store.showQuote(sent);
-	const found = quoteSource(tab, item, quote, at);
+	const found = quoteSource(tab, item, quote, at.closest("[data-message-id]")?.parentElement);
 	if (!found) return store.flash("The quoted message is no longer in this conversation.", "muted");
 	store.showQuote({ id: 0, text: quote, tab: tab.key, ...found });
 }
@@ -976,8 +978,6 @@ function lastOwnerMessage(items: Item[]): number {
 	return -1;
 }
 
-let quoteIds = 0;
-
 function sourceOf(node: Node | null | undefined): number | undefined {
 	const el = node instanceof Element ? node : node?.parentElement;
 	const id = el?.closest("[data-message-id]")?.getAttribute("data-message-id");
@@ -995,9 +995,11 @@ function QuoteJump({ tab, root }: { tab: Tab; root: RefObject<HTMLElement | null
 		const want = store.pendingQuote;
 		if (!want || want.key !== tab.key || store.active !== tab) return;
 		store.pendingQuote = undefined;
-		const el = want.item !== undefined ? root.current?.querySelector<HTMLElement>(`[data-message-id="${want.item}"]`) : want.source ? root.current?.querySelector<HTMLElement>(`[data-quote-source="${want.source}"]`) : null;
+		// A quote given back by a take-back may not know where it was taken from: it is found by its words.
+		const { item, source } = want.item !== undefined || want.source ? want : (quoteSource(tab, undefined, want.text, root.current) ?? {});
+		const el = item !== undefined ? root.current?.querySelector<HTMLElement>(`[data-message-id="${item}"]`) : source ? root.current?.querySelector<HTMLElement>(`[data-quote-source="${source}"]`) : null;
 		if (!el) return store.flash("The quoted message is no longer on the page.", "muted");
-		if (want.item !== undefined) scrollToMessage(String(want.item), { align: "center", behavior: "smooth" });
+		if (item !== undefined) scrollToMessage(String(item), { align: "center", behavior: "smooth" });
 		else scrollToStart({ behavior: "smooth" });
 		el.animate(
 			[
@@ -1041,7 +1043,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 		const sel = window.getSelection();
 		const item = sourceOf(sel?.anchorNode) ?? sourceOf(sel?.focusNode);
 		const source = item === undefined ? (placeOf(sel?.anchorNode) ?? placeOf(sel?.focusNode)) : undefined;
-		if (!tab.quotes.some((q) => q.text === text && q.item === item && q.source === source)) tab.quotes.push({ id: ++quoteIds, text, tab: tab.key, item, source });
+		if (!tab.quotes.some((q) => q.text === text && q.item === item && q.source === source)) tab.quotes.push({ id: quoteId(), text, tab: tab.key, item, source });
 		tab.touch();
 		window.getSelection()?.removeAllRanges();
 		unselect();

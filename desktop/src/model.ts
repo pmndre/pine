@@ -100,6 +100,11 @@ export interface Quote {
 	source?: QuoteSource;
 }
 
+let quoteIds = 0;
+
+/** A number for a quote in a composer, which its badge is keyed by. */
+export const quoteId = () => ++quoteIds;
+
 export function quoteBlock(text: string): string {
 	return text
 		.trim()
@@ -2055,7 +2060,13 @@ export class Store extends Model {
 		for (const t of history) (this.past(tab, t), tab.roots.add(t.id));
 		const said = undoLines(r, redo);
 		tab.note(`${redo ? "↷" : "↶"} ${said.head}`, "accent", { lines: said.lines });
-		if (!redo) tab.draft = r.prompt;
+		if (!redo) {
+			// Its quotes go back above the input as badges, the rest into it. What was said is drawn anew with new
+			// numbers, so a badge finds where it was taken from by its words.
+			const { quotes, body } = splitQuotes(r.prompt);
+			tab.draft = body;
+			tab.quotes = quotes.map((text) => ({ id: quoteId(), text, tab: tab.key }));
+		}
 		tab.codeTick++;
 		tab.touch();
 		void this.refreshTaints();
@@ -2460,11 +2471,12 @@ export class Store extends Model {
 		this.touch();
 	}
 
-	pendingQuote?: { key: string; item?: number; source?: QuoteSource };
+	/** Where a click on a quote goes: the message, or the place, it was taken from, or else its words to find it by. */
+	pendingQuote?: { key: string; text: string; item?: number; source?: QuoteSource };
 
 	showQuote(quote: Quote): void {
 		const tab = this.tabs.find((t) => t.kind === "chat" && t.key === quote.tab);
-		this.pendingQuote = { key: quote.tab, item: quote.item, source: quote.source };
+		this.pendingQuote = { key: quote.tab, text: quote.text, item: quote.item, source: quote.source };
 		if (tab && tab !== this.active) this.activate(tab);
 		this.ask_("show-quote");
 	}
