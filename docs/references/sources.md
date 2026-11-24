@@ -293,6 +293,13 @@ its entry is deleted, and the read access and the secrets that came with it go t
 then as it was before. A source that was set up for one conversation is removed by itself when
 that conversation is removed. Who may do what is in [setup.md](setup.md).
 
+### What a call may leave out
+
+Where tools are declared in families (your own conversations), an `add_source` call that leaves
+out the name gets one from what is watched (the last part of the folder, the host of the address,
+or the command's program), a missing description is the type and what is watched, and a missing
+type follows from `dir`, `run`, `topics` or an `http(s)` `url`.
+
 ### Secrets
 
 An option that is a password or a token (a bot's token, an MQTT broker's password, a webhook's
@@ -461,7 +468,7 @@ Every report is an event on pine's bus:
 ### Files a source received
 
 A camera uploads a picture or a video clip, a scanner a PDF, you send a photo through
-Telegram. A source that receives files (`ftp`, `telegram`) keeps them in a folder of its own
+Telegram. A source that receives files (`ftp`, `telegram`, `mail`, `smtp`, `slack`) keeps them in a folder of its own
 in pine's data folder, `data/sources/<name>/`, and the event says where the file lies (`path`).
 An agent can open and read the files of its own sources and of every source it is subscribed
 to: with `read`, and in its shell (`cp`, `ffmpeg`, a script). The folder a `folder` source
@@ -610,8 +617,10 @@ it will do in a dialog that has a field for the token, which goes into `.env`. I
 | `options` | The options as a JSON schema of an object. Give every property a `description`. `"secret": true` on a property keeps its value in `.env` and out of the configuration. With `"additionalProperties": false` an option that does not exist is refused instead of ignored. An option cannot be called like a setting every source has (`type`, `use`, `description`, `agents`, `trust`, `start`, `enabled`, `session`). |
 | `talks` | Optional, `true`: what it reports is somebody writing to the agent, so report only `message` events. The event's `text` reaches the agent as a message, the answer goes back through the source, and the default throttle does not apply. |
 | `sends` | Optional. One line for the agent on what sending through it does and what to pass. With it the agent's `send` tool offers the source. |
+| `reads` | Optional. One line for the agent on what can be read through it and what to pass. With it the agent's `read_source` tool offers the source, which answers through `onRead`. What comes back is outside content |
 | `files` | Optional, `true`: it can send a file along. `onSend` is then handed `file` (`{ name, mime, bytes }`) when the agent named one: a picture, video or sound file of its workspace, read by pine. |
 | `toOwner` | Optional, `true`: what it sends reaches the owner and nobody else, and the type's own code sees to that. Sending through it is then a message to the owner, which is not asked about after outside content. Never for a type that can reach anybody else or act on a device. |
+| `needs(options)` | Optional. The secret options that these options cannot do without; pine asks you for each one that is missing |
 | `plan(options, setup)` | Optional. Returns `{ options, does, opens, read?, tell?, owner? }` (`owner: true`: the source itself makes sure who is on the other end, so what it reports counts as your own words; you are told before you confirm): the options as they are to be stored, what the source will do in plain words (shown in your dialog), whether it reaches something new (then you are asked), a folder the agent should be able to read, and what the agent should pass on to you afterwards. Throw for what cannot work. Without `plan`, a set-up is always put to you. `setup` has the source's `name` and `key` (`name`, or `name@agent` for an agent's own), the `agent` and its `workspace`, pine's `home`, `resolve(path)`, `random(bytes)` and `envName(option)`. |
 
 A type without a `type` export still works in the configuration, but agents cannot set one up
@@ -623,15 +632,18 @@ The start function gets a `source` object:
 | On `source` | |
 |---|---|
 | `name`, `options`, `base` | Its name, the keys of its entry that are not pine's own, the folder relative paths are meant from. |
+| `agent`, `controlPort` | The agent whose own source this is (absent for a source of all agents); the port of pine's control API |
 | `emit(event, payload?, opts?)` | Report something. `event` is a short lowercase word. With `opts.reply` (any fields, a chat to answer in for example) the answer of an agent that is woken by it comes back to `onSend`. |
 | `status(line)` | Say in one line how things stand (who it is connected to, what it waits for). Shown wherever sources are listed. |
 | `onSend(handler)` | For a source that can also send: called with an agent's answer (`text`, and the fields given as `reply`) and with what an agent sends on its own. Return a line on what was done; throw to refuse. |
+| `onRead(handler)` | For a type with `reads`: called with what an agent asks for, returns text. Never more than the source was set up to listen to; throw to refuse |
 | `on(pattern, handler)` | Look at events of the system, read only: `agent/+/started`, `approval/requested`. `pattern` is one topic pattern or a list. |
-| `approvals` | `ask(summary, why)` puts a question of the source's own to you in pine's UI; `request(summary, why, inputs)` asks with fields you fill in and returns `{ allow, by, values }`; `pending()` and `decide(id, allow, by, always?)` let it pass on your answer to open requests; `choose(id, n, by)` answers an agent's question (a request with `tool: "question"`) with the n-th of the answers it offers in `choices`, counted from 0. |
+| `approvals` | `ask(summary, why)` puts a question of the source's own to you in pine's UI; `request(summary, why, inputs)` asks with fields you fill in and returns `{ allow, by, values }`; `pending()` and `decide(id, allow, by, always?)` let it pass on your answer to open requests; `choose(id, n, by)` answers an agent's question (a request with `tool: "question"`) with the n-th of the answers it offers in `choices`, counted from 0.. An agent's own source sees and answers that agent's requests and no other's |
 | `key` | What it is called in events: its name, or `name@agent` for an agent's own. |
 | `poll(every, look)` | Look at something again and again: `look(signal)` runs once at the start and then every `every` (`"30s"`, `"5m"`), never twice at once. Throw from it for a failed look; pine backs off and shows it in the status. See "Looking again and again" in [source-types.md](source-types.md). |
 | `changed(value, slot?)` | Compare a value with the one of the last look and remember it. Returns `{ previous }` when it differs, nothing when it is the same or the first look. |
 | `exec(command, opts?)` | Run a shell command in the sandbox of the agent the source belongs to (the main agent for a source of all agents). Returns `{ code, output, truncated }`; throws when it cannot start or takes longer than `opts.timeoutMs` (30 s). |
+| `follow(command, onLine, opts?)` | Keep a command running in the same sandbox as `exec` and hand on what it prints, one line at a time. Not on Linux |
 | `kv.get`, `kv.set` | Private storage that survives restarts. |
 | `dataDir` | A folder of its own. |
 | `media(dir)` | The source keeps the files it received in this folder. Image files in it may be shown to a model when an event lists them in `images: [{ path, mimeType }]`, and the agents that have the source or are subscribed to it can read the folder, and not write it. |

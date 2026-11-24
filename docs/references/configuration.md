@@ -28,6 +28,9 @@ Everything pine needs is in its home directory: `~/.pine` by default, or `$PINE_
       sessions/        conversation history (written by pine)
   skills/              skills for all agents; no entry needed (the main agent adds them with add_skill)
   sources/             source types the main agent registered (pine's own copies)
+  themes/              VS Code color themes for the Pine app; ui.theme picks one
+  views/               views of the Pine app's panel; ui.view picks one (views.md)
+  removed/             folders of agents removed with keep_files (nothing reads them)
   sandbox/             per-agent private home and generated sandbox profiles (written by pine)
   data/                event log, task queue, media, control token, files of event sources, the folder
                        states kept for undo, what is known of commands in the background, the
@@ -52,10 +55,12 @@ agent shells and MCP servers do not inherit them; they are also removed from eve
 and log lines if they ever appear there (values of 8 characters or more). Keep the file at
 mode 600 (`pine init` sets that).
 
-pine writes to `.env` itself in one case: when an agent sets up an event source that has a
+pine writes to `.env` itself in three cases. When an agent sets up an event source that has a
 password or secret, the value is stored there as `PINE_SOURCE_<NAME>_<AGENT>_<OPTION>` (without
-the agent for a source of all agents), and the configuration holds only the `${...}` reference.
-Removing the source removes the entry. See [sources.md](sources.md).
+the agent for a source of all agents); when it adds a local MCP server with a key, as
+`PINE_MCP_<NAME>_<AGENT>_<OPTION>`; and a model server's key (below). The configuration holds
+only the `${...}` reference, and removing the source or the server removes the entry. See
+[sources.md](sources.md) and [mcp.md](mcp.md).
 
 The key of a model server of your own goes there too, as `PINE_MODEL_<NAME>_API_KEY` when pine
 asked you for it (`pine model add`, `add_model_server`); `models.json` names it as `"apiKey":
@@ -121,7 +126,7 @@ asked you for it (`pine model add`, `add_model_server`); `models.json` names it 
 | `security.taint` | `session` | How long a session stays tainted: until reset (`session`), until the task ends (`run`), or never (`off`). See [security.md](security.md). |
 | `security.taintTools` | `[]` | Tool name globs whose results count as outside content, besides MCP servers marked `taints`. |
 | `security.bypassWhenTainted` | `false` | Keep bypass mode in force in a session that has read outside content. Off, bypass is paused in such a session, and the agent works as in `auto` mode. |
-| `security.askAccess` | `true` | pine asks you itself when a call of an agent in the sandbox (`safe` or `manual` mode) needs a file or folder outside it, or the network: before a file tool or a shell command that names it, and on macOS after a command the sandbox refused something. `false`: you are only asked when the agent calls `request_access`. See "When a call needs something outside" in [security.md](security.md). |
+| `security.askAccess` | `true` | pine asks you itself when a call of an agent in the sandbox (`safe` or `manual` mode) needs a file or folder outside it, or the network: before a file tool or a shell command that names it, and on macOS after a command the sandbox refused something. `false` turns that question off: you are only asked when the agent calls `request_access`. See "When a call needs something outside" in [security.md](security.md). |
 | `ui.theme` | `pmndre` | The theme of the Pine app: a VS Code color theme in the `themes` folder of the home, by its file name without `.json` (`dracula` for `themes/dracula.json`). Chosen in Settings > General. See "Themes" in [desktop.md](desktop.md). |
 | `ui.view` | a view in the folder | The view of the Pine app's panel: a file in the home's `views` folder, without `.ts`, or `off`. See [views.md](views.md). |
 | `http` | on, loopback, port 7463 | Control API and webhooks. `false` turns it off (the CLI's client commands then do not work). |

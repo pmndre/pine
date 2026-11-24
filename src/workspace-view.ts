@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { bin, helperArgv, isInside, realish } from "./security.ts";
+import { bin, helperArgv, helperBase, helperPath, isInside, realish } from "./security.ts";
 
 // What a UI shows beside a conversation: the files of the folder it works in, and what changed
 // there according to git. Everything here only reads. None of it reaches a model.
@@ -32,7 +33,7 @@ export function git(cwd: string, args: string[], opts: GitOptions = {}): Promise
 	const safe = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "-c", "core.pager=cat", "-c", "diff.external=", "-c", "safe.directory=*", "-c", "color.ui=false", "-c", "core.quotePath=false"];
 	const max = opts.maxBytes ?? MAX_OUT;
 	return new Promise((resolve) => {
-		const child = spawn(jail[0], [...jail.slice(1), bin("git"), "-C", cwd, ...safe, ...args], { stdio: [opts.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"], env: { PATH: "/usr/bin:/bin", HOME: process.env.HOME ?? "", GIT_TERMINAL_PROMPT: "0", LC_ALL: "C", ...opts.env } });
+		const child = spawn(jail[0], [...jail.slice(1), bin("git"), "-C", cwd, ...safe, ...args], { stdio: [opts.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"], env: { ...helperBase(), PATH: helperPath(), HOME: process.env.HOME ?? os.homedir(), GIT_TERMINAL_PROMPT: "0", LC_ALL: "C", ...opts.env } });
 		const chunks: Buffer[] = [];
 		let size = 0;
 		let err = "";
@@ -294,7 +295,7 @@ export function putInto(base: string, target: string, bytes: Buffer, mode = 0o64
 	const script = 'set -eC; trap \'rm -f "$2"\' EXIT; cat > "$2"; chmod "$3" "$2"; mv -f "$2" "$1"';
 	return new Promise((resolve) => {
 		// The paths are arguments of their own, never part of the command's text.
-		const child = spawn(jail[0], [...jail.slice(1), "/bin/sh", "-c", script, "sh", target, fresh, (mode & 0o777).toString(8)], { stdio: ["pipe", "ignore", "pipe"], env: { PATH: "/usr/bin:/bin", LC_ALL: "C" } });
+		const child = spawn(jail[0], [...jail.slice(1), bin("sh"), "-c", script, "sh", target, fresh, (mode & 0o777).toString(8)], { stdio: ["pipe", "ignore", "pipe"], env: { ...helperBase(), PATH: helperPath(), LC_ALL: "C" } });
 		let err = "";
 		child.stderr!.on("data", (d: Buffer) => (err.length < 2000 ? (err += d.toString("utf8")) : undefined));
 		child.stdin!.on("error", () => {});

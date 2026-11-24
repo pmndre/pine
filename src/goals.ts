@@ -280,7 +280,7 @@ export class Goals {
 		if (task.parent !== undefined || task.meta.trust !== "owner" || task.session.endsWith("~u") || task.session.startsWith("_t")) return;
 		const goal = this.m.kv.get<Goal>(this.id(task.agent, task.session));
 		if (!goal || goal.status !== "active") return;
-		if (task.status === "cancelled") return void this.halt(goal, "paused", stopping ? "paused: pine was stopped while it was working. /goal resume goes on" : "paused: you stopped the agent. /goal resume goes on");
+		if (task.status === "cancelled" || (stopping && task.status === "failed")) return void this.halt(goal, "paused", stopping ? "paused: pine was stopped while it was working. /goal resume goes on" : "paused: you stopped the agent. /goal resume goes on");
 		if (task.id !== goal.task) return;
 		if (task.status !== "done") return void this.halt(goal, "paused", `paused: round ${goal.round} failed (${String(task.error ?? task.status).slice(0, 200)}). /goal resume tries again`);
 		void this.judge(goal, task).catch((e) => this.log.warn(`goal of ${goal.agent}/${goal.session}: could not go on`, errText(e)));

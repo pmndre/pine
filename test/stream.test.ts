@@ -15,15 +15,6 @@ const owner = { trust: "owner" as const };
 const call = (name: string, args: any) => ({ name, args });
 const always = { type: "stream", start: "always" };
 
-/** A port nothing listens on. */
-const deadPort = () =>
-	new Promise<number>((resolve) => {
-		const s = net.createServer().listen(0, "127.0.0.1", () => {
-			const p = (s.address() as net.AddressInfo).port;
-			s.close(() => resolve(p));
-		});
-	});
-
 /** A name that is not local by what it says, and leads to an address that is not public, on this machine. */
 async function privateName(): Promise<string | undefined> {
 	for (const name of [os.hostname(), "broadcasthost", "ip6-localhost", "ip6-loopback"]) {
@@ -173,7 +164,8 @@ test("stream (SSE): every message is an event; a field, a pattern, only changes;
 test("stream (WebSocket): says hello with the token, reports what is sent, and connects again when the line drops", async (t) => {
 	const ws = await wsServer({ accept: (req) => !String(req.url).startsWith("/closed") });
 	t.after(() => ws.close());
-	const dead = await deadPort();
+	// Port 1 of the loopback: nothing listens there, and no other test's server can take it meanwhile.
+	const dead = 1;
 	const h = await harness({
 		pine: {
 			sources: {

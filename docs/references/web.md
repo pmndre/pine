@@ -25,7 +25,7 @@ at an address of their choosing.
 
 | What | How |
 |---|---|
-| The first screen | Where the deployment offers both ways in (the official service), two views, never shown together. First, how to pair a computer, with "Found through" and the deployment's address under it, and under that a discreet link, "Or connect to a server over SSH". That link shows the SSH view: a back control at its top ("Back to pairing"), the list of machines, this device's key and the field to add a `user@host` machine, with one line under it that names the relay: "Connections go through the relay at" the deployment's address, which "carries SSH only and cannot read it". A deployment without the meeting service (the default configuration, a preview) shows the SSH view alone; one whose relay is off shows the pairing view alone, without the link. A browser that has a `user@host` machine already starts on the SSH view. The view you chose lasts for the visit and is not kept |
+| The first screen | Every deployment of `wrangler.jsonc` offers both ways in, the official service included: two views, never shown together. First, how to pair a computer, with "Found through" and the deployment's address under it, and under that a discreet link, "Or connect to a server over SSH". That link shows the SSH view: a back control at its top ("Back to pairing"), the list of machines, this device's key and the field to add a `user@host` machine, with one line under it that names the relay: "Connections go through the relay at" the deployment's address, which "carries SSH only and cannot read it". A deployment whose configuration dropped the meeting service shows the SSH view alone; one whose relay is off shows the pairing view alone, without the link. A browser that has a `user@host` machine already starts on the SSH view. The view you chose lasts for the visit and is not kept |
 | Open it | The deployment's address, in Chrome 137 or later, Firefox 130 or later, or Safari 17 or later. Another browser, without Ed25519 in WebCrypto, is told which browsers work and nothing else starts |
 | This device's key | On first use the browser makes an SSH key of its own (Ed25519) and keeps it. The start screen shows its public half as a line of `authorized_keys`, with Copy and Share. Add that line to `~/.ssh/authorized_keys` of the user you sign in as on your server. The key is kept in the browser's own storage for this site, where the page cannot reach it: its private half cannot be read or exported, by you or by any script, and a web page an answer shows cannot steal it; no other key can be used (no pasted key, no ssh-agent, no security key) |
 | Add a machine | Type it as `user@host`, or `user@host:port` for SSH on another port, and Add. A host is a name or an address on the internet: the relay refuses private, loopback and link-local addresses, so a server on your home network is reached from the desktop app instead, or through Tailscale Funnel (see "A machine on a tailnet") |
@@ -100,6 +100,13 @@ an owner gave theirs), and "your computer" while it is being paired:
 | This browser is no longer known to Studio Mac | The device was removed in the app, or the key was lost. Open Pine on the computer and add this device again |
 | This pairing link has expired or was used already | Press New code on the computer and scan again |
 | Your computer refused this browser | Refuse was pressed, or the four digits were not the same. Add the device again |
+
+### Two more things it can say while pairing
+
+| It says | What to do |
+|---|---|
+| The meeting service could not be reached | There is no network here, or the service is down. Check the network, then try again |
+| The computer that answered is not the one this pairing link names | Nothing was trusted. Pair again with a new code |
 
 ## How it works
 

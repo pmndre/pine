@@ -40,11 +40,12 @@ test("debounce handles only the last event of a burst; throttle only the first",
 		pine: {
 			routes: [
 				{ name: "burst", on: "cam/+/motion", debounceMs: 80, publish: { topic: "seen/debounced", payload: { n: "{{payload.n}}", cam: "{{topic}}" } } },
-				{ name: "first", on: "door/bell", throttleMs: 300, publish: { topic: "seen/throttled", payload: "{{payload}}" } },
+				{ name: "first", on: "door/bell", throttleMs: 3000, publish: { topic: "seen/throttled", payload: "{{payload}}" } },
 			],
 		},
 		agents: { main: {} },
 	});
+	// (The throttle's window is far longer than the burst: a busy computer may pause between two publishes.)
 	for (const n of [1, 2, 3]) {
 		h.pine.bus.publish("cam/front/motion", { n });
 		h.pine.bus.publish("door/bell", { n });

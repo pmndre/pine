@@ -31,6 +31,7 @@ import { ROOM, store, useModel } from "./model.ts";
 import { AGENT_COLORS } from "./theme.ts";
 import { type Holdings, happeningsOf, knownTarget, talkHappenings, viewStateOf } from "./view-state.ts";
 import { colorFor, ENDED, type From, fromText, type Job, World } from "./view-world.ts";
+import { shortcut } from "./text.ts";
 
 export const VIEW_KEY = "pine.view.width";
 
@@ -332,7 +333,7 @@ export function ViewAside() {
 					<RadarIcon className="size-3.5 text-muted-foreground" />
 					<ViewSelect id={id} />
 					<span className="min-w-0 flex-1" />
-					<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => void store.command("view")} aria-label="Close the view"><XIcon /></Button>} /><TooltipContent>Close the view<Kbd>⇧⌘O</Kbd></TooltipContent></HoverTooltip>
+					<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => void store.command("view")} aria-label="Close the view"><XIcon /></Button>} /><TooltipContent>Close the view<Kbd>{shortcut("⇧⌘O")}</Kbd></TooltipContent></HoverTooltip>
 				</>
 			}
 		>

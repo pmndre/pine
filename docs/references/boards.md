@@ -53,7 +53,7 @@ are told to share what they find mostly repeat what they were told.
 | A conversation's own board, which has no name | That conversation, its sub-agents, and whoever it hands a task to with `delegate` (for that one run, not in a `thread`) | The first post, or a task of yours in the Board tab. It goes when the conversation is reset or removed |
 | A board with a name, `"scope": "local"` | The same, and nobody else | `board_post` with a new name and that scope, not by a sub-agent. It goes when the conversation is reset or removed |
 | A board with a name, `"scope": "agent"` | Every conversation of the one that made it | `board_post` with a new name and that scope. Only in your own conversations, and not by a sub-agent. It goes when its agent is removed |
-| A board with a name, `"scope": "global"` | Everyone | The main agent, the same way. Nothing removes it by itself |
+| A board with a name, `"scope": "global"` | Everyone | The main agent, the same way. Nothing removes it by itself; removing an agent takes that agent's posts off it |
 
 Any board goes when you remove it in the Board tab, or when an agent removes it with
 `board_remove` once its work is finished. A board of the conversation's own goes without a
@@ -216,7 +216,7 @@ the answered task to a new one, which is shown the question and the answer, and 
 - When the agent's turn ends while sub-agents are still at work (it asked you something and
   waits), they finish their tasks, and the agent is told of the results at its next pool call.
   When you stop the conversation, its sub-agents stop with it and their tasks are open again.
-- One call starts at most 100 sub-agents. `pool` and `worktree` do not go together.
+- One call starts at most `limits.maxPoolTasks` sub-agents (100 unless you changed it). `pool` and `worktree` do not go together.
 
 > Find out what this project's design tokens are. Then check every folder in `src/components`
 > for spacing and colors that do not match them, with a pool of sub-agents, one task per folder.
@@ -356,16 +356,16 @@ with every decision two pieces have to agree on, and `check` only where every pi
 under rules) and then to do none of its pieces itself; to ask you for a value the job needs
 that is given nowhere before it hands the job out; and to answer in full, since that answer is
 what gets checked. While a swarm is at work every `subagent` call of the conversation goes
-over the board, however few tasks it has, and so does work the lead hands to another agent
-with `delegate`: the lead waits for it, and it is a task on the board that the other agent's
+over the board, however few tasks it has (not with `worktree`), and so does work the lead hands
+to another agent with `delegate` without a `thread`: the lead waits for it, and it is a task on the board that the other agent's
 answer settles.
 
 | Command | What it does |
 |---|---|
-| `/swarm <what is to be done>` | Starts a swarm in this conversation. One that was there is replaced. At most 4000 characters: put details into a file and name the file. |
+| `/swarm <what is to be done>` | Starts a swarm in this conversation. One that was there is replaced. At most 4000 characters: put details into a file and name the file. Refused for an agent without sub-agents (`subagents.enabled`), and when `defaults.checker` names a model that is not there: the checker is looked up before the work starts. |
 | `/swarm` | Shows the swarm and where it stands. |
 | `/swarm pause` | No further rounds. A round that is running ends by itself, and so does a check of the answer; `esc` stops a round at once. |
-| `/swarm resume` | Goes on with a swarm that stopped: paused, or at its limit. Where the check of the answer passed meanwhile, the swarm is done at once. |
+| `/swarm resume` | Goes on with a swarm that stopped: paused, at its limit, or waiting for your answer. Where the check of the answer passed meanwhile, the swarm is done at once. |
 | `/swarm clear` | Takes the swarm off the conversation. Its board and what is on it stay. |
 
 A swarm stops by itself, and says why:
@@ -380,7 +380,8 @@ A swarm stops by itself, and says why:
 
 Only you start a swarm: there is no tool for it, so an agent cannot make itself one or give
 itself more rounds. If your owner asks you, as an agent, to "swarm" something, tell them to
-type `/swarm` with the job. A conversation has a swarm or a goal, not both at once. Other
+type `/swarm` with the job. A swarm is not started in a conversation that works on a goal
+(`/goal clear` first). Other
 programs use `POST /agents/<id>/swarm` of the control API ([operations.md](operations.md)).
 
 A swarm costs more than one agent doing the job: every sub-agent reads its task and the files
@@ -468,12 +469,12 @@ pine publishes on these topics: `publish_event` and a route's `publish` refuse t
 
 | Topic | When |
 |---|---|
-| `board/<name>/task` | A task can be taken: it was posted and waits for nothing, or it is open again. One that is open again comes with what was noted about it since, such as the answer to its question |
+| `board/<name>/task` | A task can be taken: it was posted and waits for nothing, or it is open again. One that is open again comes with what was noted about it since, such as the answer to its question. A task that waited for others is not announced when they are done |
 | `board/<name>/note` | A note was posted |
 | `board/<name>/done`, `board/<name>/failed`, `board/<name>/blocked` | What became of a task |
 
-The payload has `board`, `scope`, `owner` (the agent, for an agent's board), `id`, `by`, and
-`text`: a line that says what happened, then the task, the note or the result. A conversation's
+The payload has `board`, `scope`, `owner` (the agent, for an agent's board), `id`, `by`,
+`holder` (while somebody has the task), and `text`: a line that says what happened, then the task, the note or the result. A conversation's
 own board and a board for one conversation publish none of this.
 
 A route wakes an agent when somebody posts a task ([events.md](events.md)):
@@ -515,11 +516,11 @@ from a run that had read outside content marks the run that takes it.
 
 | What | Limit |
 |---|---|
-| A task's text, a result | 4000 characters. A pool call with a longer task is refused and says what to do (what all tasks share goes into `note`, what is long into a file); a longer result is cut and says so in its last line. The check of the whole that pine posts in a swarm holds the lead's report up to 12 000 characters, so that nothing it lists is taken for missing |
+| A task's text, a result | 4000 characters. A pool call with a longer task is refused and says what to do (what all tasks share goes into `note`, what is long into a file); a longer result is cut and says so in its last line. The check of the whole that pine posts in a swarm holds the lead's answer whole up to 12 000 characters, so that nothing it lists is taken for missing; of a longer one the first and the last 6 000, with a line that says what was left out between them |
 | A note | 2000 characters. The `note` of a pool call: 8000, and each sub-agent is shown it whole, as it was written; a longer one is refused |
 | Posts on one board | 500. Remove what is finished (`board_remove` with an `id`), or use a new board |
 | Boards | 200. Remove the ones whose work is finished (`board_remove`, or the Board tab) |
-| Sub-agents started by one `subagent` call with `pool` | 100 |
+| Sub-agents started by one `subagent` call with `pool` | `limits.maxPoolTasks` (100) |
 | A task given out again because its check failed | once; then the check's report stands |
 | A task given out again because the model server refused its sub-agent for now | twice, after 4 and 8 seconds; then it is failed |
 | Turns of the lead in a swarm | `limits.swarmRounds` (8); `/swarm resume` gives as many again |
@@ -536,7 +537,7 @@ read, and what you post is yours.
 | `GET /boards` | Every board with its counts, and in `tasks` where each task stands (`id`, `state`, `after`, `waits`, `run` and `holder` while somebody has it, who posted it in `by`, when in `created`, since when it stands so in `updated`, how many notes are about it in `notes`, `asked` when it asked something, and `outside` when it carries outside content), without a word of what it says: what a UI needs to draw a board |
 | `GET /boards/<id>` | One board with its tasks and notes. A task says who has it (`holder`, `run`, `sub` for a sub-agent), what it waits for (`waits`), and whether what is in it came from a run that had read outside content (`outside`) |
 | `GET /agents/<id>/boards?session=` | The boards that conversation can use, its own first |
-| `POST /agents/<id>/boards/post` `{ session, text, kind?, after? }` | A task (or with `kind: "note"` a note) of yours on that conversation's own board, which is made if there is none |
+| `POST /agents/<id>/boards/post` `{ session, text, kind?, after?, on? }` | A task (or with `kind: "note"` a note) of yours on that conversation's own board, which is made if there is none |
 | `POST /boards/<id>/post` `{ text, kind?, after?, on? }` | The same on a board by its number |
 | `POST /boards/items/<n>` `{ action, text? }` | `reopen`: take a task back so that it can be taken again; `answer` with `text`: answer a blocked task; `done` with `text`: settle it by hand; `remove`: take a task or a note off the board. A sub-agent that a pool started for that task is stopped |
 | `POST /boards/<id>/remove` | Remove a board with everything on it. A sub-agent that a pool started for one of its tasks is stopped |

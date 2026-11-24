@@ -260,6 +260,8 @@ export interface Change {
 export interface UndoResult {
 	task: number;
 	prompt: string;
+	quotes?: SentQuote[];
+	body?: string;
 	stopped: number;
 	waiting?: boolean;
 	restored?: { root: string; changed: number; removed: number; back: number; files: string[]; left: string[] };

@@ -73,6 +73,9 @@ after(async () => {
 	if (home && port) await daemonGone(port, home);
 	await mock?.close?.().catch(() => {});
 	if (home) fs.rmSync(home, { recursive: true, force: true });
+	// A socket of the last look at the daemon may still be closing (on macOS it says so with an error of
+	// its own, setTypeOfService EINVAL): it does so inside this hook, not after the file has ended.
+	await new Promise((r) => setTimeout(r, 500));
 });
 
 test("attaches to a pine that runs, and leaves it running", async () => {

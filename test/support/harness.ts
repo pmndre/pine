@@ -1,3 +1,5 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -5,6 +7,7 @@ import { after } from "node:test";
 // The scripted model server of the baseline suite: replies follow directives embedded in the prompt.
 import { mockMsg, startMock, textOf as rawTextOf } from "../../baseline/tests/mock.mjs";
 import { type Pine, startPine } from "../../src/pine.ts";
+import { sandboxAvailable } from "../../src/security.ts";
 import { createLogger } from "../../src/util.ts";
 
 /** The notes pine puts in front of a message when the mode, the state or the day has changed. */
@@ -95,6 +98,18 @@ after(async () => {
 	for (const h of [...open]) await h.close().catch(() => {});
 });
 
+// Windows: the temp folder by its long name (C:\\Users\\runneradmin, not RUNNER~1), as pine resolves
+// every path it compares; a test that names a folder of its own then names it as pine does.
+if (process.platform === "win32") {
+	for (const k of ["TEMP", "TMP"]) {
+		try {
+			if (process.env[k]) process.env[k] = fs.realpathSync.native(process.env[k]!);
+		} catch {
+			// as it is
+		}
+	}
+}
+
 const write = (file: string, content: string) => {
 	fs.mkdirSync(path.dirname(file), { recursive: true });
 	fs.writeFileSync(file, content);
@@ -118,9 +133,13 @@ export async function harness(spec: { pine?: Record<string, unknown>; agents: Re
 	);
 	// Tests script the model, and a scripted command must not reach the account of whoever runs
 	// them: every agent works in safe mode, in its sandbox, unless a test asks for another by name.
+	// Windows has no sandbox of pine's yet (docs/adr/0004-three-systems.md): there the tests' commands
+	// run in auto mode, as an agent's would whose mode nobody chose. They are the tests' own (echo,
+	// sleep, a small server), and nothing from outside.
+	const mode = process.platform === "win32" && !sandboxAvailable() ? "auto" : "safe";
 	// And no agent introduces itself (src/hatch.ts): its note would change what the mock echoes.
 	// test/hatch.test.ts turns it on.
-	const defaults = { model: "mock/m", mode: "safe", introduce: false, thinking: "off", ...((spec.pine?.defaults as Record<string, unknown> | undefined) ?? {}) };
+	const defaults = { model: "mock/m", mode, introduce: false, thinking: "off", ...((spec.pine?.defaults as Record<string, unknown> | undefined) ?? {}) };
 	// For the question pine asks itself when a call needs something outside the sandbox: a
 	// test that is not about it gets the plain refusal, which is what it is about (test/access.test.ts asks for it).
 	const security = { askAccess: false, ...((spec.pine?.security as Record<string, unknown> | undefined) ?? {}) };
@@ -175,11 +194,28 @@ export async function harness(spec: { pine?: Record<string, unknown>; agents: Re
 }
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/**
+ * How much longer than on a developer's computer a wait may take: GitHub's runners are slower
+ * (PINE_TEST_PATIENCE=4 there). Only how long is waited changes, never what is waited for.
+ */
+export const PATIENCE = Math.max(1, Number(process.env.PINE_TEST_PATIENCE) || 1);
+
 export async function until(fn: () => unknown, ms = 5000, what = "condition"): Promise<void> {
-	const end = Date.now() + ms;
+	const end = Date.now() + ms * PATIENCE;
 	while (Date.now() < end) {
 		if (await fn()) return;
 		await sleep(25);
 	}
 	throw new Error(`timed out waiting for ${what}`);
+}
+
+/**
+ * That only the owner can read a file (or folder): its mode on macOS and Linux (0o600, 0o700 for
+ * a folder). Windows has no mode bits: there a file in the owner's profile is the owner's (and
+ * the system's and administrators') by what it inherits, and nobody else is granted anything on it.
+ */
+export function assertPrivate(file: string, mode = fs.statSync(file).isDirectory() ? 0o700 : 0o600, what = file): void {
+	if (process.platform !== "win32") return assert.equal(fs.statSync(file).mode & 0o777, mode, what);
+	const acl = execFileSync(path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "icacls.exe"), [file], { encoding: "utf8" });
+	assert.ok(!/\b(Everyone|BUILTIN\\Users|Authenticated Users|NT AUTHORITY\\INTERACTIVE)\b/i.test(acl), `${what} is open to others: ${acl}`);
 }

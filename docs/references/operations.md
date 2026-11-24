@@ -2,12 +2,13 @@
 
 ## Requirements
 
-- macOS or Linux. The agent sandbox is built on the system's own: `sandbox-exec` on macOS,
+- macOS, Linux or Windows. The agent sandbox is built on the system's own: `sandbox-exec` on macOS,
   [bubblewrap](https://github.com/containers/bubblewrap) on Linux, which `pine init` installs
   and sets up. Agents in `safe` and `manual` mode work in it; an agent in `auto` mode (the
   main agent, as pine comes) needs none. Without a sandbox pine starts and works: agents
   whose mode you did not choose work in `auto`, one you set to `safe` has no shell, and `pine check`
-  says why. See [security.md](security.md), "On Linux".
+  says why. See [security.md](security.md), "On Linux". Windows has no sandbox of pine's: see
+  "On Windows" below.
 - Optional: `ffmpeg` for videos in the terminal UI (on Linux also for pictures other than
   png, for the bars of a sound that is not a wav file, and its `ffplay` for sound; `mpv`,
   `pw-play`, `paplay` or `aplay` do as well. macOS plays sound and draws its bars with what it
@@ -43,6 +44,24 @@ git clone https://github.com/pmndre/pine ~/dev/pine
 ~/dev/pine/bin/pine init
 ```
 
+### On Windows
+
+Two ways, and the Pine app ([desktop.md](desktop.md)) does either:
+
+- **pine in WSL** (the way to `safe` mode). WSL runs a Linux on the same computer, and pine
+  there has the Linux sandbox. Install WSL once, in a terminal as administrator, and restart:
+  `wsl --install` (it brings Ubuntu). In the Pine app, Settings > Environments lists the
+  distributions; add one, and the app brings the pine it carries into it and makes a home. The
+  sandbox there needs bubblewrap, which takes your password in the distribution: run once, in a
+  terminal, `wsl --distribution Ubuntu --exec ~/.local/share/pine-app/bin/pine init`. Folders of
+  Windows reach that pine under `/mnt/c`; its agents run Linux's programs.
+- **pine on Windows itself**, with `npm install -g @pmndre/pine` or the Pine app. It needs
+  [Git for Windows](https://git-scm.com/download/win): its bash is the shell pine gives an
+  agent. There is no sandbox (docs/adr/0004-three-systems.md says why an AppContainer cannot run
+  that shell): agents work in `auto` and `bypass` mode with your rights, as on any system
+  without one, and the code pane, worktrees and undo, whose git runs in the sandbox, are not
+  there. A serial port cannot be read yet.
+
 ## First start
 
 ```bash
@@ -54,8 +73,8 @@ sets everything up in one step:
 - From a fresh checkout, `bin/pine` first installs pine's dependencies (`npm install`), once.
 - It copies the example home to `~/.pine`: one agent, `main`, the main agent, with web search, the browser and,
   on a Mac, app control ([computer.md](computer.md)), a `models.json`, an empty `.env`. Nothing
-  is overwritten if you run it again, and a home whose main agent has another name (`main`, in a
-  home from before) keeps it.
+  is overwritten if you run it again, and a home whose main agent has another name (`prime`, in a
+  home made while new homes called it that) keeps it.
 - On Linux it makes the sandbox work. If bubblewrap is missing it installs the package (apt,
   dnf, yum, pacman, zypper or apk), and on Ubuntu 24.04 and later it writes and loads the
   AppArmor rule bubblewrap needs there. It shows the commands first and asks once; they run
@@ -289,7 +308,8 @@ What you type in a shell. Every command is the `pine` program with a word after 
 
 All take `--home <dir>`; the default is `$PINE_HOME` or `~/.pine`. The commands from `status`
 down to `mode` talk to the running daemon over its control API on `127.0.0.1:7463`, using the
-token in `data/http-token`. The `pine mcp` and `pine model` commands work on the files, and `add` and `remove`
+token in `data/http-token`, except `pine agent`, which uses a running daemon when there is one
+and the files when not. The `pine mcp` and `pine model` commands work on the files, and `add` and `remove`
 also tell a running daemon, so the change applies at once. `pine schedules`, `pine skills`,
 `pine check` and `pine manual` only read the files and need no daemon (`pine check` asks a running daemon which worktrees there are). `pine help` prints the
 list.
@@ -351,7 +371,7 @@ are JSON with `Content-Type: application/json`.
 | `GET /mcp` | Configured MCP servers |
 | `POST /mcp` `{ name, server, agent? }` or `{ name, remove: true, agent? }` | Add or remove a server while the daemon runs |
 | `POST /mcp/refresh` | Close idle sessions so they start again with the current servers |
-| `POST /agents` `{ id, instructions, description?, color?, model?, tools? }` (`description` becomes the first paragraph of the instructions), `POST /agents/<id>/update` `{ color?, instructions?, model?, thinking?, mode?, tools?, delegates?, scope?, network?, read?, write?, forget? }`, `POST /agents/<id>/id` `{ agent, to }`, `POST /agents/<id>/erase` `{ agent, keepFiles? }` | Create an agent, change its settings, give it another id, or remove one with everything it has, while the daemon runs (`id` and `erase` repeat the id in `agent`: an agent is not renamed or removed by a mistyped address; `/agents/<id>/rename` renames a conversation). Renaming answers 409 while the agent works. What `pine agent add`, `pine agent update`, `pine agent rename` and `pine agent remove` call |
+| `POST /agents` `{ id, instructions, description?, color?, model?, tools? }` (`description` becomes the first paragraph of the instructions), `POST /agents/<id>/update` `{ color?, instructions?, soul?, tooling?, model?, thinking?, mode?, tools?, delegates?, network?, read?, write?, forget? }`, `POST /agents/<id>/id` `{ agent, to }`, `POST /agents/<id>/erase` `{ agent, keepFiles? }` | Create an agent, change its settings, give it another id, or remove one with everything it has, while the daemon runs (`id` and `erase` repeat the id in `agent`: an agent is not renamed or removed by a mistyped address; `/agents/<id>/rename` renames a conversation). Renaming answers 409 while the agent works. What `pine agent add`, `pine agent update`, `pine agent rename` and `pine agent remove` call |
 | `POST /models/refresh` | Read `models.json` and `.env` again, after a model server was added or removed in the files. `pine model add` and `pine model remove` call it |
 | `GET /agents/<id>/sessions` | The agent's conversations: name, number of messages, last use, whether pinned or open in a tab, the folder opened for it, when one will be removed by itself, what a branch was made from (`branch`: `from`, `at`), the worktree it works in (`worktree`: `branch`, `base`, `path`, `repo`), and the group it is in (`group`) |
 | `POST /agents/<id>/pin` `{ session, pinned? }` | Pin a conversation so that it is kept, or with `pinned: false` take the pin off |
@@ -419,7 +439,9 @@ has the token is you. An error is answered with `{ "error": "..." }` and what to
 | Request | Purpose |
 |---|---|
 | `GET /overview` | Where this pine stands: `{ version, home, main, platform, sandbox, browser, warnings, modelNotes, log }`. `browser` says whether the browser build this pine drives is on the computer (left out when pine could not tell), `warnings` are the security notes of `pine check`, `modelNotes` what is wrong with model keys, `log` the path of the log file |
-| `GET /settings` | The settings of `pine.json` that can be changed while pine runs, each as `{ key, about, kind, now, live }`: what is in force (`now`), what a value has to be (`kind`: `"model"`, `"boolean"`, `"duration"`, `{ one: [...] }` or `{ from, to }`), and whether a change holds at once (`live`). `saved` is there when the file holds another value that takes effect at the next start. The same list as the main agent's `settings` tool |
+| `GET /settings` | The settings of `pine.json` that can be changed while pine runs, each as `{ key, title, about, kind, now, live }`: what is in force (`now`), what a value has to be (`kind`: `"model"`, `"theme"`, `"view"`, `"boolean"`, `"duration"`, `{ one: [...] }` or `{ from, to }`), and whether a change holds at once (`live`). `saved` is there when the file holds another value that takes effect at the next start. The same list as the main agent's `settings` tool |
+| `GET /themes` | The themes in the `themes` folder of pine's home, each with the colors it gives, the one in force (`theme`) and the one `ui.theme` names (`chosen`, or `null`) |
+| `GET /views`, `GET /views/<name>` | The views in the `views` folder (`views`, each `{ id }` or `{ id, problem }`), the one in force (`view`, or `null` for no panel) and `chosen`; and one view's code with its types taken out, which the Pine app runs in a sandboxed frame and the daemon never runs ([views.md](views.md)) |
 | `POST /settings` `{ key, value }` | Change one of them, as `set_setting` does. `"default"` as the value takes the entry out. Answers `{ key, now, live }` |
 | `GET /agents/<id>/detail` | One agent in full: `{ id, main, description, workspace, dir, model?, defaultModel, thinking, mode, tools, allTools, delegates, network, read, write, holdings, files }`. `model` is missing when it runs on the default. `holdings` is what it has (conversations, sources, servers, schedules, skills, routes, files in its workspace). `files` holds the text of its `instructions` (AGENTS.md), `soul`, `tooling`, `memory` and your `rules` for it, each only when the file exists. Changes go through `POST /agents/<id>/update` |
 | `GET /shared`, `POST /shared` `{ name, text }` | The three files for all agents in pine's home (`AGENTS.md`, `TOOLS.md`, `USER.md`) as `{ name, about, text }`, and replacing one of them. `name` is one of the three and never a path |
@@ -432,7 +454,7 @@ has the token is you. An error is answered with `{ "error": "..." }` and what to
 | `GET /sources/types` | The source types there are: `{ name, summary, options, own }` each, `options` being the schema of what a source of that type takes (a secret option has `secret: true`), `own` whether it was registered in this installation |
 | `POST /sources/propose` `{ name, type, options, agent?, ask? }` | What setting that source up would mean, without writing anything: `{ does, opens, needs, owner?, tell? }`. `needs` lists the secrets only you have (`{ name, label }`), to be sent as `values` |
 | `POST /sources` `{ name, type, description, options, agent?, own?, values?, ask? }`, `POST /sources/remove` `{ name, agent? }` | Set an event source up as `add_source` does after your yes: for all agents, or with `agent` for that one. `values` are the secrets from `needs`; they go into pine's `.env` and the configuration names them. `own: true` treats what it reports as your own words. Nobody is subscribed yet (`POST /agents/<id>/subscribe`). Remove one, with its subscriptions and secrets |
-| `GET /models/servers` | The model servers of your own, as `pine model list`, each with `limit` where it has a number of runs of its own (and so each of its models), and `runs`, what holds for the others |
+| `GET /models/servers` | The model servers of your own, as `pine model list`, each model with `limit` where it has a number of runs of its own (`limits.models`), and each server with `runs`, what holds for its models without one |
 | `POST /models/servers/limit` `{ name, model, limit }` | How many runs one model takes at a time (`limits.models`), by its server's or provider's name and the id the server gives it: a whole number from 1 to 64, or `null` for pine's own limit. In force from the next run on |
 | `POST /models/servers` `{ name, url, key?, context?, reasoning? }`, `POST /models/servers/remove` `{ name }` | Add a model server by its address, as `pine model add` does: pine asks it for its models. A server that wants a key answers status 409 with `locked: true` until the right `key` is sent; the key goes into `.env`. Remove one: status 409 with `users` while an agent or a default uses one of its models |
 | `GET /models/providers` | The model providers pi knows: `{ id, name, signedIn, models, oauth }` each. `signedIn`: there is a credential or a key for it; `oauth`: it can be signed in to through a browser |
@@ -485,8 +507,8 @@ has the token is you. An error is answered with `{ "error": "..." }` and what to
 | A page in the agent's browser cannot open a WebSocket or load something from this computer: `Establishing a tunnel via proxy server failed`, or a request that fails | The page reached for a local address nobody allowed. A yes for a local address is for one host and one port: a page on `localhost:8100` does not reach `localhost:8101` by it. The browser carries a WebSocket on a port that is allowed. Have the agent serve everything from one port, or open the other address once with `browser_navigate`, which asks you ([mcp.md](mcp.md), [interfaces.md](interfaces.md)). |
 | The first message fails with "No model yet" | A new home has no model. Sign in to a provider (`pine login <provider>`, or Settings > Models in the Pine app) or add a model server of your own (`pine model add`); the first one becomes the default, and you send the message again. |
 | The browser cannot open `localhost` or a page says "not reachable from the browser" | Local addresses need your yes. The agent opens the address with `browser_navigate` and you are asked; see "Local addresses" in [mcp.md](mcp.md). A server the agent started itself also needs network access for its shell. |
-| The agent says macOS does not let pine operate apps, or take pictures of the screen | macOS has to be told once: System Settings > Privacy & Security > Accessibility (and Screen & System Audio Recording for pictures), switch on the terminal app pine runs in. See "What macOS has to be told, once" in [computer.md](computer.md). |
-| The agent has no tools to click or type in apps | App control is for an agent that reaches your whole account, in your own conversations, on macOS. `pine check` says which under `apps`. See [computer.md](computer.md). |
+| The agent says macOS does not let pine operate apps, or take pictures of the screen | macOS has to be told once: System Settings > Privacy & Security > Accessibility (and Screen & System Audio Recording for pictures), switch on the app pine runs in (the Pine app when it started pine, else the terminal pine was started from). See "What macOS has to be told, once" in [computer.md](computer.md). |
+| The agent has no tools to click or type in apps | App control is for an agent that reaches your whole account, in your own conversations, on macOS, Windows, or Linux with X11 (not Wayland). `pine check` says which under `apps`. See [computer.md](computer.md). |
 | The UI says "reconnecting…" | The daemon it was attached to stopped. Start it again; the UI picks it up. |
 | `no daemon answers on http://127.0.0.1:7463` | The daemon is not running, or `http.port` differs from what the CLI reads in this home. |
 | A task fails with a connection error | The model server is down or `baseUrl` is wrong. `curl <baseUrl>/models` should answer. |

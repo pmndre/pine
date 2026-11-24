@@ -77,8 +77,10 @@ test("pi extensions and skills come from the configuration, never from the works
 });
 
 test("bundled commands server: fixed commands as tools, parameters cannot inject", async () => {
-	const cmd = { description: "x", run: ["/bin/echo", "said:", "{{what}}", "--mode={{mode}}"], params: { what: {}, mode: { enum: ["a", "b"], default: "a" } } };
-	assert.deepEqual(buildArgv(cmd, { what: "hi; rm -rf /" }), ["/bin/echo", "said:", "hi; rm -rf /", "--mode=a"]);
+	// Programs as Node, so that they are the same on every system: echo, pwd and sleep.
+	const echo = [process.execPath, "-e", "console.log(process.argv.slice(1).join(' '))"];
+	const cmd = { description: "x", run: [...echo, "said:", "{{what}}", "--mode={{mode}}"], params: { what: {}, mode: { enum: ["a", "b"], default: "a" } } };
+	assert.deepEqual(buildArgv(cmd, { what: "hi; rm -rf /" }), [...echo, "said:", "hi; rm -rf /", "--mode=a"]);
 	assert.throws(() => buildArgv(cmd, { what: "--version" }), /must not start with "-"/);
 	assert.throws(() => buildArgv(cmd, { what: "x", mode: "c" }), /must be one of/);
 	assert.throws(() => buildArgv(cmd, {}), /"what" is required/);
@@ -86,7 +88,7 @@ test("bundled commands server: fixed commands as tools, parameters cannot inject
 	assert.throws(() => buildArgv({ description: "", run: ["x", "{{id}}"], params: { id: { pattern: "[a-z0-9]+" } } }, { id: "abc/../.." }), /invalid format/);
 
 	const h = await harness({
-		pine: { mcp: { tools: { pine: "commands", options: { commands: { say: cmd, where: { description: "print the working directory", run: ["/bin/pwd"] }, sleepy: { description: "slow", run: ["/bin/sleep", "5"], timeoutSec: 0.2 } } } } } },
+		pine: { mcp: { tools: { pine: "commands", options: { commands: { say: cmd, where: { description: "print the working directory", run: [process.execPath, "-e", "console.log(process.cwd())"] }, sleepy: { description: "slow", run: [process.execPath, "-e", "setTimeout(() => {}, 5000)"], timeoutSec: 0.2 } } } } } },
 		agents: { main: {} },
 	});
 	const r = await h.pine.agents.run({

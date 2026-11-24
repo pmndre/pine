@@ -418,10 +418,13 @@ test("boards: a conversation whose turn ended is told at its next pool call what
 	const h = await harness({ pine: { limits: { maxConcurrentRuns: 4 } }, agents: { main: { agent: { subagents: { maxParallel: 2 } } } } });
 	const boards = h.pine.agents.boards;
 	h.mock.state.scripts.asks = [{ tools: [call("board_done", { id: 1, outcome: "blocked", result: "WHICH-WAY?" })] }, { text: "stopped" }];
-	h.mock.state.scripts.slow = [{ delayMs: 400, text: "slow one done" }];
+	// The slow one answers once the test has seen it at work (by what happened, not by the clock).
+	let seen = false;
+	h.mock.state.scripts.slow = [{ until: () => seen, text: "slow one done" }];
 	// The turn ends with the question open and a sub-agent at work, which finishes its task all the same.
 	await h.pine.agents.run({ agent: "main", session: "job", prompt: mockMsg([{ tools: [call("subagent", { pool: true, tasks: ["first @@REF:asks@@", "second @@REF:slow@@"] })] }]), ...owner });
 	assert.equal(boards.item(2)!.state, "taken");
+	seen = true;
 	await until(() => boards.item(2)!.state === "done", 5000, "the sub-agent that was still at work to finish");
 	// A call without an answer comes back at once and does not ask the same question as news again.
 	const idle = await h.pine.agents.run({ agent: "main", session: "job", prompt: mockMsg([{ tools: [call("subagent", { pool: true })] }]), ...owner });

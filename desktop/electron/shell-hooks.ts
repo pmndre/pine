@@ -1,12 +1,15 @@
 // How the terminal knows when a command has ended, and how: hooks in the owner's shell that print
 // a mark the screen does not show (OSC 133, as other terminals use it). `C` when a command starts,
-// `D;<exit code>` when it has ended, `A` when the shell shows its prompt and waits.
+// `D;<exit code>` when it has ended, `A` when the shell shows its prompt and waits (and `B` where
+// the prompt ends, which only PowerShell's hooks print and nothing here needs).
 //
 // The shell reads the owner's own startup files first, as it would in Terminal.app, and then the
 // hooks. For zsh, ZDOTDIR points at a folder of the app's whose files read the owner's (from where
-// ZDOTDIR pointed before, else the home folder) and put ZDOTDIR back at the end. For bash, the
-// app's file is the startup file (--rcfile) and reads the owner's login files itself. Any other
-// shell runs as it is, without marks: what runs there is not reported.
+// ZDOTDIR pointed before, else the home folder) and put ZDOTDIR back at the end. For bash (Git
+// Bash's too), the app's file is the startup file (--rcfile) and reads the owner's login files
+// itself. PowerShell reads the owner's profile and then runs the hooks as its command (`-NoExit`),
+// the way VS Code's shell integration does. Any other shell (cmd.exe among them) runs as it is,
+// without marks: what runs there is not reported.
 import fs from "node:fs";
 import path from "node:path";
 
@@ -72,6 +75,48 @@ trap '__pine_debug' DEBUG
 PROMPT_COMMAND="__pine_status=\\$?; \${PROMPT_COMMAND:+\$PROMPT_COMMAND; }__pine_prompt"
 `;
 
+// The prompt is wrapped: before it, how the last command ended (`$?` is read first, before anything
+// changes it, and given back to the owner's prompt as it was), and its marks around it. A command
+// starts when PSReadLine hands the line it read to PowerShell; the exit code of a program is
+// $LASTEXITCODE, which is cleared there so that one from an earlier program is not taken for it.
+// Without PSReadLine nothing says when a command starts, and nothing is reported.
+const POWERSHELL = `$Global:__PineState = @{ Running = $false; LastId = -1; Prompt = $function:prompt }
+function Global:prompt {
+	$ok = $global:?
+	$code = $global:LASTEXITCODE
+	Set-StrictMode -Off
+	$e = [char]27; $bel = [char]7
+	$last = Get-History -Count 1
+	$out = ""
+	if ($Global:__PineState.Running) {
+		$Global:__PineState.Running = $false
+		if ($last -and $last.Id -ne $Global:__PineState.LastId) {
+			$n = if ($ok) { 0 } elseif ($code) { $code } else { 1 }
+			$out += "$e]133;D;$n$bel"
+		} else { $out += "$e]133;D$bel" }
+	}
+	$out += "$e]133;A$bel"
+	if (-not $ok) { Write-Error "failure" -ErrorAction Ignore }
+	$out += $Global:__PineState.Prompt.Invoke()
+	$out += "$e]133;B$bel"
+	if ($last) { $Global:__PineState.LastId = $last.Id }
+	return $out
+}
+if (Get-Module -Name PSReadLine) {
+	$Global:__PineState.ReadLine = $function:PSConsoleHostReadLine
+	function Global:PSConsoleHostReadLine {
+		$line = $Global:__PineState.ReadLine.Invoke()
+		$Global:__PineState.Running = $true
+		$global:LASTEXITCODE = 0
+		[Console]::Write("$([char]27)]133;C$([char]7)")
+		$line
+	}
+}
+`;
+
+/** A shell's name without its folder and, on Windows, its extension: "bash" for Git Bash's bash.exe. */
+const shellName = (file: string) => path.basename(file.replaceAll("\\", "/")).toLowerCase().replace(/\.exe$/, "");
+
 export interface Launch {
 	file: string;
 	args: string[];
@@ -85,7 +130,7 @@ export interface Launch {
  * startup files out (tests, which must not load the developer's profile).
  */
 export function withHooks(file: string, args: string[], env: Record<string, string>, dir: string, plain = false): Launch {
-	const name = path.basename(file);
+	const name = shellName(file);
 	const extra: Record<string, string> = plain ? { PINE_PLAIN: "1" } : {};
 	try {
 		if (name === "zsh") {
@@ -100,7 +145,14 @@ export function withHooks(file: string, args: string[], env: Record<string, stri
 			const rc = path.join(dir, "pine.bash");
 			fs.writeFileSync(rc, BASH);
 			// --rcfile is read by an interactive shell that is not a login shell; the file does what a login would.
-			return { file, args: [...args.filter((a) => a !== "-l" && a !== "--login"), "--rcfile", rc, "-i"], env: { ...env, ...extra }, marks: true };
+			// (Git Bash reads a Windows path with forward slashes.)
+			return { file, args: [...args.filter((a) => a !== "-l" && a !== "--login"), "--rcfile", process.platform === "win32" ? rc.replaceAll("\\", "/") : rc, "-i"], env: { ...env, ...extra }, marks: true };
+		}
+		if (name === "pwsh" || name === "powershell") {
+			// The hooks go as the command itself, encoded as PowerShell wants it (UTF-16, base64): no file is run, so
+			// no execution policy refuses them, and nothing in them has to be quoted for a command line.
+			const encoded = Buffer.from(POWERSHELL, "utf16le").toString("base64");
+			return { file, args: [...args, "-NoLogo", ...(plain ? ["-NoProfile"] : []), "-NoExit", "-EncodedCommand", encoded], env, marks: true };
 		}
 	} catch {
 		// a folder that cannot be written: the shell runs without marks
@@ -110,11 +162,11 @@ export function withHooks(file: string, args: string[], env: Record<string, stri
 
 /** A mark in what a shell printed. */
 export interface Mark {
-	kind: "A" | "C" | "D";
+	kind: "A" | "B" | "C" | "D";
 	code?: number;
 }
 
-const MARK = /\x1b\]133;([ACD])(?:;([^\x07\x1b]*))?(?:\x07|\x1b\\)/g;
+const MARK = /\x1b\]133;([ABCD])(?:;([^\x07\x1b]*))?(?:\x07|\x1b\\)/g;
 
 /**
  * Cuts what a shell prints into text and marks, in order. A mark can be cut in two by the way

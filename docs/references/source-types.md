@@ -95,7 +95,7 @@ than its interval, so that sources set to the same interval do not all fire toge
 | A 3D printer | `mqtt` | Bambu printers are their own broker; OctoPrint and Klipper publish through an MQTT plug-in. |
 | An Arduino, an ESP32 on USB, a smart meter's P1 cable, a GPS | `serial` | The device under `/dev`. |
 | "Is my phone home", a TV switched on | `presence` | The device's fixed address on your network. |
-| This Mac: lock, sleep, battery, network, disks | `system` | Nothing to set up. |
+| This computer: lock, sleep, battery, network, disks | `system` | Nothing to set up. |
 | A log file, Docker, Kubernetes, journald | `command` with `follow` | `tail -F`, `docker events`, `kubectl get -w`, `journalctl -f`. |
 | PostgreSQL, Redis, NATS, Kafka, RabbitMQ | `command` with `follow` | The system's command line client, printing one line per message. |
 | Anything with a command that prints its state | `command` | Run again and again; a change is the event. |
@@ -550,8 +550,9 @@ unless `sandbox.network` is set, none of your home folder beyond `sandbox.read`,
 pine's files. A source of all agents runs as the main agent. You are shown the
 command line before it is set up, every time. A command that cannot be started or runs out of
 time is a failed look (see "Looking again and again"), not an event. `timeout` is at least `"1s"`, and a command
-line of more than 2000 characters is refused (put it into a script). If the agent's sandbox is
-switched off, the command runs without one, as its shell does.
+line of more than 2000 characters is refused (put it into a script). The command always runs in
+the agent's sandbox, whatever its mode: on a machine without a sandbox a `command` source does
+not run, its status says so, and `pine check` names it.
 
 #### Following a command that keeps running
 
@@ -569,8 +570,8 @@ of its own.
 
 | Option | Default | |
 |---|---|---|
-| `follow` | `false` | `true`: start the command once, keep it running, report each line it prints. `every` and `timeout` are not used then. |
-| `perMinute` | `30` | With `follow`: report at most this many lines a minute. The rest are counted, and the next line that is reported carries the count as `dropped`. |
+| `follow` | `false` | `true`: start the command once, keep it running, report each line it prints. `every` and `timeout` are refused with it. |
+| `perMinute` | `30` | With `follow`: report at most this many lines a minute, 1 to 600. The rest are counted, and the next line that is reported carries the count as `dropped`. |
 | `match` | | With `follow`: only lines in which this regular expression finds something. Its first group is the line's `value`. |
 
 | Event | | |
@@ -1083,7 +1084,7 @@ shown where the sources are listed: `there is no channel named "opps" that the a
 
 | `events` | Event | Fields | When |
 |---|---|---|---|
-| `"message"` | `message` | `{ text, user, userName?, channel, channelName?, kind, ts, thread?, reply?, bot?, mention?, keyword?, from?, files?, images?, late?, dropped? }` | Somebody wrote something that counts. |
+| `"message"` | `message` | `{ text, user, userName?, channel, channelName?, kind, ts, thread?, reply?, bot?, mention?, keyword?, from?, files?, images?, why, context?, late?, dropped? }` | Somebody wrote something that counts. |
 | `"reaction"` | `reaction` | `{ reaction, added, user, userName?, channel, channelName?, ts, author?, authorName? }` | Somebody put an emoji on a message (`added: true`) or took it away (`false`). `ts` is the message, `author` who wrote it. |
 | `"edit"` | `edited` | `{ text, previous?, user, userName?, channel, channelName?, kind, ts, mention?, keyword?, from? }` | A message was changed. `previous` is what it said before. The preview Slack puts under a link is not an edit. |
 | `"edit"` | `deleted` | `{ channel, channelName?, ts, previous? }` | A message was deleted. `previous` is what it said. |
@@ -1295,6 +1296,7 @@ new" for a time it could not look at:
 | `2 more messages from that time were left out, since at most 60 are reported in a minute` | `perMinute`. | The agent reads the rest with `read_source`. |
 | `what else happened in that time (reactions, edits) cannot be asked for afterwards` | Slack keeps messages, and not who reacted, joined or edited when. A source that reports such things always says this. | |
 | `what the people on "from" wrote outside the listed channels was not looked for` | With a list of `channels`, only those and direct conversations are asked for. | |
+| `in 2 conversations more was written than the last 200 messages, and the older ones were not looked at` | A long gap in a busy channel. | The agent reads further back with `read_source`. |
 | `12 more conversations were not looked at: 200 is the most at once` | | |
 
 A gap shorter than a minute (Slack renewing the connection, which it does now and then and
@@ -1331,7 +1333,10 @@ channel when a keyword is found in what they wrote.
 #### Limits, and what is refused
 
 - One source is one Slack app in one workspace. For a second workspace, a second source.
-- Only what happens while it is connected is reported. Nothing is read from a channel's past.
+- What happens while it is connected is reported. Of what was written while it was not, only
+  messages are asked for afterwards (see "After a time without a connection"); reactions, edits
+  and the other kinds are not. Earlier messages are read only when an agent asks (`read_source`)
+  or as the `context` of an answer in a thread, and not at all with `"history": false`.
 - A message's text is cut at 4000 characters, its files at ten, its pictures at four. A name
   is looked up once and kept until pine restarts; a renamed channel is noticed when the app
   is subscribed to `channel_rename`.
@@ -1867,8 +1872,9 @@ with `nss-mdns`); an IP address always works.
 
 This computer: it reports when it goes to sleep and wakes, when its screen is locked and
 unlocked, when it changes between mains and battery or runs low, when its network comes and
-goes, when a disk is plugged in or taken out, and when an app you named starts or quits. On a
-Mac only, so far.
+goes, when a disk is plugged in or taken out, and when an app you named starts or quits. On
+macOS, Linux and Windows, with the same events; what one system does not tell is left out there
+(see "system on Linux" and "system on Windows" below).
 
 > When I unlock the Mac in the morning, tell me what happened overnight.
 
@@ -1879,19 +1885,19 @@ Mac only, so far.
 | Option | Default | |
 |---|---|---|
 | `watch` | all five | What to report: `"sleep"`, `"lock"`, `"power"`, `"network"`, `"volumes"`. |
-| `apps` | none | Apps whose start and end are reported, by name or bundle id: `["Xcode", "us.zoom.xos"]`. Without it no app is reported. |
+| `apps` | none | Apps whose start and end are reported. On a Mac by name or bundle id: `["Xcode", "us.zoom.xos"]`; on Windows by program name, as the Details tab of the Task Manager shows it, with or without `.exe`: `["Zoom", "Teams"]`. Not on Linux. Without it no app is reported. |
 | `battery` | `20` | Report `battery-low` once when the charge falls to this many percent while on battery. |
 
 | Event | | `watch` |
 |---|---|---|
 | `sleeping`, `woke` | `{}` | `sleep`: the computer goes to sleep, and is awake again. |
-| `display-off`, `display-on` | `{}` | `sleep`: the screens go dark, and light up again. |
+| `display-off`, `display-on` | `{}` | `sleep`: the screens go dark, and light up again. Not on Linux. |
 | `locked`, `unlocked` | `{}` | `lock`: the screen lock. |
 | `power` | `{ on, percent? }` | `power`: the supply changed. `on` is `"ac"`, `"battery"` or `"ups"`. |
 | `battery-low` | `{ percent }` | `power`: once per discharge, said again only after it was charged. |
 | `network` | `{ online, via? }` | `network`: the connection came, went, or changed its way (`"wifi"`, `"ethernet"`, `"cellular"`, `"other"`). |
 | `mounted`, `unmounted` | `{ name, path? }` | `volumes`: a disk, a memory card, a disk image, a network share. |
-| `app-started`, `app-quit` | `{ app, bundle? }` | Only for the apps on `apps`. |
+| `app-started`, `app-quit` | `{ app, bundle? }` | Only for the apps on `apps`. Not on Linux. |
 
 | What it is for | How |
 |---|---|
@@ -1905,20 +1911,54 @@ How things are when the source starts (on mains or battery, online or not) is th
 point and is not reported; only what changes afterwards is. The charge moves all day and is no
 event: `power` is reported when the supply changes, and carries the charge it had then.
 
-The system tells a small helper program, which pine builds from its own source with `swiftc`
-the first time the source starts (a few seconds, and Apple's command line developer tools have
-to be installed: `xcode-select --install`). The helper lies in the source's folder in pine's
-data folder, where no agent can write, gets none of pine's environment, and only repeats what
-the system says. A pine that came with the Pine app carries the helper built, inside the app,
-and builds nothing. It needs no permission from you: none of this is behind a privacy grant.
+The system tells a small helper program of pine's, which only repeats what the system says.
+It gets none of pine's environment, and no agent can change it: it is pine's own code, or built
+from it into the source's folder in pine's data folder, where no agent can write. It needs no
+permission from you: none of this is behind a privacy grant.
+
+On a Mac pine builds the helper from its own source with `swiftc` the first time the source
+starts (a few seconds, and Apple's command line developer tools have to be installed:
+`xcode-select --install`). A pine that came with the Pine app carries the helper built, inside
+the app, and builds nothing.
 
 What it does not report: the name of the Wi-Fi network (macOS gives that only to an app with
 access to your location), other apps' notifications, and what you type or look at. A disk's
 name is text from outside like a file name, so these events are outside content unless you
 mark the source as your own.
 
-On Linux and Windows a `system` source cannot be set up. What a command can tell there
-(`upower`, `nmcli monitor`, `udevadm monitor`) the `command` type reports.
+### system on Linux
+
+The helper is a small program of pine's in JavaScript, run by the Node pine runs on; nothing is
+built. It listens on D-Bus's system bus through `gdbus` (the package `libglib2.0-bin` on Debian
+and Ubuntu, `glib2` elsewhere):
+
+| | What it hears |
+|---|---|
+| Sleep | `sleeping` and `woke`, from systemd-logind. There is no `display-off` or `display-on`: no service tells that for every desktop. |
+| The lock | `locked` and `unlocked`, of your own sessions, as the desktop tells logind (GNOME, KDE Plasma and most others do; a bare window manager with a locker of its own may not). |
+| Power | UPower (the package `upower`, there on every desktop). |
+| The network | NetworkManager, or systemd-networkd on a server. Online is connected beyond the local network. |
+| Disks | The kernel's table of mounts, read every two seconds: what is mounted under `/media`, `/run/media` and `/mnt`, and network shares (`cifs`, `nfs`, `sshfs`) anywhere. |
+
+`apps` is refused: Linux has no clean way to hear apps start and quit. Where something is
+missing (no system bus in a container, no UPower on a server) the source still runs, and its
+status says what it cannot hear and why: `cannot hear power: UPower is not running`. A service
+that starts later is heard from then on.
+
+### system on Windows
+
+pine builds the helper from its own source with the C# compiler every Windows carries (.NET
+Framework 4) the first time the source starts, in a few seconds. Sleep and wake, the screens,
+the lock, the battery and disks are what Windows tells a window of the helper's that is never
+shown; the network is an interface that is up and has a gateway (`wifi`, `ethernet`,
+`cellular`, `other`). `ups` is not told apart from mains. Apps are the programs running in your
+own session, looked at every two seconds: `app-started` when the first process of a name
+starts, `app-quit` when the last one ends, so a browser of thirty processes is one app. Their
+`app` is the program's name without `.exe`, and there is no `bundle`. A disk is named by its
+label, or by its letter (`E:`) when it has none, and its `path` is the drive (`E:\`).
+
+On Windows, pine in WSL is a Linux: there the Linux helper runs, and hears what WSL's Linux
+has, which is little (no lock, no battery).
 
 ## What there is no type for
 

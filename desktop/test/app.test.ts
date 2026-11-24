@@ -15,14 +15,14 @@ import { DatabaseSync } from "node:sqlite";
 import { before, test } from "node:test";
 import { mockMsg } from "../../baseline/tests/mock.mjs";
 import { httpMcp } from "../../test/support/http-mcp.ts";
-import { activeOption, announced, api, app, BROWSER_EDGE, BROWSER_TOGGLE, browsers, closed, CODE_EDGE, CODE_TOGGLE, confirm, far, folder, github, home, json, menu, mock, named, page, putAwayToasts, releases, root, sees, shot, started, stillInside, write } from "./support/window.ts";
+import { activeOption, announced, api, app, BROWSER_EDGE, BROWSER_TOGGLE, browsers, closed, CODE_EDGE, CODE_TOGGLE, confirm, far, folder, github, HERE, home, json, menu, mock, named, page, putAwayToasts, releases, root, sees, shot, started, stillInside, write } from "./support/window.ts";
 
 test("starts a daemon of its own and shows the main agent", async () => {
 	await sees("[data-slot=empty] h1");
 	assert.equal(await page.textContent("[data-slot=empty] h1"), "main");
 	// This home has no browser for the web tools in the build its pine drives (the folder for it
 	// is empty): that is asked once, at the start, and "Not now" is remembered.
-	await sees("[data-slot=dialog-title] >> text=The browser for the web tools is not on this Mac");
+	await sees(`[data-slot=dialog-title] >> text=The browser for the web tools is not on this ${HERE}`);
 	await shot("00-browser");
 	await page.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" }).click();
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
@@ -190,11 +190,11 @@ test("the agent's browser is shown in an aside of its own as a picture, and what
 		// Letters typed in a row go as one text, a key by its name, and what is pasted as text too.
 		await page.keyboard.type("okapi");
 		await page.keyboard.press("Enter");
-		await page.keyboard.press("Meta+KeyA");
-		await waitFor("what was typed arrived", () => ops().some((o) => o.do === "key" && o.key === "Meta+KeyA"));
+		await page.keyboard.press("ControlOrMeta+KeyA");
+		await waitFor("what was typed arrived", () => ops().some((o) => o.do === "key" && o.key === "ControlOrMeta+KeyA"));
 		assert.equal(ops().filter((o) => o.do === "text").map((o) => o.text).join(""), "okapi");
 		assert.ok(ops().filter((o) => o.do === "text").length < 5, "letters are not sent one by one");
-		assert.deepEqual(ops().filter((o) => o.do === "key").map((o) => o.key), ["Enter", "Meta+KeyA"]);
+		assert.deepEqual(ops().filter((o) => o.do === "key").map((o) => o.key), ["Enter", "ControlOrMeta+KeyA"]);
 		// The wheel adds up, a tab is chosen by a click, back is a button.
 		await page.mouse.wheel(0, 120);
 		await page.mouse.wheel(0, 120);
@@ -435,6 +435,59 @@ test("the send button sends what was typed with a click, as Enter does", async (
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ text: "sent by Enter" }], "enter to send "));
 	await page.press("[data-slot=composer] textarea", "Enter");
 	await sees("[data-slot=markdown] >> text=sent by Enter");
+});
+
+test("text selected in an answer is quoted: a badge above the input, a markdown quote for the agent, a badge in the sent message that goes back to it, and a badge again after a take-back", async () => {
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ text: "QUOTE-SOURCE The cache held an old copy of the lockfile." }], "say something to quote "));
+	await page.keyboard.press("Enter");
+	await sees("[data-slot=markdown] >> text=QUOTE-SOURCE");
+	const source = await page.$eval("[data-item=answer]:has-text('QUOTE-SOURCE')", (el: Element) => el.closest("[data-message-id]")!.getAttribute("data-message-id"));
+	// Whether the message quoted from lights up, as a click on a badge makes it.
+	const lit = () => page.waitForFunction((id: string) => (document.querySelector(`[data-message-id="${id}"]`)?.getAnimations().length ?? 0) > 0, source);
+	const unlit = () => page.$eval(`[data-message-id="${source}"]`, (el: Element) => el.getAnimations().forEach((a) => a.cancel()));
+	await page.evaluate(() => {
+		const answer = [...document.querySelectorAll("[data-item=answer]")].find((e) => e.textContent!.includes("QUOTE-SOURCE"))!;
+		const walk = document.createTreeWalker(answer, NodeFilter.SHOW_TEXT);
+		let node: Node | null;
+		while ((node = walk.nextNode()) && !node.textContent!.includes("old copy"));
+		const at = node!.textContent!.indexOf("old copy");
+		const range = document.createRange();
+		range.setStart(node!, at);
+		range.setEnd(node!, at + "old copy of the lockfile".length);
+		window.getSelection()!.removeAllRanges();
+		window.getSelection()!.addRange(range);
+	});
+	await page.locator("[data-slot=selection-toolbar]").getByRole("button", { name: "Quote" }).click();
+	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=old copy of the lockfile");
+	assert.equal(await page.$("[data-slot=selection-toolbar]"), null);
+	// A click on the badge above the input goes back to the answer.
+	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: /Go to where you quoted/ }).click();
+	await lit();
+	await unlit();
+	// Sent, the quote goes first, as markdown: that is what the agent reads.
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ text: "QUOTE-ANSWER" }], "why is that? "));
+	await page.press("[data-slot=composer] textarea", "Enter");
+	await sees("[data-slot=markdown] >> text=QUOTE-ANSWER");
+	const said = JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "user").at(-1) ?? "");
+	assert.match(said, /> old copy of the lockfile\\n\\nwhy is that\? /);
+	assert.equal(await page.$("[data-slot=composer] [data-slot=quote-chip]"), null);
+	// In the sent message it is a badge, not a line starting with ">", and a click goes back to the answer too.
+	const sent = page.locator("[data-item=user]").last();
+	assert.equal(await sent.locator("[data-slot=quote-chip]").count(), 1);
+	assert.doesNotMatch(await sent.textContent(), /> old copy/);
+	await sent.locator("[data-slot=quote-chip]").getByRole("button", { name: /Go to where you quoted/ }).click();
+	await lit();
+	await unlit();
+	// Taken back, the quote is a badge above the input again and the rest is in the input, and the badge still finds its answer.
+	await menu("undo");
+	await sees("[data-slot=marker][data-tone=accent] >> text=Taken back");
+	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=old copy of the lockfile");
+	assert.match(await page.inputValue("[data-slot=composer] textarea"), /^why is that\? /);
+	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: /Go to where you quoted/ }).click();
+	await page.waitForFunction(() => [...document.querySelectorAll("[data-item=answer]")].some((e) => e.textContent!.includes("QUOTE-SOURCE") && (e.closest("[data-message-id]")?.getAnimations().length ?? 0) > 0));
+	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: "Remove quote" }).click();
+	assert.equal(await page.$("[data-slot=composer] [data-slot=quote-chip]"), null);
+	await page.fill("[data-slot=composer] textarea", "");
 });
 
 test("a click into the composer draws no ring and no brighter border: it looks as it did before", async () => {
@@ -797,9 +850,9 @@ test("a folder is opened for a conversation: changes, and a file edited and save
 	await page.locator("[data-slot=code-panel]").getByRole("button", { name: "Edit" }).click();
 	await sees("[data-slot=code-panel] .cm-content");
 	await page.click("[data-slot=code-panel] .cm-content");
-	await page.keyboard.press("Meta+A");
+	await page.keyboard.press("ControlOrMeta+A");
 	await page.keyboard.type("export const answer = 43;\n");
-	await page.keyboard.press("Meta+S");
+	await page.keyboard.press("ControlOrMeta+S");
 	for (let i = 0; i < 50 && !fs.readFileSync(path.join(folder, "src", "index.ts"), "utf8").includes("43"); i++) await new Promise((r) => setTimeout(r, 100));
 	assert.equal(fs.readFileSync(path.join(folder, "src", "index.ts"), "utf8"), "export const answer = 43;\n");
 	await shot("05-editor");
@@ -1150,7 +1203,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	}
 	// General, where what was the App page went: the browser of the web tools is still not there, and can be fetched from here. (The
 	// test fetches nothing: PINE_SKIP_DOWNLOADS. What the command printed is shown.)
-	await sees("[data-setting=browser] [data-slot=badge][data-variant=outline] >> text=not on this Mac");
+	await sees(`[data-setting=browser] [data-slot=badge][data-variant=outline] >> text=not on this ${HERE}`);
 	await page.locator("[data-setting=browser]").getByRole("button", { name: "Fetch it" }).click();
 	await sees("[data-setting=browser] [data-slot=code-block-content] >> text=Not fetched: PINE_SKIP_DOWNLOADS is set.");
 	// Fetched some other way (a terminal): the page says so when it is opened again.
@@ -1159,7 +1212,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	for (const place of places) write(path.join(browsers, path.basename(place), "INSTALLATION_COMPLETE"), "");
 	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=Models");
 	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=General");
-	await sees("[data-setting=browser] [data-slot=badge][data-variant=default] >> text=on this Mac");
+	await sees(`[data-setting=browser] [data-slot=badge][data-variant=default] >> text=on this ${HERE}`);
 	await menu("settings");
 });
 

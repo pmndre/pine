@@ -9,7 +9,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
 import { type AgentInfo, api, type Approval, type Conversation, type GoalInfo, type SwarmInfo, type GroupList, media, type WorktreeMade, type BoardBrief, type PineEvent, type Program, type Stats, type Task, type Todo, type TranscriptEntry } from "./api.ts";
 import { bridge, type Prefs, type ServiceState, type Update } from "./bridge.ts";
-import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, MODES, oneLine, plural, short, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
+import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, MODES, oneLine, plural, short, shortcut, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
 import { runnable } from "./runnable.ts";
 import { type QuoteSource, type SentQuote, withQuotes } from "../../src/quotes.ts";
 import { computerWord, deviceWord, homeScreenKeeps, httpService, isPaired, machineName, machinesView, pairingEnded, readPairLink, type MachinesViewName, type NearbyComputer, type PairLink } from "./machines.ts";
@@ -99,6 +99,11 @@ export interface Quote extends SentQuote {
 }
 
 const said = (it: { text: string; quotes?: SentQuote[] }) => (it.quotes ? withQuotes(it.quotes, it.text) : it.text);
+
+let quoteIds = 0;
+
+/** A number for a quote in a composer, which its badge is keyed by. */
+export const quoteId = () => ++quoteIds;
 
 const ownerText = (p: { prompt?: unknown; quotes?: unknown; body?: unknown }): { text: string; quotes?: SentQuote[] } => (Array.isArray(p.quotes) && p.quotes.length ? { text: String(p.body ?? ""), quotes: p.quotes as SentQuote[] } : { text: String(p.prompt ?? "") });
 
@@ -1992,7 +1997,7 @@ export class Store extends Model {
 				mine.steer ??= { task, into: steered };
 				mine.v++;
 				tab.awaiting = tab.awaiting.filter((p) => p !== text);
-				this.flash("Given to the agent while it works. ⌥↩ makes a message wait until the agent is done instead.", "muted", 3000);
+				this.flash(`Given to the agent while it works. ${shortcut("⌥↩")} makes a message wait until the agent is done instead.`, "muted", 3000);
 			} else if (busy) this.flash("Queued: it is answered when the agent is done with the current work.", "muted", 3000);
 		} catch (e) {
 			tab.awaiting = tab.awaiting.filter((p) => p !== text);
@@ -2036,7 +2041,10 @@ export class Store extends Model {
 		for (const t of history) (this.past(tab, t), tab.roots.add(t.id));
 		const said = undoLines(r, redo);
 		tab.note(`${redo ? "↷" : "↶"} ${said.head}`, "accent", { lines: said.lines });
-		if (!redo) tab.draft = r.prompt;
+		if (!redo) {
+			tab.draft = r.quotes?.length ? (r.body ?? "") : r.prompt;
+			tab.quotes = (r.quotes ?? []).map((q) => ({ id: quoteId(), text: q.text, tab: tab.key, source: q.source }));
+		}
 		tab.codeTick++;
 		tab.touch();
 		void this.refreshTaints();

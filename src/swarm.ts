@@ -347,7 +347,7 @@ export class Swarms {
 		if (swarm.task !== undefined && swarm.task !== task.id && this.live(swarm.task)) return;
 		// The answer is being checked, and a message of the owner's had a turn meanwhile: the check's end says what comes next.
 		if (this.live(swarm.checking)) return;
-		if (task.status === "cancelled") return void this.halt(swarm, "paused", stopping ? "paused: pine was stopped while it was working. /swarm resume goes on" : "paused: you stopped the agent. /swarm resume goes on");
+		if (task.status === "cancelled" || (stopping && task.status === "failed")) return void this.halt(swarm, "paused", stopping ? "paused: pine was stopped while it was working. /swarm resume goes on" : "paused: you stopped the agent. /swarm resume goes on");
 		if (task.status !== "done") return void this.halt(swarm, "paused", `paused: round ${swarm.round} failed (${String(task.error ?? task.status).slice(0, 200)}). /swarm resume tries again`);
 		try {
 			this.look(swarm, task);
@@ -406,7 +406,7 @@ export class Swarms {
 	/** The check of the lead's answer ended: done when it passed, and the lead's to put right when it did not. */
 	private checked(swarm: Swarm, lead: Task, run: Task, stopping: boolean): void {
 		const uncounted = { ...swarm, checks: Math.max(0, swarm.checks - 1) };
-		if (run.status === "cancelled") return void this.halt(uncounted, "paused", stopping ? "paused: pine was stopped while the answer was being checked. /swarm resume goes on" : "paused: the check of the answer was stopped. /swarm resume goes on");
+		if (run.status === "cancelled" || (stopping && run.status === "failed")) return void this.halt(uncounted, "paused", stopping ? "paused: pine was stopped while the answer was being checked. /swarm resume goes on" : "paused: the check of the answer was stopped. /swarm resume goes on");
 		const item = this.m.boards.item(run.meta.boardTask!);
 		if (run.status !== "done" || !item) {
 			// The model server said "not now": the task is given out again after a pause (`boardsAfter`), and pine starts it again.

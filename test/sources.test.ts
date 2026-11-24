@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 import { Aedes } from "aedes";
 import mqtt from "mqtt";
-import { harness, MCP_STUB, mockMsg, notesOf, sleep, until } from "./support/harness.ts";
+import { assertPrivate, harness, MCP_STUB, mockMsg, notesOf, sleep, until } from "./support/harness.ts";
 import { png } from "./support/png.ts";
 import { sandboxAvailable } from "../src/security.ts";
 
@@ -657,7 +657,7 @@ test("sources: a type says what it takes, add_source works from that; a file mas
 	assert.equal(asked.length, 0, "its plan said that it opens nothing");
 	assert.deepEqual(file().sources.door, { type: "bell", description: "the door bell", word: "ding", pin: "${PINE_SOURCE_DOOR_MAIN_PIN}" });
 	assert.match(env(), /^PINE_SOURCE_DOOR_MAIN_PIN=4711-4711$/m);
-	assert.equal(fs.statSync(path.join(h.home, ".env")).mode & 0o777, 0o600);
+	assertPrivate(path.join(h.home, ".env"), 0o600);
 	await until(() => eventTasks(h).some((x: any) => x.meta.label === "door: source/door@main/said" && x.status === "done"), 6000, "the bell to wake the agent");
 
 	// A folder with a mask, set up in another conversation: only what matches is reported.

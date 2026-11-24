@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { harness, until } from "./support/harness.ts";
+import { assertPrivate, harness, until } from "./support/harness.ts";
 
 const run = promisify(execFile);
 // "pine init" also fetches the browser, which a test must not do.
@@ -26,11 +26,12 @@ test("pine init creates a private home that passes pine check", async (t) => {
 	t.after(() => fs.rmSync(path.dirname(dir), { recursive: true, force: true }));
 	const init = await run(process.execPath, [CLI, "init", dir]);
 	assert.match(init.stdout, /pine\.json/);
-	assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
-	for (const f of ["pine.json", "models.json", ".env", "USER.md", "AGENTS.md", "TOOLS.md", "agents/main/workspace/AGENTS.md", "agents/main/workspace/SOUL.md", "agents/main/workspace/TOOLS.md", "agents/main/workspace/MEMORY.md"]) assert.equal(fs.statSync(path.join(dir, f)).mode & 0o777, 0o600, f);
+	assertPrivate(dir, 0o700);
+	for (const f of ["pine.json", "models.json", ".env", "USER.md", "AGENTS.md", "TOOLS.md", "agents/main/workspace/AGENTS.md", "agents/main/workspace/SOUL.md", "agents/main/workspace/TOOLS.md", "agents/main/workspace/MEMORY.md"]) assertPrivate(path.join(dir, f), 0o600, f);
 	assert.ok(!fs.existsSync(path.join(dir, "agents", "main", "AGENTS.md")), "an agent's instructions are in its workspace, where it can change them");
 	const check = await run(process.execPath, [CLI, "check", "--home", dir]);
-	for (const part of ["agent main (main)", "mcp        web, browser", "model      none yet", "No security notes."]) assert.ok(check.stdout.includes(part), `${part}\n${check.stdout}`);
+	// (Windows has no sandbox of pine's yet, and pine check says so: the one note there.)
+	for (const part of ["agent main (main)", "mcp        web, browser", "model      none yet", process.platform === "win32" ? "no sandbox on this machine" : "No security notes."]) assert.ok(check.stdout.includes(part), `${part}\n${check.stdout}`);
 	assert.equal(fs.readdirSync(path.join(dir, "agents")).join(), "main", "the example starts with one agent");
 	const again = await run(process.execPath, [CLI, "init", dir]);
 	assert.match(again.stdout, /nothing changed/);
@@ -38,7 +39,7 @@ test("pine init creates a private home that passes pine check", async (t) => {
 	fs.renameSync(path.join(dir, "agents", "main", "workspace", "AGENTS.md"), path.join(dir, "agents", "main", "AGENTS.md"));
 	fs.rmSync(path.join(dir, "agents", "main", "workspace", "SOUL.md"));
 	const older = await run(process.execPath, [CLI, "init", dir]);
-	assert.ok(older.stdout.includes("agents/main/workspace/SOUL.md") && /agents\/main\/AGENTS\.md stays where it is.*move the file to agents\/main\/workspace\/AGENTS\.md/s.test(older.stdout), older.stdout);
+	assert.ok(older.stdout.includes(path.join("agents", "main", "workspace", "SOUL.md")) && /agents[\\/]main[\\/]AGENTS\.md stays where it is.*move the file to agents[\\/]main[\\/]workspace[\\/]AGENTS\.md/s.test(older.stdout), older.stdout);
 	assert.ok(!fs.existsSync(path.join(dir, "agents", "main", "workspace", "AGENTS.md")));
 
 	// A home whose main agent has another name (a new home's was called prime for a while): what is missing is put into its own main agent, and no second one is made.
@@ -75,12 +76,14 @@ test("the command line drives a running daemon", async (t) => {
 
 	const stopped = new Promise((r) => daemon.once("exit", r));
 	daemon.kill("SIGTERM");
-	assert.equal(await stopped, 0, "SIGTERM shuts the daemon down cleanly");
+	// (Windows has no SIGTERM to catch: there it is the end of the process, and Ctrl+C is the clean way.)
+	if (process.platform !== "win32") assert.equal(await stopped, 0, "SIGTERM shuts the daemon down cleanly");
+	else await stopped;
 	await assert.rejects(() => pine("status"), /no daemon answers/);
 	await h.close();
 });
 
-test("pine agent list, add, update and remove: in the files when no daemon runs, through the daemon when one does; a removed agent leaves nothing", async (t) => {
+test("pine agent list, add, update and remove: in the files when no daemon runs, through the daemon when one does; a removed agent leaves nothing", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async (t) => {
 	const port = await freePort();
 	const h = await harness({
 		pine: { http: { port }, logLevel: "warn", routes: [{ name: "wake-old", on: "test/old", agent: "old", prompt: "x" }, { name: "keep", on: "test/keep", set: { seen: "yes" } }] },
@@ -96,7 +99,7 @@ test("pine agent list, add, update and remove: in the files when no daemon runs,
 	let list = await pine("agent", "list");
 	assert.match(list, /^main \(main\): /);
 	assert.match(list, /old: Kept the old books\n    model mock\/m \(the default\) · reasoning off · mode safe · reach the agent's own folders \(sandbox\)\n    conversations: none · sources: none · MCP servers: none · schedules: none · skills: none · routes: wake-old · 1 file in /);
-	assert.match(await pine("agent", "add", "books", "--description", "Keeps the books", "--tools", "read,grep"), /^Created the agent books \(tools: read, grep\)\. The agent's workspace is .*agents\/books\/workspace\. It is there when pine is started\.$/);
+	assert.match(await pine("agent", "add", "books", "--description", "Keeps the books", "--tools", "read,grep"), /^Created the agent books \(tools: read, grep\)\. The agent's workspace is .*agents[\\/]books[\\/]workspace\. It is there when pine is started\.$/);
 	assert.deepEqual(json(file("agents", "books", "agent.json")), { tools: ["read", "grep"] }, "what it is for is the first paragraph of its instructions, not a key of its own");
 	assert.equal(fs.readFileSync(file("agents", "books", "workspace", "AGENTS.md"), "utf8"), "You are books. Keeps the books.\n");
 	assert.match(await fails("agent", "add", "Bad Id", "--description", "x"), /is not a usable agent id/);
@@ -188,7 +191,7 @@ test("pine login stores a provider key privately and makes its models available"
 		open: () => {},
 	});
 	const file = path.join(h.home, "auth.json");
-	assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+	assertPrivate(file, 0o600);
 	assert.ok(JSON.stringify(JSON.parse(fs.readFileSync(file, "utf8"))["opencode-go"]).includes("sk-test-not-a-real-key-123456"));
 	assert.ok(models.includes("opencode-go/deepseek-v4.1-flash"), models.slice(0, 5).join(","));
 	assert.ok(said.join("\n").includes("Stored the key for opencode-go") && !said.join("\n").includes("sk-test"), "the key is never echoed");
@@ -232,6 +235,12 @@ test("pine update knows how pine was installed and which version is newer; pine 
 	fs.mkdirSync(carried, { recursive: true });
 	assert.equal(installKind(carried, global), "app");
 	assert.equal(installKind(carried), "app");
+	// On Linux and Windows the app's resources folder holds it beside the app's own archive.
+	const resources = path.join(global, "Pine", "resources");
+	fs.mkdirSync(path.join(resources, "pine"), { recursive: true });
+	assert.equal(installKind(path.join(resources, "pine")), "local", "a folder called resources alone is not the app");
+	fs.writeFileSync(path.join(resources, "app.asar"), "");
+	assert.equal(installKind(path.join(resources, "pine"), global), "app");
 	assert.match(appNews("0.14.0", "0.13.0"), /pine 0\.14\.0 is available \(this is 0\.13\.0\)\. This pine came with the Pine app.*downloads the new release itself and installs it when you press "Restart to update" or quit it.*\n\n  https:\/\/github\.com\/pmndre\/pine\/releases\/latest$/s);
 	fs.rmSync(global, { recursive: true, force: true });
 
@@ -391,7 +400,8 @@ test("pine service finds this home's daemon or starts one, says where it answers
 	await new Promise((r) => setTimeout(r, 300));
 	assert.ok(await up());
 	kept.child.kill("SIGTERM");
-	assert.equal(await kept.exit, 0);
+	if (process.platform !== "win32") assert.equal(await kept.exit, 0);
+	else await kept.exit;
 	assert.ok(!(await up()));
 	await h.close();
 });

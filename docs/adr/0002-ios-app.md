@@ -155,3 +155,5 @@ the app pairs with the Pine app"). What that changed on iOS:
 - **The device's name** is "Pine on iPhone" or "Pine on iPad": iOS gives an app no model name
   without a table of hardware ids, and the owner's own device name needs an entitlement.
 - **The local network sentence** now speaks of the machines the owner adds or pairs with.
+  (Changed again by [0005](0005-pairing-from-nearby-devices.md): it says first that Pine looks for
+  the owner's computer on this network, and iOS asks when the pairing view is first shown.)

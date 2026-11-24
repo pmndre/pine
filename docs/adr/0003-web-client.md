@@ -72,6 +72,8 @@ fails when a deployed configuration sets it.
 
 ## Consequences
 
+- The page stayed in `desktop/src`, and `web/` builds it from there, under `page/`: the `app/`
+  package that [0001](0001-mobile-app.md) planned for a third client was not made.
 - Rule 10 has a fourth holder of the token: the web bridge, beside `main.ts`, the preview's server
   and the mobile app's native plugin.
 - The page's bridge has a third implementation (`web/src/frame-bridge.ts`); a change of the page is

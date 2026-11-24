@@ -35,6 +35,11 @@ function standIn(): Omit<Bridge, AccessCalls | UpdateCalls | BrowserCalls> {
 	};
 
 	return {
+		// No WSL in a browser's preview.
+		wslDistros: async () => [],
+		wslInstall: async () => {
+			throw new Error("The preview brings pine into no WSL distribution.");
+		},
 		state: async () => {
 			const s = await service();
 			return { state: s.state, home: s.state.home, prefs: { ...prefs }, platform: s.platform, focused: document.hasFocus(), updates: false, versions: { app: "preview", electron: "none" } };
@@ -94,6 +99,7 @@ function standIn(): Omit<Bridge, AccessCalls | UpdateCalls | BrowserCalls> {
 		termRun: async () => ({ reports: false }),
 		termResize: async () => {},
 		termClose: async () => {},
+		termFocus: () => undefined,
 		onTermData: never,
 		onTermExit: never,
 		onTermRun: never,

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	CombinedAutocompleteProvider,
 	type Component,
@@ -314,7 +315,8 @@ export function droppedFiles(text: string, folders = false): string[] | null {
 			if (ch === quote) quote = "";
 			else cur += ch;
 		} else if (ch === "'" || ch === '"') quote = ch;
-		else if (ch === "\\" && i + 1 < text.length) cur += text[++i];
+		// (On Windows a backslash is the path's own separator, and a terminal quotes a path with spaces instead.)
+		else if (ch === "\\" && i + 1 < text.length && process.platform !== "win32") cur += text[++i];
 		else if (/\s/.test(ch)) {
 			if (cur) tokens.push(cur);
 			cur = "";
@@ -326,7 +328,7 @@ export function droppedFiles(text: string, folders = false): string[] | null {
 	for (const t of tokens) {
 		let file = t;
 		try {
-			if (t.startsWith("file://")) file = decodeURIComponent(new URL(t).pathname);
+			if (t.startsWith("file://")) file = fileURLToPath(t);
 		} catch {
 			return null;
 		}
@@ -2421,7 +2423,7 @@ export class PineTui {
 
 	private async setMode(t: Tab, mode: string): Promise<void> {
 		const info = this.agents.find((a) => a.id === t.agent)!;
-		if (!MODE_ITEMS.some((m) => m.value === mode)) return this.flash("modes: auto, plan, manual, bypass");
+		if (!MODE_ITEMS.some((m) => m.value === mode)) return this.flash("modes: auto, plan, safe, manual, bypass");
 		let anyway: string | undefined;
 		await this.refreshTaints();
 		if (mode === "bypass" && this.isTainted(t) && !this.bypassWhenTainted) {
@@ -3046,7 +3048,7 @@ export class PineTui {
 	private help(): void {
 		const cmds = this.commands.filter((x) => x.name !== "exit").map((x) => `  ${c.accent(`/${x.name}`)}${x.argumentHint ? c.gray(` ${x.argumentHint}`) : ""}${" ".repeat(Math.max(1, 24 - x.name.length - (x.argumentHint?.length ?? -1) - 2))}${x.description}`);
 		const keys = [
-			["enter", "send; while the agent works, the message goes into that work at the agent's next step"], ["alt+enter", "send, but let it wait until the agent is done with what it is doing"], ["shift+enter", "new line"], ["esc", "stop the agent"], ["tab", "next tab (when the input is empty)"], ["shift+tab", "next mode: auto, plan, manual, bypass (when the input is empty)"],
+			["enter", "send; while the agent works, the message goes into that work at the agent's next step"], ["alt+enter", "send, but let it wait until the agent is done with what it is doing"], ["shift+enter", "new line"], ["esc", "stop the agent"], ["tab", "next tab (when the input is empty)"], ["shift+tab", "next mode: auto, plan, safe, manual, bypass (when the input is empty)"],
 			["alt+1..9", "go to tab"], ["ctrl+t", "new conversation"], ["ctrl+w", "close tab"], ["ctrl+g", "open or close the code pane (changes, files, tool output)"], ["ctrl+r", "dictate the message instead of typing it (on a Mac); enter ends it"], ["pgup / pgdn", "scroll"], ["mouse", "click a tab, its ×, +, ▤ code, a web address, a thought (to open it, and anywhere on it to close it), or agent / conversation / folder / model / reasoning / mode in the bottom bar; drop files to attach"], ["ctrl+c twice, ctrl+d", "quit"],
 		].map(([k, d]) => `  ${c.accent(k.padEnd(22))} ${d}`);
 		this.say(this.active, [c.bold("Commands"), ...cmds, "", c.bold("Keys"), ...keys].join("\n"));
@@ -3538,7 +3540,7 @@ export class PineTui {
 			for (const t of this.tabs) {
 				if (t.kind !== "chat" || t.pauseNoted || !this.bypassPaused(t)) continue;
 				t.pauseNoted = true;
-				this.say(t, c.yellow(`bypass is paused in this conversation: it has read outside content (${this.taints.get(`${t.agent}:${t.session}`)}).\n`) + c.gray("The agent is back inside the sandbox and asks before sending things out. /mode bypass offers a clean conversation or bypass here anyway; /reset starts over."));
+				this.say(t, c.yellow(`bypass is paused in this conversation: it has read outside content (${this.taints.get(`${t.agent}:${t.session}`)}).\n`) + c.gray("The agent works as in auto mode: it asks before a critical action and before it sends something out. /mode bypass offers a clean conversation or bypass here anyway; /reset starts over."));
 			}
 			this.tui.requestRender();
 		} catch {

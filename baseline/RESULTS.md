@@ -2,7 +2,7 @@
 
 Run on 2026-11-10, Node 26.7, macOS (M4 Pro). 59 checks in 10 suites, all against a scripted
 OpenAI-compatible mock server (`tests/mock.mjs`). No real model was involved, so this charts the
-harness, not model quality. Re-run with `./run-all.sh`; raw output is in `results/*.log`.
+harness, not model quality. Re-run with `npm run baseline` (`baseline/run-all.mjs`); raw output is in `results/*.log`.
 
 ## The questions that were open
 

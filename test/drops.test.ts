@@ -243,6 +243,8 @@ test("syslog: reports what is severe enough or matches, from whom it may, and no
 	const info = (name: string) => h.pine.sources.list().find((s) => s.name === name)!;
 	const udp = dgram.createSocket("udp4");
 	const send = (port: number, line: string) => new Promise<void>((r) => udp.send(line, port, "127.0.0.1", () => r()));
+	// (It listens once its ports are bound: waited for, since that is not at once on every system.)
+	await until(() => info("router").status !== undefined, 4000, "the router's source to listen");
 	assert.equal(info("router").status, `listening on port ${p1} (both)`);
 
 	// The floor is "warning": what is less severe is counted, not reported.

@@ -42,7 +42,10 @@ const bridge = {
 	voiceStart: (language?: string) => ipcRenderer.invoke("pine:voice-start", language),
 	voiceStop: (cancel?: boolean) => ipcRenderer.invoke("pine:voice-stop", cancel),
 	/** Where a file that was dropped on the window lies: a folder is opened by its path, not read. */
-	pathOf: (file: File) => webUtils.getPathForFile(file),
+	// By the path the daemon knows it under (under /mnt where it runs in WSL).
+	pathOf: (file: File) => String(ipcRenderer.sendSync("pine:daemon-path", webUtils.getPathForFile(file)) ?? ""),
+	wslDistros: () => ipcRenderer.invoke("pine:wsl-distros"),
+	wslInstall: (distro: string) => ipcRenderer.invoke("pine:wsl-install", distro),
 	/** The owner's terminal of a conversation: started in `cwd` when it does not run yet; what it printed so far comes back. */
 	termOpen: (id: string, cwd: string | undefined, cols: number, rows: number) => ipcRenderer.invoke("pine:term-open", id, cwd, cols, rows) as Promise<{ kept: string; cwd: string; fresh: boolean }>,
 	termWrite: (id: string, data: string) => ipcRenderer.invoke("pine:term-write", id, data),
@@ -50,6 +53,8 @@ const bridge = {
 	termRun: (id: string, code: string) => ipcRenderer.invoke("pine:term-run", id, code) as Promise<{ reports: boolean }>,
 	termResize: (id: string, cols: number, rows: number) => ipcRenderer.invoke("pine:term-resize", id, cols, rows),
 	termClose: (id: string) => ipcRenderer.invoke("pine:term-close", id),
+	/** Whether a terminal has the keyboard: off a Mac, Ctrl and a letter are then the shell's and not the menu's. */
+	termFocus: (focused: boolean) => ipcRenderer.send("pine:term-focus", focused === true),
 	onTermData: on("pine:term-data"),
 	onTermExit: on("pine:term-exit"),
 	/** A block run with a Run button is still running, or has ended (`RunReport` of terminal.ts). */

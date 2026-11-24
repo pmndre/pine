@@ -6,9 +6,10 @@ pine
 
 opens a full-screen chat with your agents (`pine tui` is the same). If a daemon is already
 running it attaches to it; otherwise it starts one inside the same process, logs to
-`data/pine.log`, and stops it again when you quit. With the example home it also starts the
-`claude -p` stand-in model when nothing else serves it, so a fresh `pine init` followed by
-`pine` works without further setup, given Claude Code is installed and signed in.
+`data/pine.log`, and stops it again when you quit. A new home has no model: the main
+conversation's welcome says where to connect one (`pine login <provider>`, or `pine model add`
+for a server of your own). A home whose `models.json` has a `dev` provider that an agent uses
+also gets the `claude -p` stand-in started when nothing else serves it.
 
 ```
  pine  1 ★ main ×  2 main·notes × ⠹  3 events ×  +                 ▤ code  ← tabs, and the code pane's button
@@ -75,7 +76,7 @@ Everything in the two bars reacts to a click.
 | A `↳ ... ▸ open` line in the conversation | A tab with that sub-agent's or delegated task's work |
 | The conversation name next to it | This agent's conversations, and "+ new conversation" |
 | The folder next to it (`no folder`, or a path) | The folder this conversation works in: none, where pine was started, one in use elsewhere, or one you pick. See [coding.md](coding.md) |
-| The `🎤` at the right end of the input (on a Mac) | Starts dictating the message, like `ctrl+r`. While it listens it is highlighted, and a click ends the listening. See [Dictating a message](#dictating-a-message) |
+| The `🎤` at the right end of the input (where this computer can listen) | Starts dictating the message, like `ctrl+r`. While it listens it is highlighted, and a click ends the listening. See [Dictating a message](#dictating-a-message) |
 | `▤ code` at the right end of the tab bar | Opens or closes the code pane: changes (git), files, tool output, what the agent left running, and the conversation's boards. In the pane: its five views, `↻` to read again, `×` to close, any file, folder or tool call to open it, `‹ back` to return |
 | The model | The models you have credentials for |
 | `reasoning <level>` | How much the model thinks before answering: off, minimal, low, medium, high, xhigh, max |
@@ -194,7 +195,7 @@ in it, once nothing has been said in it for 7 days (`limits.conversationDays`; `
 everything). These stay however old they are: each agent's main conversation, a pinned one,
 one in a group, one that is open in a tab, and one that is subscribed to an event source or has a schedule of
 its own. The list says for each which it is: `the agent's own, always kept`, `pinned`, `open in
-a tab`, `kept in its group`, `kept`, or when it goes (`goes in 5 days`, `goes in 20 h`, `goes soon`).
+a tab`, `kept in a group`, `kept`, or when it goes (`goes in 5 days`, `goes in 20 h`, `goes soon`).
 
 | In the list | Does |
 |---|---|
@@ -225,6 +226,7 @@ Type `/` and the list appears; keep typing to narrow it, `enter` runs the comman
 | `/rename <name>` | Another name for this conversation and its tab. Its history, pin and subscriptions go with it. Not for an agent's main conversation |
 | `/branch [--worktree] [name]` | A new conversation that goes its own way from one of your messages; this one stays as it is. Without a name it lists your messages, the latest first, and "all of it": the branch has what was said up to the end of the one you pick. With a name it takes all of it. With `--worktree` (or `-w`) the branch works in a worktree of its own. See [agents.md](agents.md#branching-a-conversation) |
 | `/pin`, `/unpin` | Keep this conversation however long it is unused, or let it go again |
+| `/group [name\|-]` | Put this conversation into a group of the agent's conversations (made if there is none; its branches go with it). `/group -` takes it out, `/group` alone says which. A conversation in a group is kept. See [agents.md](agents.md#groups-of-conversations) |
 | `/reset` | Forget this conversation and start fresh (also clears "has seen outside content") |
 | `/undo` | Take back your last message: what it started is stopped, the files it changed in the conversation's folder are restored, the conversation forgets it and what followed, and its text is in the input again to change and send. Again for the message before it. See [coding.md](coding.md) for what is and is not restored |
 | `/redo` | Redo: bring back what the last `/undo` took, files and conversation. After several undos, `/redo` again brings back the next message, one at a time. Works until you send a new message |
@@ -242,7 +244,7 @@ Type `/` and the list appears; keep typing to narrow it, `enter` runs the comman
 | `/swarm [what is to be done\|pause\|resume\|clear]` | A swarm: with a job, the agent leads it. Its sub-agents work the job through on the conversation's board (a job of a few steps it does itself), pine calls the agent again while tasks there are not done, and has its answer checked before the swarm is done. Without an argument it shows where the swarm stands. See "Swarms" below and [boards.md](boards.md). |
 | `/model [provider/id]` | Switch the agent's model. Without an argument, a list to search and pick from; or type a few letters after it: `/model deepseek` |
 | `/reasoning [level]` | Set how much the model thinks before answering; without an argument, choose from a list. Saved like the model. A model that cannot reason ignores it |
-| `/voice [language]` | Dictate the message instead of typing it; `ctrl+r` does the same. On a Mac. With a language (`/voice de-DE`) it listens for that one from then on. See [Dictating a message](#dictating-a-message) |
+| `/voice [language]` | Dictate the message instead of typing it; `ctrl+r` does the same. On macOS, Windows and Linux (with whisper.cpp). With a language (`/voice de-DE`) it listens for that one from then on. See [Dictating a message](#dictating-a-message) |
 | `/mode [auto\|safe\|manual\|bypass\|plan]` | Set how much this agent does without asking; without an argument, choose from a list. See [Modes](#modes) |
 | `/attach <path>`, `/detach [n]` | Attach files to the next message, or remove them |
 | `/paste` | Attach the picture that is on the clipboard (a screenshot, for example) to the next message. `ctrl+v` does the same in terminals that pass that key on. Text is pasted with the terminal's own paste |
@@ -314,6 +316,7 @@ each thing pine did about it:
  ◎ swarm started: main leads it
  ◎ swarm 3 tasks are not done: round 2 of 8 starts
  ◎ swarm the answer is being checked by a sub-agent that did none of the work
+ ◎ swarm · round 2 of 8 · looking at the board · esc to pause
  ◎ swarm · round 2 of 8 · checking the answer · esc to pause
  ✓ swarm done after 2 rounds: 16 tasks, and the answer was checked
 ```
@@ -328,7 +331,7 @@ tasks beside the conversation while it works.
 
 | Key | Does |
 |---|---|
-| `enter` | Send. While the agent is working, the message is given to that work and read at its next step, so a correction lands without stopping anything. If the work ends or is stopped before reading it, it is answered next |
+| `enter` | Send. While the agent is working, the message is given to that work and read at its next step, so a correction lands without stopping anything; pine asks the agent to answer it first, briefly, then go on. If the work ends or is stopped before reading it, it is answered next. Whether the work has read it, and "send now", are shown in the Pine app only ([agents.md](agents.md), "A message while the agent works") |
 | `alt+enter` | Send, but let the message wait its turn: it is answered as work of its own when the agent is done with what it is doing |
 | `shift+enter` | New line |
 | `up` / `down` | Earlier inputs |
@@ -363,13 +366,22 @@ press `ctrl+r` (or type `/voice`), speak, and press `enter` when you are done:
 | `esc` while it listens | Throws away what was heard; what you had typed is there again |
 | A key that types, or backspace, while it listens | Ends the listening too, and the key is typed: what was heard stays, and nothing more is put into the input. Dictating never holds the input |
 | `enter` or `ctrl+r` while it is still getting ready | Ends it. If it has not begun to listen after twenty seconds it ends by itself and says why that may be (the system waiting for your answer about the microphone) |
-| Language | The one your Mac is set to. `/voice de-DE` (or `fr-FR`, `es-ES`, ...) listens for another from then on, until the UI is closed |
+| Language | The one your system is set to. `/voice de-DE` (or `fr-FR`, `es-ES`, ...) listens for another from then on, until the UI is closed |
 
 Nothing that was heard is sent by itself: it is text in the input until you press `enter`, so
-a word the Mac misheard, or something somebody else said in the room, never reaches an agent
-unread.
+a misheard word, or something somebody else said in the room, never reaches an agent unread.
 
-**It works on a Mac, and on the Mac itself.** The words are recognised by the speech
+It works on macOS, Windows and Linux, and always on the computer itself: nothing that is heard
+is sent to a server, pine's or anybody's. Each system recognises with what it has:
+
+| System | What recognises the words | What it needs |
+|---|---|---|
+| macOS | The speech recognition macOS has on the device | Nothing on macOS 26 and later; before, Dictation switched on |
+| Windows | Windows' own desktop speech recogniser (System.Speech), through a small helper pine builds with the C# compiler every Windows carries | A speech recogniser for the language, which Windows has for English, German, French, Spanish, Japanese and Chinese |
+| Linux | [whisper.cpp](https://github.com/ggml-org/whisper.cpp)'s `whisper-cli` and a model of it, fed by the system's sound recorder | All three installed by you; pine installs and downloads none of it |
+
+**On a Mac.** The words are recognised by the speech
+recognition macOS has on the device. The words are recognised by the speech
 recognition macOS has on the device; nothing is sent to a server, pine's or anybody's. On
 macOS 26 and later this needs no setting. The first time you use a language that the Mac has
 no speech model for yet, the system fetches one (the status line says so), which needs the
@@ -383,10 +395,33 @@ terminal app is not given the microphone. After an update of pine the helper is 
 and macOS may ask once more. A pine that came with the Pine app has the helper built already
 and needs no developer tools.
 
-**On Linux, and anywhere that is not macOS, there is no voice input.** The input has no
-microphone there, `ctrl+r` and `/voice` answer with one line that says so, and everything
-else works as before. Nothing is installed,
-built or started for it.
+**On Windows.** pine builds a small helper the first time (`pine-voice-….exe`, in
+`%LOCALAPPDATA%\pine-voice`) with the C# compiler of .NET Framework 4 that Windows carries, and
+it listens to the default microphone with Windows' desktop speech recogniser, which works on the
+computer only. Without a language it listens for the one Windows is shown in. Windows has such a
+recogniser where Speech recognition is installed for the language: Settings > Time & language >
+Language & region, the language's Language options (Windows 10: Settings > Time & Language >
+Language). Windows asks no question about the microphone, but "Let desktop apps access your
+microphone" in Settings > Privacy & security > Microphone has to be on, or it hears nothing.
+
+**On Linux.** Linux has no speech recognition of its own, so pine uses three programs and
+files you install, and finds them by themselves:
+
+| | Where pine looks | How to get it |
+|---|---|---|
+| A recorder | `parecord` (PulseAudio's, which PipeWire answers too), else `arecord` (ALSA's), in `/usr/bin` and on your `PATH` | `sudo apt install pulseaudio-utils`, or `alsa-utils` |
+| `whisper-cli` | `~/.local/share/pine/voice`, `~/.local/bin`, your `PATH`, `/usr/local/bin`, `/usr/bin`, and a build in `~/whisper.cpp` or `/opt/whisper.cpp`. `whisper-cpp` too, as some systems name it | Ubuntu has no package of it: `sudo apt install git cmake build-essential`, `git clone https://github.com/ggml-org/whisper.cpp`, in its folder `cmake -B build` and `cmake --build build --config Release`, then link `build/bin/whisper-cli` into `~/.local/bin` |
+| A model | `~/.local/share/pine/voice` (or `$XDG_DATA_HOME/pine/voice`), a file named as whisper.cpp names them, `ggml-<size>.bin` | Download `ggml-base.en.bin` (English) or `ggml-base.bin` (every language) from [huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) into that folder. Of several, pine takes an English one for English and one for every language otherwise, and `base` before the slower sizes |
+
+While you speak, the recorder runs without a pause and pine cuts what it hears where you pause
+(at most every six seconds), so the words arrive a few seconds after you said them; silence is
+not recognised, since whisper.cpp would make up words for it. Every program is started by its
+path, never through a shell, and the pieces of sound are removed once they are recognised.
+Where something is missing, `ctrl+r` and `/voice` answer with one line that says what to
+install, the input has no microphone, and nothing is started.
+
+**Anywhere else** there is no voice input. The input has no microphone there, `ctrl+r` and
+`/voice` answer with one line that says so, and everything else works as before.
 
 When it does not work, the line that appears says why and what to do:
 
@@ -398,6 +433,12 @@ When it does not work, the line that appears says why and what to do:
 | `the system could not fetch its speech model` | The Mac needs the network once for a new language |
 | `speech recognition is switched off on this Mac` | Before macOS 26 only: turn on Dictation in System Settings > Keyboard > Dictation |
 | `Voice input needs Apple's command line developer tools` | `xcode-select --install`, then try again |
+| `Windows has no speech recogniser for <language>` | Install Speech recognition for the language (above), or use one it lists, with `/voice <language>` |
+| `Windows has no microphone to listen with` | Connect one, or choose one in Settings > System > Sound > Input |
+| `Voice input on Windows needs the C# compiler of .NET Framework 4` | "Turn Windows features on or off": switch on .NET Framework 4.8 Advanced Services |
+| `Voice input on Linux recognises speech on this computer with whisper.cpp, and it needs …` | Install what it names (above) |
+| `the sound could not be recorded` | Linux: connect a microphone and choose it as the input in the sound settings |
+| `whisper.cpp could not recognise what was said` | Linux: the model file is not one of whisper.cpp's, or is broken: download it again |
 
 ## Modes
 
@@ -406,7 +447,7 @@ The bottom bar shows the agent's mode; click it, press `shift+tab`, or use `/mod
 | Mode | What you will notice |
 |---|---|
 | `auto` | The agent works without asking and without a sandbox: it has your whole account and the network, and keeps them after reading the web. It asks before a critical action, and after outside content before it sends something out. What the main agent starts in |
-| `safe` | The agent works without asking inside its sandbox: its own folders, no network. It asks when it wants something outside ("read access to ~/dev/gonzo, reason: ..."), before a critical action, and after outside content before it sends something out. What every other agent starts in. Shown in green |
+| `safe` | The agent works without asking inside its sandbox: its own folders, no network. It asks when it wants something outside ("read access to ~/dev/gonzo, reason: ..."), before a critical action, and after outside content before it sends something out. What every other agent starts in, unless `defaults.mode` in `pine.json` names another for all; on a machine without a sandbox an agent whose mode nobody chose works in `auto`. Shown in green |
 | `plan` | The agent looks, reads, searches the web and asks, and changes nothing: no file is written, no command that changes something runs, nothing is sent, and you are not asked about any of it. Its answer is a plan. Read it, say what should be different, then switch to another mode (`/mode auto`, or a click on the mode in the bottom bar; `shift+tab` goes on to `safe`): the agent is told that planning is over and carries it out. While it plans, the agent reaches what the mode it had before reaches. Good with a small model: you see what it is about to do before it does it. Shown in magenta |
 | `manual` | Inside its sandbox, and a dialog before every command, edit or message, until you answer "Always here" for that tool or server |
 | `bypass` | No sandbox and no dialogs. The agent can read and change files anywhere in your account and use the network, and nothing is checked. Shown in red |
@@ -431,7 +472,7 @@ answer the one before it or put it off.
 | `a` or `y` | Allow once. Where a yes already holds for the whole conversation (access to a folder or the network, a local address in the browser, an app) the button reads "Allow", and the dialog says what the yes holds for |
 | `s` | Always here: allow, and do not ask again in this conversation about this MCP server (or this tool, such as `bash`). For a critical action it covers that kind of critical action, not the whole shell. Not offered for actions you configured to ask every time |
 | `d` or `n` | Deny |
-| `esc` | Later: the request stays open until `security.approvalTimeout` (5 minutes) has passed and then counts as denied. Until then the status line keeps reminding you, `enter` on an empty line opens the dialog again, and `/approve` or `/deny` answer it A question in a tab that is not in front opens no dialog there: that tab gets a `!` in the tab bar, and the status line of the tab you are in says which tab waits (`alt+<n>` goes there) |
+| `esc` | Later: the request stays open until `security.approvalTimeout` (5 minutes) has passed and then counts as denied. Until then the status line keeps reminding you, `enter` on an empty line opens the dialog again, and `/approve` or `/deny` answer it. A question in a tab that is not in front opens no dialog there: that tab gets a `!` in the tab bar, and the status line of the tab you are in says which tab waits (`alt+<n>` goes there) |
 
 When the action needs something only you have (a bot's token, a device's password), the dialog
 has a field for it: the value's name, under it what it is, and a bar to type into. When it needs

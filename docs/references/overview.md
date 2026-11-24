@@ -2,11 +2,12 @@
 
 ## The picture
 
-You talk to an agent, in the terminal UI or on Telegram. An agent is given four things, each by
-asking it: two that wake it, and two that it uses while it works.
+You talk to an agent in the terminal UI, in the Pine app (on a Mac, on a phone, or in a web
+browser) or on Telegram. An agent is given four things, each by asking it: two that wake it, and
+two that it uses while it works.
 
 ```
-                  you:  terminal UI · Telegram
+          you:  terminal UI · Pine app · Telegram
                                │
                                ▼
  wake it                 ┌───────────┐            it uses
@@ -106,6 +107,7 @@ Topics pine itself uses:
 | `agent/<id>/steered` | A message was given to a task that was already working (`task`), instead of becoming work of its own (live only) |
 | `agent/<id>/read` | The work (`task`) read a message that was steered into it (`by`), at `at` (live only) |
 | `agent/<id>/goal` | The goal of a conversation was set, judged, paused, resumed or cleared (the goal with its `objective`, `status`, `round`, `note` and the judge's `reason`, and `event`: what just happened) |
+| `agent/<id>/swarm` | The swarm of a conversation was started, went into another round, had its answer checked, was paused, resumed, cleared or is done (the swarm with its `objective`, `status`, `round`, `note`, and `event`: what just happened; [boards.md](boards.md), "A swarm") |
 | `agent/<id>/undone`, `agent/<id>/redone` | The owner took back their last message in a conversation, or brought it back (`session`, `message`, how many `tasks` and `files`) |
 | `agent/<id>/delta`, `agent/<id>/thinking`, `agent/<id>/message` | Streamed answer text; what the model thinks (`phase: "start"`, then pieces of `text`, then `phase: "end"` with `ms`); the end of a model message with token counts (live only) |
 | `state/<key>` | Shared state changes |
@@ -115,9 +117,10 @@ Topics pine itself uses:
 | `hook/<name>` | A hook under `http.hooks` in `pine.json` was called (a `webhook` source reports `source/<name>/received` instead) |
 | `approval/requested`, `approval/decided` | An approval is asked for or answered |
 | `pine/started`, `pine/route-failed` | Daemon lifecycle and route errors |
+| `pine/settings` | A setting was changed, by you or by the main agent (`key`: which one, and nothing else; live only): a UI that shows settings asks the control API for the rest |
 | `pine/conversation` | A conversation was changed by another hand than the UI's that shows it, so that a terminal UI's or the Pine app's tabs follow: by the main agent (`open`, `close`, `rename`, `remove`, `pin`), or by you in another UI (`folder`: its folder was opened or closed, or a worktree made or discarded for it), or by either (`group`: it was put into a group or taken out; without a `session`, one of the agent's groups was made, renamed or removed, or its list sorted otherwise). It names the conversation and nothing else. Not kept in the event log |
 
-Agents cannot publish on `agent/`, `approval/`, `pine/`, `state/` or `timer/`.
+Agents cannot publish on `agent/`, `approval/`, `board/`, `pine/`, `state/` or `timer/`.
 
 ## From event to work
 
@@ -141,18 +144,21 @@ Three things start work, and the first two need nothing written by hand:
 ## Tasks, sessions, slots
 
 A task is a prompt for one agent in one session. Tasks for the same session run one after another;
-different sessions run side by side, limited by `limits.maxConcurrentRuns` model slots. A run
+different sessions run side by side, limited by `limits.maxConcurrentRuns` model slots (a model
+can have a number of its own, `limits.models`: one on your own computer serves one or two at a
+time). A run
 that only waits (for a delegated task, for sub-agents, for an approval) gives its slot up
 meanwhile, so a chain of agents works even with one slot. One exception to "one after
-another": a message sent with `"whenBusy": "steer"`, as the terminal UI sends yours, is given
-to the task that is working and read at its next step ([agents.md](agents.md), "Sessions").
+another": a message sent with `"whenBusy": "steer"`, as the terminal UI and the Pine app send
+yours, is given to the task that is working, read at its next step and answered first
+([agents.md](agents.md), "A message while the agent works").
 
 A session is a pi `AgentSession`: the model loop, tool calls, compaction and retries are pi's.
 Named sessions are stored as JSONL under `agents/<id>/sessions/<key>/` and survive restarts.
 `"session": "new"` gives a fresh one that is closed when the task ends. A live session is
 closed after `idleMs` without work and resumed from disk when needed. A named session other
-than `main` that is not pinned, not open in a tab of the terminal UI, not subscribed to a
-source and without a schedule of its own is removed after `limits.conversationDays` (7; `0`:
+than `main` that is not pinned, not in a group, not open in a tab of the terminal UI, not
+subscribed to a source and without a schedule of its own is removed after `limits.conversationDays` (7; `0`:
 never) without a message. A run that an outside event started works in a session of its own,
 `<name>~u`, so its history is never shared with yours.
 
@@ -183,7 +189,11 @@ line saying so; a cancelled one sends nothing.
   can read and that can be shown to an agent in every turn.
 - A board holds the tasks of a job that several work on: a pool of sub-agents works through
   any number of them a few at a time, one that cannot decide something asks, and the agent
-  that gave out the work answers ([boards.md](boards.md)).
+  that gave out the work answers ([boards.md](boards.md)). With `/swarm` you give an agent a
+  whole job to lead that way: pine calls it again while tasks are not done, and has its answer
+  checked before the job counts as done.
+- A goal (`/goal`) keeps one agent working, round after round, until a judge says that what
+  you asked for is reached ([agents.md](agents.md), "Goal mode").
 - `publish_event` lets an agent put an event on a topic you allowed, which routes then act on.
 - `send` lets an agent reach out through a source that can send: a message to you on Telegram,
   a command to a device over MQTT.
@@ -198,7 +208,7 @@ How content entered decides what it can do. See [security.md](security.md) for a
 
 | Content | Arrives as | Runs with |
 |---|---|---|
-| Your message in the terminal UI or from your paired Telegram account, `pine send`, a schedule (yours, or one an agent made at your wish) | `owner` | The agent's full tool set, in the named session |
+| Your message in the terminal UI, in the Pine app or from your paired Telegram account, `pine send`, a schedule (yours, or one an agent made at your wish) | `owner` | The agent's full tool set, in the named session |
 | A webhook, an MQTT message, a new file, handled by a route | `untrusted` | The agent's `untrusted` profile (read-only tools by default), in a separate session |
 | An event of a source a conversation is subscribed to | framed as data; taints that conversation unless the source is marked as yours | The conversation's own tool set, but sending information out needs your approval. With `"separate": true` on the subscription: as the row above |
 | A web page, or the result of an MCP server marked `taints`, read during your own request | taints the session | Full tool set; from then on sending information out needs your approval |

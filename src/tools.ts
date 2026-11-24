@@ -1425,7 +1425,7 @@ ${truncate(skill.instructions, 1200)}`;
 					}
 					writeSkill(dir, skill);
 					await manager.refreshSessions(scope === "global" ? undefined : [agent.id]);
-					return ok(`${replaces ? "Replaced" : "Added"} the skill "${skill.name}" for ${whose(scope)}. It is at ${dir}/SKILL.md${skill.copy.length ? `, with ${skill.copy.length} file${skill.copy.length === 1 ? "" : "s"} beside it` : ""}. From your next message on it is listed among your skills; read that file when a task calls for it.`);
+					return ok(`${replaces ? "Replaced" : "Added"} the skill "${skill.name}" for ${whose(scope)}. It is at ${path.join(dir, "SKILL.md")}${skill.copy.length ? `, with ${skill.copy.length} file${skill.copy.length === 1 ? "" : "s"} beside it` : ""}. From your next message on it is listed among your skills; read that file when a task calls for it.`);
 				},
 			}),
 			defineTool({

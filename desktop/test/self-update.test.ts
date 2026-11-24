@@ -15,6 +15,9 @@ import { browserPlaces } from "../../src/browser-build.ts";
 import { launchApp } from "./support/app.ts";
 import { daemonGone, freePort, ours, waitForDaemon } from "./support/daemon.ts";
 
+/** The app updates itself on a Mac alone (macOS's updater); on Linux and Windows it links to the release (test/updates.test.ts). */
+const OFF_MAC = process.platform !== "darwin" && "the app updates itself on a Mac only";
+
 const root = path.resolve(import.meta.dirname, "..");
 const FEED = `https://github.com/pmndre/pine/releases/download/v9.9.9/Pine-${process.arch}.json`;
 let mock: any;
@@ -78,7 +81,7 @@ async function setUp(prefs: Record<string, unknown>, outcome: "ready" | "failed"
 
 const RESTART = "[data-slot=sidebar-footer] [data-sidebar=menu-button]:has-text('Restart to update')";
 
-test("a newer release is downloaded without a word, and Restart to update stops the pine the app started, kept or not, then installs", async () => {
+test("a newer release is downloaded without a word, and Restart to update stops the pine the app started, kept or not, then installs", { skip: OFF_MAC }, async () => {
 	const t = await setUp({ keepRunning: true });
 	const { app, page } = await t.launch();
 	assert.match((await page.textContent("[data-slot=service-status]")) ?? "", /started here/);
@@ -94,9 +97,10 @@ test("a newer release is downloaded without a word, and Restart to update stops 
 	assert.ok(await daemonGone(t.port, t.home), "the pine the app started was left running on the old version");
 });
 
-test("a pine the app only attached to is left alone by an update, and quitting with one ready installs it", async () => {
+test("a pine the app only attached to is left alone by an update, and quitting with one ready installs it", { skip: OFF_MAC }, async () => {
 	const t = await setUp({});
-	const daemon: ChildProcess = spawn(process.execPath, [path.join(root, "..", "bin", "pine.js"), "start", "--home", t.home], { stdio: "ignore" });
+	// With the browser of the web tools the app is told of too: the daemon is the one that looks for it.
+	const daemon: ChildProcess = spawn(process.execPath, [path.join(root, "..", "bin", "pine.js"), "start", "--home", t.home], { stdio: "ignore", env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: path.join(t.home, "browsers") } });
 	try {
 		await waitForDaemon(t.port, t.home);
 		const { app, page } = await t.launch();
@@ -108,6 +112,8 @@ test("a pine the app only attached to is left alone by an update, and quitting w
 		const second = await t.launch();
 		await second.page.waitForSelector(RESTART, { timeout: 20_000 });
 		const exit = t.closed(second.app);
+		// (A dialog in front would take the click: said by its words, not as a click that times out.)
+		assert.equal(await second.page.$eval("[data-slot=dialog-content]", (e: Element) => e.textContent).catch(() => null), null, "no dialog in front");
 		await second.page.click(RESTART);
 		await exit;
 		assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download", "install-on-quit", "download", "install"]);
@@ -118,7 +124,7 @@ test("a pine the app only attached to is left alone by an update, and quitting w
 	}
 });
 
-test("with Update automatically off the release page is offered and nothing is downloaded; a download that fails says so in one line, with the link", async () => {
+test("with Update automatically off the release page is offered and nothing is downloaded; a download that fails says so in one line, with the link", { skip: OFF_MAC }, async () => {
 	const t = await setUp({ autoUpdate: false }, "failed");
 	const { app, page } = await t.launch();
 	await page.waitForSelector("[data-slot=sidebar-footer] >> text=Pine 9.9.9 is available", { timeout: 20_000 });
@@ -151,7 +157,7 @@ async function setToWork(page: any, ms: number, words: string) {
 	await page.waitForSelector(WORKING, { timeout: 20_000 });
 }
 
-test("Restart to update while an agent works warns how many are at work: Cancel does nothing, and a wait for the end can be called off", async () => {
+test("Restart to update while an agent works warns how many are at work: Cancel does nothing, and a wait for the end can be called off", { skip: OFF_MAC }, async () => {
 	const t = await setUp({});
 	const { app, page } = await t.launch();
 	await page.waitForSelector(RESTART, { timeout: 20_000 });
@@ -185,7 +191,7 @@ test("Restart to update while an agent works warns how many are at work: Cancel 
 	assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download", "install"]);
 });
 
-test("Restart now in the warning installs at once, with the agent still at work", async () => {
+test("Restart now in the warning installs at once, with the agent still at work", { skip: OFF_MAC }, async () => {
 	const t = await setUp({});
 	const { app, page } = await t.launch();
 	await page.waitForSelector(RESTART, { timeout: 20_000 });
@@ -197,7 +203,7 @@ test("Restart now in the warning installs at once, with the agent still at work"
 	assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download", "install"]);
 });
 
-test("an install that fails after Restart to update starts the app's pine again and offers the release page", async () => {
+test("an install that fails after Restart to update starts the app's pine again and offers the release page", { skip: OFF_MAC }, async () => {
 	const t = await setUp({}, "ready", "failed");
 	const { app, page } = await t.launch();
 	await page.waitForSelector(RESTART, { timeout: 20_000 });
@@ -211,7 +217,7 @@ test("an install that fails after Restart to update starts the app's pine again 
 	await app.close();
 });
 
-test("with an update downloaded, turning Update automatically off offers the release page instead of Restart to update", async () => {
+test("with an update downloaded, turning Update automatically off offers the release page instead of Restart to update", { skip: OFF_MAC }, async () => {
 	const t = await setUp({});
 	const { app, page } = await t.launch();
 	await page.waitForSelector(RESTART, { timeout: 20_000 });
