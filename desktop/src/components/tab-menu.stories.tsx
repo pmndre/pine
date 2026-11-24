@@ -63,3 +63,12 @@ export const OffMac: Story = {
 		await expect(await within(document.body).findByText("Ctrl+W")).toBeInTheDocument();
 	},
 };
+
+/** On desktop, where multiple windows are supported: Move to New Window is offered for a conversation tab. */
+export const MoveToNewWindow: Story = {
+	args: { trigger: tab("scout", "the landing page"), pin: "pin", moveToWindow: true, onAction: fn() },
+	play: async (context) => {
+		await rightClick!(context);
+		await expect(await within(document.body).findByRole("menuitem", { name: "Move to New Window" })).toBeInTheDocument();
+	},
+};
