@@ -58,7 +58,9 @@ const tag = `v${version}`;
 if (process.env.GITHUB_ACTIONS) {
 	// A release's notes say what changed since the release before it, not since the last preview.
 	const since = !preview && published && attempt("git", ["rev-parse", "--verify", "--quiet", `refs/tags/v${published}`]) ? ["--notes-start-tag", `v${published}`] : [];
-	execFileSync("gh", ["release", "create", tag, "--target", process.env.GITHUB_SHA, "--title", tag, "--generate-notes", ...since, ...(preview ? ["--prerelease"] : [])], { cwd: root, stdio: "inherit" });
+	// SignPath Foundation, which signs the Windows app, asks that every download page links the code signing policy.
+	const policy = preview ? [] : ["--notes", "The Pine app for Windows is signed: [code signing policy](https://github.com/pmndre/pine#code-signing-policy)."];
+	execFileSync("gh", ["release", "create", tag, "--target", process.env.GITHUB_SHA, "--title", tag, "--generate-notes", ...policy, ...since, ...(preview ? ["--prerelease"] : [])], { cwd: root, stdio: "inherit" });
 	// For the jobs that follow in the workflow: the app is built for a release, with its version.
 	if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\nchannel=${preview ? "next" : "latest"}\n`);
 } else {

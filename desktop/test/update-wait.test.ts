@@ -14,6 +14,9 @@ import { browserPlaces } from "../../src/browser-build.ts";
 import { launchApp } from "./support/app.ts";
 import { freePort } from "./support/daemon.ts";
 
+/** The app updates itself on a Mac alone (macOS's updater); on Linux and Windows it links to the release (test/updates.test.ts). */
+const OFF_MAC = process.platform !== "darwin" && "the app updates itself on a Mac only";
+
 let mock: any;
 let github: http.Server;
 let releases: string;
@@ -25,6 +28,7 @@ const write = (file: string, content: string) => {
 };
 
 before(async () => {
+	if (OFF_MAC) return;
 	mock = await startMock({ strip: /<pine-note>[\s\S]*?<\/pine-note>\s*/g });
 	github = http.createServer((_req, res) => {
 		const assets = ["Pine-9.9.9-arm64.dmg", "Pine-9.9.9-x64.dmg", "Pine-arm64.json", "Pine-x64.json"].map((name) => ({ name, browser_download_url: `https://example.invalid/${name}` }));
@@ -36,6 +40,7 @@ before(async () => {
 });
 
 after(async () => {
+	if (OFF_MAC) return;
 	github?.close();
 	await mock?.close?.().catch(() => {});
 	if (home) fs.rmSync(home, { recursive: true, force: true });
@@ -45,7 +50,7 @@ const RESTART = "[data-slot=sidebar-footer] [data-sidebar=menu-button]:has-text(
 const PENDING = "[data-slot=sidebar-footer] [data-sidebar=menu-button]:has-text('Restarts when the work is done')";
 const WARNING = "[data-slot=alert-dialog-content]";
 
-test("while an update waits for the work to end, Settings > General and the update dialog show the wait and call it off, and offer no second restart", async () => {
+test("while an update waits for the work to end, Settings > General and the update dialog show the wait and call it off, and offer no second restart", { skip: OFF_MAC }, async () => {
 	const port = await freePort();
 	write(path.join(home, "models.json"), JSON.stringify({ providers: { mock: { name: "Mock", baseUrl: mock.baseUrl, api: "openai-completions", apiKey: "sk-mock", models: [{ id: "m", name: "Mock", contextWindow: 128000, maxTokens: 4096, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } }));
 	write(path.join(home, "pine.json"), JSON.stringify({ http: { host: "127.0.0.1", port }, defaults: { model: "mock/m", mode: "safe", introduce: false } }));

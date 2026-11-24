@@ -613,8 +613,9 @@ test("mail, signed in at Microsoft: the owner is shown a code, pine logs in with
 	await until(() => h.pine.approvals.pending().length === 1, 4000, "the owner to be asked");
 	assert.match(h.pine.sources.list()[0].status ?? "", /^waiting for you to sign in: open https:\/\/microsoft\.com\/devicelogin and enter the code ABCD-EFGH$/);
 	assert.equal(h.pine.sources.list()[0].running, true);
-	await sleep(60);
-	assert.ok(ms.state.asked.filter((q) => q.grant_type).length >= 2 && imap.seen.length === 0, "Microsoft is asked again and again, and the mailbox is left alone until it says yes");
+	// (Waited for, not slept for: Windows' timers are coarser than the interval the stand-in sets.)
+	await until(() => ms.state.asked.filter((q) => q.grant_type).length >= 2, 4000, "Microsoft to be asked again");
+	assert.equal(imap.seen.length, 0, "the mailbox is left alone until Microsoft says yes");
 	ms.state.signedIn = true;
 	h.pine.bus.subscribe("approval/requested", (e) => void asked.push(e.payload));
 	const events = (): any[] => h.pine.bus.query({ topic: "source/outlook/#" }).sort((a: any, b: any) => a.id - b.id);

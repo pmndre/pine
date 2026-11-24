@@ -36,6 +36,8 @@ const PROTECTED_HOME = [
 	".zshrc", ".zshenv", ".zprofile", ".zlogin", ".bashrc", ".bash_profile", ".bash_login", ".profile", ".envrc",
 	".config/fish", ".ssh", ".gnupg", ".aws", ".azure", ".kube", ".config/gcloud", ".docker/config.json", ".netrc", ".npmrc", ".yarnrc", ".yarnrc.yml", ".pypirc",
 	".gitconfig", ".config/git", "Library/LaunchAgents", ".config/systemd", ".config/autostart",
+	// Windows: what PowerShell runs at its start, and what Windows starts at sign-in.
+	"Documents/PowerShell", "Documents/WindowsPowerShell", "AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup",
 ];
 /** Parts of a path that mean the same anywhere: a repository's hooks and configuration run programs for whoever uses git there. */
 const PROTECTED_ANYWHERE = /(^|\/)\.git\/(hooks(\/|$)|config$)|(^|\/)\.husky(\/|$)/;
@@ -45,7 +47,8 @@ const PROTECTED_IN_COMMAND = /(^|[\s"'=/~])(\.(zshrc|zshenv|zprofile|bashrc|bash
 /** Whether a file is one of the protected ones. */
 export function isProtectedPath(p: string): boolean {
 	const home = realish(os.homedir());
-	if (PROTECTED_ANYWHERE.test(p)) return true;
+	// (A path of Windows says the same with its own separator.)
+	if (PROTECTED_ANYWHERE.test(p.replace(/\\/g, "/"))) return true;
 	return PROTECTED_HOME.some((rel) => isInside(path.join(home, rel), p));
 }
 
@@ -84,7 +87,7 @@ export function readOnlyCommand(command: string): boolean {
 export function criticalCommand(command: string): string | undefined {
 	const c = command;
 	if (/\b(curl|wget|fetch)\b[^|;&\n]*\|\s*(sudo\s+)?(ba|z|da|k)?sh\b|\b(curl|wget)\b[^|;&\n]*\|\s*(sudo\s+)?(python\d?|node|perl|ruby)\b/.test(c)) return "downloads a program and runs it in one step";
-	if (/\brm\s+(-[a-zA-Z]*\s+)*-[a-zA-Z]*[rR][a-zA-Z]*\s+(-[a-zA-Z]*\s+)*["']?(\/|~|\$HOME|\/Users\/[^/\s"']+|\/home\/[^/\s"']+)\/?["']?(\s|$)/.test(c)) return "deletes a home folder or the whole disk";
+	if (/\brm\s+(-[a-zA-Z]*\s+)*-[a-zA-Z]*[rR][a-zA-Z]*\s+(-[a-zA-Z]*\s+)*["']?(\/|~|\$HOME|\/Users\/[^/\s"']+|\/home\/[^/\s"']+|[A-Za-z]:[\\/]?|[A-Za-z]:[\\/]Users[\\/][^\\/\s"']+|\/[a-z]\/Users\/[^/\s"']+|\/[a-z])[\\/]?["']?(\s|$)/i.test(c)) return "deletes a home folder or the whole disk";
 	if (/\bgit\s+push\b[^\n;&|]*(\s--force\b|\s-f\b|\s--force-with-lease\b|\s\+\S)/.test(c)) return "rewrites what was pushed (force push)";
 	if (/\bgit\s+(reset\s+--hard|clean\s+-[a-zA-Z]*f|checkout\s+--\s+\.|restore\s+\.)/.test(c)) return "throws away changes that were not committed";
 	if (/\bsudo\b/.test(c)) return "runs with administrator rights";

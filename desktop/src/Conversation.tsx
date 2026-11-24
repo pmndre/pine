@@ -40,7 +40,7 @@ import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
 import { type Item, type Part, type QuoteSource, quoteId, type Steer, splitQuotes, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
-import { childKind, clock, count, MODES, oneLine, plural, short, speedText, tilde, took } from "./text.ts";
+import { childKind, clock, count, MODES, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
 
 /** A note's tone is information (a warning, a failure), so it colors the note's icon. */
@@ -611,7 +611,7 @@ function Checkpoint({ tab }: { tab: Tab }) {
 					<TooltipTrigger render={<Button size="xs" variant="outline" onClick={() => void store.undo(tab, false)} />}>Take back</TooltipTrigger>
 					<TooltipContent>
 						Undo your last message. Files the agent changed for it go back to how they were, the agent's answer is removed, and what you wrote goes back into the message box so you can edit it and send it again.
-						<Kbd>⇧⌘Z</Kbd>
+						<Kbd>{shortcut("⇧⌘Z")}</Kbd>
 					</TooltipContent>
 				</HoverTooltip>
 			</MarkerContent>
@@ -778,11 +778,11 @@ function FindBar({ root, close, initial }: { root: () => HTMLElement | null; clo
 				{query ? <InputGroupText>{count ? `${at + 1} of ${count}` : "nothing"}</InputGroupText> : null}
 				<HoverTooltip>
 					<TooltipTrigger render={<InputGroupButton size="icon-xs" onClick={() => step(-1)} aria-label="Earlier" />}><ArrowUpIcon /></TooltipTrigger>
-					<TooltipContent>Earlier<Kbd>↩</Kbd></TooltipContent>
+					<TooltipContent>Earlier<Kbd>{shortcut("↩")}</Kbd></TooltipContent>
 				</HoverTooltip>
 				<HoverTooltip>
 					<TooltipTrigger render={<InputGroupButton size="icon-xs" onClick={() => step(1)} aria-label="Later" />}><ChevronDownIcon /></TooltipTrigger>
-					<TooltipContent>Later<Kbd>⇧↩</Kbd></TooltipContent>
+					<TooltipContent>Later<Kbd>{shortcut("⇧↩")}</Kbd></TooltipContent>
 				</HoverTooltip>
 				<HoverTooltip>
 					<TooltipTrigger render={<InputGroupButton size="icon-xs" onClick={close} aria-label="Close" />}><XIcon /></TooltipTrigger>

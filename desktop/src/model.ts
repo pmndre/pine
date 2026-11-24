@@ -9,7 +9,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
 import { type AgentInfo, api, type Approval, type Conversation, type GoalInfo, type SwarmInfo, type GroupList, media, type WorktreeMade, type BoardBrief, type PineEvent, type Program, type Stats, type Task, type Todo, type TranscriptEntry } from "./api.ts";
 import { bridge, type Prefs, type ServiceState, type Update } from "./bridge.ts";
-import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, MODES, oneLine, plural, short, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
+import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, MODES, oneLine, plural, short, shortcut, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
 import { runnable } from "./runnable.ts";
 import { computerWord, deviceWord, homeScreenKeeps, httpService, isPaired, machineName, machinesView, pairingEnded, readPairLink, type MachinesViewName, type NearbyComputer, type PairLink } from "./machines.ts";
 import { applyLook, cleanLook, type ThemeEntry } from "./theme.ts";
@@ -2016,7 +2016,7 @@ export class Store extends Model {
 				mine.steer ??= { task, into: steered };
 				mine.v++;
 				tab.awaiting = tab.awaiting.filter((p) => p !== text);
-				this.flash("Given to the agent while it works. ⌥↩ makes a message wait until the agent is done instead.", "muted", 3000);
+				this.flash(`Given to the agent while it works. ${shortcut("⌥↩")} makes a message wait until the agent is done instead.`, "muted", 3000);
 			} else if (busy) this.flash("Queued: it is answered when the agent is done with the current work.", "muted", 3000);
 		} catch (e) {
 			tab.awaiting = tab.awaiting.filter((p) => p !== text);

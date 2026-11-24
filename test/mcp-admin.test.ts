@@ -205,7 +205,7 @@ test("a server that only one conversation has: the agent is told where it is, an
 test("setup by tool call: for the conversation by default, for the agent when asked, for everyone only by the main agent; and it is taken away again", async (t) => {
 	const stub = await httpMcp();
 	t.after(() => stub.close());
-	const project = fs.mkdtempSync(path.join(fs.realpathSync(process.env.HOME!), ".pine-test-setup-"));
+	const project = fs.mkdtempSync(path.join(fs.realpathSync(os.homedir()), ".pine-test-setup-"));
 	t.after(() => fs.rmSync(project, { recursive: true, force: true }));
 	const h = await harness({ pine: { main: "main" }, agents: { main: {}, gonzo: {} } });
 	const asked: any[] = [];

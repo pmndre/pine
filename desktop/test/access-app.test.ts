@@ -55,12 +55,17 @@ before(async () => {
 	// The stand-in phone uses a pairing link 4 s after it is opened: time for the window's test to read the QR code first.
 	app = await launchApp({ ...process.env, PLAYWRIGHT_BROWSERS_PATH: path.join(home, "browsers"), PINE_HOME: home, PINE_DESKTOP_DATA: data, PINE_SKIP_DOWNLOADS: "1", PINE_DESKTOP_DEV_URL: "", PINE_DESKTOP_RELEASES: "", PINE_DESKTOP_ACCESS_STAND_IN: "4000" });
 	page = await app.firstWindow();
-	await app.evaluate(({ app, Notification }: any) => {
+	await app.evaluate(({ app, BrowserWindow, Notification }: any) => {
 		const noted = ((globalThis as any).noted = { login: [] as unknown[], notified: [] as unknown[] });
 		app.setLoginItemSettings = (settings: unknown) => void noted.login.push(settings);
 		Notification.prototype.show = function (this: any) {
 			noted.notified.push({ title: this.title, body: this.body });
 		};
+		// What the app does while its window is not in front, also where the tests show it (the virtual
+		// screen of Linux, where a window that is never shown gets no keys) and where the system has no
+		// notifications of its own to offer (a virtual screen has none).
+		Notification.isSupported = () => true;
+		BrowserWindow.prototype.isFocused = () => false;
 	});
 	await page.waitForFunction(() => Boolean((window as any).pine?.access));
 	await page.evaluate(() => {

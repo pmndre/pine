@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { shortcut } from "../text.ts";
 import { ContextMenu, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "@/components/ui/context-menu";
 
 export type TabMenuAction = "close" | "others" | "right" | "all" | "pin" | "unpin";
@@ -16,7 +17,7 @@ export function TabMenu({ trigger, pin, others = true, right = true, open, onAct
 			<ContextMenuContent aria-label="Tab" className="min-w-48">
 				<ContextMenuGroup>
 					<ContextMenuItem onClick={() => onAction("close")}>
-						Close<ContextMenuShortcut>⌘W</ContextMenuShortcut>
+						Close<ContextMenuShortcut>{shortcut("⌘W")}</ContextMenuShortcut>
 					</ContextMenuItem>
 					<ContextMenuItem disabled={!others} onClick={() => onAction("others")}>Close Others</ContextMenuItem>
 					<ContextMenuItem disabled={!right} onClick={() => onAction("right")}>Close to the Right</ContextMenuItem>

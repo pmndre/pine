@@ -19,10 +19,16 @@ import { api } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { COMMANDS, runSlash } from "./commands.ts";
 import { type Attachment, REASONING_ABOUT, store, type Tab, useModel, useSignal } from "./model.ts";
-import { baseName, MODES, size, tilde } from "./text.ts";
+import { baseName, MODES, shortcut, size, tilde } from "./text.ts";
 
 const MAX_FILE = 20 * 1024 * 1024;
 const MAX_FILES = 10;
+/**
+ * The systems on which the app listens (src/tui/voice.ts in its main process): not a phone. Where a
+ * piece is missing there (whisper.cpp on Linux, a recogniser for the language on Windows), the
+ * press says in a sentence what to install, and nothing is started.
+ */
+const DICTATES = ["darwin", "win32", "linux"];
 
 const toBase64 = (buf: ArrayBuffer) => {
 	const bytes = new Uint8Array(buf);
@@ -105,7 +111,7 @@ export function Composer({ tab }: { tab: Tab }) {
 	};
 	const dictate = async () => {
 		if (voice !== "off") return endVoice(false);
-		if (store.platform !== "darwin") return store.flash("Voice input needs a Mac: it uses the speech recognition macOS has on the device.");
+		if (!DICTATES.includes(store.platform)) return store.flash("Voice input needs macOS, Windows or Linux, which recognise speech on the computer itself.");
 		typed.current = tab.draft;
 		hearing.current = true;
 		setVoice("starting");
@@ -170,11 +176,18 @@ export function Composer({ tab }: { tab: Tab }) {
 		const before = text.slice(0, cursor);
 		const next = kind === "slash" ? `/${s.value} ` : `${before.replace(/@([^\s@]*)$/, `@${s.value} `)}`;
 		const whole = kind === "slash" ? next : next + text.slice(cursor);
+		const pos = kind === "slash" ? whole.length : next.length;
 		set(whole);
 		close();
+		// The caret goes after what was picked at once: a key typed before the next frame would land at the
+		// end, and the caret be put back in front of it. (React writes no value that the field already has.)
+		el.value = whole;
+		el.focus();
+		el.setSelectionRange(pos, pos);
+		// The list, closing, may still move it: put back once more, unless something was typed meanwhile.
 		requestAnimationFrame(() => {
+			if (el.value !== whole) return;
 			el.focus();
-			const pos = kind === "slash" ? whole.length : next.length;
 			el.setSelectionRange(pos, pos);
 		});
 	};
@@ -480,12 +493,12 @@ export function Composer({ tab }: { tab: Tab }) {
 							</HoverTooltip>
 						) : null}
 						<span className="ml-auto" />
-						{store.platform === "darwin" ? (
+						{DICTATES.includes(store.platform) ? (
 							<HoverTooltip>
 								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant={voice !== "off" ? "destructive" : "ghost"} onClick={() => void dictate()} aria-label={voice === "off" ? "Dictate the message" : "End the listening"} />}><MicIcon /></TooltipTrigger>
 								<TooltipContent>
 									{voice === "off" ? "Dictate the message" : "End the listening"}
-									{voice === "off" ? <Kbd>⌃R</Kbd> : null}
+									{voice === "off" ? <Kbd>{shortcut("⌃R")}</Kbd> : null}
 								</TooltipContent>
 							</HoverTooltip>
 						) : null}
@@ -501,10 +514,10 @@ export function Composer({ tab }: { tab: Tab }) {
 							<HoverTooltip>
 								{/* Said as disabled, not disabled: a disabled button inside an InputGroup dims the whole
 								    composer (`has-disabled:`). With nothing to send, `send` does nothing. */}
-								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} aria-disabled={(!text.trim() && !tab.quotes.length) || undefined} aria-label={tab.busy ? "Give it to the agent while it works · ⌥↩ waits until it is done" : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
+								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} aria-disabled={(!text.trim() && !tab.quotes.length) || undefined} aria-label={tab.busy ? `Give it to the agent while it works · ${shortcut("⌥↩")} waits until it is done` : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
 								<TooltipContent>
-									{tab.busy ? "Give it to the agent while it works · ⌥↩ waits until it is done" : "Send"}
-									<Kbd>↩</Kbd>
+									{tab.busy ? `Give it to the agent while it works · ${shortcut("⌥↩")} waits until it is done` : "Send"}
+									<Kbd>{shortcut("↩")}</Kbd>
 								</TooltipContent>
 							</HoverTooltip>
 						)}

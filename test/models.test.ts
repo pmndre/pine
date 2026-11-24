@@ -7,7 +7,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { loadConfig } from "../src/config.ts";
 import { addModelServer, checkServerName, effortMap, listModelServers, lookAt, modelKeyName, modelKeys, removeModelServer, serverUrl } from "../src/models.ts";
-import { harness, MCP_STUB, mockMsg } from "./support/harness.ts";
+import { assertPrivate, harness, MCP_STUB, mockMsg } from "./support/harness.ts";
 
 const run = promisify(execFile);
 const CLI = path.resolve(import.meta.dirname, "../src/cli.ts");
@@ -186,7 +186,7 @@ test("a server is written by pine and taken out again without a trace; its key i
 	});
 	assert.ok(!fs.readFileSync(file, "utf8").includes("typed-by-the-owner"));
 	assert.equal(fs.readFileSync(env, "utf8"), "OTHER=stays\nPINE_MODEL_STUDIO_API_KEY=typed-by-the-owner\n");
-	assert.equal(fs.statSync(env).mode & 0o777, 0o600);
+	assertPrivate(env, 0o600);
 	assert.deepEqual(modelKeys(h.home), { keys: { studio: "typed-by-the-owner" }, problems: [] });
 	assert.throws(() => addModelServer(h.home, { name: "studio", baseUrl: "http://other:1/v1", key: "another", models: [models[0]] }), /exists already/);
 	assert.match(fs.readFileSync(env, "utf8"), /typed-by-the-owner/, "and the key of the one that is there stays");
@@ -248,7 +248,7 @@ test("the main agent signs pine in to a model provider and out again: the owner 
 	const field = asked.find((r) => r.inputs)?.inputs?.[0];
 	assert.deepEqual([field?.name, field?.secret], ["answer", true], JSON.stringify(asked));
 	assert.ok(auth().opencode, "the credential is in auth.json");
-	assert.equal(fs.statSync(path.join(h.home, "auth.json")).mode & 0o777, 0o600);
+	assertPrivate(path.join(h.home, "auth.json"));
 	assert.ok(!JSON.stringify(h.mock.state.requests).includes(KEY), "the key is in no request to the model");
 	assert.ok(!h.logs.join("\n").includes(KEY), "and in no log line");
 	assert.ok(!asked.some((r) => JSON.stringify(r).includes(KEY)), "and in no question");

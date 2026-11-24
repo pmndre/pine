@@ -1,8 +1,9 @@
 // Whether there is a newer Pine app than this one. GitHub is asked for pine's last release. When
-// there is one, the app downloads it from that release's own assets and installs it with macOS's
-// updater (electron/updater.ts), only when the owner restarts or quits the app; with the setting
-// off, from a checkout or where that fails, the owner gets a link to the release's page instead.
-// The question says nothing about this computer or this pine.
+// there is one, the app on a Mac downloads it from that release's own assets and installs it with
+// macOS's updater (electron/updater.ts), only when the owner restarts or quits the app; on Linux and
+// Windows, with the setting off, from a checkout or where that fails, the owner gets a link to the
+// release's page instead and downloads the app there (an AppImage or an installer). The question
+// says nothing about this computer or this pine.
 
 /** Where the releases are, for the owner's browser. */
 export const RELEASES = "https://github.com/pmndre/pine/releases";
@@ -11,11 +12,11 @@ export const LATEST = "https://api.github.com/repos/pmndre/pine/releases/latest"
 
 export type Update =
 	/**
-	 * A release ahead of this app, with the app and the update feed for this kind of Mac attached.
-	 * `url`: its page; `feed`: what macOS's updater reads. `updater`: how the app's own update of it
-	 * goes, where the app updates itself (the main process adds it).
+	 * A release ahead of this app, with the app for this system and processor attached, and on a Mac
+	 * its update feed. `url`: its page; `feed`: what macOS's updater reads (a Mac only). `updater`: how
+	 * the app's own update of it goes, where the app updates itself (the main process adds it).
 	 */
-	| { status: "newer"; mine: string; version: string; url: string; feed: string; updater?: UpdaterState }
+	| { status: "newer"; mine: string; version: string; url: string; feed?: string; updater?: UpdaterState }
 	| { status: "latest"; mine: string }
 	/** Nobody answered, or not with a release. */
 	| { status: "unknown"; mine: string };
@@ -48,13 +49,25 @@ export function ahead(release: string, mine: string): boolean {
 }
 
 /**
+ * The file of a release that is the app for a system and a processor (`arch`, arm64 or x64), as
+ * desktop/scripts/pack.mjs names it: a disk image for a Mac, an AppImage for Linux (its .deb comes
+ * with it), an installer for Windows. None for another system.
+ */
+export function appFile(version: string, arch: string, platform: string): string | undefined {
+	if (platform === "darwin") return `Pine-${version}-${arch}.dmg`;
+	if (platform === "linux") return `Pine-${version}-${arch}.AppImage`;
+	if (platform === "win32") return `Pine-${version}-${arch}-setup.exe`;
+	return undefined;
+}
+
+/**
  * Ask for the last release and compare. Of the answer only the release's number is used, and
  * only when it is one: the link and the feed's address are made here, to GitHub, never taken from
- * what was answered. A release counts once its disk image and its update feed for this kind of Mac
- * (`arch`) are attached, which is some minutes after pine itself is published, and never when that
- * app could not be built. `downloads` is where the feed is made on (feedOf).
+ * what was answered. A release counts once its app for this system and processor (`appFile`) is
+ * attached, and on a Mac its update feed too, which is some minutes after pine itself is published,
+ * and never when that app could not be built. `downloads` is where the feed is made on (feedOf).
  */
-export async function lookForUpdate(mine: string, arch: string = process.arch, from: string = LATEST, downloads: string = DOWNLOADS): Promise<Update> {
+export async function lookForUpdate(mine: string, arch: string = process.arch, from: string = LATEST, downloads: string = DOWNLOADS, platform: string = process.platform): Promise<Update> {
 	try {
 		const res = await fetch(from, { headers: { accept: "application/vnd.github+json", "user-agent": "Pine" }, signal: AbortSignal.timeout(15_000) });
 		if (!res.ok) return { status: "unknown", mine };
@@ -62,8 +75,12 @@ export async function lookForUpdate(mine: string, arch: string = process.arch, f
 		const version = typeof said.tag_name === "string" ? /^v(\d{1,5}\.\d{1,5}\.\d{1,5})$/.exec(said.tag_name)?.[1] : undefined;
 		if (!version) return { status: "unknown", mine };
 		const names = Array.isArray(said.assets) ? said.assets.map((a) => (a as { name?: unknown } | null)?.name) : [];
-		const attached = names.includes(`Pine-${version}-${arch}.dmg`) && names.includes(feedName(arch));
-		return attached && ahead(version, mine) ? { status: "newer", mine, version, url: `${RELEASES}/tag/v${version}`, feed: feedOf(version, arch, downloads) } : { status: "latest", mine };
+		const file = appFile(version, arch, platform);
+		// A Mac updates itself from the feed, and a release without one is not its update yet.
+		const mac = platform === "darwin";
+		const attached = Boolean(file) && names.includes(file) && (!mac || names.includes(feedName(arch)));
+		if (!attached || !ahead(version, mine)) return { status: "latest", mine };
+		return { status: "newer", mine, version, url: `${RELEASES}/tag/v${version}`, ...(mac ? { feed: feedOf(version, arch, downloads) } : {}) };
 	} catch {
 		return { status: "unknown", mine };
 	}

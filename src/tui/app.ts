@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	CombinedAutocompleteProvider,
 	type Component,
@@ -314,7 +315,8 @@ export function droppedFiles(text: string, folders = false): string[] | null {
 			if (ch === quote) quote = "";
 			else cur += ch;
 		} else if (ch === "'" || ch === '"') quote = ch;
-		else if (ch === "\\" && i + 1 < text.length) cur += text[++i];
+		// (On Windows a backslash is the path's own separator, and a terminal quotes a path with spaces instead.)
+		else if (ch === "\\" && i + 1 < text.length && process.platform !== "win32") cur += text[++i];
 		else if (/\s/.test(ch)) {
 			if (cur) tokens.push(cur);
 			cur = "";
@@ -326,7 +328,7 @@ export function droppedFiles(text: string, folders = false): string[] | null {
 	for (const t of tokens) {
 		let file = t;
 		try {
-			if (t.startsWith("file://")) file = decodeURIComponent(new URL(t).pathname);
+			if (t.startsWith("file://")) file = fileURLToPath(t);
 		} catch {
 			return null;
 		}

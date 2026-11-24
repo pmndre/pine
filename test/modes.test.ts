@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { pineOwn } from "../src/actions.ts";
+import { reaches } from "../src/access.ts";
 import { loadConfig } from "../src/config.ts";
 import { audit, levelOf, rootsFor, sandboxAvailable, sandboxRecheck, shellEnv } from "../src/security.ts";
 import { harness, MCP_STUB, mockMsg, notesOf, textOf, until, refused } from "./support/harness.ts";
@@ -304,7 +305,7 @@ test("bypass does not survive outside content, and never applies to runs started
 	await h2.close();
 });
 
-test("the mode can be changed while the daemon runs, and a wrong mode is a configuration error", async () => {
+test("the mode can be changed while the daemon runs, and a wrong mode is a configuration error", { skip: process.platform === "win32" && "describes an agent in safe mode, which needs a sandbox Windows does not have (docs/adr/0004-three-systems.md)" }, async () => {
 	const h = await harness({ pine: { http: { port: 0 } }, agents: { main: {} } });
 	const api = async (url: string, body?: unknown) => {
 		const res = await fetch(`http://127.0.0.1:${h.pine.http!.port}${url}`, { method: body ? "POST" : "GET", headers: { authorization: `Bearer ${h.pine.token}`, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
@@ -613,24 +614,28 @@ test("auto mode runs a command without a sandbox, safe mode runs it in one", { s
 });
 
 test("without a sandbox, a command that names pine's own files, program or control port is not run", (t) => {
-	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-own-")));
+	// On Windows the paths as Git's bash writes them: with /, which it does not take as an escape.
+	const join = process.platform === "win32" ? path.posix.join : path.join;
+	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-own-"))).replace(/\\/g, process.platform === "win32" ? "/" : "\\");
 	t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-	const home = path.join(dir, ".pine");
-	const code = path.join(dir, "opt", "pine");
-	const workspace = path.join(home, "agents", "main", "workspace");
-	for (const d of [workspace, path.join(home, "sandbox", "main"), path.join(code, "src")]) fs.mkdirSync(d, { recursive: true });
-	const o = { home, own: [workspace, path.join(home, "sandbox", "main")], code, cwd: workspace, ownerHome: dir, port: 7463 };
-	const no = (command: string, why: RegExp) => assert.match(pineOwn(command, o) ?? "", why, command);
+	const home = join(dir, ".pine");
+	const code = join(dir, "opt", "pine");
+	const workspace = join(home, "agents", "main", "workspace");
+	for (const d of [workspace, join(home, "sandbox", "main"), join(code, "src")]) fs.mkdirSync(d, { recursive: true });
+	const o = { home, own: [workspace, join(home, "sandbox", "main")], code, cwd: workspace, ownerHome: dir, port: 7463 };
+	const no = (command: string, why: RegExp) => assert.match(pineOwn(command, o) ?? "", why, `${command}\nread as: ${JSON.stringify(reaches(command, { cwd: o.cwd, shellHome: o.ownerHome, ownerHome: o.ownerHome }))}\nhome: ${o.home}`);
 	const yes = (command: string) => assert.equal(pineOwn(command, o), undefined, command);
 
 	// pine's home, however it is written: in full, from the owner's home, or from where the shell starts.
 	for (const c of [`cat ${home}/.env`, "cat ~/.pine/pine.json", `ls "$HOME/.pine/data"`, `grep -r token ${home}`, "ls ..", "cat ../agent.json", "cd ../.. && ls", `cp ${home}/data/http-token /tmp/t`]) no(c, /is part of pine itself, which is closed to every agent in every mode/);
+	// Windows does not tell paths apart by case: neither does the check.
+	if (process.platform === "win32") no(`cat ${home.toUpperCase()}/.env`, /is part of pine itself, which is closed to every agent in every mode/);
 	// The agent's own folders in it are its own, and a path with ".." after a cd is somewhere else.
 	for (const c of ["cat notes.txt", `ls ${workspace}/sub`, `echo x | tee ${home}/sandbox/main/tmp.txt`, "cd /somewhere/else && cat ../x", "ls ~ && ls ~/dev"]) yes(c);
 
 	// What the agent's event sources received lies in pine's home and is read all the same. It is
 	// not changed, what lies beside it stays closed, and without a subscription there is nothing to read.
-	const files = path.join(home, "data", "sources", "cam", "files");
+	const files = join(home, "data", "sources", "cam", "files");
 	const got = { ...o, received: [files] };
 	for (const c of [`ffmpeg -i ${files}/clip.mp4 frame.jpg`, `cp ${files}/clip.mp4 .`, `ls -la ${files}`, "file ~/.pine/data/sources/cam/files/clip.mp4"]) assert.equal(pineOwn(c, got), undefined, c);
 	for (const c of [`rm ${files}/clip.mp4`, `echo x > ${files}/clip.mp4`]) assert.match(pineOwn(c, got) ?? "", /is a file an event source received, which you can read and not change/, c);
@@ -651,7 +656,7 @@ test("without a sandbox, a command that names pine's own files, program or contr
 	assert.equal(pineOwn("curl localhost:7463", { ...o, port: undefined }), undefined, "no control API, no port to guard");
 });
 
-test("a machine without a sandbox: a mode nobody chose becomes auto, safe mode by hand has no shell, a run from outside has none either", async (t) => {
+test("a machine without a sandbox: a mode nobody chose becomes auto, safe mode by hand has no shell, a run from outside has none either", { skip: process.platform === "win32" && "it pretends to be another system, which on Windows takes Git's bash away too" }, async (t) => {
 	// A system pine has no sandbox for stands in for a container that was started without the rights for one.
 	const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
 	Object.defineProperty(process, "platform", { value: "freebsd" });

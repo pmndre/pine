@@ -10,7 +10,10 @@ export function editJson(file: string, change: (json: any) => void): void {
 	const json = JSON.parse(fs.readFileSync(file, "utf8"));
 	change(json);
 	const mode = fs.statSync(file).mode & 0o777;
-	fs.writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`, { mode });
+	// Whole or not at all: a reader (a UI, the daemon) never sees the file half written. (pine's home, which no agent writes.)
+	const tmp = `${file}.${process.pid}.tmp`;
+	fs.writeFileSync(tmp, `${JSON.stringify(json, null, 2)}\n`, { mode });
+	fs.renameSync(tmp, file);
 }
 
 const fileFor = (cfg: PineConfig, agentId?: string) => (agentId ? path.join(cfg.agents[agentId].dir, "agent.json") : path.join(cfg.home, "pine.json"));

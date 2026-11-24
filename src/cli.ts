@@ -173,7 +173,7 @@ async function agentCommand(cfg: PineConfig, argv: string[], out: (v: unknown) =
 	const daemon = async () => {
 		try {
 			const api = client(cfg);
-			if (!(await fetch(`${api.base}/health`, { signal: AbortSignal.timeout(800) })).ok) return undefined;
+			if (!(await fetch(`${api.base}/health`, { signal: AbortSignal.timeout(5000) })).ok) return undefined;
 			await api.get("/status");
 			return api;
 		} catch {
@@ -310,7 +310,7 @@ async function mcpCommand(cfg: PineConfig, argv: string[], out: (v: unknown) => 
 	const live = async (body: unknown): Promise<boolean> => {
 		try {
 			const api = client(cfg);
-			if (!(await fetch(`${api.base}/health`, { signal: AbortSignal.timeout(800) })).ok) return false;
+			if (!(await fetch(`${api.base}/health`, { signal: AbortSignal.timeout(5000) })).ok) return false;
 			await api.post("/mcp", body);
 			return true;
 		} catch (e) {
@@ -617,7 +617,7 @@ async function main(): Promise<void> {
 		const refreshed = async (): Promise<boolean> => {
 			try {
 				const api = client(cfg);
-				if (!(await fetch(`${api.base}/health`, { signal: AbortSignal.timeout(800) })).ok) return false;
+				if (!(await fetch(`${api.base}/health`, { signal: AbortSignal.timeout(5000) })).ok) return false;
 				await api.post("/models/refresh");
 				return true;
 			} catch {
@@ -701,7 +701,7 @@ async function main(): Promise<void> {
 			out(`  mcp        ${Object.keys(effectiveMcp(cfg, a)).join(", ") || "none"}`);
 			// App control is given by where pine runs and how far the agent reaches, not by the list above alone.
 			if (Object.values(effectiveMcp(cfg, a)).some((s) => s.pine === "computer")) {
-				out(`  apps       ${process.platform !== "darwin" ? "not on this system: app control works on macOS only" : !unsandboxed(levelOf(a)) ? "no: app control is for an agent in auto or bypass mode, which works with your whole account" : "it can operate the apps on this Mac in your own conversations; you are asked once per app"}`);
+				out(`  apps       ${!(await import("./computer.ts")).hasDesktop() ? (process.platform === "linux" ? "not here: app control works on Linux with an X11 desktop (DISPLAY set, not Wayland)" : "not on this system: app control works on macOS, Windows and Linux with X11") : !unsandboxed(levelOf(a)) ? "no: app control is for an agent in auto or bypass mode, which works with your whole account" : `it can operate the apps on this ${process.platform === "darwin" ? "Mac" : "computer"} in your own conversations; you are asked once per app`}`);
 			}
 			out(`  skills     ${listSkills(cfg, a, "main").map((s) => s.name).join(", ") || "none"}`);
 			out(`  delegates  ${delegatesText(cfg, a)}; sub-agents ${a.subagents.enabled ? `up to ${a.subagents.maxParallel}` : "off"}`);

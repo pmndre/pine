@@ -6,19 +6,23 @@ import path from "node:path";
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export function expandHome(p: string): string {
-	return p === "~" || p.startsWith("~/") ? path.join(os.homedir(), p.slice(1)) : p;
+	return p === "~" || p.startsWith("~/") || (process.platform === "win32" && p.startsWith("~\\")) ? path.join(os.homedir(), p.slice(1)) : p;
 }
 
 /** Where a command lies on the PATH, as a shell would find it; nothing where there is none. */
 export function onPath(name: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
-	for (const dir of (env.PATH ?? "").split(path.delimiter)) {
+	// Windows finds "npm" as npm.cmd: a program is named without the ending its PATHEXT lists.
+	const endings = process.platform === "win32" && !path.extname(name) ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
+	for (const dir of (env.PATH ?? env.Path ?? "").split(path.delimiter)) {
 		if (!dir) continue;
-		const file = path.join(dir, name);
-		try {
-			fs.accessSync(file, fs.constants.X_OK);
-			if (fs.statSync(file).isFile()) return file;
-		} catch {
-			// Not in this folder.
+		for (const ending of endings) {
+			const file = path.join(dir, name + ending.toLowerCase());
+			try {
+				fs.accessSync(file, fs.constants.X_OK);
+				if (fs.statSync(file).isFile()) return file;
+			} catch {
+				// Not in this folder.
+			}
 		}
 	}
 	return undefined;
@@ -137,15 +141,18 @@ export const errText = (e: unknown) => (e instanceof Error ? e.message : String(
 
 /** Hand a file or a web address to the system: the program the owner set for it opens it. Only ever on the owner's click. */
 export function openInSystem(target: string): void {
-	spawn(process.platform === "darwin" ? "open" : "xdg-open", [target], { stdio: "ignore", detached: true })
+	// On Windows explorer.exe, which takes the target as one argument: no shell reads it (cmd's start would).
+	spawn(process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer.exe" : "xdg-open", [target], { stdio: "ignore", detached: true, windowsHide: true })
 		.on("error", () => {})
 		.unref();
 }
 
 /** "vite --port 5173" from "node /Users/x/project/node_modules/.bin/vite --port 5173": what a person would call it. */
 export function programName(command: string, max = 60): string {
-	const words = command.trim().split(/\s+/);
-	const base = (w: string) => w.split("/").pop() || w;
+	// Windows writes the program by its path in quotes ("C:\\Program Files\\nodejs\\node.exe" x.js): that is one word.
+	const quoted = /^"([^"]+)"(.*)$/.exec(command.trim());
+	const words = quoted ? [quoted[1], ...quoted[2].trim().split(/\s+/).filter(Boolean)] : command.trim().split(/\s+/);
+	const base = (w: string) => (w.split(/[\\/]/).pop() || w).replace(/\.exe$/i, "");
 	// An interpreter in front of a script says less than the script.
 	if (words.length > 1 && /^(node|bun|deno|python[\d.]*|ruby|sh|bash|zsh)$/.test(base(words[0])) && !words[1].startsWith("-")) words.shift();
 	words[0] = base(words[0]);

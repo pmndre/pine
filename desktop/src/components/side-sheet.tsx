@@ -32,8 +32,9 @@ export function SideSheet({ id, slot, title, sheet, widthKey, defaultWidth, minS
 	const [width] = useState(() => Number(localStorage.getItem(widthKey)) || defaultWidth);
 	const frame = (
 		<div data-slot={slot} className={cn("flex min-w-0 flex-1 flex-col overflow-hidden bg-background", !sheet && "rounded-xl border")}>
-			{/* A sheet as wide as a phone-wide window reaches under the window's buttons at the top left on a Mac. */}
-			<div className={cn("flex h-10 flex-none items-center gap-1.5 border-b border-line-soft px-2", barClassName, sheet && "max-sm:pl-window-buttons")}>{bar}</div>
+			{/* A sheet as wide as a phone-wide window reaches under the window's buttons at the top left on a Mac; a sheet
+			    reaches under the system's window controls at the top right on Windows and Linux whatever its width. */}
+			<div className={cn("flex h-10 flex-none items-center gap-1.5 border-b border-line-soft px-2", barClassName, sheet && (document.documentElement.dataset.platform === "darwin" ? "max-sm:pl-window-buttons" : "pr-window-controls"))}>{bar}</div>
 			{children}
 		</div>
 	);

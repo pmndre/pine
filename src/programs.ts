@@ -7,6 +7,12 @@
 // A command can also be put into the background on purpose (the shell tool's `background`).
 // Then the daemon starts it itself, in the sandbox of its conversation, keeps a record of it in
 // pine's home and sees it end, so that its conversation can be told how. See `start`.
+//
+// Windows has no process groups, but Git's bash, which runs an agent's commands there, keeps
+// POSIX ones among its own processes, and its ps says them with each one's Windows process id. So
+// a command's shell notes its group as on the other systems; its members are found with Git's ps,
+// what they started outside Git's programs by following Windows' parent ids, and CIM says each
+// one's command line and age. A stop ends each member's tree (taskkill /T).
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -83,11 +89,15 @@ function isThere(pid: number): boolean {
 	}
 }
 
+const WINDOWS = process.platform === "win32";
+
 interface Row {
 	pid: number;
 	group: number;
 	seconds: number;
 	command: string;
+	/** Windows only: the process that started it, which may have gone. */
+	parent?: number;
 }
 
 /** "[[days-]hours:]minutes:seconds", as ps prints how long a process has run. */
@@ -96,8 +106,12 @@ export function elapsed(text: string): number {
 	return m ? Number(m[1] ?? 0) * 86400 + Number(m[2] ?? 0) * 3600 + Number(m[3]) * 60 + Number(m[4]) : 0;
 }
 
-/** Every process of this machine with its group. Empty when ps cannot be asked. */
-function processes(): Row[] {
+/**
+ * Every process of this machine with its group. Empty when ps cannot be asked. On Windows a
+ * process's group is the nearest of `ids` among those it descends from (0 for none).
+ */
+function processes(ids: Set<number> = new Set()): Row[] {
+	if (WINDOWS) return windowsProcesses(ids);
 	let out = "";
 	try {
 		out = execFileSync(bin("ps"), ["-Ao", "pid=,pgid=,etime=,command="], { encoding: "utf8", timeout: 5000, maxBuffer: 16 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
@@ -112,7 +126,130 @@ function processes(): Row[] {
 	return rows;
 }
 
-/** The TCP ports each of these processes listens on. lsof where there is one (macOS, most Linux systems), ss otherwise. */
+/** A path as Git's bash on Windows takes it: forward slashes. Elsewhere unchanged. */
+const forShell = (p: string) => (WINDOWS ? p.replace(/\\/g, "/") : p);
+
+const powershell = () => path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+
+/** Windows: every process with its parent, its age and its command line, through CIM, which the system answers without a program of pine's. */
+function cimProcesses(): Row[] {
+	let out = "";
+	try {
+		// Double quotes in PowerShell, where `t is a tab.
+		const script = '$now = Get-Date; Get-CimInstance Win32_Process | ForEach-Object { "{0}`t{1}`t{2}`t{3}" -f $_.ProcessId, $_.ParentProcessId, [int]($now - $_.CreationDate).TotalSeconds, ($_.CommandLine -replace "[`r`n`t]", " ") }';
+		out = execFileSync(powershell(), ["-NoProfile", "-NonInteractive", "-Command", script], { encoding: "utf8", timeout: 15_000, maxBuffer: 16 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+	} catch {
+		return [];
+	}
+	const rows: Row[] = [];
+	for (const line of out.split(/\r?\n/)) {
+		const [pid, parent, seconds, ...command] = line.split("\t");
+		if (/^\d+$/.test(pid ?? "")) rows.push({ pid: Number(pid), parent: Number(parent), seconds: Number(seconds) || 0, command: command.join("\t").trim(), group: 0 });
+	}
+	return rows;
+}
+
+/** One process as Git's ps on Windows says it: its own number, its group, and Windows' process id. */
+export interface MsysRow {
+	pid: number;
+	pgid: number;
+	win: number;
+}
+
+/** Git's ps ("PID PPID PGID WINPID TTY UID STIME COMMAND", a letter for its state in front). */
+export function msysRows(text: string): MsysRow[] {
+	const rows: MsysRow[] = [];
+	for (const line of text.split(/\r?\n/)) {
+		const m = /^\s*(?:[A-Za-z]\s+)?(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s/.exec(line);
+		if (m) rows.push({ pid: Number(m[1]), pgid: Number(m[3]), win: Number(m[4]) });
+	}
+	return rows;
+}
+
+/**
+ * Windows: the processes of the noted groups. `ids` are what was noted: the group of a command's
+ * shell (Git's number for it), or the Windows process id of a background command's shell, which
+ * the daemon started itself. A row's group is the id it was noted by; the shell that leads a group
+ * has that id as its number, so that "is the leader still there" reads as on the other systems.
+ */
+export function windowsGroups(msys: MsysRow[], cim: Row[], ids: Set<number>): Row[] {
+	const byWin = new Map(cim.map((r) => [r.pid, r]));
+	// Which of Git's groups each noted id stands for.
+	const noted = new Map<number, number>();
+	for (const id of ids) {
+		// A group by Git's number goes on after its shell has gone; one noted by a Windows id is found by its shell.
+		if (msys.some((m) => m.pgid === id)) noted.set(id, id);
+		else {
+			const shell = msys.find((m) => m.win === id && m.pid === m.pgid);
+			if (shell) noted.set(shell.pgid, id);
+		}
+	}
+	const rows: Row[] = [];
+	const member = new Map<number, number>();
+	for (const m of msys) {
+		const id = noted.get(m.pgid);
+		if (id === undefined) continue;
+		const c = byWin.get(m.win);
+		member.set(m.win, id);
+		rows.push({ pid: m.pid === m.pgid ? id : m.win, group: id, seconds: c?.seconds ?? 0, command: c?.command ?? "", parent: c?.parent });
+	}
+	// What a member started that is not one of Git's programs (node, python) is found by its parents.
+	const extra = grouped(
+		cim.filter((c) => !member.has(c.pid)).map((c) => ({ ...c, group: 0 })),
+		new Set(member.keys()),
+	);
+	for (const c of extra) if (c.group && member.has(c.group)) rows.push({ ...c, group: member.get(c.group)! });
+	return rows;
+}
+
+/** Windows: the processes of the noted groups, from Git's ps and CIM. Empty when either cannot be asked. */
+function windowsProcesses(ids: Set<number>): Row[] {
+	let text = "";
+	try {
+		text = execFileSync(bin("ps"), ["-a"], { encoding: "utf8", timeout: 10_000, maxBuffer: 16 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+	} catch {
+		return [];
+	}
+	const cim = cimProcesses();
+	if (!cim.length) return [];
+	return windowsGroups(msysRows(text), cim, ids);
+}
+
+/** Give each row the nearest of `ids` it descends from. A parent younger than its child is not its parent. */
+export function grouped(rows: Row[], ids: Set<number>): Row[] {
+	const by = new Map(rows.map((r) => [r.pid, r]));
+	for (const row of rows) {
+		let at: Row = row;
+		for (let i = 0; i < 64; i++) {
+			if (ids.has(at.pid)) {
+				row.group = at.pid;
+				break;
+			}
+			const up = at.parent === undefined ? undefined : by.get(at.parent);
+			if (!up || up.pid === at.pid || up.seconds < at.seconds) {
+				if (at.parent !== undefined && ids.has(at.parent) && !(up && up.seconds < at.seconds)) row.group = at.parent;
+				break;
+			}
+			at = up;
+		}
+	}
+	return rows;
+}
+
+/**
+ * Windows: end a process and everything it started. A program of the console (most of what a
+ * command starts) cannot be asked to close, only ended: taskkill without /F refuses it.
+ */
+function endTree(pid: number): boolean {
+	try {
+		execFileSync(path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "taskkill.exe"), ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", timeout: 10_000, windowsHide: true });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** The TCP ports each of these processes listens on. lsof where there is one (macOS, most Linux systems), ss otherwise, netstat on Windows. */
 function listening(pids: number[]): Map<number, number[]> {
 	const found = new Map<number, number[]>();
 	const add = (pid: number, port: number) => {
@@ -130,6 +267,15 @@ function listening(pids: number[]): Map<number, number[]> {
 			return String((e as { stdout?: unknown }).stdout ?? "");
 		}
 	};
+	if (WINDOWS) {
+		// "  TCP    0.0.0.0:5173    0.0.0.0:0    LISTENING    1234"
+		const netstat = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "NETSTAT.EXE");
+		for (const line of run(netstat, ["-ano", "-p", "TCP"]).concat("\n", run(netstat, ["-ano", "-p", "TCPv6"])).split(/\r?\n/)) {
+			const cols = line.trim().split(/\s+/);
+			if (cols[0] === "TCP" && cols[3] === "LISTENING") add(Number(cols[4]), Number(cols[1].slice(cols[1].lastIndexOf(":") + 1)));
+		}
+		return found;
+	}
 	// Neither lies where commands usually do.
 	const tool = (name: string) => ["/usr/sbin", "/usr/bin", "/sbin", "/bin", "/usr/local/bin"].map((d) => path.join(d, name)).find((f) => fs.existsSync(f));
 	const lsof = tool("lsof");
@@ -200,7 +346,7 @@ export class Programs {
 		if (this.running(o.conversation).length >= MAX_BACKGROUND) throw new Error(`${MAX_BACKGROUND} commands of this conversation are running in the background already. Stop one with stop_program, or go on when one has ended.`);
 		const token = `${Date.now().toString(36)}${(this.count++).toString(36)}`;
 		const shell = bin("bash");
-		const child = spawn(shell, ["-c", WATCH, "pine-background", this.record(token, "exit"), ...o.prefix, shell, "-c", RUN, shell, o.dir, `${token}.log`, o.command], { cwd: o.cwd, env: o.env, detached: true, stdio: "ignore" });
+		const child = spawn(shell, ["-c", WATCH, "pine-background", forShell(this.record(token, "exit")), ...o.prefix, shell, "-c", RUN, shell, forShell(o.dir), `${token}.log`, o.command], { cwd: o.cwd, env: o.env, detached: true, stdio: "ignore", windowsHide: true });
 		child.on("error", () => {});
 		if (!child.pid) throw new Error(`the command could not be started in ${o.cwd}`);
 		// The daemon does not wait for it, and it goes on when the daemon stops.
@@ -264,13 +410,19 @@ export class Programs {
 	 * is told now. A daemon calls this once, when `onEnded` is set.
 	 */
 	adopt(every = LOOK_EVERY_MS): void {
-		const all = processes();
 		let names: string[] = [];
 		try {
 			names = fs.readdirSync(path.join(this.dir, "background")).filter((n) => n.endsWith(".json"));
 		} catch {
 			// nothing was kept
 		}
+		const ids = new Set<number>();
+		for (const name of names) {
+			try {
+				ids.add(Number(JSON.parse(fs.readFileSync(path.join(this.dir, "background", name), "utf8"))?.id));
+			} catch {}
+		}
+		const all = names.length ? processes(ids) : [];
 		for (const name of names) {
 			let job: Background;
 			try {
@@ -351,7 +503,8 @@ export class Programs {
 	 * shell notes its own process group. It runs with the daemon's rights, so it is fixed text.
 	 */
 	note(conversation: string): string {
-		return `echo "$$" >> ${shq(this.file(conversation))}; `;
+		// (On Windows Git's bash's own number, which leads its group of Git's processes.)
+		return `echo "$$" >> ${shq(forShell(this.file(conversation)))}; `;
 	}
 
 	private groups(conversation: string): number[] {
@@ -366,7 +519,7 @@ export class Programs {
 	list(conversation: string): Program[] {
 		const groups = this.groups(conversation);
 		if (!groups.length) return [];
-		const all = processes();
+		const all = processes(new Set(groups));
 		// ps could not be asked: nothing can be said, and nothing is forgotten.
 		if (!all.length) return [];
 		const alive: number[] = [];
@@ -406,6 +559,7 @@ export class Programs {
 		if (!this.list(conversation).some((p) => p.id === id)) return false;
 		const job = this.running(conversation).find((j) => j.id === id);
 		const signal = (name: NodeJS.Signals) => {
+			if (WINDOWS) return this.endGroup(id);
 			try {
 				process.kill(-id, name);
 				return true;
@@ -422,6 +576,20 @@ export class Programs {
 			if (this.list(conversation).some((p) => p.id === id)) signal("SIGKILL");
 		}, 2000).unref?.();
 		return true;
+	}
+
+	/**
+	 * Windows: end the trees of a group. Its leader stays where it is still there: that is the
+	 * shell that waits for a background command, which notes how the command ended, as `trap :`
+	 * lets it on the other systems.
+	 */
+	private endGroup(id: number): boolean {
+		const rows = processes(new Set([id])).filter((r) => r.group === id);
+		const inGroup = new Set(rows.map((r) => r.pid));
+		const tops = rows.filter((r) => r.pid !== id && (r.parent === id || !inGroup.has(r.parent ?? -1)));
+		let any = false;
+		for (const r of tops) any = endTree(r.pid) || any;
+		return any;
 	}
 
 	/** Stop everything a conversation left running: it is being reset or removed. */

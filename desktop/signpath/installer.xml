@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "installer" (paste it into the project at signpath.io; this file is
+  what it should say). The artifact holds the two installers of a release, made from the signed app
+  folders: Pine-<version>-x64-setup.exe and Pine-<version>-arm64-setup.exe.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="Pine-${version}-x64-setup.exe" product-name="Pine" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="Pine-${version}-arm64-setup.exe" product-name="Pine" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

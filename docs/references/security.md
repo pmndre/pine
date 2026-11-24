@@ -542,7 +542,7 @@ computer that you type yourself into the browser beside a conversation in the Pi
 allowed for that conversation without a question: the agent can open it too. pine's control
 port stays closed.
 
-App control (the bundled `computer` server, macOS) has one as well: the first time the agent
+App control (the bundled `computer` server: macOS, Windows, Linux with X11) has one as well: the first time the agent
 looks at or acts in an app, you are asked, and a yes allows that app for the conversation.
 After it, what the agent does there is not asked about click by click. Only an agent in `auto` or `bypass` mode has these tools, only in your own conversations,
 never in a run started from outside. See [computer.md](computer.md).

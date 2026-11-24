@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { harness, MCP_STUB, mockMsg, notesOf, refused } from "./support/harness.ts";
+import { assertPrivate, harness, MCP_STUB, mockMsg, notesOf, refused } from "./support/harness.ts";
 import { sandboxAvailable } from "../src/security.ts";
 import { FORMER_TEMPLATES } from "../src/config.ts";
 
@@ -120,7 +120,7 @@ test("instructions: an agent is reminded to tidy a memory that has grown long", 
 test("instructions: a home from before gets the files for all agents; as pine started them they say nothing, and a line the main agent adds reaches a conversation that has begun", async () => {
 	const h = await harness({ agents: { main: {}, gonzo: {} } });
 	const rules = path.join(h.home, "AGENTS.md"), tools = path.join(h.home, "TOOLS.md");
-	for (const f of [rules, tools, path.join(h.home, "USER.md")]) assert.equal(fs.statSync(f).mode & 0o777, 0o600, f);
+	for (const f of [rules, tools, path.join(h.home, "USER.md")]) assertPrivate(f, 0o600, f);
 	assert.equal(fs.readFileSync(tools, "utf8"), "", "it starts empty");
 	await h.pine.agents.run({ agent: "gonzo", prompt: "hello", ...owner });
 	assert.ok(!h.system(h.mock.state.requests.at(-1)).includes("# Tools") && !h.system(h.mock.state.requests.at(-1)).includes("# All agents"), "a file nobody has written into is not read to a small model");

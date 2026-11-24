@@ -1,4 +1,4 @@
-// Bundled MCP server "computer": operate the apps on the owner's Mac.
+// Bundled MCP server "computer": operate the apps on the owner's computer (macOS, Windows, Linux with X11).
 //
 // One tool set, two ways to work:
 //
@@ -21,6 +21,15 @@
 // is told what to install. The helper decides nothing: which app may be operated and what a
 // result says is here.
 //
+// On Windows the helper is computer.cs, built with the C# compiler every Windows carries
+// (src/csharp.ts), on UI Automation, SendInput and PrintWindow. On Linux it is
+// computer-linux.py, run by the system's python3: AT-SPI for the outline, xdotool for the mouse
+// and the keyboard, ImageMagick's `import` for pictures; X11 only, since under Wayland a program
+// may neither see where another app's windows are nor send it keys. All three speak the same
+// protocol. Windows and X11 cannot send keys to a process, only to the window in front: those
+// helpers check before each piece of input that the app that was named is still in front, and
+// under the position of a click, and stop when it is not ("moved").
+//
 // Who may use it is the daemon's business (src/agents.ts): only the owner's own conversations of
 // an agent whose reach is the account get this server, and the owner is asked once per app in a
 // conversation. What this server adds is that an action lands in the app that was named: a
@@ -40,7 +49,8 @@ import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { type McpContent, type McpTool, options, serve } from "./lib.ts";
-import { APP_LOOK, WHOLE_SCREEN } from "../src/computer.ts";
+import { APP_LOOK, hasDesktop, WHOLE_SCREEN } from "../src/computer.ts";
+import { buildCsharp, frameworkDir } from "../src/csharp.ts";
 import { prebuilt } from "../src/prebuilt.ts";
 
 export interface ComputerOptions {
@@ -56,7 +66,6 @@ export interface ComputerOptions {
 	helper?: string | string[];
 }
 
-const APP = { type: "string", description: "The app's name, as apps lists it. Example: TextEdit" };
 const X = { type: "number", description: "Pixels from the left edge of the last picture" };
 const Y = { type: "number", description: "Pixels from the top edge of the last picture" };
 const tool = (name: string, description: string, properties: Record<string, unknown> = {}, required: string[] = []) => ({
@@ -66,79 +75,96 @@ const tool = (name: string, description: string, properties: Record<string, unkn
 	...(APP_LOOK.includes(name) ? { annotations: { readOnlyHint: true } } : {}),
 });
 
-/** Written for a small local model: short, concrete, one thing each. */
-export const TOOLS = [
-	tool("apps", "List the apps that are running on your owner's Mac, with their windows. Start here: it shows what is open and what each app is called."),
-	tool("app_open", "Open an app, or bring it to the front when it is already running.", { app: { type: "string", description: "The app's name. Example: Safari" } }, ["app"]),
-	tool(
-		"app_snapshot",
-		"Read a window of an app as text: an outline of everything in it, with what it says. Every control that can be used has a reference like [ref=e12], for app_press and app_set_text. Take a new one after something has changed.",
-		{ app: APP, window: { type: "string", description: "Which window, when the app has several: the window's number or a part of the title. Default: the front one" } },
-		["app"],
-	),
-	tool("app_press", "Press a control by the control's reference from app_snapshot: a button, a checkbox, a link, a tab, a row of a list.", { app: APP, ref: { type: "string", description: "The reference from app_snapshot. Example: e12" } }, ["app", "ref"]),
-	tool(
-		"app_set_text",
-		"Put text into a text field by the field's reference from app_snapshot. It replaces what the field held. A search or address field acts only on the return key: press it with app_key afterwards.",
-		{ app: APP, ref: { type: "string", description: "The reference from app_snapshot. Example: e12" }, text: { type: "string", description: "The text the field should hold" } },
-		["app", "ref", "text"],
-	),
-	tool(
-		"app_menu",
-		'Pick an entry from an app\'s menu bar. Example: path "File > Save". Without path it lists the menus; with the name of a menu it lists what is in it.',
-		{ app: APP, path: { type: "string", description: 'Menu names from the menu bar down, separated by " > ". Example: Format > Font > Bold' } },
-		["app"],
-	),
-	tool(
-		"app_screenshot",
-		"Take a picture of an app's window, or of the whole screen when no app is given. For a model that can see pictures; to read text, app_snapshot is better. The answer says how large the picture is: app_click, app_drag and app_scroll take positions in it.",
-		{ app: APP, window: { type: "string", description: "Which window, when the app has several: the window's number or a part of the title. Default: the front one" }, screen: { type: "number", description: "Without app: which screen, when there are several. Default 1, the main one" } },
-	),
-	tool(
-		"app_click",
-		'Click at a position in the last picture from app_screenshot. count 2 is a double click. button "right" opens the context menu.',
-		{ app: APP, x: X, y: Y, button: { type: "string", enum: ["left", "right"], description: "Default left" }, count: { type: "number", description: "1, 2 or 3 clicks. Default 1" } },
-		["app", "x", "y"],
-	),
-	tool(
-		"app_drag",
-		"Press the mouse button at one position in the last picture, move to another and let go: to move something, to select, to pull a slider.",
-		{ app: APP, x: X, y: Y, to_x: { type: "number", description: "Where to let go: pixels from the left edge of the last picture" }, to_y: { type: "number", description: "Where to let go: pixels from the top edge of the last picture" } },
-		["app", "x", "y", "to_x", "to_y"],
-	),
-	tool(
-		"app_scroll",
-		"Turn the scroll wheel over a position in the last picture.",
-		{ app: APP, x: X, y: Y, direction: { type: "string", enum: ["up", "down", "left", "right"] }, amount: { type: "number", description: "How many lines. Default 5" } },
-		["app", "x", "y", "direction"],
-	),
-	tool(
-		"app_type",
-		"Type text on the keyboard into an app, where the app's cursor is. Put the cursor into the field first (app_press or app_click). A line break in the text presses the return key. The app may correct what is typed, as it does for a person; app_set_text writes exactly.",
-		{ app: APP, text: { type: "string", description: "The text to type" } },
-		["app", "text"],
-	),
-	tool(
-		"app_key",
-		'Press a key or a shortcut in an app. Examples: "return", "tab", "escape", "down", "cmd+s", "cmd+shift+z". Several, separated by spaces, are pressed one after another.',
-		{ app: APP, keys: { type: "string", description: "Example: cmd+a" } },
-		["app", "keys"],
-	),
-];
+/** How the system is called in a sentence, and an app and a shortcut a model there knows. */
+const WORDS: Record<string, { machine: string; app: string; opener: string; mod: string }> = {
+	darwin: { machine: "Mac", app: "TextEdit", opener: "Safari", mod: "cmd" },
+	win32: { machine: "computer", app: "Notepad", opener: "Notepad", mod: "ctrl" },
+	linux: { machine: "computer", app: "gedit", opener: "Firefox", mod: "ctrl" },
+};
+const wordsFor = (platform: string) => WORDS[platform] ?? WORDS.linux;
+
+/** The tools, in the words of the system they run on. Written for a small local model: short, concrete, one thing each. */
+export function toolsFor(platform: string = process.platform) {
+	const w = wordsFor(platform);
+	const APP = { type: "string", description: `The app's name, as apps lists it. Example: ${w.app}` };
+	return [
+		tool("apps", `List the apps that are running on your owner's ${w.machine}, with their windows. Start here: it shows what is open and what each app is called.`),
+		tool("app_open", "Open an app, or bring it to the front when it is already running.", { app: { type: "string", description: `The app's name. Example: ${w.opener}` } }, ["app"]),
+		tool(
+			"app_snapshot",
+			"Read a window of an app as text: an outline of everything in it, with what it says. Every control that can be used has a reference like [ref=e12], for app_press and app_set_text. Take a new one after something has changed.",
+			{ app: APP, window: { type: "string", description: "Which window, when the app has several: the window's number or a part of the title. Default: the front one" } },
+			["app"],
+		),
+		tool("app_press", "Press a control by the control's reference from app_snapshot: a button, a checkbox, a link, a tab, a row of a list.", { app: APP, ref: { type: "string", description: "The reference from app_snapshot. Example: e12" } }, ["app", "ref"]),
+		tool(
+			"app_set_text",
+			"Put text into a text field by the field's reference from app_snapshot. It replaces what the field held. A search or address field acts only on the return key: press it with app_key afterwards.",
+			{ app: APP, ref: { type: "string", description: "The reference from app_snapshot. Example: e12" }, text: { type: "string", description: "The text the field should hold" } },
+			["app", "ref", "text"],
+		),
+		tool(
+			"app_menu",
+			'Pick an entry from an app\'s menu bar. Example: path "File > Save". Without path it lists the menus; with the name of a menu it lists what is in it.',
+			{ app: APP, path: { type: "string", description: 'Menu names from the menu bar down, separated by " > ". Example: Format > Font > Bold' } },
+			["app"],
+		),
+		tool(
+			"app_screenshot",
+			"Take a picture of an app's window, or of the whole screen when no app is given. For a model that can see pictures; to read text, app_snapshot is better. The answer says how large the picture is: app_click, app_drag and app_scroll take positions in it.",
+			{ app: APP, window: { type: "string", description: "Which window, when the app has several: the window's number or a part of the title. Default: the front one" }, screen: { type: "number", description: "Without app: which screen, when there are several. Default 1, the main one" } },
+		),
+		tool(
+			"app_click",
+			'Click at a position in the last picture from app_screenshot. count 2 is a double click. button "right" opens the context menu.',
+			{ app: APP, x: X, y: Y, button: { type: "string", enum: ["left", "right"], description: "Default left" }, count: { type: "number", description: "1, 2 or 3 clicks. Default 1" } },
+			["app", "x", "y"],
+		),
+		tool(
+			"app_drag",
+			"Press the mouse button at one position in the last picture, move to another and let go: to move something, to select, to pull a slider.",
+			{ app: APP, x: X, y: Y, to_x: { type: "number", description: "Where to let go: pixels from the left edge of the last picture" }, to_y: { type: "number", description: "Where to let go: pixels from the top edge of the last picture" } },
+			["app", "x", "y", "to_x", "to_y"],
+		),
+		tool(
+			"app_scroll",
+			"Turn the scroll wheel over a position in the last picture.",
+			{ app: APP, x: X, y: Y, direction: { type: "string", enum: ["up", "down", "left", "right"] }, amount: { type: "number", description: "How many lines. Default 5" } },
+			["app", "x", "y", "direction"],
+		),
+		tool(
+			"app_type",
+			"Type text on the keyboard into an app, where the app's cursor is. Put the cursor into the field first (app_press or app_click). A line break in the text presses the return key. The app may correct what is typed, as it does for a person; app_set_text writes exactly.",
+			{ app: APP, text: { type: "string", description: "The text to type" } },
+			["app", "text"],
+		),
+		tool(
+			"app_key",
+			`Press a key or a shortcut in an app. Examples: "return", "tab", "escape", "down", "${w.mod}+s", "${w.mod}+shift+z". Several, separated by spaces, are pressed one after another.`,
+			{ app: APP, keys: { type: "string", description: `Example: ${w.mod}+a` } },
+			["app", "keys"],
+		),
+	];
+}
+export const TOOLS = toolsFor();
 /** What needs eyes: left out for a model that cannot see. */
 export const PICTURE_TOOLS = ["app_screenshot", "app_click", "app_drag", "app_scroll"];
 
-/** macOS only; with a stand-in for the helper, wherever that runs. */
-export const available = (o: Pick<ComputerOptions, "helper">, platform: string = process.platform) => platform === "darwin" || Boolean(o.helper);
+/** Where `hasDesktop` says there is a screen to work on; with a stand-in for the helper, wherever that runs. */
+export const available = (o: Pick<ComputerOptions, "helper">, platform: string = process.platform, env: NodeJS.ProcessEnv = process.env) => hasDesktop(platform, env) || Boolean(o.helper);
 
-export function unavailable(platform: string = process.platform): string {
-	const system = platform === "linux" ? "Linux" : platform === "win32" ? "Windows" : platform;
-	return `App control is not available on this system (${system}). It works on macOS only. Tell your owner that; do not look for another way to click or type in apps.`;
+export function unavailable(platform: string = process.platform, env: NodeJS.ProcessEnv = process.env): string {
+	const end = "Tell your owner that; do not look for another way to click or type in apps.";
+	if (platform === "linux" && (env.WAYLAND_DISPLAY || env.XDG_SESSION_TYPE === "wayland")) {
+		return `App control is not available here: this Linux desktop runs Wayland, and app control works with X11 only (on Ubuntu the session "Ubuntu on Xorg", chosen at the login screen). Under Wayland a program may not see other apps' windows or send them keys. ${end}`;
+	}
+	if (platform === "linux") return `App control is not available here: pine runs without a screen (no X11 display: DISPLAY is not set), so there are no apps to operate. It works when pine is started inside the owner's desktop session. ${end}`;
+	return `App control is not available on this system (${platform}). It works on macOS, Windows and Linux with X11. ${end}`;
 }
 
-export function toolsOffered(o: ComputerOptions, platform: string = process.platform) {
-	if (!available(o, platform)) return [];
-	return TOOLS.filter((t) => !(o.block ?? []).includes(t.name) && (o.images !== false || !PICTURE_TOOLS.includes(t.name)));
+export function toolsOffered(o: ComputerOptions, platform: string = process.platform, env: NodeJS.ProcessEnv = process.env) {
+	if (!available(o, platform, env)) return [];
+	return toolsFor(platform).filter((t) => !(o.block ?? []).includes(t.name) && (o.images !== false || !PICTURE_TOOLS.includes(t.name)));
 }
 
 // ---- the outline ---------------------------------------------------------------------------------
@@ -333,9 +359,14 @@ interface AppInfo {
  * Electron a run from a checkout starts (desktop/scripts/dev-electron.mjs).
  */
 export const PINE_APP = /^dev\.pine\.desktop(\.|$)/;
+/**
+ * The Pine app on Windows and Linux, where the helper says what program an app is by its path
+ * (mcp/computer.cs, mcp/computer-linux.py): Pine.exe, and pine-desktop (desktop/scripts/pack.mjs).
+ */
+export const PINE_PROGRAM = /(^|[\\/])(pine\.exe|pine-desktop)$/i;
 
 /** Where pine does not act: the app it runs in, and the Pine app wherever it runs. */
-export const answersHere = (a: Pick<AppInfo, "host" | "bundle">) => a.host || PINE_APP.test(a.bundle ?? "");
+export const answersHere = (a: Pick<AppInfo, "host" | "bundle">) => a.host || PINE_APP.test(a.bundle ?? "") || PINE_PROGRAM.test(a.bundle ?? "");
 
 class HelperError extends Error {
 	code: string;
@@ -347,8 +378,12 @@ class HelperError extends Error {
 
 export const BUILDING = "pine is building the helper for app control. That happens once and takes about half a minute. Try again in a moment.";
 
-/** What the agent is told when macOS has not been told to let pine in. Plain words, and where to click. */
-export function grantText(kind: "accessibility" | "screen", host: string | undefined, shown: boolean): string {
+/** What the agent is told when the system has not been told to let pine in. Plain words, and where to click. */
+export function grantText(kind: "accessibility" | "screen", host: string | undefined, shown: boolean, system: System = "mac"): string {
+	if (system === "windows") return "Windows did not let pine read that app's windows. Nothing was done. Tell your owner, and try again in a moment.";
+	if (system === "linux") {
+		return "This Linux desktop does not let pine read its apps: its accessibility service (AT-SPI) is not running or is switched off. Your owner switches it on once: in a terminal, gsettings set org.gnome.desktop.interface toolkit-accessibility true, then logs out and in again (or at least starts the app again). Nothing was done. Tell your owner this, and try again when they say it is done.";
+	}
 	const who = host ? `"${host}", the app pine runs in` : "the app pine runs in (the terminal app pine was started from)";
 	if (kind === "accessibility") {
 		return `macOS does not let pine operate apps yet. Your owner has to allow it, once: open System Settings > Privacy & Security > Accessibility and switch on ${who}.${shown ? " macOS has just put a window on their screen that leads there." : ""} Nothing was done. Tell your owner this, and try again when they say it is done.`;
@@ -357,6 +392,20 @@ export function grantText(kind: "accessibility" | "screen", host: string | undef
 }
 
 type Result = string | McpContent[];
+
+/** Which helper answers: it says so in `status`. One that does not (the macOS helper, the tests' stand-in) is the Mac's. */
+export type System = "mac" | "windows" | "linux";
+
+/**
+ * Modifier keys as the system has them. On Windows and Linux "cmd" is taken for ctrl, which is
+ * what a shortcut there uses, and the Windows key is never pressed: it talks to the system, not
+ * to the app, so the keys would not stay in the app that was named.
+ */
+export function modsFor(system: System, mods: string[]): string[] {
+	if (system === "mac") return mods;
+	if (mods.includes("fn")) throw new Error(`There is no fn key to press on ${system === "windows" ? "Windows" : "Linux"}. Use ctrl, alt or shift, for example ctrl+s.`);
+	return [...new Set(mods.map((m) => (m === "cmd" ? "ctrl" : m)))];
+}
 
 /**
  * The tools, on top of a helper that is started when the first one is used. Calls run one after
@@ -368,8 +417,8 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 	/** Requests a helper has not answered yet, with the helper they were sent to. */
 	const waiting = new Map<number, { to: ChildProcess; answer(msg: any): void }>();
 	let ids = 0;
-	/** The app pine runs in, once asked for. */
-	let host: { name: string; pid: number } | null | undefined;
+	/** The app pine runs in and the system the helper works on, once asked for. */
+	let facts: { host?: { name: string; pid: number }; system: System } | undefined;
 	/** The last picture the model was given, and what it showed. */
 	let picture: (Picture & { pid?: number; app?: string; ref?: string; dx: number; dy: number }) | undefined;
 	/** macOS shows its own request once for each grant; after that it is the agent who says it. */
@@ -443,19 +492,27 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 		});
 	};
 
-	const hostApp = async () => {
-		if (host === undefined) host = ((await ask("status")).host as { name: string; pid: number } | undefined) ?? null;
-		return host ?? undefined;
+	const about = async () => {
+		if (!facts) {
+			const s = await ask("status");
+			facts = { host: (s.host as { name: string; pid: number } | undefined) ?? undefined, system: s.system === "windows" || s.system === "linux" ? s.system : "mac" };
+		}
+		return facts;
 	};
+	const hostApp = async () => (await about()).host;
+	const system = async () => (await about()).system;
 	/** A failure of the helper as a sentence the agent can act on. */
 	const explain = async (e: unknown): Promise<Error> => {
 		if (!(e instanceof HelperError)) return e instanceof Error ? e : new Error(String(e));
 		if (e.code === "accessibility" || e.code === "screen") {
 			let shown = false;
 			let name: string | undefined;
+			let on: System = "mac";
 			try {
 				name = (await hostApp())?.name;
-				if (!prompted.has(e.code)) {
+				on = await system();
+				// Only macOS has a window of its own that leads the owner to the switch.
+				if (on === "mac" && !prompted.has(e.code)) {
 					prompted.add(e.code);
 					await ask("status", { ask: e.code });
 					shown = true;
@@ -465,12 +522,15 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 			}
 			// A helper that was started before the owner allowed it does not see the grant: the next call starts a new one.
 			stop();
-			return new Error(grantText(e.code, name, shown));
+			return new Error(grantText(e.code, name, shown, on));
 		}
 		if (e.code === "ended") return new Error(e.message);
 		if (e.code === "gone") return new Error("That reference does not exist any more: the window has changed. Take a new app_snapshot and use the references from it.");
 		if (e.code === "not_running") return new Error("The app is not running any more. Open it again with app_open.");
-		if (e.code === "minimized") return new Error("That window is put away in the Dock, so there is nothing to take a picture of. Bring the app to the front with app_open first.");
+		if (e.code === "minimized") return new Error(`That window is put away in the ${(await system().catch(() => "mac")) === "mac" ? "Dock" : "taskbar (minimized)"}, so there is nothing to take a picture of. Bring the app to the front with app_open first.`);
+		if (e.code === "moved") return new Error("Another window came to the front, or lies where the click was to land, so pine stopped: nothing more was typed or clicked. Your owner may be using the computer. Look at the app again (app_snapshot or app_screenshot) before you go on.");
+		if (e.code === "elevated") return new Error("That app runs as administrator, and Windows does not let a program without those rights click or type in it. Nothing was done. Tell your owner: they can do this step themselves, or start pine as administrator.");
+		if (e.code === "undescribed") return new Error(`That app does not describe its windows to pine: it has no accessibility support, or it was started before the accessibility service.${o.images === false ? "" : " Look at it with app_screenshot and act by position (app_click)."} Starting the app again can help.`);
 		return new Error(e.message ? `${e.message[0].toUpperCase()}${e.message.slice(1)}${/[.!?]$/.test(e.message) ? "" : "."}` : "That did not work.");
 	};
 
@@ -539,7 +599,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 				return `- ${a.name}${marks ? ` (${marks})` : ""}${wins === undefined ? "" : wins.length ? `: ${wins.length === 1 ? "window" : "windows"} ${wins.map(windowLine).join(", ")}` : ": no window"}`;
 			});
 			const screens: Array<{ index: number; w: number; h: number; main?: boolean }> = r.displays ?? [];
-			const note = r.accessibility === false ? `\n\nThe windows are not listed: ${grantText("accessibility", (await hostApp())?.name, false)}` : "";
+			const note = r.accessibility === false ? `\n\nThe windows are not listed: ${grantText("accessibility", (await hostApp())?.name, false, await system())}` : "";
 			return `Running apps:\n${lines.join("\n") || "(none)"}${screens.length > 1 ? `\n\nScreens: ${screens.map((s) => `${s.index} (${s.w} by ${s.h}${s.main ? ", main" : ""})`).join(", ")}` : ""}${note}`;
 		},
 
@@ -550,7 +610,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 			try {
 				a = await ask("open", { app: name }, 25_000);
 			} catch (e) {
-				if (e instanceof HelperError && e.code === "not_found") throw new Error(`No app called "${name}" was found on this Mac. apps lists what is running.`);
+				if (e instanceof HelperError && e.code === "not_found") throw new Error(`No app called "${name}" was found on this ${(await system()) === "mac" ? "Mac" : "computer"}. apps lists what is running.`);
 				throw e;
 			}
 			const was = a.launched ? "was opened" : "was already running";
@@ -585,7 +645,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 				// Nothing to press by name: click in its middle, as a person would.
 				await toFront(a);
 				await landsIn(a, { x: r.x, y: r.y });
-				await ask("click", { x: r.x, y: r.y });
+				await ask("click", { x: r.x, y: r.y, pid: a.pid });
 				return `Clicked the ${called(it)} in ${a.name}. Take a new app_snapshot to see what changed.`;
 			}
 			return `${r.selected ? "Selected" : "Pressed"} the ${called(it)} in ${a.name}.${r.unsure ? " The app has not answered yet, which often means a dialog has opened." : ""} Take a new app_snapshot to see what changed.`;
@@ -603,8 +663,8 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 				// A field that cannot be written into directly: click it, select what is there, type over it.
 				await toFront(a);
 				await landsIn(a, { x: r.x, y: r.y });
-				await ask("click", { x: r.x, y: r.y });
-				await ask("key", { key: "a", mods: ["cmd"], pid: a.pid });
+				await ask("click", { x: r.x, y: r.y, pid: a.pid });
+				await ask("key", { key: "a", mods: modsFor(await system(), ["cmd"]), pid: a.pid });
 				await ask("type", { text: args.text, pid: a.pid });
 			}
 			return `The ${called(it)} in ${a.name} now holds ${quote(args.text, 80)}.`;
@@ -616,8 +676,9 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 			const a = await find(args, false);
 			const same = (title: string, name: string) => title.replace(/(…|\.\.\.)$/, "").trim().toLowerCase() === name.replace(/(…|\.\.\.)$/, "").trim().toLowerCase();
 			const show = (items: any[]) => items.map((i) => `- ${i.title}${i.mark ? ` (${i.mark === "✓" ? "ticked" : i.mark})` : ""}${i.disabled ? " (not available now)" : ""}${i.submenu ? " >" : ""}${i.shortcut ? `   ${i.shortcut}` : ""}`).join("\n");
-			// The first entry of the menu bar is the Apple menu, which belongs to the system.
-			let items: any[] = ((await ask("menu", { pid: a.pid })).items ?? []).slice(1);
+			// On a Mac the first entry of the menu bar is the Apple menu, which belongs to the system.
+			const bar: any[] = (await ask("menu", { pid: a.pid })).items ?? [];
+			let items = (await system()) === "mac" ? bar.slice(1) : bar;
 			if (!names.length) return `The menus of ${a.name}:\n${show(items) || "(none)"}\nGive path to look into one or to pick an entry. Example: path "File > Save".`;
 			// An app in the background greys out most of its menus: they say what can be done once it is in front.
 			await toFront(a);
@@ -682,7 +743,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 			const there = await landsIn(a, at);
 			const count = Math.max(1, Math.min(3, Math.round(Number(args.count) || 1)));
 			const right = args.button === "right";
-			await ask("click", { ...at, count, button: right ? "right" : "left" });
+			await ask("click", { ...at, count, button: right ? "right" : "left", pid: a.pid });
 			return `${right ? "Right-clicked" : count === 2 ? "Double-clicked" : count === 3 ? "Triple-clicked" : "Clicked"}${there.role ? ` the ${called(there)}` : ""} at ${Math.round(Number(args.x))}, ${Math.round(Number(args.y))} in ${a.name}. Take a new app_screenshot to see what changed.`;
 		},
 
@@ -692,7 +753,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 			const to = await place(a, args.to_x, args.to_y, "to_x and to_y");
 			await toFront(a, picture?.ref);
 			await landsIn(a, from);
-			await ask("drag", { ...from, x2: to.x, y2: to.y });
+			await ask("drag", { ...from, x2: to.x, y2: to.y, pid: a.pid });
 			return `Dragged from ${Math.round(Number(args.x))}, ${Math.round(Number(args.y))} to ${Math.round(Number(args.to_x))}, ${Math.round(Number(args.to_y))} in ${a.name}. Take a new app_screenshot to see what changed.`;
 		},
 
@@ -705,7 +766,7 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 			if (!d) throw new Error("direction is up, down, left or right.");
 			await toFront(a, picture?.ref);
 			await landsIn(a, at);
-			await ask("scroll", { ...at, ...d });
+			await ask("scroll", { ...at, ...d, pid: a.pid });
 			return `Scrolled ${args.direction} by ${lines} lines in ${a.name}. Take a new app_screenshot to see where you are.`;
 		},
 
@@ -719,7 +780,9 @@ export function computer(o: ComputerOptions, io: ComputerIo): { call(name: strin
 		},
 
 		async app_key(args) {
-			const keys = parseKeys(args.keys);
+			const parsed = parseKeys(args.keys);
+			const on = await system();
+			const keys = parsed.map((k) => ({ ...k, mods: modsFor(on, k.mods) }));
 			const a = await find(args, true);
 			await toFront(a);
 			for (const k of keys) await ask("key", { ...k, pid: a.pid });
@@ -787,6 +850,70 @@ export async function buildHelper(dir: string, source: string = HELPER_SOURCE, r
 	return file;
 }
 
+// ---- the helpers of Windows and Linux -----------------------------------------------------------
+
+export const WINDOWS_SOURCE = path.join(import.meta.dirname, "computer.cs");
+export const LINUX_SOURCE = path.join(import.meta.dirname, "computer-linux.py");
+
+/** The assemblies of .NET Framework the Windows helper uses. WPF's lie in a folder of their own beside the compiler, or only in the assembly cache. */
+const WINDOWS_ASSEMBLIES = ["UIAutomationClient.dll", "UIAutomationTypes.dll", "WindowsBase.dll", "System.Drawing.dll", "System.Windows.Forms.dll", "System.Web.Extensions.dll"];
+
+/** Each assembly as a path where one is found, else by its name, which the compiler looks up beside itself. */
+export function windowsReferences(framework: string | undefined = frameworkDir(), windir: string = process.env.SystemRoot ?? process.env.windir ?? "C:\\Windows", exists: (f: string) => boolean = fs.existsSync, list: (d: string) => string[] = (d) => fs.readdirSync(d)): string[] {
+	return WINDOWS_ASSEMBLIES.map((dll) => {
+		const near = framework ? [path.join(framework, dll), path.join(framework, "WPF", dll)] : [];
+		const found = near.find(exists);
+		if (found) return found;
+		// The global assembly cache: GAC_MSIL\<name>\v4.0_4.0.0.0__<token>\<name>.dll
+		const gac = path.join(windir, "Microsoft.NET", "assembly", "GAC_MSIL", dll.replace(/\.dll$/, ""));
+		try {
+			for (const v of list(gac).filter((d) => d.startsWith("v4.0_")).sort().reverse()) if (exists(path.join(gac, v, dll))) return path.join(gac, v, dll);
+		} catch {
+			// not there: by name
+		}
+		return dll;
+	});
+}
+
+/** The Windows helper as a program: carried built, built before, or built now with the compiler Windows has. */
+export function windowsHelper(build: typeof buildCsharp = buildCsharp): Promise<string> {
+	return new Promise((resolve, reject) => {
+		// The compiler is waited for in this process: not before the server has answered pi's first request.
+		setImmediate(() => {
+			try {
+				resolve(build(WINDOWS_SOURCE, "pine-computer", "app control", windowsReferences()));
+			} catch (e) {
+				reject(e);
+			}
+		});
+	});
+}
+
+/** What the Linux helper runs on, by absolute path: never a program found on a PATH that an agent could have written into. */
+export const LINUX_TOOLS = { python: "/usr/bin/python3", xdotool: "/usr/bin/xdotool", import: "/usr/bin/import" };
+export const LINUX_PACKAGES = "python3-pyatspi python3-xlib xdotool imagemagick";
+
+export function linuxMissing(what: string[]): string {
+	return `App control on Linux needs a few programs that are not installed on this computer (${what.join(", ")}). Your owner installs them once by typing this into a terminal: sudo apt install ${LINUX_PACKAGES} (on Fedora: sudo dnf install python3-pyatspi python3-xlib xdotool ImageMagick). Tell your owner this, and try again when they say it is done.`;
+}
+
+/**
+ * The Linux helper's command line, after a look that what it needs is there. python3 runs it
+ * isolated (-I): no module from the working folder or from PYTHONPATH is loaded with it.
+ */
+export async function linuxHelper(run: Run = runProgram, exists: (f: string) => boolean = fs.existsSync): Promise<string[]> {
+	const missing: string[] = [];
+	if (!exists(LINUX_TOOLS.python)) missing.push("python3");
+	else {
+		const modules = await run(LINUX_TOOLS.python, ["-I", "-c", "import gi; gi.require_version('Atspi', '2.0'); from gi.repository import Atspi; import Xlib.display"], 20_000);
+		if (modules.code !== 0) missing.push(/Xlib/.test(modules.stderr) ? "python3-xlib" : "python3-pyatspi");
+	}
+	if (!exists(LINUX_TOOLS.xdotool)) missing.push("xdotool");
+	if (!exists(LINUX_TOOLS.import)) missing.push("imagemagick");
+	if (missing.length) throw new Error(linuxMissing(missing));
+	return [LINUX_TOOLS.python, "-I", LINUX_SOURCE];
+}
+
 if (import.meta.main) {
 	const o = options<ComputerOptions>();
 	if (!available(o)) {
@@ -794,13 +921,14 @@ if (import.meta.main) {
 	} else {
 		const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "pine-computer-"));
 		const dir = o.helperDir ?? path.join(os.homedir(), "Library", "Caches", "pine-computer");
-		let built: Promise<string> | undefined;
-		const program = () => (built ??= buildHelper(dir).catch((e) => ((built = undefined), Promise.reject(e))));
+		let built: Promise<string[]> | undefined;
+		const make = (): Promise<string[]> => (process.platform === "win32" ? windowsHelper().then((f) => [f]) : process.platform === "linux" ? linuxHelper() : buildHelper(dir).then((f) => [f]));
+		const program = () => (built ??= make().catch((e) => ((built = undefined), Promise.reject(e))));
 		const server = computer(o, {
 			scratch,
 			launch: async () => {
-				const cmd = o.helper ? (Array.isArray(o.helper) ? o.helper : [o.helper]) : [await program()];
-				const child = spawn(cmd[0], cmd.slice(1), { stdio: ["pipe", "pipe", "pipe"] });
+				const cmd = o.helper ? (Array.isArray(o.helper) ? o.helper : [o.helper]) : await program();
+				const child = spawn(cmd[0], cmd.slice(1), { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
 				return new Promise<ChildProcess>((resolve, reject) => {
 					child.once("spawn", () => resolve(child));
 					child.once("error", (e) => reject(new Error(`pine's helper for app control could not be started (${e.message}). Tell your owner.`)));

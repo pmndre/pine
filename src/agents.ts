@@ -23,7 +23,7 @@ import { Limiter, type Slot } from "./limiter.ts";
 import { modelRuntime } from "./models.ts";
 import { families, NOT_A_SUBAGENTS, SUBAGENT_CANNOT_ASK, serverTool } from "./catalogue.ts";
 import { type Occupant, type Page, SlotBook } from "./slots.ts";
-import { type Approvals, checkPath, denialTools, globMatch, grantable, grantPath, isInside, isOpen, levelOf, matchesToolPattern, outsidePath, ownFileOf, realish, received, type Roots, bin, rootsFor, sandboxArgv, sandboxAvailable, sandboxGuard, type SandboxVariant, shellEnv, shellRefuses, shq, toolSubject } from "./security.ts";
+import { type Approvals, checkPath, denialTools, gitForWindows, globMatch, grantable, grantPath, isInside, isOpen, levelOf, matchesToolPattern, outsidePath, ownFileOf, realish, received, type Roots, bin, rootsFor, sandboxArgv, sandboxAvailable, sandboxGuard, type SandboxVariant, shellEnv, shellRefuses, shq, toolSubject } from "./security.ts";
 import { type AgentChange, applyAgentChange, checkAgentChange, checkAgentId, countFiles, eraseAgent, renameAgent } from "./admin.ts";
 import { createAgent, type NewAgent } from "./agent-admin.ts";
 import type { Router } from "./router.ts";
@@ -57,6 +57,9 @@ const DEFAULT_TOOLS = ["read", "bash", "edit", "write"];
 const FILE_TOOLS: Record<string, "read" | "write"> = { read: "read", grep: "read", find: "read", ls: "read", write: "write", edit: "write" };
 const SILENT = /^\s*(NO_REPLY|SILENT)\s*$/;
 /** What an agent with no model is told, and its owner: how a new home starts. */
+/** How a run that was still at work when pine stopped ends at the next start: it is not resumed, since its tool calls may have had effects. */
+const INTERRUPTED = "interrupted by a daemon restart";
+
 export const NO_MODEL = "No model yet: sign in to a provider (Settings > Models in the Pine app, or pine login <provider>) or add a model server of your own.";
 /**
  * What pine tells the bundled browser about the conversation it serves, over whatever the options
@@ -669,7 +672,7 @@ export class AgentManager {
 		fs.rmSync(path.join(this.cfg.dataDir, "browser-local"), { recursive: true, force: true });
 		this.views.clear();
 		// Whatever was running when the daemon stopped is not resumed: its tool calls may have had effects.
-		for (const t of this.tasks.byStatus("running")) this.finish(t, "failed", "", "interrupted by a daemon restart", undefined);
+		for (const t of this.tasks.byStatus("running")) this.finish(t, "failed", "", INTERRUPTED, undefined);
 		for (const t of this.tasks.byStatus("pending")) this.enqueue(t);
 		// A task of a board that a run of the last start still held is open again: no run survived.
 		this.boards.releaseStale(() => false);
@@ -931,7 +934,8 @@ export class AgentManager {
 			const clean = path.basename(String(f.name ?? "file")).replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^\.+/, "").slice(-80) || "file";
 			const target = path.join(dir, `${stamp}${i}-${clean}`);
 			fs.writeFileSync(target, buf, { flag: "wx", mode: 0o644 });
-			out.files.push(path.relative(workspace, target));
+			// With / as the agent's shell writes paths, on Windows too.
+			out.files.push(path.relative(workspace, target).split(path.sep).join("/"));
 			const mimeType = types[path.extname(clean).toLowerCase()];
 			if (mimeType && buf.length <= 10 * 1024 * 1024) out.images.push({ path: target, mimeType });
 		}
@@ -2516,15 +2520,18 @@ export class AgentManager {
 				this.log.warn(`could not deliver result of task #${task.id} to ${n.agent}`, errText(e));
 			}
 		}
+		// A run that was still at work when pine stopped (its end did not come within the grace of
+		// `stop`) ended with that stop, as far as a goal or a swarm is concerned.
+		const stopped = this.stopping || (status === "failed" && error === INTERRUPTED);
 		// The round of a goal ended: the judge says whether there is another (src/goals.ts).
 		try {
-			this.goals.ended(done, this.stopping);
+			this.goals.ended(done, stopped);
 		} catch (e) {
 			this.log.warn(`the goal of ${task.agent}/${task.session} could not be looked at after task #${task.id}`, errText(e));
 		}
 		// A turn of a swarm's lead ended: the board says whether it is called again (src/swarm.ts).
 		try {
-			this.swarms.ended(done, this.stopping);
+			this.swarms.ended(done, stopped);
 		} catch (e) {
 			this.log.warn(`the swarm of ${task.agent}/${task.session} could not be looked at after task #${task.id}`, errText(e));
 		}
@@ -3566,6 +3573,11 @@ export class AgentManager {
 				// operating system, not a path check in this process, decides what they can reach.
 				const sandboxFs = { cwd: roots.cwd, prefix: () => jail(), env: () => shellEnv(agent, roots, {}, live.wide()), guard: () => sandboxGuard(roots, live.variant()) };
 				for (const tool of sandboxedFileTools(sandboxFs, profile.tools)) pi.registerTool(tool);
+			} else if (process.platform === "win32" && gitForWindows()) {
+				// Windows has no sandbox. pi's grep and find need ripgrep and fd, which it fetches and
+				// which may not be had; the grep and find of Git for Windows are there with its bash.
+				const plain = { cwd: roots.cwd, prefix: () => [], env: () => shellEnv(agent, roots, {}, live.wide()) };
+				for (const tool of sandboxedFileTools(plain, profile.tools.filter((t) => t === "grep" || t === "find"))) pi.registerTool(tool);
 			}
 
 			if (live.trust === "owner") {

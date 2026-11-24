@@ -15,14 +15,14 @@ import { DatabaseSync } from "node:sqlite";
 import { before, test } from "node:test";
 import { mockMsg } from "../../baseline/tests/mock.mjs";
 import { httpMcp } from "../../test/support/http-mcp.ts";
-import { activeOption, announced, api, app, BROWSER_EDGE, BROWSER_TOGGLE, browsers, closed, CODE_EDGE, CODE_TOGGLE, confirm, far, folder, github, home, json, menu, mock, named, page, putAwayToasts, releases, root, sees, shot, started, stillInside, write } from "./support/window.ts";
+import { activeOption, announced, api, app, BROWSER_EDGE, BROWSER_TOGGLE, browsers, closed, CODE_EDGE, CODE_TOGGLE, confirm, far, folder, github, HERE, home, json, menu, mock, named, page, putAwayToasts, releases, root, sees, shot, started, stillInside, write } from "./support/window.ts";
 
 test("starts a daemon of its own and shows the main agent", async () => {
 	await sees("[data-slot=empty] h1");
 	assert.equal(await page.textContent("[data-slot=empty] h1"), "main");
 	// This home has no browser for the web tools in the build its pine drives (the folder for it
 	// is empty): that is asked once, at the start, and "Not now" is remembered.
-	await sees("[data-slot=dialog-title] >> text=The browser for the web tools is not on this Mac");
+	await sees(`[data-slot=dialog-title] >> text=The browser for the web tools is not on this ${HERE}`);
 	await shot("00-browser");
 	await page.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" }).click();
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
@@ -190,11 +190,11 @@ test("the agent's browser is shown in an aside of its own as a picture, and what
 		// Letters typed in a row go as one text, a key by its name, and what is pasted as text too.
 		await page.keyboard.type("okapi");
 		await page.keyboard.press("Enter");
-		await page.keyboard.press("Meta+KeyA");
-		await waitFor("what was typed arrived", () => ops().some((o) => o.do === "key" && o.key === "Meta+KeyA"));
+		await page.keyboard.press("ControlOrMeta+KeyA");
+		await waitFor("what was typed arrived", () => ops().some((o) => o.do === "key" && o.key === "ControlOrMeta+KeyA"));
 		assert.equal(ops().filter((o) => o.do === "text").map((o) => o.text).join(""), "okapi");
 		assert.ok(ops().filter((o) => o.do === "text").length < 5, "letters are not sent one by one");
-		assert.deepEqual(ops().filter((o) => o.do === "key").map((o) => o.key), ["Enter", "Meta+KeyA"]);
+		assert.deepEqual(ops().filter((o) => o.do === "key").map((o) => o.key), ["Enter", "ControlOrMeta+KeyA"]);
 		// The wheel adds up, a tab is chosen by a click, back is a button.
 		await page.mouse.wheel(0, 120);
 		await page.mouse.wheel(0, 120);
@@ -850,9 +850,9 @@ test("a folder is opened for a conversation: changes, and a file edited and save
 	await page.locator("[data-slot=code-panel]").getByRole("button", { name: "Edit" }).click();
 	await sees("[data-slot=code-panel] .cm-content");
 	await page.click("[data-slot=code-panel] .cm-content");
-	await page.keyboard.press("Meta+A");
+	await page.keyboard.press("ControlOrMeta+A");
 	await page.keyboard.type("export const answer = 43;\n");
-	await page.keyboard.press("Meta+S");
+	await page.keyboard.press("ControlOrMeta+S");
 	for (let i = 0; i < 50 && !fs.readFileSync(path.join(folder, "src", "index.ts"), "utf8").includes("43"); i++) await new Promise((r) => setTimeout(r, 100));
 	assert.equal(fs.readFileSync(path.join(folder, "src", "index.ts"), "utf8"), "export const answer = 43;\n");
 	await shot("05-editor");
@@ -1203,7 +1203,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	}
 	// General, where what was the App page went: the browser of the web tools is still not there, and can be fetched from here. (The
 	// test fetches nothing: PINE_SKIP_DOWNLOADS. What the command printed is shown.)
-	await sees("[data-setting=browser] [data-slot=badge][data-variant=outline] >> text=not on this Mac");
+	await sees(`[data-setting=browser] [data-slot=badge][data-variant=outline] >> text=not on this ${HERE}`);
 	await page.locator("[data-setting=browser]").getByRole("button", { name: "Fetch it" }).click();
 	await sees("[data-setting=browser] [data-slot=code-block-content] >> text=Not fetched: PINE_SKIP_DOWNLOADS is set.");
 	// Fetched some other way (a terminal): the page says so when it is opened again.
@@ -1212,7 +1212,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	for (const place of places) write(path.join(browsers, path.basename(place), "INSTALLATION_COMPLETE"), "");
 	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=Models");
 	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=General");
-	await sees("[data-setting=browser] [data-slot=badge][data-variant=default] >> text=on this Mac");
+	await sees(`[data-setting=browser] [data-slot=badge][data-variant=default] >> text=on this ${HERE}`);
 	await menu("settings");
 });
 

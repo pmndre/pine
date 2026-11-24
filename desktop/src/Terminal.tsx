@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { bridge } from "./bridge.ts";
 import { SUB } from "./CodePanel.tsx";
 import { store, type Tab, useModel } from "./model.ts";
-import { errText, tilde } from "./text.ts";
+import { errText, macKeys, tilde } from "./text.ts";
 import { cn } from "@/lib/utils";
 
 /** A color of the page's tokens, as xterm.js takes it: the browser says what any CSS color is in sRGB. */
@@ -82,6 +82,26 @@ export function TerminalView({ tab }: { tab: Tab }) {
 		let gone = false;
 		let open = false;
 		setState({});
+		// Off a Mac the app's shortcuts are Ctrl chords, as the shell's own keys are (Ctrl-W, Ctrl-K, Ctrl-R...): while the
+		// terminal has the keyboard, the main process leaves those to the shell (`shellKeeps` in electron/terminal.ts).
+		// Copying and pasting are Ctrl+Shift+C and Ctrl+Shift+V there, as in the system's own terminals.
+		const keyboard = (has: boolean) => bridge.termFocus?.(has);
+		const focused = () => keyboard(true);
+		const blurred = () => keyboard(false);
+		xterm.textarea?.addEventListener("focus", focused);
+		xterm.textarea?.addEventListener("blur", blurred);
+		if (!macKeys()) {
+			xterm.attachCustomKeyEventHandler((e) => {
+				if (e.type !== "keydown" || !e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return true;
+				if (e.code === "KeyC") {
+					if (xterm.hasSelection()) void navigator.clipboard.writeText(xterm.getSelection());
+					e.preventDefault();
+					return false;
+				}
+				// The browser pastes it as plain text into the terminal's input, which xterm.js takes as a paste.
+				return e.code !== "KeyV";
+			});
+		}
 		const typed = xterm.onData((data) => void bridge.termWrite(id, data));
 		const sized = xterm.onResize(({ cols, rows }) => void bridge.termResize(id, cols, rows));
 		const stopData = bridge.onTermData((which: string, data: string) => which === id && xterm.write(data));
@@ -124,6 +144,9 @@ export function TerminalView({ tab }: { tab: Tab }) {
 			stopExit();
 			resize.disconnect();
 			restyled.disconnect();
+			xterm.textarea?.removeEventListener("focus", focused);
+			xterm.textarea?.removeEventListener("blur", blurred);
+			if (xterm.textarea === document.activeElement) keyboard(false);
 			xterm.dispose();
 			term.current = undefined;
 		};

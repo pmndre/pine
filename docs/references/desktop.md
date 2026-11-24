@@ -1,35 +1,39 @@
 # The desktop app
 
-pine has an app with a window of its own, for macOS: **Pine**. It does what the terminal UI
+pine has an app with a window of its own, for macOS, Linux and Windows: **Pine**. It does what the terminal UI
 does (conversations in tabs, the work of a turn, approvals, the code panel) and adds an editor
 for the files of a conversation's folder, a settings panel for everything that is otherwise a
 `pine` command or a sentence to the main agent, pictures, video and sound shown and played as
 they are, menus and system notifications.
 
-It lies in `desktop/` of pine's repository and is built on Electron, so that the same app can
-be made for Linux and Windows later. It is a client of the daemon and nothing more: everything
+It lies in `desktop/` of pine's repository and is built on Electron, so that the same app runs
+on the three systems. It is a client of the daemon and nothing more: everything
 it shows and changes goes through the control API ([operations.md](operations.md)), as with
 the terminal UI and the `pine` commands. A conversation you have in the app is the same one
 the terminal UI or Telegram shows.
 
 ## Getting it
 
-Every release of pine has the app attached, as a disk image for each kind of Mac:
+The app is attached to pine's releases, a file for each system and kind of processor:
 <https://github.com/pmndre/pine/releases/latest>
 
 | File | For |
 |---|---|
 | `Pine-<version>-arm64.dmg` | A Mac with Apple silicon (M1 and later) |
 | `Pine-<version>-x64.dmg` | A Mac with an Intel processor |
+| `Pine-<version>-x64.AppImage`, `Pine-<version>-arm64.AppImage` | Linux, any distribution: one file that runs where it lies (make it executable first: `chmod +x`) |
+| `Pine-<version>-x64.deb`, `Pine-<version>-arm64.deb` | Debian and Ubuntu: installed with `sudo apt install ./Pine-<version>-x64.deb`, into `/opt/Pine`, started as Pine from the system's list of apps |
+| `Pine-<version>-x64-setup.exe`, `Pine-<version>-arm64-setup.exe` | Windows 10 and 11: an installer for your user alone, which asks for no administrator. It puts Pine into `%LOCALAPPDATA%\Programs\Pine` (or a folder you choose) and into the Start menu |
 
-Open the image and drag Pine into Applications. Nothing else has to be installed: no Node, no
-`npm install`, no developer tools. The app is signed and notarised, and it carries
+On a Mac, open the image and drag Pine into Applications. Nothing else has to be installed: no
+Node, no `npm install`, no developer tools. The Mac app is signed and notarised, and the app
+carries on every system
 
 | | |
 |---|---|
 | pine | The same package that goes to npm, with what it depends on. The app and the pine inside it have one version |
 | Node | The Node that pine runs on, as nodejs.org hands it out. The pine of the app runs on it, whatever Node the Mac has or lacks |
-| pine's helpers | The small programs for dictating, app control and the `system` event source, built for both kinds of Mac. Elsewhere pine builds them on first use, which needs Apple's command line developer tools |
+| pine's helpers | The small programs for dictating, app control and the `system` event source. On a Mac they are Swift programs, built for both kinds of Mac. On Windows they are C# programs, built with the compiler every Windows carries; the app carries them built. On Linux they are pine's own code (Node and Python) and use what the system has (D-Bus, AT-SPI, whisper.cpp): nothing is built |
 | `pine` for a terminal | See below |
 
 Android phones and iPhones have an app of their own in the same release, for the pine of another
@@ -38,11 +42,13 @@ machine, this computer's included: it pairs as a browser does (see "Browser acce
 
 ### A newer version
 
-The app updates itself. When there is a newer release, it downloads it in the background, from
-that release on GitHub, and installs it with macOS's own updater, only when you say so: press
+On a Mac the app updates itself. When there is a newer release, it downloads it in the background,
+from that release on GitHub, and installs it with macOS's own updater, only when you say so: press
 **Restart to update**, or quit Pine and the update is installed on the way out. It never
-restarts by itself. Your pine home (`~/.pine`: agents, conversations, settings) is not in the
-app and stays as it is.
+restarts by itself. On Linux and Windows it says when there is a newer one and where it is: download
+the new file from the release's page, quit Pine and put the new app in place of the old one (on
+Windows, run the new installer). Your pine home (`~/.pine`: agents, conversations, settings) is not
+in the app and stays as it is.
 
 | | |
 |---|---|
@@ -68,6 +74,10 @@ at the next quit. `pine update` in a pine that came with the app says that the a
 itself, and links to the release's page. An app started from a checkout is no release, asks nobody and
 installs nothing.
 
+On Linux and Windows the app does not update itself: a release counts as a newer app once its
+file for your system and processor is attached to it (the AppImage on Linux, the installer on
+Windows), and the line at the foot of the side bar opens the release's page, where you download it.
+
 ### The first start
 
 Two things the app does not carry: a sign-in to whoever does the thinking, and the browser the
@@ -85,9 +95,11 @@ web tools drive. It asks for each where it is missing.
 ### `pine` in a terminal
 
 If you installed only the app, your shell has no `pine` command until the app puts one
-there. With it, everything in [operations.md](operations.md) works in a terminal on that Mac:
-the terminal UI, `pine status`, `pine agent add`. The command is a link in a folder of your
-shell's PATH to a small launcher inside the app, which runs the app's pine on the app's Node.
+there. With it, everything in [operations.md](operations.md) works in a terminal on that
+computer: the terminal UI, `pine status`, `pine agent add`. On a Mac and on Linux the command is
+a link in a folder of your shell's PATH to a small launcher inside the app, which runs the app's
+pine on the app's Node. On Windows the installer puts the app's folder of that launcher
+(`resources\bin`, with `pine.cmd`) into your user's PATH instead.
 
 | When | What happens |
 |---|---|
@@ -99,6 +111,14 @@ shell's PATH to a small launcher inside the app, which runs the app's pine on th
 
 Settings > General shows where the link is and takes it away again (Remove). Only a link the app
 made is ever removed or replaced.
+
+On Linux and Windows:
+
+| System | What happens |
+|---|---|
+| Linux, from the .deb | As on a Mac, with Linux's folders: `~/.local/bin` first, then `~/bin`, then `/usr/local/bin` where you may write there. Otherwise **Set up** puts it into `/usr/local/bin`, and the system asks for your password (`pkexec`); on a system without `pkexec` Settings > App says the command to type with `sudo` |
+| Linux, from an AppImage | The AppImage runs from a folder under `/tmp` that is another one at each start, so the link leads to the AppImage file itself. Started by the name `pine`, the AppImage runs the pine it carries instead of the app. Move the AppImage where it is to stay before you set the command up: moved later, the link leads nowhere. It needs a desktop session (the app's program starts the command) |
+| Windows | Nothing to set up: the installer puts the folder into your PATH, and uninstalling takes it out again; only your user's PATH is changed, never the system's. Open a new terminal after installing. Settings > App says whether the folder is on the PATH, and whether another pine (from npm) comes first there. In PowerShell, cmd.exe and Git Bash alike, `pine` is `pine.cmd` |
 
 ## Starting it from a checkout
 
@@ -123,9 +143,12 @@ put into Applications:
 npm run pack
 ```
 
-That writes `desktop/release/mac-arm64/Pine.app` (on an Intel Mac `release/mac/Pine.app`;
-`npm run dist` also makes a disk image). It is the app as it is handed out, signed for the Mac
-it was built on. See "Packing and signing" for what it carries and how it is signed for others.
+That writes the app for the system it runs on: `desktop/release/mac-arm64/Pine.app` on a Mac
+(`release/mac/Pine.app` on an Intel Mac), `release/linux-unpacked/` (`linux-arm64-unpacked` on
+arm64) on Linux, `release/win-unpacked/` (`win-arm64-unpacked`) on Windows. `npm run dist` also
+makes what is handed out there: the disk image, the AppImage and the .deb, the installer. On a
+Mac it is signed for the Mac it was built on. See "Packing and signing" for what it carries and
+how it is signed for others. An app for Linux is packed on Linux, one for Windows on Windows.
 
 | Command (in `desktop/`) | What it does |
 |---|---|
@@ -135,9 +158,9 @@ it was built on. See "Packing and signing" for what it carries and how it is sig
 | `npm run dev:preview:home` | The same on your own pine home, `~/.pine`, at the port after the throwaway one's, so that it runs beside it. Its agents are your real ones. See below |
 | `npm run check` | Type check |
 | `npm test` | The app from end to end: the real app on a pine home of its own with a scripted model. Needs no screen: the window is drawn and never shown (`PINE_DESKTOP_SHOW=1` shows it). The app is built once for the run, into a temp folder of its own that every test starts (`scripts/test.mjs`, `test/support/app.ts`), as many test files side by side as the computer has room for (one for every two idle processors, two to six), two minutes at most for a test. A test file run on its own with `node --test` builds for itself. With `PINE_LIVE=1` on a Mac it also dictates with the real voice helper, from a recording |
-| `npm run pack` | `release/mac-arm64/Pine.app`, with pine, Node and the helpers inside |
-| `npm run dist` | The same, and a disk image |
-| `node scripts/smoke.mjs` | Starts a packed app from a folder of its own, on a home of its own, and checks that it answers a message with the pine and the Node it carries, that `pine` works through a link, and that pine finds the helpers in the app |
+| `npm run pack` | The app for this system (`release/mac-arm64/Pine.app`, `release/linux-unpacked/`, `release/win-unpacked/`), with pine, Node and on a Mac the helpers inside |
+| `npm run dist` | The same, and what is handed out: a disk image, an AppImage and a .deb, an installer |
+| `node scripts/smoke.mjs` | Starts a packed app from a folder of its own, on a home of its own, and checks that it answers a message with the pine and the Node it carries, that the terminal runs and a Run block reports, that `pine` works through a link (on Windows through `pine.cmd`), and on a Mac that pine finds the helpers in the app. On the system the app was packed for |
 
 pine itself runs on Node 24 or newer, also when the app starts it, and never on the app's own
 Electron. The pine of a packed app runs on the Node the app carries. From a checkout the app
@@ -186,7 +209,8 @@ pine, setting pine up. To open a folder for a conversation you type its path.
 ## The daemon: started or reused
 
 When the app starts it asks `pine service` ([operations.md](operations.md), "A UI of its own")
-for the daemon of your home, so you never have to start pine first:
+for the daemon of your home, so you never have to start pine first, on a Mac, on Linux and on
+Windows alike:
 
 | What it finds | What happens |
 |---|---|
@@ -208,7 +232,9 @@ pine packed into the app; the `pine` of your shell.
 | Notifications | A system notification when an agent is done, stops with an error, needs your approval or asks you something while the window is not in front. The words are pine's own ("main is done"), never the agent's |
 
 Closing the window does not quit the app on a Mac: it, and a daemon it started, stay until
-you quit (`⌘Q`). A daemon the app started that stops answering is started again.
+you quit (`⌘Q`). On Linux and Windows closing the window quits the app. A daemon the app
+started that stops answering is started again; one it started is stopped by closing its input,
+so that it closes its database before it ends, on every system.
 
 ## Themes
 
@@ -363,7 +389,8 @@ when a device asks are not tied to that section: they show wherever you are in t
 
 A phone with the Pine app on the same network finds this computer and asks; a browser on this
 computer opens Pine by a link. Either way you still compare four digits and press Allow here
-([ADR 0005](../adr/0005-pairing-from-nearby-devices.md)).
+([ADR 0005](../adr/0005-pairing-from-nearby-devices.md)). To stop phones on the same network from
+seeing this computer at all, turn `Visible on this network` off.
 
 | What | How |
 |---|---|
@@ -426,6 +453,17 @@ if you have none.
 
 The panels lie as cards on the window: the conversation, beside it the code panel, and at the
 far right the browser.
+
+On Linux and Windows the window has no title bar of the system's: the bar of tabs reaches the
+top, as on a Mac, and the system draws its window controls (minimise, maximise, close) over its
+right end, in the theme's colors; the bar keeps room for them. The menus are not shown there:
+everything in them is in the palette (`Ctrl+K`), and their keys work. The keys are the Mac's
+with `Ctrl` for `⌘`, written the system's way: `⌘T` is `Ctrl+T`, `⇧⌘T` `Ctrl+Shift+T`, `⌥⌘B`
+`Ctrl+Alt+B`, and the app says them so in its tooltips, menus and the palette. Where this manual
+says `⌘`, read `Ctrl` there. A folder dropped on the app's icon, or given to it in a terminal
+(`Pine <folder>`), opens a conversation that works in it. The taskbar button on Windows has a dot
+while something waits for you; on Linux the number is shown where the desktop shows numbers on
+an app's icon.
 
 **The side bar is your agents.** An agent with one conversation is one line: its name and what
 it is for, and a click opens that conversation. An agent with more than one is a group: its line
@@ -670,7 +708,9 @@ On a system without a sandbox the daemon does not write, and the app says so.
 ### The terminal
 
 The Terminal view is a shell of your own beside the conversation, as in Terminal.app: your login shell (`$SHELL`) with your
-environment, started in the conversation's folder (else the agent's workspace). It is not the
+environment, started in the conversation's folder (else the agent's workspace). Without `$SHELL` it is zsh on a Mac, your
+account's shell on Linux (else bash), and on Windows PowerShell (`pwsh.exe`, PowerShell 7, where it is installed, else
+the `powershell.exe` every Windows has). It is not the
 agent's: no sandbox, no mode, no approvals. The agent sees nothing of what you type there; it
 hears only how a block you ran with ▶ went (below).
 
@@ -699,7 +739,8 @@ comes later, after whatever it is doing. A command that never ends never ends an
 | | |
 |---|---|
 | What is reported | Only blocks run with ▶. What you type yourself is never reported |
-| How the end is known | The shell is started with hooks that mark when a command starts and ends (zsh and bash, after your own startup files). Another shell runs ▶ blocks but does not report them |
+| How the end is known | The shell is started with hooks that mark when a command starts and ends: zsh and bash (Git Bash's `bash.exe` too), after your own startup files; PowerShell after your profile, by wrapping its prompt and the line PSReadLine hands over, as VS Code's shell integration does (without PSReadLine nothing is reported). Another shell (cmd.exe, fish) runs ▶ blocks but does not report them |
+| Keys in the terminal, off a Mac | The app's keys are `Ctrl` chords there, and so are the shell's own (`Ctrl+W` deletes a word, `Ctrl+K` the rest of the line, `Ctrl+R` searches). While the terminal has the keyboard, `Ctrl` and a letter go to the shell; `Ctrl+Shift`, `Ctrl+Alt`, `Ctrl` and a digit, `Ctrl+Tab`, `Ctrl+,` and `` Ctrl+` `` stay the app's. `Ctrl+Shift+C` copies what is selected in the terminal and `Ctrl+Shift+V` pastes, as in the system's own terminals |
 | The report | A message of pine's own, not yours, with every line of output marked as output (`POST /agents/<id>/terminal`, [operations.md](operations.md)). In a conversation that has read outside content it keeps that mark |
 
 For an agent: to hand the owner a command to run, put it in a block marked `bash`. In Pine it
@@ -904,12 +945,16 @@ pine and restart it.
 
 ## Dictating a message
 
-On a Mac the microphone in the bar under the input (or `⌃R`, or `/voice [language]`) dictates
-the message, with the helper the terminal UI uses: the words are recognised on the Mac itself,
-and what is heard is text in the input until you send it. `↩` ends the listening, `esc` throws
-away what was heard, and a key that types ends it too. Everything under "Dictating a message"
-in [tui.md](tui.md) holds here, also what the first use asks for and what to do when it does
-not work. On another system there is no microphone in the bar.
+The microphone in the bar under the input (or `⌃R`, `Ctrl+R` on Windows and Linux, or
+`/voice [language]`) dictates the message, with the helper the terminal UI uses: the words are
+recognised on this computer itself (macOS's speech recognition, Windows' desktop recogniser,
+whisper.cpp on Linux), and what is heard is text in the input until you send it. `↩` ends the
+listening, `esc` throws away what was heard, and a key that types ends it too. It listens on
+the computer the app runs on, also while the app uses the pine of another machine or of WSL.
+Everything under "Dictating a message" in [tui.md](tui.md) holds here, also what each system
+needs, what the first use asks for and what to do when it does not work: where a piece is
+missing (whisper.cpp on Linux, a recogniser for the language on Windows), the microphone says
+what to install. The phone apps have no microphone in the bar.
 
 ## What the app is careful about
 
@@ -942,20 +987,28 @@ itself. What it knows, the daemon told it.
 
 | Flag | What it does |
 |---|---|
-| `--dmg` | Also a disk image, `release/Pine-<version>-<arch>.dmg`; the app zipped after its ticket is stapled, `Pine-<version>-<arch>.zip`; and the update feed that points at the zip, `Pine-<arch>.json` |
-| `--arch` | `arm64` or `x64`: the kind of Mac the app is for. Without it, the kind it is packed on. The helpers are built for both either way |
+| `--dist` | Also what is handed out on this system: a disk image `release/Pine-<version>-<arch>.dmg` on a Mac, with what its updater reads (the app zipped after its ticket is stapled, `Pine-<version>-<arch>.zip`, and the update feed that points at the zip, `Pine-<arch>.json`), `Pine-<version>-<arch>.AppImage` and `Pine-<version>-<arch>.deb` on Linux, the installer `Pine-<version>-<arch>-setup.exe` on Windows |
+| `--dmg` | The same as `--dist` (what the release of the Mac app runs) |
+| `--dir` | The app alone, as a folder (the default): what `--prepackaged` takes |
+| `--prepackaged <folder>` | The packages of an app that was packed before with `--dir`, without building anything again: for a release that signs the Windows app's programs in between and makes the installer of what was signed |
+| `--arch` | `arm64` or `x64`: the kind of processor the app is for. Without it, the kind it is packed on. On a Mac the helpers are built for both either way |
 | `--no-pine` | Without pine, Node and the helpers: the app then uses the `pine` of the owner's shell |
 | `--out` | Into another folder than `release/`, for a build beside one that is open |
 
-What goes into `Pine.app/Contents/Resources`:
+What goes into the app's resources (`Pine.app/Contents/Resources` on a Mac, `resources/` beside
+the program on Linux and Windows):
 
 | Folder | What it is |
 |---|---|
-| `pine/` | The package `npm run build` makes, with its dependencies installed, and the helpers built by `scripts/helpers.mjs` in `prebuilt/` folders beside their sources (pine looks there before it builds one: `src/prebuilt.ts`) |
-| `node/` | `bin/node` and its licence from nodejs.org, in the version of the Node that runs the pack script, checked against the checksums nodejs.org publishes |
-| `bin/pine` | The launcher for a terminal (`scripts/pine.sh`) |
+| `pine/` | The package `npm run build` makes, with its dependencies installed, and on a Mac the helpers built by `scripts/helpers.mjs` in `prebuilt/` folders beside their sources (pine looks there before it builds one: `src/prebuilt.ts`) |
+| `node/` | Node and its licence from nodejs.org, as it is handed out for that system (`bin/node`; `node.exe` on Windows), in the version of the Node that runs the pack script, checked against the checksums nodejs.org publishes |
+| `bin/pine` | The launcher for a terminal (`scripts/pine.sh`); on Windows `bin/pine.cmd` (`scripts/pine.cmd`), whose folder the installer puts into the user's PATH (`scripts/installer.nsh`) |
 
-The app is always signed with the hardened runtime, so that what is tried on the Mac it was
+On Linux the program is `pine-desktop` (not `pine`: a .deb puts it into `/usr/bin`, where the
+pine command may be). Nothing is signed on Linux and Windows here; a release signs the Windows
+app between `--dir` and `--prepackaged`.
+
+The Mac app is always signed with the hardened runtime, so that what is tried on the Mac it was
 built on is what is shipped. Whom it is signed for is set in the environment:
 
 | Variable | What it is |
@@ -988,9 +1041,12 @@ desktop/
     browser-host.ts the agents' browsers in the window: each tab a view of its own laid over the panel,
                    behind the guard of the browser server that drives it through a WebSocket with a word
     service.ts     finds node and pine, runs `pine service`, keeps the daemon it started
-    command.ts     `pine` for a terminal: the link into the shell's PATH, made and removed
-    terminal.ts    the terminal beside a conversation: the owner's own shell, which the page only types into
-    shell-hooks.ts what that shell is given so that a Run button's command reports how it went
+    fds.ts         what a program the app starts gets of the app's own open files: on Linux, where
+                   Chromium leaves them open across a start, nothing but its stdio (`sealed`)
+    command.ts     `pine` for a terminal: the link into the shell's PATH, made and removed (on
+                   Windows only looked for: the installer puts it there)
+    terminal.ts, shell-hooks.ts  the owner's terminal beside a conversation, and the hooks of zsh,
+                   bash and PowerShell that say how a command ended
     updates.ts     whether there is a newer app: GitHub asked for the last release, the link to its page
                    and the address of its update feed (stand-ins for tests: PINE_DESKTOP_RELEASES,
                    PINE_DESKTOP_DOWNLOADS)
@@ -1054,7 +1110,8 @@ desktop/
   .agents/skills/  shadcn's agent skill, as `npx skills add shadcn/ui` installed it (locked in
                    skills-lock.json; .claude/skills links to it for Claude Code)
   scripts/         build, dev, pack, the icon, the smoke test of a packed app, pine.sh (the
-                   launcher that becomes Resources/bin/pine), preview.ts (the page in an ordinary
+                   launcher that becomes Resources/bin/pine), pine.cmd (Windows' launcher) and
+                   installer.nsh (what the Windows installer adds: that folder in the PATH), preview.ts (the page in an ordinary
                    browser, `npm run dev:preview`: Vite's server makes every call for the page,
                    on a throwaway pine or the home `--home` names), test.mjs (`npm test`: the
                    app built once for the run, a temp folder of the run's own, a file that
@@ -1141,10 +1198,12 @@ text color. Settings keeps to this; other parts of the page are brought to it as
   scale's `text-sm` and `text-xs` are set to 14px and 12px (`@theme` in `index.css`), the app's own
   text and its small labels; a conversation (answers, your messages, the message box) is
   `text-base` with `leading-snug`, 15px on lines of 20.6px. Corners come from shadcn's
-  `--radius`. The one size that is not on the scale is the room for a Mac's window buttons at the
-  start of a bar along the top (`pl-window-buttons`, a token in `index.css`): the window says where
-  the buttons end (`titleBarOverlay` in `electron/main.ts`, read as `env(titlebar-area-x)`), so it is
-  none in full screen, in an ordinary browser (the preview, Storybook) and on another system.
+  `--radius`. The sizes that are not on the scale are the room for the window's buttons at the ends
+  of a bar along the top, tokens in `index.css`: `pl-window-buttons` at the start for a Mac's, and
+  `pr-window-controls` at the end for the window controls Windows and Linux draw over the page. The
+  window says where they are (`titleBarOverlay` in `electron/main.ts`, read as `env(titlebar-area-x)`
+  and `env(titlebar-area-width)`), so each is none where there are no such buttons: in full screen,
+  in an ordinary browser (the preview, Storybook), and on the other systems.
 - Every color is one of pine's roles, a variable in `index.css` (`--bg`, `--surface`, `--raised`,
   `--sunk`, `--side`, `--line`, `--line-soft`, `--text`, `--text-muted`, `--faint`, `--brand`,
   `--warn`, `--bad`, `--info`, `--plan`, `--add`, `--del` and their soft variants, `--select`,

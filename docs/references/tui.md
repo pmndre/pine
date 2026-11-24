@@ -76,7 +76,7 @@ Everything in the two bars reacts to a click.
 | A `↳ ... ▸ open` line in the conversation | A tab with that sub-agent's or delegated task's work |
 | The conversation name next to it | This agent's conversations, and "+ new conversation" |
 | The folder next to it (`no folder`, or a path) | The folder this conversation works in: none, where pine was started, one in use elsewhere, or one you pick. See [coding.md](coding.md) |
-| The `🎤` at the right end of the input (on a Mac) | Starts dictating the message, like `ctrl+r`. While it listens it is highlighted, and a click ends the listening. See [Dictating a message](#dictating-a-message) |
+| The `🎤` at the right end of the input (where this computer can listen) | Starts dictating the message, like `ctrl+r`. While it listens it is highlighted, and a click ends the listening. See [Dictating a message](#dictating-a-message) |
 | `▤ code` at the right end of the tab bar | Opens or closes the code pane: changes (git), files, tool output, what the agent left running, and the conversation's boards. In the pane: its five views, `↻` to read again, `×` to close, any file, folder or tool call to open it, `‹ back` to return |
 | The model | The models you have credentials for |
 | `reasoning <level>` | How much the model thinks before answering: off, minimal, low, medium, high, xhigh, max |
@@ -244,7 +244,7 @@ Type `/` and the list appears; keep typing to narrow it, `enter` runs the comman
 | `/swarm [what is to be done\|pause\|resume\|clear]` | A swarm: with a job, the agent leads it. Its sub-agents work the job through on the conversation's board (a job of a few steps it does itself), pine calls the agent again while tasks there are not done, and has its answer checked before the swarm is done. Without an argument it shows where the swarm stands. See "Swarms" below and [boards.md](boards.md). |
 | `/model [provider/id]` | Switch the agent's model. Without an argument, a list to search and pick from; or type a few letters after it: `/model deepseek` |
 | `/reasoning [level]` | Set how much the model thinks before answering; without an argument, choose from a list. Saved like the model. A model that cannot reason ignores it |
-| `/voice [language]` | Dictate the message instead of typing it; `ctrl+r` does the same. On a Mac. With a language (`/voice de-DE`) it listens for that one from then on. See [Dictating a message](#dictating-a-message) |
+| `/voice [language]` | Dictate the message instead of typing it; `ctrl+r` does the same. On macOS, Windows and Linux (with whisper.cpp). With a language (`/voice de-DE`) it listens for that one from then on. See [Dictating a message](#dictating-a-message) |
 | `/mode [auto\|safe\|manual\|bypass\|plan]` | Set how much this agent does without asking; without an argument, choose from a list. See [Modes](#modes) |
 | `/attach <path>`, `/detach [n]` | Attach files to the next message, or remove them |
 | `/paste` | Attach the picture that is on the clipboard (a screenshot, for example) to the next message. `ctrl+v` does the same in terminals that pass that key on. Text is pasted with the terminal's own paste |
@@ -366,13 +366,22 @@ press `ctrl+r` (or type `/voice`), speak, and press `enter` when you are done:
 | `esc` while it listens | Throws away what was heard; what you had typed is there again |
 | A key that types, or backspace, while it listens | Ends the listening too, and the key is typed: what was heard stays, and nothing more is put into the input. Dictating never holds the input |
 | `enter` or `ctrl+r` while it is still getting ready | Ends it. If it has not begun to listen after twenty seconds it ends by itself and says why that may be (the system waiting for your answer about the microphone) |
-| Language | The one your Mac is set to. `/voice de-DE` (or `fr-FR`, `es-ES`, ...) listens for another from then on, until the UI is closed |
+| Language | The one your system is set to. `/voice de-DE` (or `fr-FR`, `es-ES`, ...) listens for another from then on, until the UI is closed |
 
 Nothing that was heard is sent by itself: it is text in the input until you press `enter`, so
-a word the Mac misheard, or something somebody else said in the room, never reaches an agent
-unread.
+a misheard word, or something somebody else said in the room, never reaches an agent unread.
 
-**It works on a Mac, and on the Mac itself.** The words are recognised by the speech
+It works on macOS, Windows and Linux, and always on the computer itself: nothing that is heard
+is sent to a server, pine's or anybody's. Each system recognises with what it has:
+
+| System | What recognises the words | What it needs |
+|---|---|---|
+| macOS | The speech recognition macOS has on the device | Nothing on macOS 26 and later; before, Dictation switched on |
+| Windows | Windows' own desktop speech recogniser (System.Speech), through a small helper pine builds with the C# compiler every Windows carries | A speech recogniser for the language, which Windows has for English, German, French, Spanish, Japanese and Chinese |
+| Linux | [whisper.cpp](https://github.com/ggml-org/whisper.cpp)'s `whisper-cli` and a model of it, fed by the system's sound recorder | All three installed by you; pine installs and downloads none of it |
+
+**On a Mac.** The words are recognised by the speech
+recognition macOS has on the device. The words are recognised by the speech
 recognition macOS has on the device; nothing is sent to a server, pine's or anybody's. On
 macOS 26 and later this needs no setting. The first time you use a language that the Mac has
 no speech model for yet, the system fetches one (the status line says so), which needs the
@@ -386,10 +395,33 @@ terminal app is not given the microphone. After an update of pine the helper is 
 and macOS may ask once more. A pine that came with the Pine app has the helper built already
 and needs no developer tools.
 
-**On Linux, and anywhere that is not macOS, there is no voice input.** The input has no
-microphone there, `ctrl+r` and `/voice` answer with one line that says so, and everything
-else works as before. Nothing is installed,
-built or started for it.
+**On Windows.** pine builds a small helper the first time (`pine-voice-….exe`, in
+`%LOCALAPPDATA%\pine-voice`) with the C# compiler of .NET Framework 4 that Windows carries, and
+it listens to the default microphone with Windows' desktop speech recogniser, which works on the
+computer only. Without a language it listens for the one Windows is shown in. Windows has such a
+recogniser where Speech recognition is installed for the language: Settings > Time & language >
+Language & region, the language's Language options (Windows 10: Settings > Time & Language >
+Language). Windows asks no question about the microphone, but "Let desktop apps access your
+microphone" in Settings > Privacy & security > Microphone has to be on, or it hears nothing.
+
+**On Linux.** Linux has no speech recognition of its own, so pine uses three programs and
+files you install, and finds them by themselves:
+
+| | Where pine looks | How to get it |
+|---|---|---|
+| A recorder | `parecord` (PulseAudio's, which PipeWire answers too), else `arecord` (ALSA's), in `/usr/bin` and on your `PATH` | `sudo apt install pulseaudio-utils`, or `alsa-utils` |
+| `whisper-cli` | `~/.local/share/pine/voice`, `~/.local/bin`, your `PATH`, `/usr/local/bin`, `/usr/bin`, and a build in `~/whisper.cpp` or `/opt/whisper.cpp`. `whisper-cpp` too, as some systems name it | Ubuntu has no package of it: `sudo apt install git cmake build-essential`, `git clone https://github.com/ggml-org/whisper.cpp`, in its folder `cmake -B build` and `cmake --build build --config Release`, then link `build/bin/whisper-cli` into `~/.local/bin` |
+| A model | `~/.local/share/pine/voice` (or `$XDG_DATA_HOME/pine/voice`), a file named as whisper.cpp names them, `ggml-<size>.bin` | Download `ggml-base.en.bin` (English) or `ggml-base.bin` (every language) from [huggingface.co/ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp) into that folder. Of several, pine takes an English one for English and one for every language otherwise, and `base` before the slower sizes |
+
+While you speak, the recorder runs without a pause and pine cuts what it hears where you pause
+(at most every six seconds), so the words arrive a few seconds after you said them; silence is
+not recognised, since whisper.cpp would make up words for it. Every program is started by its
+path, never through a shell, and the pieces of sound are removed once they are recognised.
+Where something is missing, `ctrl+r` and `/voice` answer with one line that says what to
+install, the input has no microphone, and nothing is started.
+
+**Anywhere else** there is no voice input. The input has no microphone there, `ctrl+r` and
+`/voice` answer with one line that says so, and everything else works as before.
 
 When it does not work, the line that appears says why and what to do:
 
@@ -401,6 +433,12 @@ When it does not work, the line that appears says why and what to do:
 | `the system could not fetch its speech model` | The Mac needs the network once for a new language |
 | `speech recognition is switched off on this Mac` | Before macOS 26 only: turn on Dictation in System Settings > Keyboard > Dictation |
 | `Voice input needs Apple's command line developer tools` | `xcode-select --install`, then try again |
+| `Windows has no speech recogniser for <language>` | Install Speech recognition for the language (above), or use one it lists, with `/voice <language>` |
+| `Windows has no microphone to listen with` | Connect one, or choose one in Settings > System > Sound > Input |
+| `Voice input on Windows needs the C# compiler of .NET Framework 4` | "Turn Windows features on or off": switch on .NET Framework 4.8 Advanced Services |
+| `Voice input on Linux recognises speech on this computer with whisper.cpp, and it needs …` | Install what it names (above) |
+| `the sound could not be recorded` | Linux: connect a microphone and choose it as the input in the sound settings |
+| `whisper.cpp could not recognise what was said` | Linux: the model file is not one of whisper.cpp's, or is broken: download it again |
 
 ## Modes
 
