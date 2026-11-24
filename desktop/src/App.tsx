@@ -233,6 +233,7 @@ function conversationItems(c: Conv, movable: boolean) {
 	const main = c.session === "main";
 	return [
 		{ id: "open", label: "Open" },
+		...(store.canManageWindows ? [{ id: "open-window", label: "Open in New Window" }] : []),
 		...(c.tasks ? [{ id: "branch", label: "Branch" }] : []),
 		...(c.tasks && c.folder ? [{ id: "branch-worktree", label: "Branch into a Worktree" }] : []),
 		...(c.worktree ? [{ id: "worktree", label: "Worktree…" }] : []),
@@ -247,6 +248,7 @@ function conversationItems(c: Conv, movable: boolean) {
 async function conversationPicked(agent: string, c: Conv, picked: string | undefined | null): Promise<void> {
 	const s = store;
 	if (picked === "open") await s.openTab(agent, c.session);
+	if (picked === "open-window") await s.attempt(() => bridge.newWindow!({ host: s.service.host ?? null, tab: { agent, session: c.session } }));
 	if (picked === "move") await s.askMoveToGroup(agent, c.session, c.group);
 	if (picked === "branch" || picked === "branch-worktree") await s.branch(agent, c.session, undefined, picked === "branch-worktree");
 	if (picked === "worktree") {
@@ -716,6 +718,9 @@ export function Machines() {
 
 // ---- the tabs ------------------------------------------------------------------------------------------
 
+/** Drag type scoped to this window's own tab bar, so dragging a tab across two windows is ignored. */
+const TAB_MIME = `application/x-pine-tab-${Math.random().toString(36).slice(2, 10)}`;
+
 function TabButton({ tab, index }: { tab: Tab; index: number }) {
 	useModel(tab);
 	const s = store;
@@ -729,6 +734,7 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 	}, [on]);
 	const act = (action: TabMenuAction) => {
 		if (action === "close") return s.closeTab(tab);
+		if (action === "move-window") return void s.moveTabToNewWindow(tab);
 		if (action === "pin" || action === "unpin") return void s.pin(tab, action === "pin");
 		s.closeTabs(action, tab);
 	};
@@ -737,6 +743,7 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 	return (
 		<TabMenu
 			pin={tab.kind !== "chat" ? undefined : tab.session === "main" ? "main" : kept ? "unpin" : "pin"}
+			moveToWindow={tab.kind === "chat" && s.canManageWindows}
 			others={s.tabs.length > 1}
 			right={index < s.tabs.length - 1}
 			onAction={act}
@@ -745,12 +752,18 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 					ref={ref}
 					data-slot="tab"
 					data-active={on || undefined}
+					data-drop={drop || undefined}
 					className={cn("group/tab relative flex h-8 max-w-55 min-w-28 flex-initial items-center gap-2 rounded-md pr-1.5 pl-2.5 app-no-drag", on ? "bg-background text-foreground ring-1 ring-border" : "text-muted-foreground hover:bg-accent hover:text-foreground", drop && "before:absolute before:inset-y-1 before:-left-0.5 before:w-0.5 before:rounded-full before:bg-primary")}
 					draggable
-					onDragStart={(e) => (e.dataTransfer.setData("application/x-pine-tab", String(index)), (e.dataTransfer.effectAllowed = "move"))}
-					onDragOver={(e) => e.dataTransfer.types.includes("application/x-pine-tab") && (e.preventDefault(), setDrop(true))}
+					onDragStart={(e) => (e.dataTransfer.setData(TAB_MIME, String(index)), (e.dataTransfer.effectAllowed = "move"))}
+					onDragOver={(e) => e.dataTransfer.types.includes(TAB_MIME) && (e.preventDefault(), setDrop(true))}
 					onDragLeave={() => setDrop(false)}
-					onDrop={(e) => (setDrop(false), s.moveTab(Number(e.dataTransfer.getData("application/x-pine-tab")), index))}
+					onDrop={(e) => {
+						setDrop(false);
+						const raw = e.dataTransfer.getData(TAB_MIME);
+						const from = raw === "" ? NaN : Number(raw);
+						if (Number.isInteger(from) && from >= 0) s.moveTab(from, index);
+					}}
 					onClick={() => s.activate(tab)}
 					onAuxClick={(e) => e.button === 1 && s.closeTab(tab)}
 					title={tab.kind === "chat" ? `${tab.agent} · ${tab.session}${tab.folder ? ` · ${tab.folder}` : ""}` : tab.kind === "task" ? `task #${tab.task}` : tab.kind}

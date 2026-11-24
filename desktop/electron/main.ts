@@ -409,18 +409,21 @@ const browsers = new BrowserHost((win) => {
 	return false;
 });
 
-/** The owner's terminal of each conversation (terminal.ts): their own shell, which ends with the app. */
+/** The owner's terminal of each conversation (terminal.ts): their own shell per window, which ends with its window or the app. */
 // A block run with a Run button reports how it went to the page, which tells the conversation through the daemon.
 const terminals = new Terminals(
 	{
-		data: (id, data) => {
-			for (const w of windows.values()) if (!w.host) sendTo(w, "pine:term-data", id, data);
+		data: (id, data, windowId) => {
+			const w = windows.get(windowId);
+			if (w && !w.host) sendTo(w, "pine:term-data", id, data);
 		},
-		exit: (id, code) => {
-			for (const w of windows.values()) if (!w.host) sendTo(w, "pine:term-exit", id, code);
+		exit: (id, code, windowId) => {
+			const w = windows.get(windowId);
+			if (w && !w.host) sendTo(w, "pine:term-exit", id, code);
 		},
-		run: (id, report) => {
-			for (const w of windows.values()) if (!w.host) sendTo(w, "pine:term-run", id, report);
+		run: (id, report, windowId) => {
+			const w = windows.get(windowId);
+			if (w && !w.host) sendTo(w, "pine:term-run", id, report);
 		},
 	},
 	{ env: loginEnv, hooks: path.join(app.getPath("userData"), "shell-hooks"), shell: process.env.PINE_DESKTOP_SHELL ? [process.env.PINE_DESKTOP_SHELL] : undefined, stillRunningMs: Number(process.env.PINE_DESKTOP_STILL_RUNNING_MS) || undefined },
@@ -672,7 +675,7 @@ async function use(entry: WindowEntry, host: string | undefined): Promise<void> 
 	savePrefs();
 	syncRemainingUnion(previousHost);
 	notifyOpenHosts();
-	if ([...windows.values()].every((w) => w.win.isDestroyed() || w.host !== undefined)) terminals.closeAll();
+	if (host !== undefined) terminals.closeWindow(entry.id);
 	await startWindowService(entry);
 }
 
@@ -963,6 +966,7 @@ function openWindow(init: OpenWindowInit = {}): WindowEntry {
 	win.on("closed", () => {
 		const closedHost = entry.host;
 		windows.delete(id);
+		terminals.closeWindow(id);
 		if (voiceOwner === entry) {
 			listening?.cancel();
 			listening = undefined;
@@ -1239,6 +1243,9 @@ function wire(): void {
 					}
 				: undefined;
 		const next = openWindow({ from: caller, host, tab, draft, moveFrom: opts.moveFrom === true });
+		if (opts.moveFrom === true && tab && !caller.host && !next.host) {
+			terminals.transfer(caller.id, next.id, `${tab.agent}:${tab.session}`);
+		}
 		showWindow(next);
 	});
 	handle("pine:window-close", (caller) => {
@@ -1504,11 +1511,14 @@ function wire(): void {
 		if (cancel) (listening?.cancel(), (listening = undefined));
 		else listening?.stop();
 	});
-	handle("pine:term-open", (_caller, id: string, cwd?: string, cols?: number, rows?: number) => terminals.open(String(id), cwd, cols, rows));
-	handle("pine:term-write", (_caller, id: string, data: string) => terminals.write(String(id), data));
-	handle("pine:term-run", (_caller, id: string, code: string) => terminals.run(String(id), code));
-	handle("pine:term-resize", (_caller, id: string, cols: number, rows: number) => terminals.resize(String(id), cols, rows));
-	handle("pine:term-close", (_caller, id: string) => terminals.close(String(id)));
+	handle("pine:term-open", (caller, id: string, cwd?: string, cols?: number, rows?: number) => {
+		if (caller.host) throw new Error("The terminal is a shell on this computer.");
+		return terminals.open(String(id), cwd, cols, rows, caller.id);
+	});
+	handle("pine:term-write", (caller, id: string, data: string) => terminals.write(String(id), data, caller.id));
+	handle("pine:term-run", (caller, id: string, code: string) => terminals.run(String(id), code, caller.id));
+	handle("pine:term-resize", (caller, id: string, cols: number, rows: number) => terminals.resize(String(id), cols, rows, caller.id));
+	handle("pine:term-close", (caller, id: string) => terminals.close(String(id), caller.id));
 	handle("pine:context-menu", (caller, items: Array<{ id: string; label: string; enabled?: boolean; separator?: boolean; danger?: boolean; checked?: boolean }>) => {
 		return new Promise<string | undefined>((resolve) => {
 			let picked: string | undefined;
