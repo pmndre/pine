@@ -1,7 +1,9 @@
 // What the page has of the world outside itself: the bridge the preload script exposes.
-import type { Bridge } from "../electron/preload.ts";
+import type { Bridge, NewWindowOptions, WindowLayout } from "../electron/preload.ts";
 import type { NearbyFound } from "./machines.ts";
 import type { Look } from "./theme.ts";
+
+export type { NewWindowOptions, WindowLayout };
 
 declare global {
 	interface Window {
@@ -125,6 +127,16 @@ export interface AppState {
 	 * it on "Restart to update" or a quit. The other bridges, and an app from a checkout, leave it out.
 	 */
 	selfUpdate?: boolean;
+	/** This window's saved tabs, active tab, panels, widths and folded side bar state, when kept per window. */
+	windowLayout?: WindowLayout;
+	/** Start on the "No tab is open" screen (`NoTab`) rather than loading the daemon's saved tabs. */
+	noTab?: boolean;
+	/** Open this single conversation tab when the window boots (`Move to New Window`, `Open in New Window`). */
+	initialTab?: { agent: string; session: string };
+	/** Unsent composer draft and attachments moved along with `initialTab`. */
+	initialDraft?: { draft: string; attachments: Array<{ name: string; size: number; data: string; preview?: string }> };
+	/** SSH hosts open in other windows than this one (one entry per other window viewing an SSH host). */
+	openHosts?: string[];
 }
 
 export type { AccessChange, AccessDevice, AccessProblem, AccessState } from "../electron/access/control.ts";
@@ -144,11 +156,14 @@ export type UpdateCalls = "installUpdate" | "onUpdate";
  */
 export type BrowserCalls = "browserShow" | "browserFocus" | "browserPicture";
 
+/** Multiple desktop windows and per-window layout: only the desktop app's bridge has these calls. */
+export type WindowCalls = "newWindow" | "closeWindow" | "windowLayout" | "onOpenHosts" | "onPrefs";
+
 /**
  * The bridge as the page sees it: the preload script's, or a stand-in of the same shape (the
  * preview's, the mobile app's, the web client's).
  */
-export type PageBridge = Omit<Bridge, "state" | AccessCalls | UpdateCalls | BrowserCalls> & Partial<Pick<Bridge, AccessCalls | UpdateCalls | BrowserCalls>> & {
+export type PageBridge = Omit<Bridge, "state" | "mediaBase" | AccessCalls | UpdateCalls | BrowserCalls | WindowCalls> & Partial<Pick<Bridge, AccessCalls | UpdateCalls | BrowserCalls | WindowCalls>> & {
 	state: () => Promise<AppState>;
 	/**
 	 * Where the daemon's pictures, video and sound are fetched from, set by a bridge whose page

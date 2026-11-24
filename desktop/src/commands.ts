@@ -13,6 +13,8 @@ export interface Command {
 	keys?: string;
 	/** Needs a conversation in front. */
 	chat?: boolean;
+	/** Only in the desktop app, where multiple windows exist. */
+	windows?: boolean;
 	run(args: string, tab: Tab | undefined): void | Promise<void>;
 }
 
@@ -20,6 +22,7 @@ const chat = (tab: Tab | undefined): Tab | undefined => (tab?.kind === "chat" ? 
 const menu = (name: string) => () => store.command(name);
 
 export const COMMANDS: Command[] = [
+	{ name: "new-window", title: "New window", about: "Open another Pine window", keys: "⌘N", windows: true, run: () => (store.canManageWindows ? window.pine.newWindow?.() : store.flash("Multiple windows are in the Pine desktop app only.")) },
 	{ name: "new", title: "New conversation", about: "A new conversation with this agent, in a new tab", hint: "[name]", keys: "⌘T", run: (args, tab) => (args.trim() && tab ? store.openTab(tab.agent, args.trim()) : store.newConversation()) },
 	{
 		name: "agent", title: "New conversation with another agent", about: "Open a tab with another agent", hint: "<id> [session]", keys: "⇧⌘T",

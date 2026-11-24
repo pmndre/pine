@@ -5,12 +5,12 @@
 // `window.pine` already, and in a build `__PINE_PREVIEW__` is false and none of this is kept.
 // The preview's pine is the one its server started: other machines are the app's only.
 import type { Bridge } from "../electron/preload.ts";
-import type { AccessCalls, BrowserCalls, UpdateCalls } from "./bridge.ts";
+import type { AccessCalls, BrowserCalls, UpdateCalls, WindowCalls } from "./bridge.ts";
 import { cleanLook } from "./theme.ts";
 
 if (import.meta.env.DEV && __PINE_PREVIEW__ && !window.pine) window.pine = standIn();
 
-function standIn(): Omit<Bridge, AccessCalls | UpdateCalls | BrowserCalls> {
+function standIn(): Omit<Bridge, "mediaBase" | AccessCalls | UpdateCalls | BrowserCalls | WindowCalls> {
 	type Listener = (...args: any[]) => void;
 	const listeners = { service: new Set<Listener>(), events: new Set<Listener>(), connection: new Set<Listener>() };
 	const on = (set: Set<Listener>) => (fn: Listener) => (set.add(fn), () => void set.delete(fn));
