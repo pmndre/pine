@@ -2,6 +2,11 @@
 // for, each by name. The page has no Node, no token and no other way out.
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AccessChange, AccessState } from "./access/control.ts";
+import type { NewWindowOptions, WindowLayout } from "./window-layout.ts";
+
+const windowIdArg = process.argv.find((a) => a.startsWith("--pine-window-id="));
+const windowId = windowIdArg ? windowIdArg.slice("--pine-window-id=".length) : "";
+const mediaBase = windowId ? `pine-media://window-${windowId}` : "pine-media://daemon";
 
 const on = (channel: string) => (fn: (...args: any[]) => void) => {
 	const listener = (_e: unknown, ...args: any[]) => fn(...args);
@@ -10,6 +15,8 @@ const on = (channel: string) => (fn: (...args: any[]) => void) => {
 };
 
 const bridge = {
+	/** Per-window media scheme origin routed by main process to this window's active daemon. */
+	mediaBase,
 	state: () => ipcRenderer.invoke("pine:state"),
 	ready: () => ipcRenderer.send("pine:ready"),
 	call: (method: "GET" | "POST", url: string, body?: unknown) => ipcRenderer.invoke("pine:call", method, url, body),
@@ -30,7 +37,17 @@ const bridge = {
 	use: (host?: string) => ipcRenderer.invoke("pine:use", host),
 	/** Add a machine to the list, or take one out; what comes back is the prefs as they are now. */
 	addHost: (host: string) => ipcRenderer.invoke("pine:hosts-add", host),
-	forgetHost: (host: string) => ipcRenderer.invoke("pine:hosts-forget", host),
+	forgetHost: (host: string, options?: { closeWindows?: boolean }) => ipcRenderer.invoke("pine:hosts-forget", host, options),
+	/** Open a new desktop window, optionally targeting a host, a specific tab, or moving a tab with its draft. */
+	newWindow: (options?: NewWindowOptions) => ipcRenderer.invoke("pine:new-window", options) as Promise<void>,
+	/** Close this desktop window. */
+	closeWindow: () => ipcRenderer.invoke("pine:close-window") as Promise<void>,
+	/** Report this window's current tabs and panel layout to the main process for persistence and daemon sync. */
+	windowLayout: (snapshot: WindowLayout) => ipcRenderer.invoke("pine:window-layout", snapshot) as Promise<void>,
+	/** List of remote hosts currently open in any window, pushed whenever windows open, switch, or close. */
+	onOpenHosts: on("pine:open-hosts") as (fn: (hosts: string[]) => void) => () => void,
+	/** Updated application preferences pushed when another window changes global preferences or hosts. */
+	onPrefs: on("pine:prefs-changed"),
 	pickFolder: (title?: string) => ipcRenderer.invoke("pine:pick-folder", title),
 	saveText: (name: string, text: string) => ipcRenderer.invoke("pine:save-text", name, text),
 	open: (url: string) => ipcRenderer.invoke("pine:open", url),

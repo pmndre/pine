@@ -72,6 +72,8 @@ export interface Prefs {
 }
 
 export type { Update, UpdaterState } from "../electron/updates.ts";
+export type { ChromeLayout, NewWindowOptions, WindowAttachment, WindowDraft, WindowLayout, WindowQuote, WindowTabRef, WindowWidths } from "../electron/window-layout.ts";
+import type { ChromeLayout, WindowDraft, WindowLayout, WindowTabRef } from "../electron/window-layout.ts";
 
 /** What the bridge's `state()` answers when the page starts. */
 export interface AppState {
@@ -125,6 +127,20 @@ export interface AppState {
 	 * it on "Restart to update" or a quit. The other bridges, and an app from a checkout, leave it out.
 	 */
 	selfUpdate?: boolean;
+	/** Desktop-only: unique identifier of this window. */
+	windowId?: string;
+	/** Desktop-only: saved full layout to restore for this window on launch. */
+	windowLayout?: WindowLayout;
+	/** Desktop-only: fallback chrome layout (sidebar, aside, view, order, widths, folded) for a newly opened window. */
+	chromeLayout?: ChromeLayout;
+	/** Desktop-only: open on the NoTab screen instead of loading the daemon's /ui/tabs. */
+	noTab?: boolean;
+	/** Desktop-only: open directly with this single conversation tab. */
+	initialTab?: WindowTabRef;
+	/** Desktop-only: unsent draft state to restore into `initialTab`. */
+	initialDraft?: WindowDraft;
+	/** Desktop-only: remote hosts currently displayed in any open window. */
+	openHosts?: string[];
 }
 
 export type { AccessChange, AccessDevice, AccessProblem, AccessState } from "../electron/access/control.ts";
@@ -144,12 +160,16 @@ export type UpdateCalls = "installUpdate" | "onUpdate";
  */
 export type BrowserCalls = "browserShow" | "browserFocus" | "browserPicture";
 
+/** Multi-window lifecycle and coordination calls: only the desktop app's bridge provides these. */
+export type WindowCalls = "newWindow" | "closeWindow" | "windowLayout" | "onOpenHosts" | "onPrefs";
+
 /**
  * The bridge as the page sees it: the preload script's, or a stand-in of the same shape (the
  * preview's, the mobile app's, the web client's).
  */
-export type PageBridge = Omit<Bridge, "state" | "termFocus" | "wslDistros" | "wslInstall" | "appMenu" | AccessCalls | UpdateCalls | BrowserCalls> & Partial<Pick<Bridge, AccessCalls | UpdateCalls | BrowserCalls>> & {
+export type PageBridge = Omit<Bridge, "state" | "mediaBase" | "termFocus" | "wslDistros" | "wslInstall" | "appMenu" | AccessCalls | UpdateCalls | BrowserCalls | WindowCalls> & Partial<Pick<Bridge, AccessCalls | UpdateCalls | BrowserCalls | WindowCalls>> & {
 	state: () => Promise<AppState>;
+	onPrefs?: (fn: (prefs: Prefs) => void) => () => void;
 	/** WSL on Windows: its distributions, and the pine the app carries brought into one. The desktop app's only. */
 	wslDistros?: Bridge["wslDistros"];
 	wslInstall?: (distro: string) => Promise<{ sandbox: string }>;

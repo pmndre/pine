@@ -1,7 +1,7 @@
 // The app's main process. It owns three things the page must not: the daemon's token, the
 // operating system (windows, menus, dialogs, notifications), and the child that is the daemon
 // when this app had to start one. The page gets a narrow bridge (preload.ts) and nothing else.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, nativeTheme, Notification, protocol, safeStorage, session, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, nativeTheme, Notification, protocol, safeStorage, screen, session, shell } from "electron";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { csc } from "../../src/csharp.ts";
 import { buildVoice, buildVoiceWindows, Listening, NO_CSC, NOT_HERE, voiceTools } from "../../src/tui/voice.ts";
 import { BROWSER_SWITCHES, type Bounds, BrowserHost } from "./browser-host.ts";
-import { type AccessChange, type AccessControl, type AccessPrefs, createAccessControl, readAccessPrefs } from "./access/control.ts";
+import { type AccessChange, type AccessControl, type AccessPrefs, type AccessState, createAccessControl, readAccessPrefs } from "./access/control.ts";
 import type { Cipher } from "./access/host.ts";
 import { createAnnouncer, isPairAddress } from "./access/nearby.ts";
 import { startStandIn } from "./access/stand-in.ts";
@@ -23,6 +23,7 @@ import { shellKeeps, Terminals } from "./terminal.ts";
 import { makeUpdater } from "./updater.ts";
 import { ahead, DOWNLOADS, LATEST, lookForUpdate, type Update } from "./updates.ts";
 import { cleanLook, type Look } from "../src/theme.ts";
+import { cascadeBounds, chromeOf, cleanBounds, cleanChromeLayout, cleanWindowLayout, cleanWindows, type ChromeLayout, type NewWindowOptions, type WindowBounds, type WindowDraft, type WindowLayout, type WindowSnapshot, type WindowTabRef } from "./window-layout.ts";
 
 // `pine` in a terminal, from an AppImage (command.ts): the link in the PATH leads to the AppImage
 // itself, whose folder under /tmp is another one at every start, and its runtime says by which name
@@ -103,13 +104,20 @@ interface Prefs {
 	 * opens in it, and its frame (light or dark) and background follow it. None: pmndre.
 	 */
 	look?: Look;
-	bounds?: { x?: number; y?: number; width: number; height: number };
+	bounds?: WindowBounds;
+	/** Fallback chrome layout (sidebar, aside, view, order, widths, folded) used when reopening from zero windows. */
+	layout?: ChromeLayout;
+	/** Open desktop windows persisted on quit and during normal operation, restored on next launch. */
+	windows?: WindowSnapshot[];
 	/** Browser access: on or off, the service's address, open at login (access/control.ts). The host key and the devices are a file of their own beside this one. */
 	access: AccessPrefs;
 }
 
 const prefsFile = () => path.join(app.getPath("userData"), "prefs.json");
 let prefs: Prefs = { keepRunning: false, hosts: [], notify: true, updates: true, autoUpdate: true, commandTried: false, access: readAccessPrefs(undefined) };
+
+/** Preferences shape exposed to renderer pages (omits main-process window geometry and snapshots). */
+const publicPrefs = () => ({ ...prefs, bounds: undefined, layout: undefined, windows: undefined });
 
 /**
  * Whether prefs.json may be written: not before it was read (what is in memory then is the defaults,
@@ -127,17 +135,20 @@ function loadPrefs(): void {
 	} else prefsWritable = true;
 	const raw = read.raw;
 	if (raw) {
+		const hosts = readHosts(raw.hosts);
 		prefs = {
 			home: typeof raw.home === "string" && raw.home ? raw.home : undefined,
 			keepRunning: raw.keepRunning === true,
-			hosts: readHosts(raw.hosts),
+			hosts,
 			use: undefined,
 			notify: raw.notify !== false,
 			updates: raw.updates !== false,
 			autoUpdate: raw.autoUpdate !== false,
 			commandTried: raw.commandTried === true,
 			look: cleanLook(raw.look),
-			bounds: raw.bounds && Number(raw.bounds.width) > 300 && Number(raw.bounds.height) > 200 ? raw.bounds : undefined,
+			bounds: cleanBounds(raw.bounds),
+			layout: cleanChromeLayout(raw.layout),
+			windows: cleanWindows(raw.windows, hosts),
 			access: readAccessPrefs(raw.access),
 		};
 		// Only a machine that is in the list: what else might be written there is not connected to.
@@ -164,7 +175,7 @@ function windowBackground(): string {
 const TITLE_BAR = 41.25;
 
 /** The system's window controls off a Mac, in the theme's colors: on the bar's background (the page's `sunk`), drawn in its quieter text. */
-function windowControls(zoom = win && !win.isDestroyed() ? win.webContents.getZoomFactor() : 1): { color: string; symbolColor: string; height: number } {
+function windowControls(zoom = 1): { color: string; symbolColor: string; height: number } {
 	const colors = prefs.look?.colors;
 	return { color: (colors?.sunk ?? "#171922").slice(0, 7), symbolColor: (colors?.["text-muted"] ?? colors?.text ?? "#a6accd").slice(0, 7), height: Math.round(TITLE_BAR * zoom) };
 }
@@ -173,19 +184,24 @@ function windowControls(zoom = win && !win.isDestroyed() ? win.webContents.getZo
  * Zooms the page by a step as the menu's own roles do (undefined: back to its own size), and off a Mac fits the window's
  * controls to the bar, which grows and shrinks with the page: taller than it, they would cover the panels' top edge.
  */
-function zoomBy(step: number | undefined): void {
-	if (!win || win.isDestroyed()) return;
-	const level = step === undefined ? 0 : win.webContents.getZoomLevel() + step;
-	win.webContents.setZoomLevel(level);
+function zoomBy(w: ManagedWindow | undefined, step: number | undefined): void {
+	if (!w || w.win.isDestroyed()) return;
+	const level = step === undefined ? 0 : w.win.webContents.getZoomLevel() + step;
+	w.win.webContents.setZoomLevel(level);
 	// (Right after, the window still says the zoom it had. A level is a power of 1.2, as Chromium counts it.)
-	refreshBackground(1.2 ** level);
+	refreshWindowBackground(w, 1.2 ** level);
 }
 
-/** Repaints the window's background (and off a Mac its controls) for the current theme; a no-op before the window exists. */
-function refreshBackground(zoom?: number): void {
-	if (!win || win.isDestroyed()) return;
-	win.setBackgroundColor(windowBackground());
-	if (!isMac) win.setTitleBarOverlay(windowControls(zoom));
+/** Repaints a window's background (and off a Mac its controls) for the current theme. */
+function refreshWindowBackground(w: ManagedWindow, zoom?: number): void {
+	if (w.win.isDestroyed()) return;
+	w.win.setBackgroundColor(windowBackground());
+	if (!isMac) w.win.setTitleBarOverlay(windowControls(zoom ?? w.win.webContents.getZoomFactor()));
+}
+
+/** Repaints every open window's background (and off a Mac its controls) for the current theme. */
+function refreshBackground(): void {
+	for (const w of windows.values()) refreshWindowBackground(w);
 }
 
 function savePrefs(): void {
@@ -214,78 +230,182 @@ function olderThan(s: Service, host: string | undefined): string | undefined {
 	return mine && ahead(mine, s.version) ? mine : undefined;
 }
 
-let win: BrowserWindow | undefined;
-/** The agents' browsers, in this window: for this computer's pine only, whose browser servers can reach it. */
-const browsers = new BrowserHost(() => win);
-let service: Service | undefined;
+interface ManagedWindow {
+	id: string;
+	win: BrowserWindow;
+	ready: boolean;
+	focusedAt: number;
+	terminalFocused: boolean;
+	host?: string;
+	service?: Service;
+	state: ServiceState;
+	round: number;
+	bounds?: WindowBounds;
+	layout?: WindowLayout;
+	chromeLayout?: ChromeLayout;
+	noTab?: boolean;
+	initialTab?: WindowTabRef;
+	initialDraft?: WindowDraft;
+	pendingFolders: string[];
+	pairingShown: boolean;
+	badgeCount: number;
+	tabKeys: Set<string>;
+}
+
+/** All open windows keyed by internal windowId ("w1", "w2", ...). */
+const windows = new Map<string, ManagedWindow>();
+/** All open windows keyed by `webContents.id` for O(1) IPC sender lookup. */
+const byContents = new Map<number, ManagedWindow>();
+let nextWindowId = 1;
+let focusSeq = 1;
+
+/** Returns the currently focused window, else the most recently focused open window, else the first open window. */
+function focusedWindow(): ManagedWindow | undefined {
+	let best: ManagedWindow | undefined;
+	for (const w of windows.values()) {
+		if (w.win.isDestroyed()) continue;
+		if (w.win.isFocused()) return w;
+		if (!best || w.focusedAt > best.focusedAt) best = w;
+	}
+	return best;
+}
+
+/** All open non-destroyed windows currently viewing `host` (`undefined` = this computer). */
+function windowsForHost(host: string | undefined): ManagedWindow[] {
+	const key = host ?? "";
+	return [...windows.values()].filter((w) => !w.win.isDestroyed() && (w.host ?? "") === key);
+}
+
+/** The focused or most recently focused open window viewing `host`. */
+function primaryWindowForHost(host: string | undefined): ManagedWindow | undefined {
+	let best: ManagedWindow | undefined;
+	for (const w of windowsForHost(host)) {
+		if (w.win.isFocused()) return w;
+		if (!best || w.focusedAt > best.focusedAt) best = w;
+	}
+	return best;
+}
+
+/** Remote hosts currently displayed in at least one open window. */
+function openHostsList(): string[] {
+	return [...new Set([...windows.values()].filter((w) => !w.win.isDestroyed() && w.host).map((w) => w.host!))];
+}
+
+function sendTo(w: ManagedWindow | undefined, channel: string, ...args: unknown[]): void {
+	if (w && !w.win.isDestroyed()) w.win.webContents.send(channel, ...args);
+}
+
+function broadcast(channel: string, ...args: unknown[]): void {
+	for (const w of windows.values()) if (!w.win.isDestroyed()) w.win.webContents.send(channel, ...args);
+}
+
+function broadcastOpenHosts(): void {
+	broadcast("pine:open-hosts", openHostsList());
+}
+
+function broadcastPrefs(): void {
+	broadcast("pine:prefs-changed", publicPrefs());
+}
+
+function snapshotOpenWindows(): WindowSnapshot[] {
+	return [...windows.values()]
+		.filter((w) => !w.win.isDestroyed())
+		.map((w) => ({
+			...(w.bounds ? { bounds: w.bounds } : {}),
+			...(w.host ? { host: w.host } : {}),
+			...(w.layout
+				? { layout: w.layout }
+				: w.chromeLayout
+					? { layout: { ...(w.host ? { host: w.host } : {}), tabs: [], active: 0, ...(w.noTab ? { noTab: true } : {}), code: false, ...w.chromeLayout } }
+					: {}),
+		}));
+}
+
+function persistOpenWindows(): void {
+	prefs.windows = snapshotOpenWindows();
+	savePrefs();
+}
+
+/** The agents' browsers, in the primary local window: for this computer's pine only, whose browser servers can reach it. */
+const browsers = new BrowserHost(() => primaryWindowForHost(undefined)?.win ?? focusedWindow()?.win);
 let launch: Launch | undefined;
-let state: ServiceState = { status: "starting" };
-let stream: AbortController | undefined;
-/** Whether the event stream of the pine in use is up: told again to a page that was loaded anew, which knows nothing of it. */
-let connected = false;
-/** Counts up with each start, so that a start that was overtaken (another machine was picked meanwhile) lets go of what it found. */
-let round = 0;
 let quitting = false;
 let listening: Listening | undefined;
-/** Whether the owner's terminal has the keyboard, as the page says (`pine:term-focus`). */
-let terminalFocused = false;
-
-const send = (channel: string, ...args: unknown[]) => {
-	if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
-};
+let listeningWindow: ManagedWindow | undefined;
 
 /** The owner's terminal of each conversation (terminal.ts): their own shell, which ends with the app. */
 // A block run with a Run button reports how it went to the page, which tells the conversation through the daemon.
 const terminals = new Terminals(
-	{ data: (id, data) => send("pine:term-data", id, data), exit: (id, code) => send("pine:term-exit", id, code), run: (id, report) => send("pine:term-run", id, report) },
+	{
+		data: (id, data) => {
+			for (const w of windowsForHost(undefined)) sendTo(w, "pine:term-data", id, data);
+		},
+		exit: (id, code) => {
+			for (const w of windowsForHost(undefined)) sendTo(w, "pine:term-exit", id, code);
+		},
+		run: (id, report) => {
+			for (const w of windowsForHost(undefined)) sendTo(w, "pine:term-run", id, report);
+		},
+	},
 	{ env: loginEnv, hooks: path.join(app.getPath("userData"), "shell-hooks"), shell: process.env.PINE_DESKTOP_SHELL ? [process.env.PINE_DESKTOP_SHELL] : undefined, stillRunningMs: Number(process.env.PINE_DESKTOP_STILL_RUNNING_MS) || undefined },
 );
 
-function setState(next: ServiceState): void {
-	state = next;
-	send("pine:service", state);
+function setWindowState(w: ManagedWindow, next: ServiceState): void {
+	w.state = next;
+	sendTo(w, "pine:service", next);
 }
 
-async function startService(): Promise<void> {
-	stream?.abort();
-	const mine = ++round;
-	const host = prefs.use;
-	service = undefined;
-	connected = false;
-	setState({ status: "starting", host });
+interface ServiceStream {
+	service: Service;
+	abort: AbortController;
+	connected: boolean;
+	/** Unique open approval/question IDs on this environment, for deduplicated Dock/taskbar badges. */
+	approvals: Set<string>;
+}
+
+/** One shared SSE subscriber per active environment (`""` for local, `host` for remote). */
+const streams = new Map<string, ServiceStream>();
+
+async function startService(w: ManagedWindow): Promise<void> {
+	const mine = ++w.round;
+	const host = w.host;
+	const envKey = host ?? "";
+	w.service = undefined;
+	setWindowState(w, { status: "starting", host });
 	try {
 		const s = await hold(host);
-		// Another machine was picked while this one connected: it stays held, and the other is shown.
-		if (mine !== round) return;
-		service = s;
-		setState({ status: "ready", mode: s.mode, started: s.started, home: s.home, version: s.version, from: host ? (host.startsWith("wsl:") ? `wsl ${host.slice(4)}` : `ssh ${host}`) : (launch?.from ?? ""), host: s.host, label: s.label, olderThan: olderThan(s, host) });
-		follow(s);
+		// Another machine was picked while this one connected, or the window closed: it stays held.
+		if (mine !== w.round || w.win.isDestroyed()) return;
+		w.service = s;
+		setWindowState(w, { status: "ready", mode: s.mode, started: s.started, home: s.home, version: s.version, from: host ? (host.startsWith("wsl:") ? `wsl ${host.slice(4)}` : `ssh ${host}`) : (launch?.from ?? ""), host: s.host, label: s.label, olderThan: olderThan(s, host) });
+		const entry = ensureStream(envKey, s);
+		sendTo(w, "pine:connection", entry.connected);
 	} catch (e) {
-		if (mine !== round) return;
-		setState({ status: "error", kind: e instanceof ServiceError ? e.kind : "failed", message: e instanceof Error ? e.message : String(e), host });
+		if (mine !== w.round || w.win.isDestroyed()) return;
+		setWindowState(w, { status: "error", kind: e instanceof ServiceError ? e.kind : "failed", message: e instanceof Error ? e.message : String(e), host });
 	}
 }
 
 /**
  * The pines this app holds: this computer's ("") and each machine's it used, by host. Switching
- * changes which one the window shows and lets go of none, so that an agent at work in one goes on
+ * changes which one a window shows and lets go of none, so that an agent at work in one goes on
  * while another is shown. They are let go of when the app quits.
  */
 const held = new Map<string, Service>();
 
-/** The WSL distribution whose pine the app uses now, if it uses one. */
-const wslNow = () => (prefs.use?.startsWith("wsl:") ? prefs.use.slice(4) : undefined);
+/** The WSL distribution for a host string, if it names one. */
+const wslOf = (host: string | undefined) => (host?.startsWith("wsl:") ? host.slice(4) : undefined);
 
-/** A path of this computer as the daemon in use knows it: the same, or under /mnt in WSL (undefined where WSL cannot reach it). */
-const forDaemon = (p: string) => {
-	const d = wslNow();
+/** A path of this computer as the daemon for `host` knows it: the same, or under /mnt in WSL (undefined where WSL cannot reach it). */
+const forDaemon = (host: string | undefined, p: string) => {
+	const d = wslOf(host);
 	return d ? toWsl(p, d) : p;
 };
 
 /**
  * The pine of a machine (none: this computer's) as the app holds it: the one held from before when
- * it answers still, else one made anew and held. The window uses it, and browser access for this
- * computer's, also while the window shows another machine's pine.
+ * it answers still, else one made anew and held. Windows use it, and browser access for this
+ * computer's, also while a window shows another machine's pine.
  */
 async function hold(host: string | undefined): Promise<Service> {
 	let s = held.get(host ?? "");
@@ -312,42 +432,154 @@ async function letGo(s: Service | undefined): Promise<void> {
 	if (s?.host || (s?.started && !prefs.keepRunning)) await s.stop();
 }
 
-/** The app shows another pine: this computer's (no host) or a machine's of the list. The tabs are that pine's own. */
-async function use(host: string | undefined): Promise<void> {
+/** Changes which environment a single window views without affecting any other open window. */
+async function useInWindow(w: ManagedWindow, host: string | undefined): Promise<void> {
 	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list: add it in Settings > Environments.");
-	if (host === prefs.use && service) return;
+	if (host === w.host && w.service) return;
+	const wasLocal = !w.host;
+	w.host = host;
+	w.layout = undefined;
+	w.tabKeys.clear();
+	w.badgeCount = 0;
 	prefs.use = host;
-	savePrefs();
-	// The terminals are in the folders of the other pine's conversations.
-	terminals.closeAll();
-	await startService();
+	persistOpenWindows();
+	broadcastOpenHosts();
+	// Only close local terminals when no local window remains open.
+	if (wasLocal && host && windowsForHost(undefined).length === 0) terminals.closeAll();
+	pruneStreams();
+	await startService(w);
 }
 
-/** The daemon's live events, handed to the page in small batches (`followEvents`). */
-function follow(s: Service): void {
-	stream = new AbortController();
-	followEvents(s, stream.signal, {
-		batch: (events) => send("pine:events", events),
+/** Starts or reuses the single shared SSE subscriber for an active `Service` and fans out events to its windows. */
+function ensureStream(envKey: string, s: Service): ServiceStream {
+	const existing = streams.get(envKey);
+	if (existing && existing.service === s) return existing;
+	existing?.abort.abort();
+	const abort = new AbortController();
+	const entry: ServiceStream = { service: s, abort, connected: false, approvals: new Set() };
+	streams.set(envKey, entry);
+	followEvents(s, abort.signal, {
+		batch: (events) => {
+			let badgeChanged = false;
+			const targets = windowsForHost(s.host).filter((w) => w.service === s);
+			const perWindow = new Map<ManagedWindow, unknown[]>();
+			for (const ev of events as Array<{ topic?: string; payload?: Record<string, unknown> }>) {
+				const p = ev?.payload ?? {};
+				if (ev?.topic === "approval/requested" && typeof p.id === "string") {
+					if (!entry.approvals.has(p.id)) {
+						entry.approvals.add(p.id);
+						badgeChanged = true;
+					}
+				} else if (ev?.topic === "approval/decided" && typeof p.id === "string") {
+					if (entry.approvals.delete(p.id)) badgeChanged = true;
+				}
+				let recipients: ManagedWindow[];
+				if (ev?.topic === "approval/requested") {
+					const key = typeof p.agent === "string" && typeof p.session === "string" ? `${p.agent}:${p.session}` : "";
+					const holders = key ? targets.filter((w) => w.tabKeys.has(key)) : [];
+					if (holders.length) recipients = holders;
+					else {
+						const primary = primaryWindowForHost(s.host);
+						recipients = primary && primary.service === s ? [primary] : targets.slice(0, 1);
+					}
+				} else if (ev?.topic === "pine/conversation" && p.change === "open") {
+					const key = typeof p.agent === "string" ? `${p.agent}:${typeof p.session === "string" && p.session ? p.session : "main"}` : "";
+					const holders = key ? targets.filter((w) => w.tabKeys.has(key)) : [];
+					if (holders.length) recipients = holders;
+					else {
+						const primary = primaryWindowForHost(s.host);
+						recipients = primary && primary.service === s ? [primary] : targets.slice(0, 1);
+					}
+				} else {
+					recipients = targets;
+				}
+				for (const w of recipients) {
+					let list = perWindow.get(w);
+					if (!list) perWindow.set(w, (list = []));
+					list.push(ev);
+				}
+			}
+			for (const [w, list] of perWindow) sendTo(w, "pine:events", list);
+			if (badgeChanged) refreshBadges();
+		},
 		connection: (up) => {
-			connected = up;
-			send("pine:connection", up);
+			entry.connected = up;
+			for (const w of windowsForHost(s.host)) if (w.service === s) sendTo(w, "pine:connection", up);
 		},
 		// A daemon this app started and that is gone will not come back by waiting: start it again.
 		// Nor does an SSH connection that broke: it is made again.
 		lost: (times) => {
 			if (times !== 5 || !(s.started || s.host) || quitting) return false;
-			if (held.get(s.host ?? "") === s) held.delete(s.host ?? "");
+			if (held.get(envKey) === s) held.delete(envKey);
+			if (streams.get(envKey) === entry) streams.delete(envKey);
 			void letGo(s);
-			void startService();
+			for (const w of windowsForHost(s.host)) if (w.service === s) void startService(w);
 			return true;
 		},
 	});
+	return entry;
 }
 
-/** A picture, video or sound of the daemon's, for the page's `pine-media:` addresses. */
+/** Aborts and removes any SSE stream that no open window is currently viewing. */
+function pruneStreams(): void {
+	for (const [envKey, entry] of [...streams]) {
+		const active = [...windows.values()].some((w) => !w.win.isDestroyed() && (w.host ?? "") === envKey && w.service === entry.service);
+		if (!active) {
+			entry.abort.abort();
+			streams.delete(envKey);
+		}
+	}
+	refreshBadges();
+}
+
+/** Writes the deduplicated union of chat tabs open across all windows on `host` to that daemon's `/ui/tabs`. */
+async function syncDaemonTabs(host: string | undefined, preferred: ManagedWindow): Promise<void> {
+	const viewers = windowsForHost(host).filter((w) => w.service);
+	const s = preferred.service ?? viewers[0]?.service ?? held.get(host ?? "");
+	if (!s) return;
+	const union: WindowTabRef[] = [];
+	const seen = new Set<string>();
+	for (const w of viewers) {
+		for (const t of w.layout?.tabs ?? []) {
+			const key = `${t.agent}:${t.session}`;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			union.push(t);
+		}
+	}
+	const frontTab = preferred.layout?.tabs[preferred.layout.active];
+	const active = frontTab ? Math.max(0, union.findIndex((t) => t.agent === frontTab.agent && t.session === frontTab.session)) : 0;
+	await callDaemon(s, "POST", "/ui/tabs", { tabs: union, active, code: preferred.layout?.code === true }).catch(() => {});
+}
+
+/** Recomputes OS Dock/taskbar badges from distinct open approvals across all connected environments. */
+function refreshBadges(): void {
+	const envCounts = new Map<string, number>();
+	for (const w of windows.values()) {
+		if (w.win.isDestroyed()) continue;
+		const envKey = w.host ?? "";
+		const streamCount = streams.get(envKey)?.approvals.size ?? 0;
+		const prev = envCounts.get(envKey) ?? 0;
+		envCounts.set(envKey, Math.max(prev, streamCount, streamCount > 0 ? 0 : w.badgeCount));
+	}
+	let total = 0;
+	for (const n of envCounts.values()) total += n;
+	if (isMac) app.dock?.setBadge(total > 0 ? String(total) : "");
+	else if (isWindows) {
+		for (const w of windows.values()) {
+			if (w.win.isDestroyed()) continue;
+			const wn = envCounts.get(w.host ?? "") ?? 0;
+			w.win.setOverlayIcon(wn > 0 ? waiting() : null, wn > 0 ? `${wn} waiting for you` : "");
+		}
+	} else app.setBadgeCount(total);
+}
+
+/** A picture, video or sound of the daemon's, routed per window via `pine-media://window-<windowId>/...`. */
 async function media(request: Request): Promise<Response> {
 	const url = new URL(request.url);
-	return mediaFromDaemon(service, request.method, url.pathname, url.search);
+	const m = /^window-(.+)$/.exec(url.host);
+	const w = m ? windows.get(m[1]) : focusedWindow();
+	return mediaFromDaemon(w?.service, request.method, url.pathname, url.search);
 }
 
 // ---- browser access ----------------------------------------------------------------------------
@@ -376,10 +608,22 @@ function notifyPaired(name: string): void {
  * owner answers in the app, which a click brings forward. Said whatever the notification preference,
  * as a question that waits for the owner is, but only while the window is not in front: there the toast asks.
  */
+/** Which window should display an incoming Browser access pairing question: focused/primary local window, else focused window. */
+function pairingTarget(): ManagedWindow | undefined {
+	return primaryWindowForHost(undefined) ?? focusedWindow();
+}
+
+/** Filters an AccessState for a specific window so PairingQuestion only appears in the single target window. */
+function accessForWindow(s: AccessState, w: ManagedWindow): AccessState {
+	if (!s.request) return s;
+	return pairingTarget() === w ? s : { ...s, request: undefined };
+}
+
 function notifyAsked(request: { name: string; code: string }): void {
-	if (!Notification.isSupported() || (win && !win.isDestroyed() && win.isVisible() && win.isFocused())) return;
+	const anyVisibleFocused = [...windows.values()].some((w) => !w.win.isDestroyed() && w.win.isVisible() && w.win.isFocused());
+	if (!Notification.isSupported() || anyVisibleFocused) return;
 	const n = new Notification({ title: `${request.name} wants to connect`.slice(0, 80), body: `Allow it in Pine if the device shows ${request.code}.`, silent: false });
-	n.on("click", () => show());
+	n.on("click", () => showWindow(pairingTarget()));
 	n.show();
 }
 
@@ -409,7 +653,9 @@ function startAccess(): void {
 		},
 		loginItem: (open) => app.setLoginItemSettings({ openAtLogin: open }),
 		paired: (device) => notifyPaired(device.name),
-		changed: (s) => send("pine:access", s),
+		changed: (s) => {
+			for (const w of windows.values()) sendTo(w, "pine:access", accessForWindow(s, w));
+		},
 		asked: notifyAsked,
 		announce: ACCESS_STAND_IN !== undefined ? undefined : (what) => announcer.announce(what),
 		start: ACCESS_STAND_IN !== undefined ? (options) => startStandIn({ ...options, waitMs: Number(ACCESS_STAND_IN) || undefined }) : undefined,
@@ -438,10 +684,10 @@ async function pairFromAddress(url: string): Promise<void> {
 	const opened = await access.openPairing().catch(() => undefined);
 	if (!opened) return;
 	openOutside(opened.link);
-	if (pageReady) send("pine:menu", "pairing-shown");
-	else pairingShown = true;
+	const target = pairingTarget();
+	if (target?.ready) sendTo(target, "pine:menu", "pairing-shown");
+	else if (target) target.pairingShown = true;
 }
-let pairingShown = false;
 /** Addresses the system handed the app before browser access existed (`open-url` on a cold start). */
 const pendingAddresses: string[] = [];
 
@@ -490,9 +736,12 @@ function page(request: Request): Response {
 	return new Response(fs.readFileSync(file), { headers: { "content-type": TYPES[path.extname(file)] ?? "application/octet-stream", "content-security-policy": view ? VIEW_CSP : CSP, "x-content-type-options": "nosniff", ...(/\.(js|css)$/.test(file) ? { "access-control-allow-origin": "*" } : {}) } });
 }
 
-function fromPage(e: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean {
+/** Resolves and validates the calling ManagedWindow for any IPC event (main frame at app origin only). */
+function windowFromEvent(e: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): ManagedWindow | undefined {
+	const w = byContents.get(e.sender.id);
 	const frame = e.senderFrame;
-	return Boolean(win && frame && e.sender === win.webContents && frame === win.webContents.mainFrame && originOf(frame.url) === ORIGIN);
+	if (!w || w.win.isDestroyed() || !frame || e.sender !== w.win.webContents || frame !== w.win.webContents.mainFrame || originOf(frame.url) !== ORIGIN) return undefined;
+	return w;
 }
 
 /** Only pages on the web open outside the app; a link in an answer never starts a program or opens a file. */
@@ -505,9 +754,27 @@ function openOutside(url: string): void {
 	}
 }
 
-function createWindow(): void {
-	const b = prefs.bounds;
-	win = new BrowserWindow({
+interface CreateWindowOptions {
+	host?: string;
+	bounds?: WindowBounds;
+	cascadeFrom?: ManagedWindow;
+	layout?: WindowLayout;
+	chromeLayout?: ChromeLayout;
+	noTab?: boolean;
+	initialTab?: WindowTabRef;
+	initialDraft?: WindowDraft;
+}
+
+function createWindow(opts: CreateWindowOptions = {}): ManagedWindow {
+	const id = `w${nextWindowId++}`;
+	let b = opts.bounds;
+	if (!b && opts.cascadeFrom && !opts.cascadeFrom.win.isDestroyed()) {
+		const anchor = opts.cascadeFrom.win.getBounds();
+		const display = screen.getDisplayMatching(anchor);
+		b = cascadeBounds(anchor, display.workArea);
+	}
+	if (!b) b = prefs.bounds;
+	const win = new BrowserWindow({
 		width: b?.width ?? 1280,
 		height: b?.height ?? 820,
 		x: b?.x,
@@ -530,6 +797,7 @@ function createWindow(): void {
 		backgroundColor: windowBackground(),
 		webPreferences: {
 			preload: path.join(HERE, "preload.cjs"),
+			additionalArguments: [`--pine-window-id=${id}`],
 			contextIsolation: true,
 			sandbox: true,
 			nodeIntegration: false,
@@ -540,7 +808,32 @@ function createWindow(): void {
 			...(HEADLESS ? { backgroundThrottling: false } : {}),
 		},
 	});
-	win.once("ready-to-show", () => void (HEADLESS || win?.show()));
+	const initialTabs = opts.layout?.tabs ?? (opts.initialTab ? [opts.initialTab] : []);
+	const w: ManagedWindow = {
+		id,
+		win,
+		ready: false,
+		focusedAt: ++focusSeq,
+		terminalFocused: false,
+		host: opts.host,
+		state: { status: "starting", host: opts.host },
+		round: 0,
+		bounds: win.getBounds(),
+		layout: opts.layout,
+		chromeLayout: opts.chromeLayout ?? (opts.layout ? chromeOf(opts.layout) : prefs.layout),
+		noTab: opts.noTab,
+		initialTab: opts.initialTab,
+		initialDraft: opts.initialDraft,
+		pendingFolders: [],
+		pairingShown: false,
+		badgeCount: 0,
+		tabKeys: new Set(initialTabs.map((t) => `${t.agent}:${t.session}`)),
+	};
+	const wcId = win.webContents.id;
+	windows.set(id, w);
+	byContents.set(wcId, w);
+
+	win.once("ready-to-show", () => void (HEADLESS || win.isDestroyed() || win.show()));
 	win.webContents.setWindowOpenHandler(({ url }) => (openOutside(url), { action: "deny" }));
 	win.webContents.on("will-navigate", (e, url) => {
 		// The page stays the page. (Reloading it during development is the one navigation there is.)
@@ -551,32 +844,88 @@ function createWindow(): void {
 	});
 	win.webContents.on("will-attach-webview", (e) => e.preventDefault());
 	// Off a Mac the shell's own Ctrl keys reach the shell while the terminal has the keyboard, not the menu (shellKeeps).
-	if (!isMac) win.webContents.on("before-input-event", (_e, input) => win?.webContents.setIgnoreMenuShortcuts(terminalFocused && shellKeeps(input)));
-	win.webContents.on("did-start-loading", () => (terminalFocused = false));
+	if (!isMac) win.webContents.on("before-input-event", (_e, input) => !win.isDestroyed() && win.webContents.setIgnoreMenuShortcuts(w.terminalFocused && shellKeeps(input)));
+	win.webContents.on("did-start-loading", () => {
+		w.terminalFocused = false;
+	});
 	// Chromium keeps a page's zoom when it is loaded again: the controls fit the bar at that zoom.
-	if (!isMac) win.webContents.on("did-finish-load", () => refreshBackground());
+	if (!isMac) win.webContents.on("did-finish-load", () => refreshWindowBackground(w));
 	const keep = () => {
-		if (!win || win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
-		prefs.bounds = win.getBounds();
+		if (win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
+		w.bounds = win.getBounds();
+		if (!quitting) prefs.windows = snapshotOpenWindows();
 	};
 	win.on("resize", keep);
 	win.on("move", keep);
-	win.on("close", savePrefs);
-	win.on("focus", () => send("pine:focus", true));
-	win.on("blur", () => send("pine:focus", false));
-	win.on("closed", () => (win = undefined));
+	win.on("close", () => {
+		if (!quitting) {
+			prefs.use = w.host;
+			if (w.bounds) prefs.bounds = w.bounds;
+			if (w.layout) prefs.layout = chromeOf(w.layout);
+			else if (w.chromeLayout) prefs.layout = w.chromeLayout;
+			windows.delete(w.id);
+			byContents.delete(wcId);
+			persistOpenWindows();
+			pruneStreams();
+			broadcastOpenHosts();
+			refreshBadges();
+		}
+	});
+	win.on("focus", () => {
+		w.focusedAt = ++focusSeq;
+		sendTo(w, "pine:focus", true);
+	});
+	win.on("blur", () => sendTo(w, "pine:focus", false));
+	win.on("closed", () => {
+		windows.delete(w.id);
+		byContents.delete(wcId);
+		if (listeningWindow === w) {
+			listening?.cancel();
+			listening = undefined;
+			listeningWindow = undefined;
+		}
+		pruneStreams();
+		broadcastOpenHosts();
+		refreshBadges();
+	});
 	void win.loadURL(DEV_URL ?? "app://pine/");
 	if (process.env.PINE_DESKTOP_DEVTOOLS) win.webContents.openDevTools({ mode: "detach" });
+	void startService(w);
+	if (!quitting) persistOpenWindows();
+	broadcastOpenHosts();
+	return w;
 }
 
-function show(): void {
-	if (!win) createWindow();
-	else {
-		if (HEADLESS) return;
-		if (win.isMinimized()) win.restore();
-		win.show();
-		win.focus();
+/** Opens a new window interactively (New Window menu/shortcut/palette, or with explicit host/tab/draft). */
+function openNewWindow(options?: NewWindowOptions, caller?: ManagedWindow): ManagedWindow {
+	const host = options?.host === null ? undefined : typeof options?.host === "string" ? options.host : (caller?.host ?? prefs.use);
+	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list: add it in Settings > Environments.");
+	const envAlreadyOpen = windowsForHost(host).length > 0;
+	const hasTab = Boolean(options?.tab);
+	const chrome = caller?.layout ? chromeOf(caller.layout) : caller?.chromeLayout ?? prefs.layout;
+	return createWindow({
+		host,
+		cascadeFrom: caller ?? focusedWindow(),
+		chromeLayout: chrome,
+		noTab: !hasTab && envAlreadyOpen,
+		initialTab: options?.tab,
+		initialDraft: options?.draft,
+	});
+}
+
+function showWindow(target?: ManagedWindow): ManagedWindow {
+	const w = target && !target.win.isDestroyed() ? target : focusedWindow();
+	if (!w) return createWindow({ host: prefs.use, bounds: prefs.bounds, chromeLayout: prefs.layout });
+	if (!HEADLESS) {
+		if (w.win.isMinimized()) w.win.restore();
+		w.win.show();
+		w.win.focus();
 	}
+	return w;
+}
+
+function show(): ManagedWindow {
+	return showWindow(focusedWindow());
 }
 
 // ---- `pine` for a terminal -----------------------------------------------------------------------
@@ -639,9 +988,9 @@ const updater = makeUpdater((now) => {
 	// The install failed after the app's pine was stopped for it: that pine is started again, and the page shows the failure with the release's link.
 	if (installing && now.state === "failed") {
 		installing = false;
-		void startService();
+		for (const w of windowsForHost(undefined)) void startService(w);
 	}
-	send("pine:update-state", withUpdater(known));
+	broadcast("pine:update-state", withUpdater(known));
 });
 /** Between "Restart to update" stopping the app's pines and the app quitting, or the updater saying it failed. */
 let installing = false;
@@ -674,7 +1023,8 @@ async function askForUpdate(): Promise<Update> {
 async function installUpdate(): Promise<void> {
 	if (!updater || !prefs.autoUpdate || updater.state().state !== "ready") throw new Error("There is no update ready to install.");
 	installing = true;
-	stream?.abort();
+	for (const entry of streams.values()) entry.abort.abort();
+	streams.clear();
 	const ours = [...held.entries()].filter(([, s]) => s.started && !s.host);
 	for (const [key] of ours) held.delete(key);
 	await Promise.all(ours.map(([, s]) => s.stop(true)));
@@ -694,8 +1044,25 @@ async function update(again?: boolean): Promise<Update | undefined> {
 
 // ---- menus -------------------------------------------------------------------------------------
 
-/** A menu item that asks the page to do something: the page knows which conversation is in front. */
-const item = (label: string, command: string, accelerator?: string, more: MenuItemConstructorOptions = {}): MenuItemConstructorOptions => ({ label, accelerator, click: () => (show(), send("pine:menu", command)), ...more });
+/** Resolves the ManagedWindow for a menu click (focused window, else most recently focused, or newly created). */
+function menuTarget(bw?: Electron.BaseWindow): ManagedWindow {
+	if (bw && "webContents" in bw) {
+		const w = byContents.get((bw as BrowserWindow).webContents.id);
+		if (w && !w.win.isDestroyed()) return w;
+	}
+	return show();
+}
+
+/** A menu item that asks the focused window's page to do something: the page knows which conversation is in front. */
+const item = (label: string, command: string, accelerator?: string, more: MenuItemConstructorOptions = {}): MenuItemConstructorOptions => ({
+	label,
+	accelerator,
+	click: (_m, bw) => {
+		const w = menuTarget(bw);
+		sendTo(w, "pine:menu", command);
+	},
+	...more,
+});
 
 function buildMenu(): void {
 	const template: MenuItemConstructorOptions[] = [
@@ -710,6 +1077,15 @@ function buildMenu(): void {
 		{
 			label: "File",
 			submenu: [
+				{
+					label: "New Window",
+					accelerator: "CmdOrCtrl+N",
+					click: (_m, bw) => {
+						const from = bw && "webContents" in bw ? byContents.get((bw as BrowserWindow).webContents.id) : focusedWindow();
+						openNewWindow(undefined, from);
+					},
+				},
+				{ type: "separator" },
 				item("New Conversation", "new", "CmdOrCtrl+T"),
 				item("New Conversation with…", "agent", "CmdOrCtrl+Shift+T"),
 				item("Open Folder…", "open-folder", "CmdOrCtrl+O"),
@@ -719,7 +1095,24 @@ function buildMenu(): void {
 				item("Save File", "save", "CmdOrCtrl+S"),
 				item("Export Conversation…", "export", "CmdOrCtrl+Shift+E"),
 				{ type: "separator" },
-				item("Close Tab", "close", "CmdOrCtrl+W"),
+				{
+					label: "Close Tab",
+					accelerator: "CmdOrCtrl+W",
+					click: (_m, bw) => {
+						const w = bw && "webContents" in bw ? byContents.get((bw as BrowserWindow).webContents.id) : focusedWindow();
+						if (!w || w.win.isDestroyed()) return;
+						if (!w.ready) w.win.close();
+						else sendTo(w, "pine:menu", "close");
+					},
+				},
+				{
+					label: "Close Window",
+					accelerator: "CmdOrCtrl+Shift+W",
+					click: (_m, bw) => {
+						const w = bw && "webContents" in bw ? byContents.get((bw as BrowserWindow).webContents.id) : focusedWindow();
+						if (w && !w.win.isDestroyed()) w.win.close();
+					},
+				},
 				...(isMac ? [] : [{ type: "separator" as const }, item("Settings…", "settings", "Ctrl+,"), item("Add a Device…", "add-device", "Ctrl+Shift+D"), { role: "quit" as const }]),
 			],
 		},
@@ -743,9 +1136,9 @@ function buildMenu(): void {
 				...(isMac
 					? [{ role: "resetZoom" as const }, { role: "zoomIn" as const }, { role: "zoomOut" as const }]
 					: [
-							{ label: "Actual Size", accelerator: "CmdOrCtrl+0", click: () => zoomBy(undefined) },
-							{ label: "Zoom In", accelerator: "CmdOrCtrl+Plus", click: () => zoomBy(0.5) },
-							{ label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: () => zoomBy(-0.5) },
+							{ label: "Actual Size", accelerator: "CmdOrCtrl+0", click: (_m, bw) => zoomBy(menuTarget(bw), undefined) },
+							{ label: "Zoom In", accelerator: "CmdOrCtrl+Plus", click: (_m, bw) => zoomBy(menuTarget(bw), 0.5) },
+							{ label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: (_m, bw) => zoomBy(menuTarget(bw), -0.5) },
 						]),
 				{ type: "separator" },
 				{ role: "togglefullscreen" },
@@ -785,82 +1178,161 @@ function buildMenu(): void {
 		{ role: "help", submenu: [item("Keys and Commands", "help"), ...(RELEASE_API && !isMac ? [item("Check for Updates…", "updates")] : []), { label: "pine on GitHub", click: () => openOutside("https://github.com/pmndre/pine") }] },
 	];
 	Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-	// The Dock's menu: a device can be added from there while the window is behind others.
-	if (isMac) app.dock?.setMenu(Menu.buildFromTemplate([item("Add a Device…", "add-device")]));
+	// The Dock's menu: open a new window or add a device while Pine is in the background.
+	if (isMac)
+		app.dock?.setMenu(
+			Menu.buildFromTemplate([
+				{ label: "New Window", click: () => openNewWindow(undefined, focusedWindow()) },
+				item("Add a Device…", "add-device"),
+			]),
+		);
 }
 
 // ---- what the page may ask for -----------------------------------------------------------------
 
-function handle<T extends unknown[]>(channel: string, fn: (...args: T) => unknown): void {
+function handle<T extends unknown[]>(channel: string, fn: (w: ManagedWindow, ...args: T) => unknown): void {
 	ipcMain.handle(channel, (e, ...args) => {
-		if (!fromPage(e)) throw new Error("not from the app's page");
-		return fn(...(args as T));
+		const w = windowFromEvent(e);
+		if (!w) throw new Error("not from the app's page");
+		return fn(w, ...(args as T));
 	});
 }
 
+/** Recent notification timestamps keyed by (host, tab, title, body) to suppress duplicates across windows. */
+const recentNotifs = new Map<string, number>();
+
 function wire(): void {
-	handle("pine:state", () => ({ state, connected: Boolean(service) && connected, home: prefs.home ?? process.env.PINE_HOME, prefs: { ...prefs, bounds: undefined }, platform: process.platform, focused: Boolean(win?.isFocused()), updates: Boolean(RELEASE_API), versions: { app: app.getVersion(), electron: process.versions.electron }, views: true, selfUpdate: Boolean(updater) }));
-	handle("pine:call", async (method: string, url: string, body?: unknown) => {
+	handle("pine:state", (w) => {
+		const envKey = w.host ?? "";
+		const stream = streams.get(envKey);
+		const initialTab = w.initialTab;
+		const initialDraft = w.initialDraft;
+		const noTab = w.noTab;
+		// One-shot startup hints are consumed on the first state read; subsequent reloads restore w.layout.
+		w.initialTab = undefined;
+		w.initialDraft = undefined;
+		w.noTab = undefined;
+		return {
+			state: w.state,
+			connected: Boolean(w.service && stream?.service === w.service && stream.connected),
+			home: prefs.home ?? process.env.PINE_HOME,
+			prefs: publicPrefs(),
+			platform: process.platform,
+			focused: !w.win.isDestroyed() && w.win.isFocused(),
+			updates: Boolean(RELEASE_API),
+			versions: { app: app.getVersion(), electron: process.versions.electron },
+			views: true,
+			selfUpdate: Boolean(updater),
+			windowId: w.id,
+			windowLayout: w.layout,
+			chromeLayout: w.chromeLayout,
+			noTab,
+			initialTab,
+			initialDraft,
+			openHosts: openHostsList(),
+		};
+	});
+	handle("pine:call", async (w, method: string, url: string, body?: unknown) => {
 		// The app says again and again that it shows the browser. To this computer's pine it also says where its own
 		// browser is, with the word to reach it, which the page never holds.
-		if (method === "POST" && url === "/browser/embedded" && service && !service.host) {
+		if (method === "POST" && url === "/browser/embedded" && w.service && !w.service.host) {
 			await browsers.start().catch(() => {});
-			return callDaemon(service, method, url, { host: browsers.url });
+			return callDaemon(w.service, method, url, { host: browsers.url });
 		}
-		return callDaemon(service, method, url, body);
+		// Protect tab-scoped subscriptions when closing a non-main conversation tab that is still open in another window on the same environment.
+		if (method === "POST") {
+			const m = /^\/agents\/([^/]+)\/close$/.exec(url);
+			const session = body && typeof body === "object" && typeof (body as { session?: unknown }).session === "string" ? (body as { session: string }).session : "";
+			if (m && session) {
+				const key = `${decodeURIComponent(m[1])}:${session}`;
+				const heldElsewhere = windowsForHost(w.host).some((other) => other !== w && other.tabKeys.has(key));
+				if (heldElsewhere) return { ok: true, status: 200, data: { unsubscribed: [] } };
+			}
+		}
+		const res = await callDaemon(w.service, method, url, body);
+		if (method === "GET" && url === "/approvals" && res.ok && Array.isArray(res.data)) {
+			const entry = streams.get(w.host ?? "");
+			if (entry) {
+				entry.approvals.clear();
+				for (const item of res.data) if (item && typeof item.id === "string") entry.approvals.add(item.id);
+				refreshBadges();
+			}
+		}
+		return res;
 	});
 	// Where the browser panel is, and which conversation's tab is in front there: its page is laid over the panel.
-	handle("pine:browser-show", (key: unknown, index: unknown, bounds: unknown) => {
+	handle("pine:browser-show", (w, key: unknown, index: unknown, bounds: unknown) => {
 		const b = bounds as Partial<Bounds> | undefined;
 		const fine = (v: unknown, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= max;
 		const place = b && fine(b.x, 20_000) && fine(b.y, 20_000) && fine(b.width, 20_000) && fine(b.height, 20_000) && b.width >= 1 && b.height >= 1 ? { x: b.x, y: b.y, width: b.width, height: b.height } : undefined;
 		// (The page's places are in its own points, which the window's zoom makes larger or smaller.)
-		const zoom = win?.webContents.getZoomFactor() ?? 1;
+		const zoom = w.win.webContents.getZoomFactor() ?? 1;
 		const scaled = place && { x: Math.round(place.x * zoom), y: Math.round(place.y * zoom), width: Math.round(place.width * zoom), height: Math.round(place.height * zoom) };
-		return browsers.show(typeof key === "string" && !service?.host ? key : undefined, fine(index, 99) ? index : 0, scaled);
+		return browsers.show(typeof key === "string" && !w.service?.host ? key : undefined, fine(index, 99) ? index : 0, scaled);
 	});
 	handle("pine:browser-focus", () => browsers.focus());
 	handle("pine:browser-picture", () => browsers.picture());
-	handle("pine:retry", () => startService());
-	handle("pine:update", (again?: boolean) => update(again === true));
+	handle("pine:retry", (w) => startService(w));
+	handle("pine:update", (_w, again?: boolean) => update(again === true));
 	handle("pine:install-update", () => installUpdate());
-	handle("pine:restart", async () => {
+	handle("pine:restart", async (w) => {
 		// Only a daemon of this app's own is its to restart; another one is somebody's terminal.
-		if (!service?.started) throw new Error("this pine was started somewhere else (a terminal, a service). Restart it there.");
-		stream?.abort();
-		held.delete(service.host ?? "");
-		await service.stop();
-		await startService();
+		const s = w.service;
+		if (!s?.started) throw new Error("this pine was started somewhere else (a terminal, a service). Restart it there.");
+		const envKey = s.host ?? "";
+		const entry = streams.get(envKey);
+		if (entry?.service === s) {
+			entry.abort.abort();
+			streams.delete(envKey);
+		}
+		held.delete(envKey);
+		await s.stop();
+		for (const viewer of windowsForHost(s.host)) void startService(viewer);
 	});
-	handle("pine:init", async () => {
+	handle("pine:init", async (w) => {
 		launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
-		// On Linux pine init sets up the sandbox as administrator after --yes: sudo would ask out of sight (in the terminal
-		// the app was started from, if any, or nowhere), or, with a password it still knows there, install packages unseen.
-		// Without --yes pine says what it would run and runs nothing, and the owner runs it in a terminal (Gate in src/App.tsx).
-		// --yes does nothing else, on any system.
 		const linux = process.platform === "linux";
 		const args = ["init", ...(prefs.home ? [prefs.home] : []), ...(linux ? [] : ["--yes"])];
 		let leftToOwner = false;
-		const code = await runPine(launch, args, (line) => {
-			// pine's words for it (src/sandbox-setup.ts).
-			if (linux && line.includes("Nobody is here to say yes")) leftToOwner = true;
-			send("pine:init-line", line);
-		}, process.env.PINE_SKIP_DOWNLOADS ? { PINE_SKIP_DOWNLOADS: "1" } : {});
+		const code = await runPine(
+			launch,
+			args,
+			(line) => {
+				if (linux && line.includes("Nobody is here to say yes")) leftToOwner = true;
+				sendTo(w, "pine:init-line", line);
+			},
+			process.env.PINE_SKIP_DOWNLOADS ? { PINE_SKIP_DOWNLOADS: "1" } : {},
+		);
 		return code === 0 && leftToOwner ? "administrator" : code;
 	});
-	// The browser the web tools drive, fetched by the pine the app runs: each pine wants the build
-	// of its own Playwright, and a home that was set up by another pine has an older one.
-	handle("pine:browser", async () => {
+	handle("pine:browser", async (w) => {
 		launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
-		return runPine(launch, ["browser-install"], (line) => send("pine:init-line", line), process.env.PINE_SKIP_DOWNLOADS ? { PINE_SKIP_DOWNLOADS: "1" } : {});
+		return runPine(launch, ["browser-install"], (line) => sendTo(w, "pine:init-line", line), process.env.PINE_SKIP_DOWNLOADS ? { PINE_SKIP_DOWNLOADS: "1" } : {});
 	});
-	handle("pine:command", async (action?: string) => {
+	handle("pine:command", async (_w, action?: string) => {
 		const env = await loginEnv();
 		return worded(action === "install" ? await install(RESOURCES, env) : action === "remove" ? await remove(RESOURCES, env) : look(RESOURCES, env));
 	});
-	handle("pine:use", (host?: string) => use(typeof host === "string" ? host : undefined));
+	handle("pine:use", (w, host?: string) => useInWindow(w, typeof host === "string" ? host : undefined));
+	handle("pine:new-window", (w, options?: NewWindowOptions) => {
+		openNewWindow(options, w);
+	});
+	handle("pine:close-window", (w) => {
+		if (!w.win.isDestroyed()) w.win.close();
+	});
+	handle("pine:window-layout", async (w, raw: unknown) => {
+		const layout = cleanWindowLayout(raw);
+		if (!layout) return;
+		// Ignore stale in-flight snapshots from before an environment switch in this window.
+		if ((layout.host ?? "") !== (w.host ?? "")) return;
+		w.layout = layout;
+		w.chromeLayout = chromeOf(layout);
+		w.tabKeys = new Set(layout.tabs.map((t) => `${t.agent}:${t.session}`));
+		if (!quitting) persistOpenWindows();
+		await syncDaemonTabs(w.host, w);
+	});
 	// A machine is added by its name alone; it is connected to when it is picked.
-	handle("pine:hosts-add", (value: string) => {
+	handle("pine:hosts-add", (_w, value: string) => {
 		const host = hostOf(String(value ?? ""));
 		if (!host) throw new Error("Write the machine as you would after ssh: host or user@host.");
 		if (host.startsWith("wsl:") && process.platform !== "win32") throw new Error("WSL is Windows': this computer has none.");
@@ -868,27 +1340,35 @@ function wire(): void {
 			if (prefs.hosts.length >= 20) throw new Error("There are 20 machines in the list already: forget one first.");
 			prefs.hosts.push(host);
 			savePrefs();
+			broadcastPrefs();
 		}
-		return { ...prefs, bounds: undefined };
+		return publicPrefs();
 	});
-	handle("pine:hosts-forget", (host: string) => {
-		if (host === prefs.use) throw new Error("The app uses this machine now. Use another one first.");
+	handle("pine:hosts-forget", (w, host: string, options?: { closeWindows?: boolean }) => {
+		const using = windowsForHost(host);
+		if (using.includes(w)) throw new Error("The app uses this machine now. Use another one first.");
+		if (using.length && !options?.closeWindows) throw new Error("Another window uses this machine now.");
+		for (const other of using) if (!other.win.isDestroyed()) other.win.close();
 		if (prefs.hosts.includes(host)) notePrefs(prefsFile(), `machine ${host} left the list: forgotten in Settings > Environments`);
 		prefs.hosts = prefs.hosts.filter((h) => h !== host);
+		if (prefs.use === host) prefs.use = undefined;
 		savePrefs();
 		// Its connection ends, and a pine it started there with it.
 		const s = held.get(String(host));
 		if (s) (held.delete(String(host)), void letGo(s));
-		return { ...prefs, bounds: undefined };
+		pruneStreams();
+		broadcastPrefs();
+		broadcastOpenHosts();
+		return publicPrefs();
 	});
-	handle("pine:prefs", (change: Partial<Prefs>) => {
+	handle("pine:prefs", (w, change: Partial<Prefs>) => {
 		if (typeof change.notify === "boolean") prefs.notify = change.notify;
 		if (typeof change.updates === "boolean") prefs.updates = change.updates;
 		if (typeof change.autoUpdate === "boolean") {
 			prefs.autoUpdate = change.autoUpdate;
 			// Turned on with a newer release known: it is downloaded now. Either way the page is told how the update stands.
 			downloadUpdate();
-			send("pine:update-state", withUpdater(known));
+			broadcast("pine:update-state", withUpdater(known));
 		}
 		if (typeof change.keepRunning === "boolean") prefs.keepRunning = change.keepRunning;
 		if ("home" in change) {
@@ -897,8 +1377,7 @@ function wire(): void {
 			const old = held.get("");
 			if (home !== prefs.home && old) {
 				held.delete("");
-				// One that is not on screen is let go of here; the one on screen, by the restart that follows.
-				if (old !== service) void letGo(old);
+				if (old !== w.service) void letGo(old);
 			}
 			prefs.home = home;
 		}
@@ -909,11 +1388,12 @@ function wire(): void {
 			refreshBackground();
 		}
 		savePrefs();
-		return { ...prefs, bounds: undefined };
+		broadcastPrefs();
+		return publicPrefs();
 	});
 	// Browser access: its state, and the owner's changes to it.
-	handle("pine:access", () => accessOn().state());
-	handle("pine:access-set", (change: unknown) => accessOn().set(accessChange(change)));
+	handle("pine:access", async (w) => accessForWindow(await accessOn().state(), w));
+	handle("pine:access-set", async (w, change: unknown) => accessForWindow(await accessOn().set(accessChange(change)), w));
 	handle("pine:access-pair", () => accessOn().openPairing());
 	handle("pine:access-cancel", () => accessOn().cancelPairing());
 	// The link of the open pairing, put on the clipboard here: the page names no text (and is given no clipboard of its own).
@@ -922,31 +1402,34 @@ function wire(): void {
 		if (!pairing) throw new Error("No pairing is open now: press Add a device.");
 		clipboard.writeText(pairing.link);
 	});
-	handle("pine:access-answer", (yes: unknown, id: unknown) => accessOn().answer(yes === true, typeof id === "string" ? id.slice(0, 64) : undefined));
-	handle("pine:access-remove", (id: unknown) => {
+	handle("pine:access-answer", (_w, yes: unknown, id: unknown) => accessOn().answer(yes === true, typeof id === "string" ? id.slice(0, 64) : undefined));
+	handle("pine:access-remove", (_w, id: unknown) => {
 		if (typeof id !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) throw new Error("That is not a device of the list.");
 		return accessOn().remove(id);
 	});
-	handle("pine:pick-folder", async (title?: string) => {
-		const r = await dialog.showOpenDialog(win!, { title: typeof title === "string" ? title.slice(0, 80) : "Choose a folder", properties: ["openDirectory", "createDirectory"] });
+	handle("pine:pick-folder", async (w, title?: string) => {
+		const r = await dialog.showOpenDialog(w.win, { title: typeof title === "string" ? title.slice(0, 80) : "Choose a folder", properties: ["openDirectory", "createDirectory"] });
 		if (r.canceled) return undefined;
-		const p = forDaemon(r.filePaths[0]);
-		if (!p) throw new Error(`${r.filePaths[0]} cannot be reached from ${wslNow()}: pick a folder on a drive of this computer, or one in the distribution.`);
+		const p = forDaemon(w.host, r.filePaths[0]);
+		if (!p) throw new Error(`${r.filePaths[0]} cannot be reached from ${wslOf(w.host)}: pick a folder on a drive of this computer, or one in the distribution.`);
 		return p;
 	});
 	// A file dropped on the page, by the path the daemon knows it under.
 	ipcMain.on("pine:daemon-path", (e, p: unknown) => {
-		e.returnValue = typeof p === "string" && p ? (forDaemon(p) ?? "") : "";
+		const w = windowFromEvent(e);
+		if (!w) {
+			e.returnValue = "";
+			return;
+		}
+		e.returnValue = typeof p === "string" && p ? (forDaemon(w.host, p) ?? "") : "";
 	});
 	// WSL on this Windows computer: its distributions, and the pine this app carries brought into one.
 	handle("pine:wsl-distros", async () => (process.platform === "win32" ? await wslDistros() : []));
-	handle("pine:wsl-install", async (distro: string) => {
+	handle("pine:wsl-install", async (_w, distro: string) => {
 		if (process.platform !== "win32" || !app.isPackaged) throw new Error("Only the Pine app for Windows brings pine into WSL.");
 		const d = hostOf(`wsl:${String(distro)}`)?.slice(4);
 		if (!d) throw new Error("There is no such distribution.");
 		await installIntoWsl(d, app.getVersion(), process.resourcesPath);
-		// A home there, as pine init makes it. Its sandbox needs the password of the distribution's
-		// user (bubblewrap is installed with sudo): that part is the owner's, in a terminal.
 		await new Promise<void>((resolve, reject) => {
 			const c = spawn("wsl.exe", ["--distribution", d, "--exec", "/bin/sh", "-c", '"$HOME/.local/share/pine-app/bin/pine" init'], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
 			let err = "";
@@ -956,47 +1439,53 @@ function wire(): void {
 		});
 		return { sandbox: `wsl --distribution ${d} --exec ~/.local/share/pine-app/bin/pine init` };
 	});
-	handle("pine:save-text", async (name: string, text: string) => {
-		const r = await dialog.showSaveDialog(win!, { defaultPath: path.join(app.getPath("documents"), path.basename(String(name))) });
+	handle("pine:save-text", async (w, name: string, text: string) => {
+		const r = await dialog.showSaveDialog(w.win, { defaultPath: path.join(app.getPath("documents"), path.basename(String(name))) });
 		if (r.canceled || !r.filePath) return undefined;
 		fs.writeFileSync(r.filePath, String(text));
 		return r.filePath;
 	});
-	handle("pine:open", (url: string) => openOutside(String(url)));
-	handle("pine:reveal", (file: string) => {
+	handle("pine:open", (_w, url: string) => openOutside(String(url)));
+	handle("pine:reveal", (w, file: string) => {
 		// Shown in the Finder, never opened: opening would start whatever the file is. A path of WSL's is Windows' first.
-		const d = wslNow();
+		const d = wslOf(w.host);
 		const here = typeof file === "string" && d && file.startsWith("/") ? fromWsl(file, d) : file;
 		if (typeof here === "string" && path.isAbsolute(here) && fs.existsSync(here)) shell.showItemInFolder(here);
 	});
-	handle("pine:notify", (title: string, body: string, tab?: string) => {
-		if (!prefs.notify || !Notification.isSupported() || win?.isFocused()) return;
+	handle("pine:notify", (w, title: string, body: string, tab?: string) => {
+		if (!prefs.notify || !Notification.isSupported()) return;
+		// Suppress if the calling window is focused, or if any focused window on the same environment already shows this conversation.
+		if (w.win.isFocused()) return;
+		if (tab && windowsForHost(w.host).some((other) => other.win.isFocused() && other.tabKeys.has(tab))) return;
+		const now = Date.now();
+		const dedupeKey = `${w.host ?? ""}|${tab ?? ""}|${String(title).slice(0, 80)}|${String(body).slice(0, 160)}`;
+		const last = recentNotifs.get(dedupeKey);
+		if (last && now - last < 2000) return;
+		recentNotifs.set(dedupeKey, now);
+		if (recentNotifs.size > 100) for (const [k, ts] of recentNotifs) if (now - ts > 10_000) recentNotifs.delete(k);
 		const n = new Notification({ title: String(title).slice(0, 80), body: String(body).slice(0, 160), silent: false });
-		n.on("click", () => (show(), tab && send("pine:menu", `focus:${tab}`)));
+		n.on("click", () => {
+			showWindow(w);
+			if (tab) sendTo(w, "pine:menu", `focus:${tab}`);
+		});
 		n.show();
 	});
-	handle("pine:badge", (count: number) => {
-		const n = Math.max(0, Number(count) || 0);
-		if (isMac) app.dock?.setBadge(n > 0 ? String(n) : "");
-		// Windows has no number on a taskbar button: a dot over its icon says that something waits.
-		else if (isWindows) win?.setOverlayIcon(n > 0 ? waiting() : null, n > 0 ? `${n} waiting for you` : "");
-		else app.setBadgeCount(n);
+	handle("pine:badge", (w, count: number) => {
+		w.badgeCount = Math.max(0, Number(count) || 0);
+		refreshBadges();
 	});
 	// Dictating a message. The words are recognised on this computer by the helper the terminal UI
 	// uses too (src/tui/voice.ts): voice.swift on a Mac, voice.cs on Windows, whisper.cpp on Linux.
-	// Nothing is sent anywhere, and what is heard is text for the input and nothing more. The page
-	// puts it there; nothing here sends a message.
-	handle("pine:voice-start", async (language?: string) => {
+	handle("pine:voice-start", async (w, language?: string) => {
 		listening?.cancel();
 		listening = undefined;
+		listeningWindow = w;
 		const lang = typeof language === "string" && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(language) ? language : undefined;
 		let command: string[];
-		// A stand-in, for tests: a program, or a command line as a JSON array (the real helper told to read a recording).
 		if (process.env.PINE_DESKTOP_VOICE) command = process.env.PINE_DESKTOP_VOICE.startsWith("[") ? (JSON.parse(process.env.PINE_DESKTOP_VOICE) as string[]).map(String) : [process.env.PINE_DESKTOP_VOICE];
 		else {
 			if (!isMac && !isWindows && process.platform !== "linux") throw new Error(NOT_HERE);
 			if (isWindows) {
-				// The pine of this app on Windows runs in WSL; the helper listens on Windows, from the source the app carries.
 				const source = [...(app.isPackaged ? [path.join(process.resourcesPath, "pine")] : []), path.join(APP_ROOT, "..")].map((root) => path.join(root, "src", "tui", "voice.cs")).find((f) => fs.existsSync(f));
 				if (!source) throw new Error("this app has no voice input on Windows: its helper's source was not found. Update the app.");
 				if (!csc()) throw new Error(NO_CSC);
@@ -1009,7 +1498,6 @@ function wire(): void {
 			} else {
 				launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
 				const root = pineRoot(launch) ?? "";
-				// The helper runs on Node: the one pine runs on, which the app's own Electron is not.
 				const helper = [".js", ".ts"].map((ext) => path.join(root, "src", "tui", `voice-whisper${ext}`)).find((f) => fs.existsSync(f));
 				if (!helper) throw new Error("this pine has no voice input on Linux: its helper was not found. Update pine.");
 				const node = launch.argv.length > 1 ? launch.argv[0] : onPath("node", launch.env);
@@ -1020,40 +1508,41 @@ function wire(): void {
 			}
 		}
 		const mine: Listening = new Listening(command, lang, {
-			ready: () => listening === mine && send("pine:voice", { type: "ready" }),
-			partial: (text) => listening === mine && send("pine:voice", { type: "partial", text }),
-			model: (state) => listening === mine && send("pine:voice", { type: "model", state }),
+			ready: () => listening === mine && sendTo(w, "pine:voice", { type: "ready" }),
+			partial: (text) => listening === mine && sendTo(w, "pine:voice", { type: "partial", text }),
+			model: (state) => listening === mine && sendTo(w, "pine:voice", { type: "model", state }),
 			done: (text, error) => {
 				if (listening !== mine) return;
 				listening = undefined;
-				send("pine:voice", { type: "done", text, error });
+				listeningWindow = undefined;
+				sendTo(w, "pine:voice", { type: "done", text, error });
 			},
 		});
 		listening = mine;
 	});
-	handle("pine:voice-stop", (cancel?: boolean) => {
-		if (cancel) (listening?.cancel(), (listening = undefined));
+	handle("pine:voice-stop", (_w, cancel?: boolean) => {
+		if (cancel) (listening?.cancel(), (listening = undefined), (listeningWindow = undefined));
 		else listening?.stop();
 	});
 	// The owner's terminal beside a conversation. What is written into it comes from the page's
 	// keyboard, or from a code block of an answer that the owner ran with its button.
-	handle("pine:term-open", (id: string, cwd?: string, cols?: number, rows?: number) => terminals.open(String(id), cwd, cols, rows));
-	handle("pine:term-write", (id: string, data: string) => terminals.write(String(id), data));
-	handle("pine:term-run", (id: string, code: string) => terminals.run(String(id), code));
-	handle("pine:term-resize", (id: string, cols: number, rows: number) => terminals.resize(String(id), cols, rows));
-	handle("pine:term-close", (id: string) => terminals.close(String(id)));
+	handle("pine:term-open", (_w, id: string, cwd?: string, cols?: number, rows?: number) => terminals.open(String(id), cwd, cols, rows));
+	handle("pine:term-write", (_w, id: string, data: string) => terminals.write(String(id), data));
+	handle("pine:term-run", (_w, id: string, code: string) => terminals.run(String(id), code));
+	handle("pine:term-resize", (_w, id: string, cols: number, rows: number) => terminals.resize(String(id), cols, rows));
+	handle("pine:term-close", (_w, id: string) => terminals.close(String(id)));
 	// Off a Mac the window shows no menu bar (createWindow): the page's menu button opens the menus at its place, given in the page's pixels.
-	handle("pine:app-menu", (x: number, y: number) => {
-		if (!win || win.isDestroyed() || isMac) return;
-		const zoom = win.webContents.getZoomFactor();
-		Menu.getApplicationMenu()?.popup({ window: win, x: Math.round((Number(x) || 0) * zoom), y: Math.round((Number(y) || 0) * zoom) });
+	handle("pine:app-menu", (w, x: number, y: number) => {
+		if (w.win.isDestroyed() || isMac) return;
+		const zoom = w.win.webContents.getZoomFactor();
+		Menu.getApplicationMenu()?.popup({ window: w.win, x: Math.round((Number(x) || 0) * zoom), y: Math.round((Number(y) || 0) * zoom) });
 	});
 	// An item with `checked` is one of a set of choices (the side bar's "Sort by"), drawn with the system's mark.
-	handle("pine:context-menu", (items: Array<{ id: string; label: string; enabled?: boolean; separator?: boolean; danger?: boolean; checked?: boolean }>) => {
+	handle("pine:context-menu", (w, items: Array<{ id: string; label: string; enabled?: boolean; separator?: boolean; danger?: boolean; checked?: boolean }>) => {
 		return new Promise<string | undefined>((resolve) => {
 			let picked: string | undefined;
 			const menu = Menu.buildFromTemplate(items.slice(0, 30).map((i) => (i.separator ? { type: "separator" as const } : { label: String(i.label).slice(0, 80), enabled: i.enabled !== false, ...(typeof i.checked === "boolean" ? { type: "radio" as const, checked: i.checked } : {}), click: () => (picked = String(i.id)) })));
-			menu.popup({ window: win, callback: () => resolve(picked) });
+			menu.popup({ window: w.win, callback: () => resolve(picked) });
 		});
 	});
 }
@@ -1082,17 +1571,22 @@ function waiting(): Electron.NativeImage {
  */
 const folderIn = (argv: string[]) => argv.slice(1).find((a) => !a.startsWith("-") && path.isAbsolute(a) && path.resolve(a) !== app.getAppPath());
 
-/** A folder the app was opened with (dropped on its icon, or `open -a Pine <folder>`): a conversation that works there. */
-const pendingFolders: string[] = [];
-let pageReady = false;
+/** Folders handed to the app before any window exists (e.g. cold-start macOS open-file). */
+const startupFolders: string[] = [];
 function openFolder(dir: string): void {
 	try {
 		if (!fs.statSync(dir).isDirectory()) return;
 	} catch {
 		return;
 	}
-	if (pageReady) (show(), send("pine:menu", `folder:${dir}`));
-	else pendingFolders.push(dir);
+	const target = primaryWindowForHost(undefined) ?? focusedWindow();
+	if (!target) {
+		startupFolders.push(dir);
+		return;
+	}
+	showWindow(target);
+	if (target.ready) sendTo(target, "pine:menu", `folder:${dir}`);
+	else target.pendingFolders.push(dir);
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -1127,7 +1621,8 @@ else {
 		session.defaultSession.setPermissionRequestHandler((_wc, _permission, done) => done(false));
 		wire();
 		ipcMain.on("pine:term-focus", (e, focused) => {
-			if (fromPage(e)) terminalFocused = focused === true;
+			const w = windowFromEvent(e);
+			if (w) w.terminalFocused = focused === true;
 		});
 		startAccess();
 		registerScheme();
@@ -1136,11 +1631,18 @@ else {
 		const address = process.argv.find((a) => a.toLowerCase().startsWith("pine:"));
 		if (address) void pairFromAddress(address);
 		ipcMain.on("pine:ready", (e) => {
-			if (!fromPage(e)) return;
-			pageReady = true;
-			send("pine:service", state);
-			for (const dir of pendingFolders.splice(0)) send("pine:menu", `folder:${dir}`);
-			if (pairingShown) (pairingShown = false), send("pine:menu", "pairing-shown");
+			const w = windowFromEvent(e);
+			if (!w) return;
+			w.ready = true;
+			sendTo(w, "pine:service", w.state);
+			const envKey = w.host ?? "";
+			const entry = streams.get(envKey);
+			if (w.service && entry?.service === w.service) sendTo(w, "pine:connection", entry.connected);
+			for (const dir of w.pendingFolders.splice(0)) sendTo(w, "pine:menu", `folder:${dir}`);
+			if (w.pairingShown) {
+				w.pairingShown = false;
+				sendTo(w, "pine:menu", "pairing-shown");
+			}
 		});
 		// From a checkout the program is Electron's, and so would be its icon in the Dock.
 		if (isMac && !app.isPackaged) {
@@ -1151,36 +1653,56 @@ else {
 			}
 		}
 		buildMenu();
-		createWindow();
+		// Restore every saved window from the previous quit; otherwise open one window seeded from /ui/tabs.
+		const savedWindows = prefs.windows ?? [];
+		if (savedWindows.length > 0) {
+			for (const snap of savedWindows) {
+				createWindow({
+					host: snap.host,
+					bounds: snap.bounds,
+					layout: snap.layout,
+				});
+			}
+		} else {
+			createWindow({
+				host: prefs.use,
+				bounds: prefs.bounds,
+				chromeLayout: prefs.layout,
+			});
+		}
+		for (const dir of startupFolders.splice(0)) openFolder(dir);
 		// Off a Mac a folder the app was started with comes as an argument of this first start, not as an event.
 		const dir = isMac ? undefined : folderIn(process.argv);
 		if (dir) openFolder(dir);
-		void startService();
 		void firstCommand();
-		app.on("activate", show);
+		app.on("activate", () => {
+			if (windows.size === 0) createWindow({ host: prefs.use, bounds: prefs.bounds, chromeLayout: prefs.layout });
+			else show();
+		});
 	});
 	app.on("window-all-closed", () => {
-		// On a Mac the app, and the daemon it started, stay when the window is closed.
-		pageReady = false;
+		// On a Mac the app, and the daemon it started, stay when all windows are closed.
 		if (!isMac) app.quit();
 	});
 	app.on("before-quit", (e) => {
 		if (quitting) return;
-		savePrefs();
+		// Snapshot all currently open windows before setting quitting=true and before Electron closes them.
+		persistOpenWindows();
+		quitting = true;
 		updater?.quitting();
 		terminals.closeAll();
 		browsers.close();
 		// Browser access closes its sockets; its daemon is one of those held, and follows them.
 		void access?.stop();
 		announcer.stop();
+		for (const entry of streams.values()) entry.abort.abort();
+		streams.clear();
 		// The connections to other machines end with the app, and a pine one started there with it.
 		const going = [...held.values()].filter((s) => s.host || (s.started && !prefs.keepRunning));
 		if (!going.length) return;
 		// A daemon this app started ends with it, as the terminal UI's does: its agents are stopped
 		// and its database closed before the app is gone.
 		e.preventDefault();
-		quitting = true;
-		stream?.abort();
 		void Promise.all(going.map((s) => s.stop())).finally(() => app.quit());
 	});
 }

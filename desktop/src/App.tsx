@@ -980,15 +980,19 @@ function BrowserAsk() {
 const SIDE_KEY = "pine.sidebar.width";
 const SIDE_WIDTH = 248;
 
+const PANEL_WIDTH_KEYS = { "sidebar-panel": "sidebar", "code-panel": "code", "browser-panel": "aside", "view-panel": "view" } as const;
+
 /** Remembers how wide a panel is, in pixels, for the next start. Only what the owner did is kept: a narrow window squeezes a panel without changing what it is set to. */
-const keepWidth = (layout: Layout, panel: string, key: string) => {
+const keepWidth = (layout: Layout, panel: keyof typeof PANEL_WIDTH_KEYS, key: string) => {
 	// The layout is in shares of the room the panels have together, and is told before the panels are
 	// drawn at their new widths (after a key): the room is the same before and after.
 	const group = document.getElementById(panel)?.parentElement;
 	const share = layout[panel];
 	if (!group || share === undefined) return;
 	const room = [...group.children].filter((el) => el.hasAttribute("data-panel")).reduce((sum, el) => sum + el.getBoundingClientRect().width, 0);
-	localStorage.setItem(key, String(Math.round((share * room) / 100)));
+	const px = Math.round((share * room) / 100);
+	store.setPanelWidth(PANEL_WIDTH_KEYS[panel], px);
+	if (typeof bridge.windowLayout !== "function") localStorage.setItem(key, String(px));
 };
 
 export function App() {
@@ -1027,10 +1031,10 @@ export function App() {
 					<ResizablePanelGroup orientation="horizontal" onLayoutChanged={(layout, meta) => meta.isUserInteraction && keepWidth(layout, "sidebar-panel", SIDE_KEY)}>
 						{column ? (
 							<>
-								<ResizablePanel id="sidebar-panel" className="flex" panelRef={side} defaultSize={Number(localStorage.getItem(SIDE_KEY)) || SIDE_WIDTH} minSize={190} maxSize={460} groupResizeBehavior="preserve-pixel-size">
+								<ResizablePanel id="sidebar-panel" className="flex" panelRef={side} defaultSize={store.widthOf("sidebar") ?? (Number(localStorage.getItem(SIDE_KEY)) || SIDE_WIDTH)} minSize={190} maxSize={460} groupResizeBehavior="preserve-pixel-size">
 									<Sidebar />
 								</ResizablePanel>
-								<ResizableHandle className="bg-transparent" disableDoubleClick onDoubleClick={() => (side.current?.resize(SIDE_WIDTH), localStorage.setItem(SIDE_KEY, String(SIDE_WIDTH)))} title="Drag to make the side bar wider or narrower" />
+								<ResizableHandle className="bg-transparent" disableDoubleClick onDoubleClick={() => (side.current?.resize(SIDE_WIDTH), store.setPanelWidth("sidebar", SIDE_WIDTH), typeof bridge.windowLayout !== "function" && localStorage.setItem(SIDE_KEY, String(SIDE_WIDTH)))} title="Drag to make the side bar wider or narrower" />
 							</>
 						) : null}
 						<ResizablePanel id="main" className="flex">

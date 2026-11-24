@@ -1,0 +1,250 @@
+// Shared per-window layout, persistence snapshot, and cascading geometry helpers.
+// Pure TypeScript with no Electron or DOM runtime dependency so main, preload, renderer, and tests can share it.
+import type { SentQuote } from "../../src/quotes.ts";
+
+/** An attachment carried in an unsent draft when moving a tab to a new window. */
+export interface WindowAttachment {
+	name: string;
+	size: number;
+	data: string;
+	preview?: string;
+}
+
+/** A quote carried in an unsent draft when moving a tab to a new window. */
+export interface WindowQuote extends SentQuote {
+	id: number;
+	tab: string;
+}
+
+/** Unsent composer state transferred with a tab to a new window. */
+export interface WindowDraft {
+	draft: string;
+	attachments: WindowAttachment[];
+	quotes?: WindowQuote[];
+}
+
+/** Reference to an open chat conversation tab. */
+export interface WindowTabRef {
+	agent: string;
+	session: string;
+}
+
+/** Per-window panel widths in pixels. */
+export interface WindowWidths {
+	sidebar?: number;
+	code?: number;
+	aside?: number;
+	view?: number;
+}
+
+/** Complete per-window tab and panel layout snapshot. */
+export interface WindowLayout {
+	host?: string;
+	tabs: WindowTabRef[];
+	active: number;
+	noTab?: boolean;
+	sidebar: boolean;
+	code: boolean;
+	aside: boolean;
+	view: boolean;
+	order?: string[];
+	widths: WindowWidths;
+	folded: string[];
+}
+
+/** Chrome-only layout preserved as the fallback when reopening after all windows are closed. */
+export type ChromeLayout = Pick<WindowLayout, "sidebar" | "aside" | "view" | "order" | "widths" | "folded">;
+
+/** Options for opening a new desktop window via `bridge.newWindow`. */
+export interface NewWindowOptions {
+	/** Target machine host; `null` explicitly opens this computer's local pine; `undefined` inherits caller's environment. */
+	host?: string | null;
+	/** Open directly with this single conversation tab. */
+	tab?: WindowTabRef;
+	/** True when moving an existing tab from the calling window (preserves local PTY and skips closeSession). */
+	moveFrom?: boolean;
+	/** Unsent draft state to seed into `tab` in the new window. */
+	draft?: WindowDraft;
+}
+
+/** Window screen geometry persisted in prefs.json. */
+export interface WindowBounds {
+	x?: number;
+	y?: number;
+	width: number;
+	height: number;
+}
+
+/** Persisted snapshot of one open desktop window in prefs.json. */
+export interface WindowSnapshot {
+	bounds?: WindowBounds;
+	host?: string;
+	layout?: WindowLayout;
+}
+
+const VALID_BESIDE = new Set(["code", "aside", "view"]);
+
+/** Sanitizes a persisted or IPC-supplied pixel width. */
+function cleanWidth(value: unknown): number | undefined {
+	const n = Number(value);
+	return Number.isFinite(n) && n >= 120 && n <= 2000 ? Math.round(n) : undefined;
+}
+
+/** Sanitizes panel widths. */
+export function cleanWidths(raw: unknown): WindowWidths {
+	if (!raw || typeof raw !== "object") return {};
+	const w = raw as Record<string, unknown>;
+	const out: WindowWidths = {};
+	const sidebar = cleanWidth(w.sidebar);
+	const code = cleanWidth(w.code);
+	const aside = cleanWidth(w.aside);
+	const view = cleanWidth(w.view);
+	if (sidebar !== undefined) out.sidebar = sidebar;
+	if (code !== undefined) out.code = code;
+	if (aside !== undefined) out.aside = aside;
+	if (view !== undefined) out.view = view;
+	return out;
+}
+
+/** Sanitizes a list of chat tab references. */
+export function cleanTabs(raw: unknown): WindowTabRef[] {
+	if (!Array.isArray(raw)) return [];
+	const seen = new Set<string>();
+	const out: WindowTabRef[] = [];
+	for (const item of raw) {
+		if (!item || typeof item !== "object") continue;
+		const agent = typeof (item as Record<string, unknown>).agent === "string" ? (item as Record<string, unknown>).agent as string : "";
+		const session = typeof (item as Record<string, unknown>).session === "string" ? (item as Record<string, unknown>).session as string : "";
+		if (!agent || !session) continue;
+		const key = `${agent}:${session}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push({ agent, session });
+		if (out.length >= 50) break;
+	}
+	return out;
+}
+
+/** Sanitizes a panel order array. */
+function cleanOrder(raw: unknown): string[] | undefined {
+	if (!Array.isArray(raw)) return undefined;
+	const out = raw.filter((v): v is string => typeof v === "string" && VALID_BESIDE.has(v));
+	return out.length ? [...new Set(out)] : undefined;
+}
+
+/** Sanitizes folded agent/group keys. */
+function cleanFolded(raw: unknown): string[] {
+	if (!Array.isArray(raw)) return [];
+	return [...new Set(raw.filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 200))].slice(0, 200);
+}
+
+/** Sanitizes a `WindowLayout` from disk or IPC. */
+export function cleanWindowLayout(raw: unknown): WindowLayout | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const r = raw as Record<string, unknown>;
+	const tabs = cleanTabs(r.tabs);
+	const activeNum = Number(r.active);
+	const active = Number.isInteger(activeNum) && activeNum >= 0 ? Math.min(activeNum, Math.max(0, tabs.length - 1)) : 0;
+	const host = typeof r.host === "string" && r.host ? r.host : undefined;
+	const order = cleanOrder(r.order);
+	return {
+		...(host ? { host } : {}),
+		tabs,
+		active,
+		...(r.noTab === true ? { noTab: true } : {}),
+		sidebar: r.sidebar !== false,
+		code: r.code === true,
+		aside: r.aside === true,
+		view: r.view === true,
+		...(order ? { order } : {}),
+		widths: cleanWidths(r.widths),
+		folded: cleanFolded(r.folded),
+	};
+}
+
+/** Sanitizes a `ChromeLayout` fallback from disk. */
+export function cleanChromeLayout(raw: unknown): ChromeLayout | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const r = raw as Record<string, unknown>;
+	const order = cleanOrder(r.order);
+	return {
+		sidebar: r.sidebar !== false,
+		aside: r.aside === true,
+		view: r.view === true,
+		...(order ? { order } : {}),
+		widths: cleanWidths(r.widths),
+		folded: cleanFolded(r.folded),
+	};
+}
+
+/** Extracts the chrome-only portion of a full `WindowLayout`. */
+export function chromeOf(layout: WindowLayout): ChromeLayout {
+	return {
+		sidebar: layout.sidebar,
+		aside: layout.aside,
+		view: layout.view,
+		...(layout.order ? { order: [...layout.order] } : {}),
+		widths: { ...layout.widths },
+		folded: [...layout.folded],
+	};
+}
+
+/** Sanitizes persisted window bounds. */
+export function cleanBounds(raw: unknown): WindowBounds | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const r = raw as Record<string, unknown>;
+	const width = Number(r.width);
+	const height = Number(r.height);
+	if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 300 || height <= 200) return undefined;
+	const x = Number(r.x);
+	const y = Number(r.y);
+	return {
+		...(Number.isFinite(x) ? { x: Math.round(x) } : {}),
+		...(Number.isFinite(y) ? { y: Math.round(y) } : {}),
+		width: Math.round(width),
+		height: Math.round(height),
+	};
+}
+
+/** Sanitizes an array of persisted `WindowSnapshot`s, falling back unknown hosts to local. */
+export function cleanWindows(raw: unknown, hosts: string[]): WindowSnapshot[] {
+	if (!Array.isArray(raw)) return [];
+	const out: WindowSnapshot[] = [];
+	for (const item of raw) {
+		if (!item || typeof item !== "object") continue;
+		const r = item as Record<string, unknown>;
+		const bounds = cleanBounds(r.bounds);
+		const rawHost = typeof r.host === "string" && r.host ? r.host : undefined;
+		const hostKnown = !rawHost || hosts.includes(rawHost);
+		const host = hostKnown ? rawHost : undefined;
+		let layout = cleanWindowLayout(r.layout);
+		if (layout && !hostKnown) {
+			// Host was removed since last save: keep chrome layout, drop stale remote tabs.
+			layout = { ...layout, host: undefined, tabs: [], active: 0, noTab: false };
+		}
+		out.push({ ...(bounds ? { bounds } : {}), ...(host ? { host } : {}), ...(layout ? { layout } : {}) });
+		if (out.length >= 20) break;
+	}
+	return out;
+}
+
+/** Offset in pixels for cascading a new window from an existing window. */
+export const CASCADE_STEP = 24;
+
+/** Computes cascaded bounds offset by (+24, +24) from `anchor`, clamped to `workArea`. */
+export function cascadeBounds(
+	anchor: { x: number; y: number; width: number; height: number },
+	workArea: { x: number; y: number; width: number; height: number },
+): { x: number; y: number; width: number; height: number } {
+	const width = Math.min(anchor.width, workArea.width);
+	const height = Math.min(anchor.height, workArea.height);
+	const maxX = workArea.x + Math.max(0, workArea.width - width);
+	const maxY = workArea.y + Math.max(0, workArea.height - height);
+	let x = anchor.x + CASCADE_STEP;
+	let y = anchor.y + CASCADE_STEP;
+	if (x > maxX) x = workArea.x + Math.min(CASCADE_STEP, Math.max(0, workArea.width - width));
+	if (y > maxY) y = workArea.y + Math.min(CASCADE_STEP, Math.max(0, workArea.height - height));
+	x = Math.max(workArea.x, Math.min(x, maxX));
+	y = Math.max(workArea.y, Math.min(y, maxY));
+	return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
+}

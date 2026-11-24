@@ -3,9 +3,62 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ElectronApplication } from "playwright-core";
+import type { ElectronApplication, Page } from "playwright-core";
 import { _electron as electron } from "playwright-core";
 import { buildApp } from "../../scripts/build.mjs";
+
+/** Trigger an action that opens a new BrowserWindow and return its Playwright Page. */
+export async function waitForWindow(app: ElectronApplication, trigger: () => Promise<unknown>): Promise<Page> {
+	const [win] = await Promise.all([app.waitForEvent("window"), trigger()]);
+	await win.waitForLoadState("domcontentloaded");
+	return win;
+}
+
+/** Trigger an application menu item by label path (e.g. ["File", "New Window"]). Windows are indexed in creation order (BrowserWindow.id). */
+export async function clickMenu(app: ElectronApplication, labels: string[], focusedIndex?: number): Promise<void> {
+	await app.evaluate(
+		({ BrowserWindow, Menu }: any, [pathLabels, idx]: [string[], number | undefined]) => {
+			const wins = [...BrowserWindow.getAllWindows()].sort((a: any, b: any) => a.id - b.id);
+			const target = idx !== undefined ? wins[idx] : undefined;
+			if (target && !target.isDestroyed()) target.emit("focus");
+			const menu = Menu.getApplicationMenu();
+			if (!menu) throw new Error("No application menu");
+			let current = menu;
+			let found: any;
+			for (const label of pathLabels) {
+				found = current.items.find((i: any) => i.label === label);
+				if (!found) throw new Error(`Menu item "${label}" not found in [${current.items.map((i: any) => i.label).join(", ")}]`);
+				if (found.submenu) current = found.submenu;
+			}
+			if (typeof found?.click !== "function") throw new Error(`Menu item "${pathLabels.join(" > ")}" has no click handler`);
+			found.click(found, target ?? wins[0], undefined);
+		},
+		[labels, focusedIndex] as [string[], number | undefined],
+	);
+}
+
+/** Bounds of every open BrowserWindow in creation order. */
+export async function allWindowBounds(app: ElectronApplication): Promise<Array<{ x: number; y: number; width: number; height: number }>> {
+	return app.evaluate(({ BrowserWindow }: any) => [...BrowserWindow.getAllWindows()].sort((a: any, b: any) => a.id - b.id).map((w: any) => w.getBounds()));
+}
+
+/** Number of open BrowserWindows in the Electron process. */
+export async function windowCount(app: ElectronApplication): Promise<number> {
+	return app.evaluate(({ BrowserWindow }: any) => BrowserWindow.getAllWindows().length);
+}
+
+/** Send a `pine:menu` command to a specific BrowserWindow by creation-order index. */
+export async function sendMenuTo(app: ElectronApplication, index: number, command: string): Promise<void> {
+	await app.evaluate(
+		({ BrowserWindow }: any, [i, c]: [number, string]) => {
+			const wins = [...BrowserWindow.getAllWindows()].sort((a: any, b: any) => a.id - b.id);
+			const w = wins[i];
+			if (!w) throw new Error(`No window at index ${i}`);
+			w.webContents.send("pine:menu", c);
+		},
+		[index, command] as [number, string],
+	);
+}
 
 let built: Promise<string> | undefined;
 

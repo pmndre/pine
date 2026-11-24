@@ -2,6 +2,7 @@ import { type ReactNode, useState } from "react";
 import { ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { store } from "../model.ts";
 
 /** What in a sheet takes Escape for itself: the editor (its search), a field, the page in the browser. */
 export const ESCAPE_KEEPERS = ".cm-editor, input, textarea, [contenteditable], [data-slot=browser] canvas";
@@ -29,7 +30,10 @@ export function SideSheet({ id, slot, title, sheet, widthKey, defaultWidth, minS
 	onClose: () => void;
 	children: ReactNode;
 }) {
-	const [width] = useState(() => Number(localStorage.getItem(widthKey)) || defaultWidth);
+	const [width] = useState(() => {
+		const panel = id === "code-panel" ? "code" : id === "browser-panel" ? "aside" : id === "view-panel" ? "view" : undefined;
+		return (panel ? store.widthOf(panel) : undefined) ?? (Number(localStorage.getItem(widthKey)) || defaultWidth);
+	});
 	const frame = (
 		<div data-slot={slot} className={cn("flex min-w-0 flex-1 flex-col overflow-hidden bg-background", !sheet && "rounded-xl border")}>
 			{/* A sheet as wide as a phone-wide window reaches under the window's buttons at the top left on a Mac; a sheet
