@@ -858,7 +858,7 @@ export class Store extends Model {
 			});
 			if (sure !== "forget") return;
 		}
-		const prefs = await this.attempt(() => bridge.forgetHost(host, options));
+		const prefs = await this.attempt(() => (options ? bridge.forgetHost(host, options) : bridge.forgetHost(host)));
 		if (prefs) (this.prefs = prefs), this.touch();
 	}
 
