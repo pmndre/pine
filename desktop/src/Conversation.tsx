@@ -3,7 +3,7 @@
 // The parts are shadcn's chat components, composed the way its AI Elements pages show: the thread
 // is Message Scroller, a turn is Message (and Bubble for the owner's), the work of a turn is Trace
 // (Task, Tool, Reasoning, Subagent and Plan), a request is an Item (Confirmation), a note is a Marker.
-import { ArrowUpIcon, ArrowUpRightIcon, BrainIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { ArrowUpIcon, ArrowUpRightIcon, BrainIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, QuoteIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
 import { Fragment, memo, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Sound } from "@/components/sound";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -29,6 +29,7 @@ import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Toggle } from "@/components/ui/toggle";
 import { HoverTooltip } from "@/components/hover-tooltip";
+import { SelectionToolbar, SelectionToolbarButton, useTextSelection } from "@/components/selection-toolbar";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
 import { cn } from "@/lib/utils";
@@ -933,6 +934,16 @@ function lastOwnerMessage(items: Item[]): number {
 	return -1;
 }
 
+function quoted(draft: string, text: string): string {
+	const quote = text
+		.trim()
+		.split(/\r?\n/)
+		.map((line) => (line.trim() ? `> ${line.trimEnd()}` : ">"))
+		.join("\n");
+	const before = draft.trimEnd();
+	return `${before ? `${before}\n\n` : ""}${quote}\n\n`;
+}
+
 export function Conversation({ tab }: { tab: Tab }) {
 	useModel(tab);
 	// It opens by a key, and by itself when the conversation was found by words that are in it.
@@ -952,6 +963,16 @@ export function Conversation({ tab }: { tab: Tab }) {
 	// The words are marked once what was said is on the page.
 	const loaded = tab.loaded;
 	const scroller = useRef<HTMLDivElement>(null);
+	const frame = useRef<HTMLDivElement>(null);
+	const [selected, unselect] = useTextSelection(scroller);
+	const quote = () => {
+		if (!selected) return;
+		tab.draft = quoted(tab.draft, selected.text);
+		tab.touch();
+		window.getSelection()?.removeAllRanges();
+		unselect();
+		store.ask_("focus-input");
+	};
 	// What the conversation held when this view of it was opened: its history, or what was said while another tab
 	// was in front. Message Scroller goes to a message of the owner's when it arrives (`scrollAnchor`), and takes
 	// for arrived whichever such message it has not gone to yet. So one that was there from the start is no
@@ -962,8 +983,13 @@ export function Conversation({ tab }: { tab: Tab }) {
 	const chat = tab.kind === "chat";
 	const checkpoint = chat && !tab.busy ? lastOwnerMessage(tab.items) : -1;
 	return (
-		<div className="relative flex min-w-85 flex-1 flex-col overflow-hidden rounded-xl border bg-background">
+		<div ref={frame} className="relative flex min-w-85 flex-1 flex-col overflow-hidden rounded-xl border bg-background">
 			<ConvHead tab={tab} />
+			{selected && chat ? (
+				<SelectionToolbar rect={selected.rect} bounds={frame}>
+					<SelectionToolbarButton icon={QuoteIcon} label="Quote" onClick={quote} />
+				</SelectionToolbar>
+			) : null}
 			{finding && loaded ? <FindBar key={looked ?? ""} initial={looked} root={() => scroller.current} close={() => (setFinding(false), setLooked(undefined))} /> : null}
 			{!loaded ? (
 				<ConversationSkeleton />
