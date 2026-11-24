@@ -2,6 +2,7 @@
 import { bridge, MEDIA_BASE } from "./bridge.ts";
 import type { ThemeEntry } from "./theme.ts";
 import type { SentQuote } from "../../src/quotes.ts";
+import type { Bookmark, NewBookmark } from "../../src/bookmarks.ts";
 
 export class ApiError extends Error {
 	status: number;
@@ -439,6 +440,16 @@ export const api = {
 	removeSession: (agent: string, session: string) => post<{ removed: boolean; unsubscribed: string[]; sources: string[]; servers: string[] }>(`${a(agent)}/remove`, { session }),
 	renameSession: (agent: string, session: string, to: string) => post<{ session: string }>(`${a(agent)}/rename`, { session, to }),
 	pinSession: (agent: string, session: string, pinned: boolean) => post<{ pinned: boolean }>(`${a(agent)}/pin`, { session, pinned }),
+	bookmarks: async (agent: string, session: string): Promise<Bookmark[]> => {
+		try {
+			return await get<Bookmark[]>(`${a(agent)}/bookmarks${s(session)}`);
+		} catch (e) {
+			if (e instanceof ApiError && e.status === 404) return [];
+			throw e;
+		}
+	},
+	addBookmark: (agent: string, session: string, mark: NewBookmark) => post<Bookmark>(`${a(agent)}/bookmarks`, { session, action: "add", ...mark }),
+	removeBookmark: (agent: string, session: string, id: string) => post<{ removed: boolean }>(`${a(agent)}/bookmarks`, { session, action: "remove", id }),
 	// Groups of an agent's conversations. A pine older than groups has none: an empty list.
 	groups: (agent: string) => get<GroupList>(`${a(agent)}/groups`).catch((): GroupList => ({ order: "recent", groups: [] })),
 	setGroup: (agent: string, session: string, group: string | null) => post<{ session: string; group?: string; moved: string[] }>(`${a(agent)}/group`, { session, group }),

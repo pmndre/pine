@@ -69,6 +69,12 @@ export function shortQuotes(quotes: SentQuote[] | undefined, max = 2000): SentQu
 	return quotes?.map((q) => ({ ...q, text: cut(q.text), ...(q.reply === undefined ? {} : { reply: cut(q.reply) }) }));
 }
 
+export function readSource(source: unknown): QuoteSource | undefined {
+	if (source === "letter" || source === "welcome") return source;
+	if (source && typeof source === "object" && Number.isSafeInteger((source as any).task) && (source as any).task > 0 && ((source as any).part === "prompt" || (source as any).part === "answer")) return { task: (source as any).task, part: (source as any).part };
+	return undefined;
+}
+
 export function readQuotes(value: unknown): SentQuote[] | string {
 	if (!Array.isArray(value)) return "quotes is a list of { text, source }";
 	if (value.length > MAX_QUOTES) return `at most ${MAX_QUOTES} quotes`;
@@ -81,8 +87,8 @@ export function readQuotes(value: unknown): SentQuote[] | string {
 		if (reply !== undefined && typeof reply !== "string") return "a quote's reply is a string";
 		if (typeof reply === "string" && reply.length > MAX_QUOTE_CHARS) return `a quote's reply has at most ${MAX_QUOTE_CHARS} characters`;
 		const said = typeof reply === "string" && reply.trim() ? { reply: reply.trim() } : {};
-		if (source === "letter" || source === "welcome") out.push({ text, source, ...said });
-		else if (source && typeof source === "object" && Number.isSafeInteger((source as any).task) && (source as any).task > 0 && ((source as any).part === "prompt" || (source as any).part === "answer")) out.push({ text, source: { task: (source as any).task, part: (source as any).part }, ...said });
+		const from = readSource(source);
+		if (from) out.push({ text, source: from, ...said });
 		else return 'a quote\'s source is "letter", "welcome" or { task, part: "prompt" | "answer" }';
 	}
 	return out;

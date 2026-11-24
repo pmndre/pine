@@ -12,6 +12,7 @@ import { bridge, type Prefs, type ServiceState, type Update } from "./bridge.ts"
 import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, MODES, oneLine, plural, short, shortcut, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
 import { runnable } from "./runnable.ts";
 import { type QuoteSource, type SentQuote, withQuotes } from "../../src/quotes.ts";
+import type { Bookmark, NewBookmark } from "../../src/bookmarks.ts";
 import { computerWord, deviceWord, homeScreenKeeps, httpService, isPaired, machineName, machinesView, pairingEnded, readPairLink, type MachinesViewName, type NearbyComputer, type PairLink } from "./machines.ts";
 import { applyLook, cleanLook, type ThemeEntry } from "./theme.ts";
 
@@ -91,7 +92,7 @@ export interface Attachment {
 	preview?: string;
 }
 
-export type { QuoteSource, SentQuote };
+export type { Bookmark, QuoteSource, SentQuote };
 
 /**
  * Whether an event's message is one this tab sent: events carry a message's first 2000 characters
@@ -193,6 +194,7 @@ export class Tab extends Model {
 	attachments: Attachment[] = [];
 	quotes: Quote[] = [];
 	replying?: number;
+	bookmarks: Bookmark[] = [];
 	inputs: string[] = [];
 	files = new Set<string>();
 
@@ -1460,6 +1462,7 @@ export class Store extends Model {
 		learnHome(folder?.workspace);
 		tab.goal = goal?.goal;
 		tab.swarm = (await api.swarm(agent, session).catch(() => undefined))?.swarm;
+		tab.bookmarks = await api.bookmarks(agent, session).catch(() => []);
 		// The tab can be used before it is filled (the window shows first): what came live meanwhile (a message
 		// the owner sent, the work it started, a question) goes after the history, and once only.
 		const early = tab.items;
@@ -2081,6 +2084,7 @@ export class Store extends Model {
 	private freshen(t: Tab): void {
 		t.clear();
 		t.context = t.cacheShare = t.goal = t.swarm = undefined;
+		t.bookmarks = [];
 		this.taints.delete(`${t.agent}:${t.session}`);
 		t.note("Fresh conversation");
 		t.touch();
@@ -2456,6 +2460,28 @@ export class Store extends Model {
 		if (this.shown(which)) this.close(which);
 		else this.open(which);
 		this.touch();
+	}
+
+	async addBookmark(tab: Tab, mark: NewBookmark): Promise<void> {
+		const made = await this.attempt(() => api.addBookmark(tab.agent, tab.session, mark));
+		if (!made) return;
+		if (!tab.bookmarks.some((b) => b.id === made.id)) tab.bookmarks = [...tab.bookmarks, made];
+		tab.touch();
+	}
+
+	async removeBookmark(tab: Tab, id: string): Promise<void> {
+		if (!(await this.attempt(() => api.removeBookmark(tab.agent, tab.session, id)))) return;
+		tab.bookmarks = tab.bookmarks.filter((b) => b.id !== id);
+		tab.touch();
+	}
+
+	pendingBookmark?: { key: string; bookmark: Bookmark };
+
+	showBookmark(key: string, bookmark: Bookmark): void {
+		const tab = this.tabs.find((t) => t.kind === "chat" && t.key === key);
+		this.pendingBookmark = { key, bookmark };
+		if (tab && tab !== this.active) this.activate(tab);
+		this.ask_("show-bookmark");
 	}
 
 	pendingQuote?: { key: string; source: QuoteSource };

@@ -3,7 +3,7 @@
 // The parts are shadcn's chat components, composed the way its AI Elements pages show: the thread
 // is Message Scroller, a turn is Message (and Bubble for the owner's), the work of a turn is Trace
 // (Task, Tool, Reasoning, Subagent and Plan), a request is an Item (Confirmation), a note is a Marker.
-import { ArrowUpIcon, ArrowUpRightIcon, BrainIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { ArrowUpIcon, ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
 import { Fragment, memo, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Sound } from "@/components/sound";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -30,6 +30,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Toggle } from "@/components/ui/toggle";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { QuoteChip } from "@/components/quote-chip";
+import { BookmarkList } from "@/components/bookmark-list";
 import { SelectionToolbar, SelectionToolbarButton, useTextSelection } from "@/components/selection-toolbar";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
@@ -39,7 +40,7 @@ import { bridge } from "./bridge.ts";
 import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
-import { type Item, type Part, type QuoteSource, quoteId, type SentQuote, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
+import { type Bookmark, type Item, type Part, type QuoteSource, quoteId, type SentQuote, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { childKind, clock, count, MODES, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
 import { sameSource } from "../../src/quotes.ts";
@@ -696,6 +697,9 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 	);
 }
 
+const highlights = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
+const newHighlight = (...ranges: Range[]): unknown => new (window as unknown as { Highlight: new (...r: Range[]) => unknown }).Highlight(...ranges);
+
 /**
  * Find in the conversation. The matches are marked with the browser's own highlights, which
  * change nothing in the page: no element is added to what an answer drew.
@@ -705,7 +709,7 @@ function FindBar({ root, close, initial }: { root: () => HTMLElement | null; clo
 	const [at, setAt] = useState(0);
 	const ranges = useRef<Range[]>([]);
 	const [count, setCount] = useState(0);
-	const marks = (CSS as any).highlights as Map<string, unknown> | undefined;
+	const marks = highlights;
 	useEffect(() => {
 		const el = root();
 		ranges.current = [];
@@ -725,14 +729,14 @@ function FindBar({ root, close, initial }: { root: () => HTMLElement | null; clo
 		setCount(ranges.current.length);
 		// The newest match first: what is looked for is usually near the end.
 		setAt(Math.max(0, ranges.current.length - 1));
-		marks?.set("pine-find", new (window as any).Highlight(...ranges.current));
+		marks?.set("pine-find", newHighlight(...ranges.current));
 		return () => void (marks?.delete("pine-find"), marks?.delete("pine-find-at"));
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [query]);
 	useEffect(() => {
 		const r = ranges.current[at];
 		if (!r) return void marks?.delete("pine-find-at");
-		marks?.set("pine-find-at", new (window as any).Highlight(r));
+		marks?.set("pine-find-at", newHighlight(r));
 		(r.startContainer.parentElement as HTMLElement | null)?.closest("details:not([open])")?.setAttribute("open", "");
 		r.startContainer.parentElement?.scrollIntoView({ block: "center" });
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -925,6 +929,7 @@ function ConvHead({ tab }: { tab: Tab }) {
 			</Breadcrumb>
 			{chat && store.pins.has(tab.key) ? <StarIcon size={12} className="text-faint" /> : null}
 			<span className="min-w-0 flex-1" />
+			{chat ? <BookmarkList bookmarks={tab.bookmarks} onOpen={(b) => store.showBookmark(tab.key, b)} onRemove={(b) => void store.removeBookmark(tab, b.id)} /> : null}
 			{tab.context !== undefined ? <ContextUsage tab={tab} percent={tab.context} /> : null}
 		</div>
 	);
@@ -1006,6 +1011,88 @@ function QuoteJump({ tab, root }: { tab: Tab; root: RefObject<HTMLElement | null
 	return null;
 }
 
+const squash = (text: string) => text.replace(/\s+/g, "");
+
+function selectionMark(el: HTMLElement): { text: string; start: number; end: number } | undefined {
+	const sel = window.getSelection();
+	if (!sel?.rangeCount) return undefined;
+	const range = sel.getRangeAt(0);
+	if (!el.contains(range.startContainer)) return undefined;
+	const whole = el.contains(range.endContainer);
+	const inside = range.cloneRange();
+	if (!whole) inside.setEnd(el, el.childNodes.length);
+	const before = document.createRange();
+	before.selectNodeContents(el);
+	before.setEnd(inside.startContainer, inside.startOffset);
+	const start = before.toString().length;
+	const end = start + inside.toString().length;
+	const text = (whole ? sel.toString() : inside.toString()).trim();
+	return end > start && text ? { text, start, end } : undefined;
+}
+
+function bookmarkRange(el: HTMLElement, b: Bookmark): Range | undefined {
+	const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+	const range = new Range();
+	let at = 0;
+	let started = false;
+	for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+		const next = at + node.data.length;
+		if (!started && b.start < next) {
+			range.setStart(node, b.start - at);
+			started = true;
+		}
+		if (started && b.end <= next) {
+			range.setEnd(node, b.end - at);
+			return squash(range.toString()) === squash(b.text) ? range : undefined;
+		}
+		at = next;
+	}
+	return undefined;
+}
+
+function BookmarkJump({ tab, root }: { tab: Tab; root: RefObject<HTMLElement | null> }) {
+	const { scrollToMessage, scrollToStart } = useMessageScroller();
+	const unmark = useRef<ReturnType<typeof setTimeout>>(undefined);
+	const go = () => {
+		const want = store.pendingBookmark;
+		if (!want || want.key !== tab.key || store.active !== tab) return;
+		store.pendingBookmark = undefined;
+		const { bookmark } = want;
+		const el = quoteTarget(root.current, bookmark.source);
+		if (!el) return store.flash("The bookmarked message is no longer in this conversation.", "muted");
+		const range = bookmarkRange(el, bookmark);
+		const marks = highlights;
+		if (range && marks) {
+			const holder = range.startContainer.parentElement;
+			holder?.closest("details:not([open])")?.setAttribute("open", "");
+			holder?.scrollIntoView({ block: "center", behavior: "smooth" });
+			clearTimeout(unmark.current);
+			marks.set("pine-bookmark", newHighlight(range));
+			unmark.current = setTimeout(() => marks.delete("pine-bookmark"), 2250);
+			return;
+		}
+		const row = typeof bookmark.source === "string" ? undefined : el.closest<HTMLElement>("[data-message-id]");
+		if (row?.dataset.messageId) scrollToMessage(row.dataset.messageId, { align: "center", behavior: "smooth" });
+		else scrollToStart({ behavior: "smooth" });
+		(row ?? el).animate(
+			[
+				{ borderRadius: "0.75rem", backgroundColor: "color-mix(in oklab, var(--primary) 12%, transparent)", boxShadow: "inset 0 0 0 2px color-mix(in oklab, var(--primary) 45%, transparent)" },
+				{ borderRadius: "0.75rem", backgroundColor: "transparent", boxShadow: "inset 0 0 0 2px transparent" },
+			],
+			{ duration: 1500, delay: 250, easing: "ease-out", fill: "backwards" },
+		);
+	};
+	useSignal("show-bookmark", go);
+	useEffect(() => {
+		if (store.pendingBookmark?.key === tab.key) requestAnimationFrame(go);
+		return () => {
+			clearTimeout(unmark.current);
+			highlights?.delete("pine-bookmark");
+		};
+	}, []);
+	return null;
+}
+
 export function Conversation({ tab }: { tab: Tab }) {
 	useModel(tab);
 	// It opens by a key, and by itself when the conversation was found by words that are in it.
@@ -1040,6 +1127,16 @@ export function Conversation({ tab }: { tab: Tab }) {
 		unselect();
 		store.ask_(reply ? "focus-reply" : "focus-input");
 	};
+	const streaming = Boolean(source && typeof source !== "string" && source.part === "answer" && tab.items.some((it) => it.t === "answer" && it.task === source.task && it.live));
+	const bookmark = () => {
+		if (!selected || !source || streaming) return;
+		const el = quoteTarget(scroller.current, source);
+		const mark = el ? selectionMark(el) : undefined;
+		if (!mark) return;
+		void store.addBookmark(tab, { ...mark, source });
+		window.getSelection()?.removeAllRanges();
+		unselect();
+	};
 	// What the conversation held when this view of it was opened: its history, or what was said while another tab
 	// was in front. Message Scroller goes to a message of the owner's when it arrives (`scrollAnchor`), and takes
 	// for arrived whichever such message it has not gone to yet. So one that was there from the start is no
@@ -1056,6 +1153,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 				<SelectionToolbar rect={selected.rect} bounds={frame}>
 					<SelectionToolbarButton icon={QuoteIcon} label="Quote" onClick={() => quote(false)} />
 					<SelectionToolbarButton icon={ReplyIcon} label="Reply" hint="Quote the selected text and reply to it" onClick={() => quote(true)} />
+					<SelectionToolbarButton icon={BookmarkIcon} label="Bookmark" hint={streaming ? "Bookmark it once the answer is done" : undefined} disabled={streaming} onClick={bookmark} />
 				</SelectionToolbar>
 			) : null}
 			{finding && loaded ? <FindBar key={looked ?? ""} initial={looked} root={() => scroller.current} close={() => (setFinding(false), setLooked(undefined))} /> : null}
@@ -1066,6 +1164,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 				// they went up, and brings them back with its button. A tab opens at its end.
 				<MessageScrollerProvider autoScroll defaultScrollPosition="end">
 					<QuoteJump tab={tab} root={scroller} />
+					<BookmarkJump tab={tab} root={scroller} />
 					<MessageScroller className="flex-1">
 						<MessageScrollerViewport ref={scroller}>
 							{/* The column of the conversation, under the head and above the input. */}
