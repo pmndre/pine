@@ -42,10 +42,10 @@ export interface RunReport {
 }
 
 export interface TerminalEvents {
-	data: (id: string, data: string) => void;
-	exit: (id: string, code: number) => void;
+	data: (windowId: number, id: string, data: string) => void;
+	exit: (windowId: number, id: string, code: number) => void;
 	/** A block run with a Run button is still running (once), or has ended. */
-	run?: (id: string, report: RunReport) => void;
+	run?: (windowId: number, id: string, report: RunReport) => void;
 }
 
 /** A block that was run with a Run button, followed from when it was typed until it has ended. */
@@ -60,6 +60,8 @@ interface Run {
 }
 
 interface Shell {
+	windowId: number;
+	id: string;
 	pty: IPty;
 	/** The end of what it printed. */
 	kept: string;
@@ -149,15 +151,20 @@ export class Terminals {
 		this.opts = opts;
 	}
 
+	private key(windowId: number, id: string): string {
+		return `${windowId}\0${id}`;
+	}
+
 	/**
-	 * The terminal of a conversation: the one that runs, or a new one in `cwd`. What it printed so far
-	 * comes back, for the page to draw before what follows.
+	 * The terminal of a conversation in a window: the one that runs, or a new one in `cwd`. What it
+	 * printed so far comes back, for the page to draw before what follows.
 	 */
-	async open(id: string, cwd: unknown, cols: unknown, rows: unknown): Promise<{ kept: string; cwd: string; fresh: boolean }> {
+	async open(windowId: number, id: string, cwd: unknown, cols: unknown, rows: unknown): Promise<{ kept: string; cwd: string; fresh: boolean }> {
 		if (!ID.test(id)) throw new Error("not a terminal's name");
-		const have = this.shells.get(id);
+		const k = this.key(windowId, id);
+		const have = this.shells.get(k);
 		if (have) {
-			this.resize(id, cols, rows);
+			this.resize(windowId, id, cols, rows);
 			return { kept: have.kept, cwd: have.cwd, fresh: false };
 		}
 		const pty = ptyModule();
@@ -166,23 +173,24 @@ export class Terminals {
 		const launch = withHooks(file, args, env, this.opts.hooks, Boolean(this.opts.shell));
 		const dir = startIn(cwd);
 		// Another call may have opened it while the environment was being asked for.
-		const raced = this.shells.get(id);
+		const raced = this.shells.get(k);
 		if (raced) return { kept: raced.kept, cwd: raced.cwd, fresh: false };
 		const proc = pty.spawn(launch.file, launch.args, { name: "xterm-256color", cols: size(cols, 2, 1000), rows: size(rows, 1, 500), cwd: dir, env: launch.env });
-		const shell: Shell = { pty: proc, kept: "", cwd: dir, marks: launch.marks, reader: new MarkReader(), prompted: false, busy: false, bracketed: false, waiting: [] };
-		this.shells.set(id, shell);
+		const shell: Shell = { windowId, id, pty: proc, kept: "", cwd: dir, marks: launch.marks, reader: new MarkReader(), prompted: false, busy: false, bracketed: false, waiting: [] };
+		this.shells.set(k, shell);
 		proc.onData((data) => {
 			shell.kept = (shell.kept + data).slice(-KEEP);
-			this.events.data(id, data);
-			if (shell.marks) this.follow(id, shell, data);
+			this.events.data(shell.windowId, shell.id, data);
+			if (shell.marks) this.follow(shell, data);
 		});
 		// Said only of a shell that ended by itself: one that was closed has a successor, or nobody, to tell.
 		proc.onExit(({ exitCode }) => {
-			if (this.shells.get(id) !== shell) return;
-			this.shells.delete(id);
-			if (shell.run?.started) this.ended(id, shell, exitCode);
+			const currentKey = this.key(shell.windowId, shell.id);
+			if (this.shells.get(currentKey) !== shell) return;
+			this.shells.delete(currentKey);
+			if (shell.run?.started) this.ended(shell, exitCode);
 			this.forget(shell);
-			this.events.exit(id, exitCode);
+			this.events.exit(shell.windowId, shell.id, exitCode);
 		});
 		return { kept: "", cwd: dir, fresh: true };
 	}
@@ -193,12 +201,12 @@ export class Terminals {
 	 * it went (a shell without the hooks says nothing). A shell busy with another command gets
 	 * nothing: what was typed would go to that command.
 	 */
-	async run(id: string, code: unknown): Promise<{ reports: boolean }> {
-		const shell = this.shells.get(id);
+	async run(windowId: number, id: string, code: unknown): Promise<{ reports: boolean }> {
+		const shell = this.shells.get(this.key(windowId, id));
 		if (!shell) throw new Error("This conversation's terminal is not open.");
 		if (typeof code !== "string" || !code.trim()) throw new Error("There is nothing to run.");
 		if (shell.marks && !shell.prompted) await new Promise<void>((resolve) => (shell.waiting.push(resolve), setTimeout(resolve, FIRST_PROMPT_MS)));
-		if (this.shells.get(id) !== shell) throw new Error("The terminal ended before the block could run.");
+		if (this.shells.get(this.key(shell.windowId, shell.id)) !== shell) throw new Error("The terminal ended before the block could run.");
 		if (shell.marks && (shell.busy || shell.run)) throw new Error("The terminal is busy with another command. Wait for it, or stop it with Ctrl-C, and run the block again.");
 		const text = code.replace(/\r\n/g, "\n").replace(/\n+$/, "");
 		if (shell.marks) {
@@ -217,7 +225,7 @@ export class Terminals {
 	}
 
 	/** What the shell printed, read for its marks: prompts, commands that start and end, and the output of a block that runs. */
-	private follow(id: string, shell: Shell, data: string): void {
+	private follow(shell: Shell, data: string): void {
 		if (data.includes("\x1b[?2004h")) shell.bracketed = true;
 		if (data.includes("\x1b[?2004l")) shell.bracketed = false;
 		for (const piece of shell.reader.read(data)) {
@@ -225,11 +233,11 @@ export class Terminals {
 				if (shell.run?.started) shell.run.out = (shell.run.out + piece).slice(-RUN_KEEP);
 				continue;
 			}
-			this.mark(id, shell, piece);
+			this.mark(shell, piece);
 		}
 	}
 
-	private mark(id: string, shell: Shell, mark: Mark): void {
+	private mark(shell: Shell, mark: Mark): void {
 		const run = shell.run;
 		if (mark.kind === "A") {
 			shell.prompted = true;
@@ -247,7 +255,7 @@ export class Terminals {
 				run.timers.still = setTimeout(() => {
 					if (shell.run !== run || run.saidRunning) return;
 					run.saidRunning = true;
-					this.events.run?.(id, { command: run.command, state: "running", seconds: (Date.now() - run.started!) / 1000, output: run.out });
+					this.events.run?.(shell.windowId, shell.id, { command: run.command, state: "running", seconds: (Date.now() - run.started!) / 1000, output: run.out });
 				}, this.opts.stillRunningMs ?? STILL_RUNNING_MS);
 			}
 			return;
@@ -257,23 +265,23 @@ export class Terminals {
 		if (!run?.started) return;
 		run.code = mark.code;
 		clearTimeout(run.timers.settle);
-		run.timers.settle = setTimeout(() => shell.run === run && this.ended(id, shell, run.code), SETTLE_MS);
+		run.timers.settle = setTimeout(() => shell.run === run && this.ended(shell, run.code), SETTLE_MS);
 	}
 
-	private ended(id: string, shell: Shell, code: number | undefined): void {
+	private ended(shell: Shell, code: number | undefined): void {
 		const run = shell.run;
 		if (!run?.started) return;
 		this.forget(shell);
-		this.events.run?.(id, { command: run.command, state: "ended", code, seconds: (Date.now() - run.started) / 1000, output: run.out });
+		this.events.run?.(shell.windowId, shell.id, { command: run.command, state: "ended", code, seconds: (Date.now() - run.started) / 1000, output: run.out });
 	}
 
 	/** What was typed, or pasted, into a terminal. */
-	write(id: string, data: unknown): void {
-		if (typeof data === "string" && data) this.shells.get(id)?.pty.write(data);
+	write(windowId: number, id: string, data: unknown): void {
+		if (typeof data === "string" && data) this.shells.get(this.key(windowId, id))?.pty.write(data);
 	}
 
-	resize(id: string, cols: unknown, rows: unknown): void {
-		const shell = this.shells.get(id);
+	resize(windowId: number, id: string, cols: unknown, rows: unknown): void {
+		const shell = this.shells.get(this.key(windowId, id));
 		if (!shell) return;
 		try {
 			shell.pty.resize(size(cols, 2, 1000), size(rows, 1, 500));
@@ -282,15 +290,29 @@ export class Terminals {
 		}
 	}
 
-	has(id: string): boolean {
-		return this.shells.has(id);
+	has(windowId: number, id: string): boolean {
+		return this.shells.has(this.key(windowId, id));
+	}
+
+	/** Transfers a running shell from one window to another without killing it or losing its scrollback. */
+	transfer(fromWindowId: number, toWindowId: number, id: string): boolean {
+		if (fromWindowId === toWindowId) return this.has(fromWindowId, id);
+		const fromKey = this.key(fromWindowId, id);
+		const shell = this.shells.get(fromKey);
+		if (!shell) return false;
+		this.close(toWindowId, id);
+		this.shells.delete(fromKey);
+		shell.windowId = toWindowId;
+		this.shells.set(this.key(toWindowId, id), shell);
+		return true;
 	}
 
 	/** The shell ends, and with it what it started in the foreground. */
-	close(id: string): void {
-		const shell = this.shells.get(id);
+	close(windowId: number, id: string): void {
+		const k = this.key(windowId, id);
+		const shell = this.shells.get(k);
 		if (!shell) return;
-		this.shells.delete(id);
+		this.shells.delete(k);
 		this.forget(shell);
 		try {
 			shell.pty.kill();
@@ -299,7 +321,14 @@ export class Terminals {
 		}
 	}
 
+	/** Closes every shell belonging to `windowId` without disturbing other windows. */
+	closeWindow(windowId: number): void {
+		for (const shell of [...this.shells.values()]) {
+			if (shell.windowId === windowId) this.close(windowId, shell.id);
+		}
+	}
+
 	closeAll(): void {
-		for (const id of [...this.shells.keys()]) this.close(id);
+		for (const shell of [...this.shells.values()]) this.close(shell.windowId, shell.id);
 	}
 }

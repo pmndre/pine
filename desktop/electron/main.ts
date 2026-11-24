@@ -341,16 +341,9 @@ function syncOpenWindowsPrefs(): void {
 /** The owner's terminal of each conversation (terminal.ts): their own shell, which ends with the app. */
 const terminals = new Terminals(
 	{
-		data: (id, data) => {
-			for (const mw of allWindows()) if (!mw.host) sendTo(mw, "pine:term-data", id, data);
-		},
-		exit: (id, code) => {
-			for (const mw of allWindows()) if (!mw.host) sendTo(mw, "pine:term-exit", id, code);
-		},
-		run: (id, report) => {
-			const target = targetWindow(windowsOnEnv(""));
-			if (target) sendTo(target, "pine:term-run", id, report);
-		},
+		data: (windowId, id, data) => sendTo(windowsById.get(windowId), "pine:term-data", id, data),
+		exit: (windowId, id, code) => sendTo(windowsById.get(windowId), "pine:term-exit", id, code),
+		run: (windowId, id, report) => sendTo(windowsById.get(windowId), "pine:term-run", id, report),
 	},
 	{ env: loginEnv, hooks: path.join(app.getPath("userData"), "shell-hooks"), shell: process.env.PINE_DESKTOP_SHELL ? [process.env.PINE_DESKTOP_SHELL] : undefined, stillRunningMs: Number(process.env.PINE_DESKTOP_STILL_RUNNING_MS) || undefined },
 );
@@ -518,6 +511,7 @@ async function startWindowService(mw: ManagedWindow): Promise<void> {
 async function useInWindow(mw: ManagedWindow, host: string | undefined): Promise<void> {
 	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list: add it in Settings > Environments.");
 	if (host === mw.host && mw.service) return;
+	const wasLocal = mw.host === undefined;
 	mw.host = host;
 	mw.layout = undefined;
 	mw.noTab = false;
@@ -528,8 +522,8 @@ async function useInWindow(mw: ManagedWindow, host: string | undefined): Promise
 	savePrefs();
 	broadcastOpenHosts();
 	refreshBadge();
-	// Only close local terminals when zero local windows remain.
-	if (!windowsOnEnv("").length) terminals.closeAll();
+	// Close only this window's local terminals when switching away from the local environment.
+	if (wasLocal && host !== undefined) terminals.closeWindow(mw.id);
 	await startWindowService(mw);
 }
 
@@ -550,6 +544,7 @@ function unionTabsForEnv(key: string, initiator: ManagedWindow | undefined, mine
 	for (const w of windowsOnEnv(key)) {
 		if (w === initiator) continue;
 		if (w.layout?.tabs) add(w.layout.tabs);
+		else if (w.initialTab) add([w.initialTab]);
 	}
 	return out;
 }
@@ -723,6 +718,7 @@ function createWindow(opts: CreateWindowOptions = {}): ManagedWindow {
 		}
 		windowsById.delete(id);
 		windowsByWc.delete(wc);
+		terminals.closeWindow(id);
 		if (!quitting) {
 			syncOpenWindowsPrefs();
 			savePrefs();
@@ -769,13 +765,17 @@ function openNewWindow(from?: ManagedWindow, options?: NewWindowOptions): Manage
 	const hasOtherOnEnv = windowsOnEnv(key).length > 0;
 	const noTab = !options?.tab && hasOtherOnEnv;
 	const bounds = cascadedBounds(from);
-	return createWindow({
+	const created = createWindow({
 		host,
 		bounds,
 		noTab,
 		initialTab: options?.tab,
 		initialDraft: options?.draft,
 	});
+	if (options?.moveFrom && from && options.tab && !from.host && !created.host) {
+		terminals.transfer(from.id, created.id, `${options.tab.agent}:${options.tab.session}`);
+	}
+	return created;
 }
 
 // ---- `pine` for a terminal -----------------------------------------------------------------------
@@ -1033,7 +1033,7 @@ function wire(): void {
 			const sess = typeof (body as any).session === "string" ? (body as any).session : undefined;
 			if (closeMatch && sess) {
 				const agent = decodeURIComponent(closeMatch[1]);
-				const heldElsewhere = windowsOnEnv(envKeyOf(mw.host)).some((w) => w !== mw && (w.layout?.tabs ?? []).some((t) => t.agent === agent && t.session === sess));
+				const heldElsewhere = windowsOnEnv(envKeyOf(mw.host)).some((w) => w !== mw && ((w.layout?.tabs ?? []).some((t) => t.agent === agent && t.session === sess) || (w.initialTab?.agent === agent && w.initialTab?.session === sess)));
 				if (heldElsewhere) return { ok: true, status: 200, data: { unsubscribed: [] } };
 			}
 		}
@@ -1232,11 +1232,11 @@ function wire(): void {
 	});
 	// The owner's terminal beside a conversation. What is written into it comes from the page's
 	// keyboard, or from a code block of an answer that the owner ran with its button.
-	handle("pine:term-open", (_mw, id: string, cwd?: string, cols?: number, rows?: number) => terminals.open(String(id), cwd, cols, rows));
-	handle("pine:term-write", (_mw, id: string, data: string) => terminals.write(String(id), data));
-	handle("pine:term-run", (_mw, id: string, code: string) => terminals.run(String(id), code));
-	handle("pine:term-resize", (_mw, id: string, cols: number, rows: number) => terminals.resize(String(id), cols, rows));
-	handle("pine:term-close", (_mw, id: string) => terminals.close(String(id)));
+	handle("pine:term-open", (mw, id: string, cwd?: string, cols?: number, rows?: number) => terminals.open(mw.id, String(id), cwd, cols, rows));
+	handle("pine:term-write", (mw, id: string, data: string) => terminals.write(mw.id, String(id), data));
+	handle("pine:term-run", (mw, id: string, code: string) => terminals.run(mw.id, String(id), code));
+	handle("pine:term-resize", (mw, id: string, cols: number, rows: number) => terminals.resize(mw.id, String(id), cols, rows));
+	handle("pine:term-close", (mw, id: string) => terminals.close(mw.id, String(id)));
 	// An item with `checked` is one of a set of choices (the side bar's "Sort by"), drawn with the system's mark.
 	handle("pine:context-menu", (mw, items: Array<{ id: string; label: string; enabled?: boolean; separator?: boolean; danger?: boolean; checked?: boolean }>) => {
 		return new Promise<string | undefined>((resolve) => {

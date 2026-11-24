@@ -1115,6 +1115,30 @@ export class Store extends Model {
 		this.activate(tab);
 	}
 
+	/** Open a conversation directly as the sole tab in a new window on the same environment. */
+	async openInNewWindow(agent: string, session: string): Promise<void> {
+		await this.attempt(() => bridge.newWindow({ tab: { agent, session } }));
+	}
+
+	/**
+	 * Move a chat tab into a new window on the same environment, transferring any unsent draft text,
+	 * attachments, and running local terminal PTY, and closing the tab here without calling `closeSession`.
+	 */
+	async moveToNewWindow(tab: Tab): Promise<void> {
+		if (tab.kind !== "chat" || !this.tabs.includes(tab)) return;
+		const attachments: DraftAttachment[] = tab.attachments.map((a) => {
+			if (!a.preview?.startsWith("blob:")) return { name: a.name, size: a.size, data: a.data, preview: a.preview };
+			const ext = a.name.split(".").pop()?.toLowerCase();
+			const mime = ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : ext === "webp" ? "image/webp" : "image/jpeg";
+			return { name: a.name, size: a.size, data: a.data, preview: `data:${mime};base64,${a.data}` };
+		});
+		const draft = tab.draft || attachments.length ? { text: tab.draft, attachments } : undefined;
+		const ok = await this.attempt(async () => (await bridge.newWindow({ tab: { agent: tab.agent, session: tab.session }, moveFrom: true, draft }), true));
+		if (!ok) return;
+		this.drafts.delete(tab.key);
+		this.shut([tab], undefined, { moved: true });
+	}
+
 	/**
 	 * Close a tab. It only closes the view: the conversation goes on and stays in the side bar, and the
 	 * daemon keeps the list of tabs. Any tab may close, an agent's main conversation's and the last one
@@ -1154,21 +1178,24 @@ export class Store extends Model {
 		else if (which === "saved" && !shut.length) this.flash("Every tab has something unsaved or waiting.");
 	}
 
-	private shut(tabs: Tab[], front?: Tab): void {
+	private shut(tabs: Tab[], front?: Tab, options?: { moved?: boolean }): void {
 		if (!tabs.length) return;
+		const moved = options?.moved === true;
 		const before = this.tabs;
 		this.tabs = before.filter((t) => !tabs.includes(t));
 		for (const tab of tabs) {
 			if (tab.kind !== "chat") continue;
-			if (tab.draft.trim() || tab.attachments.length) this.drafts.set(tab.key, { draft: tab.draft, attachments: tab.attachments });
-			// The conversation's terminal ends with its last tab.
-			if (!this.tabs.some((t) => t.kind === "chat" && t.key === tab.key)) void bridge.termClose(tab.key).catch(() => {});
-			// What a conversation was subscribed to on its own ends when its tab closes (not for an agent's main one).
-			if (tab.session !== "main") {
-				void api
-					.closeSession(tab.agent, tab.session)
-					.then((r) => r.unsubscribed.length && this.flash(`Closed ${tab.agent} · ${tab.session}: its ${plural(r.unsubscribed.length, "subscription")} to ${r.unsubscribed.join(", ")} ended with it.`, "muted", 6000))
-					.catch(() => {});
+			if (!moved) {
+				if (tab.draft.trim() || tab.attachments.length) this.drafts.set(tab.key, { draft: tab.draft, attachments: tab.attachments });
+				// The conversation's terminal ends with its last tab.
+				if (!this.tabs.some((t) => t.kind === "chat" && t.key === tab.key)) void bridge.termClose(tab.key).catch(() => {});
+				// What a conversation was subscribed to on its own ends when its tab closes (not for an agent's main one).
+				if (tab.session !== "main") {
+					void api
+						.closeSession(tab.agent, tab.session)
+						.then((r) => r.unsubscribed.length && this.flash(`Closed ${tab.agent} · ${tab.session}: its ${plural(r.unsubscribed.length, "subscription")} to ${r.unsubscribed.join(", ")} ended with it.`, "muted", 6000))
+						.catch(() => {});
+				}
 			}
 		}
 		if (front && this.tabs.includes(front) && this.active !== front) this.activate(front);
