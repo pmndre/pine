@@ -213,7 +213,13 @@ test("setup by tool call: for the conversation by default, for the agent when as
 		asked.push(e.payload);
 		h.pine.approvals.decide((e.payload as any).id, true, "test");
 	});
-	const run = (agent: string, session: string, steps: any[]) => h.pine.agents.run({ agent, prompt: mockMsg(steps), session, ...owner });
+	// After a server was added the agent is called again by itself. That call is over before the next run, so that
+	// the last request to the model is that run's: on a busy machine the two can overlap.
+	const idle = () => until(() => !h.pine.tasks.list({}).some((x) => x.status === "pending" || x.status === "running"), 5000, "nothing to run");
+	const run = async (agent: string, session: string, steps: any[]) => {
+		await idle();
+		return h.pine.agents.run({ agent, prompt: mockMsg(steps), session, ...owner });
+	};
 	const file = (agent = "main") => JSON.parse(fs.readFileSync(path.join(h.home, "agents", agent, "agent.json"), "utf8"));
 	const pristine = file();
 	const offered = (agent: string, session: string) => run(agent, session, [{ text: "ok" }]).then(() => h.toolsOffered(h.mock.state.requests.at(-1)));
@@ -242,8 +248,8 @@ test("setup by tool call: for the conversation by default, for the agent when as
 	r = await run("main", "other", [{ tools: [call("sources", {}), call("subscribe", { source: "proj" })] }]);
 	assert.match(h.toolResults().at(-2)!, /No event sources exist yet/);
 	assert.match(h.toolResults().at(-1)!, /"proj" is not an event source main can use|set up for the conversation "side"/);
-	// After a server was added the agent is called again by itself; that has to be over first.
-	await until(() => !h.pine.tasks.list({}).some((x) => x.status === "pending" || x.status === "running"));
+	// The call after the server was added has to be over before the conversation is removed.
+	await idle();
 	assert.deepEqual(await h.pine.agents.removeSession("main", "side"), { removed: true, unsubscribed: ["proj"], sources: ["proj"], servers: ["notes"] });
 	assert.deepEqual(file(), pristine, "the conversation left nothing behind in the agent's file: no empty lists, no access that came with the folder");
 

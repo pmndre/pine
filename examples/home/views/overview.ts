@@ -2119,6 +2119,13 @@ export default defineView((host: ViewHost) => {
 			const s = host.state();
 			const now = Date.now();
 			const view = size();
+			// A frame can be measured before it is laid out, and a size of a pixel or two then aims the camera at
+			// nothing, where it would stay: a panel that is not laid out yet is looked at again in a moment instead.
+			if (view.w <= 40 || view.h <= BAR + 40) {
+				slow = true;
+				timer = window.setTimeout(() => (raf = requestAnimationFrame(tick)), 100);
+				return;
+			}
 			const dpr = Math.min(3, window.devicePixelRatio || 1);
 			if (canvas.width !== Math.round(view.w * dpr) || canvas.height !== Math.round(view.h * dpr)) {
 				canvas.width = Math.round(view.w * dpr);
@@ -2157,7 +2164,8 @@ export default defineView((host: ViewHost) => {
 			for (const [id, t] of linger) if (now - t > LINGER_MS || !layout.byId.has(id)) linger.delete(id);
 			const target = follow ? focusOf(layout, linger.keys(), view) : whole ? allOf(layout, view) : undefined;
 			let panning = false;
-			if (!cam) cam = target ?? focusOf(layout, [], view);
+			// (A camera that is no number any more, from a size that was none, is aimed anew: easing from it never arrives.)
+			if (!cam || !Number.isFinite(cam.x + cam.y + cam.z)) cam = target ?? focusOf(layout, [], view);
 			else if (target) {
 				// Slower than a camera that is sent somewhere: it is to keep up, not to chase.
 				cam = ease(cam, target, follow ? dt * 0.55 : dt);

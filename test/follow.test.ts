@@ -12,6 +12,8 @@ const call = (name: string, args: any) => ({ name, args });
 const MARK = `pine-follow-test-${process.pid}`;
 // The file's name is what tells this test's command from any other: bash hands over to tail, and tail's arguments are all that is left.
 const running = () => spawnSync("/bin/ps", ["-axww", "-o", "command="]).stdout.toString().split("\n").filter((l) => l.includes(MARK)).length;
+/** How many processes have a file open. */
+const readers = (file: string) => spawnSync("/usr/sbin/lsof", ["-t", "--", file]).stdout.toString().split("\n").filter(Boolean).length;
 const here = { skip: !sandboxAvailable() || sandboxKind() === "linux" };
 
 test("command, followed: every line it prints is an event as it comes, in the agent's sandbox", here, async () => {
@@ -23,6 +25,8 @@ test("command, followed: every line it prints is an event as it comes, in the ag
 	const info = (name: string) => h.pine.sources.list().find((s) => s.name === name)!;
 	const log = path.join(h.workspace("main"), `${MARK}.log`);
 	await until(() => /^running since \d\d:\d\d:\d\d, 0 lines reported$/.test(info("log").status ?? ""), 4000, "the command to run");
+	// Running is not yet reading: lines written before tail has opened the file count as there before. Both tails have it open first.
+	await until(() => readers(log) >= 2, 6000, "both commands to have the file open");
 	await sleep(300);
 	assert.equal(events("log").length, 0, "what was there before is not reported");
 

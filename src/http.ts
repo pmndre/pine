@@ -226,6 +226,10 @@ export class HttpServer {
 					return send(200, { worktree: (await this.manager.worktreeStatus(parts[1], q.get("session") ?? "main")) ?? null });
 				}
 				if (url.pathname === "/worktrees") return send(200, await this.manager.listWorktrees());
+				if (parts[0] === "agents" && parts[2] === "bookmarks" && parts.length === 3) {
+					if (!this.cfg.agents[parts[1]]) throw new HttpError(404, "no such agent");
+					return send(200, this.manager.bookmarksOf(parts[1], q.get("session") ?? "main"));
+				}
 				if (parts[0] === "agents" && parts[2] === "folders" && parts.length === 3) {
 					if (!this.cfg.agents[parts[1]]) throw new HttpError(404, "no such agent");
 					return send(200, this.manager.folders(parts[1]));
@@ -446,6 +450,20 @@ export class HttpServer {
 					throw e instanceof HttpError ? e : new HttpError(409, errText(e));
 				}
 				throw new HttpError(400, 'action: "add", "rename", "remove" or "order"');
+			}
+			if (parts[0] === "agents" && parts[2] === "bookmarks" && parts.length === 3) {
+				if (!this.cfg.agents[parts[1]]) throw new HttpError(404, "no such agent");
+				if (typeof body.session !== "string" || !body.session) throw new HttpError(400, "session: the conversation's name");
+				try {
+					if (body.action === "add") return send(200, this.manager.addBookmark(parts[1], body.session, body));
+					if (body.action === "remove") {
+						if (typeof body.id !== "string" || !body.id) throw new HttpError(400, "id: the bookmark's id");
+						return send(200, { removed: this.manager.removeBookmark(parts[1], body.session, body.id) });
+					}
+				} catch (e) {
+					throw e instanceof HttpError ? e : new HttpError(400, errText(e));
+				}
+				throw new HttpError(400, 'action: "add" or "remove"');
 			}
 			if (parts[0] === "agents" && ["remove", "rename", "pin"].includes(parts[2]) && parts.length === 3) {
 				if (!this.cfg.agents[parts[1]]) throw new HttpError(404, "no such agent");

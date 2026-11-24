@@ -120,6 +120,9 @@ export const ownerMessage = (t: Task) => t.kind === "prompt" && t.meta.trust ===
 /** The message without what pine added to it at the time. */
 export const typed = (prompt: string) => prompt.replace(/\n\n\[files attached by your owner, saved in your workspace: [^\]]*\]$/, "");
 
+/** What the owner wrote, as a UI shows it: without the frame pine put around the first message of a goal or a swarm. */
+const wrote = (t: Task) => typed(t.meta.quotes?.length ? t.prompt : (t.meta.body ?? t.prompt));
+
 const quotesOf = (t: Task): { quotes?: SentQuote[]; body?: string } => (t.meta.quotes?.length ? { quotes: t.meta.quotes, body: typed(t.meta.body ?? "") } : {});
 
 const tally = (root: string, files: FileChange[], left: string[]): Restored => ({
@@ -342,7 +345,7 @@ export class Turns {
 		const turn = this.of(agent, session).at(-1);
 		const task = turn && this.tasks.get(turn.task);
 		if (!turn || !task) return { head: { files: [], more: false, note: "No message of yours has been worked on in this conversation since pine keeps track of that. What the next one changes is listed here." } };
-		const head: TurnView = { task: turn.task, prompt: typed(task.prompt).slice(0, 200), root: turn.root, files: [], more: false };
+		const head: TurnView = { task: turn.task, prompt: wrote(task).slice(0, 200), root: turn.root, files: [], more: false };
 		if (turn.problem) return { head: { ...head, note: `pine could not save a copy of the folder before this message, so the files it changed cannot be put back: ${turn.problem}.` } };
 		if (!turn.steps.length) return { head };
 		const last = turn.steps.at(-1)!;
@@ -424,7 +427,7 @@ export async function undoMessage(h: UndoHost, agentId: string, key: string): Pr
 		h.cancel(msg.id);
 		for (const t of h.tasks.take([msg.id])) h.forgetTask(t.id);
 		h.log.info(`conversation ${agentId}:${key}: the owner withdrew message #${msg.id} before it was worked on`);
-		return { task: msg.id, prompt: typed(msg.prompt), ...quotesOf(msg), stopped: 0, waiting: true, redo: h.turns.undone(agentId, key).length, more: mine().some(ownerMessage) };
+		return { task: msg.id, prompt: wrote(msg), ...quotesOf(msg), stopped: 0, waiting: true, redo: h.turns.undone(agentId, key).length, more: mine().some(ownerMessage) };
 	}
 	// Its own run, what came after it in the conversation, and the work those started anywhere.
 	const later = new Set(mine().filter((t) => t.id >= msg.id).map((t) => t.id));
@@ -458,7 +461,7 @@ export async function undoMessage(h: UndoHost, agentId: string, key: string): Pr
 		const stopped = active.filter((t) => t.status === "running").length;
 		h.log.info(`conversation ${perm}: the owner took back message #${msg.id}${stopped ? `, ${stopped} running task${stopped === 1 ? "" : "s"} stopped` : ""}${files.restored ? `, ${files.restored.changed + files.restored.removed + files.restored.back} files restored in ${files.restored.root}` : ""}${files.note ? ` (${files.note})` : ""}`);
 		h.bus.publish(`agent/${agentId}/undone`, { agent: agentId, session: key, message: msg.id, tasks: taken.length, files: files.restored ? files.restored.changed + files.restored.removed + files.restored.back : undefined }, { source: "pine" });
-		return { task: msg.id, prompt: typed(now.prompt), ...quotesOf(now), stopped, restored: files.restored, note: files.note, redo, more: mine().some(ownerMessage) };
+		return { task: msg.id, prompt: wrote(now), ...quotesOf(now), stopped, restored: files.restored, note: files.note, redo, more: mine().some(ownerMessage) };
 	});
 }
 
@@ -484,7 +487,7 @@ export async function redoMessage(h: UndoHost, agentId: string, key: string): Pr
 		const msg = rec.rows.find((t) => t.id === rec.task);
 		h.log.info(`conversation ${perm}: the owner brought back message #${rec.task}${files.restored ? `, ${files.restored.changed + files.restored.removed + files.restored.back} files restored in ${files.restored.root}` : ""}${files.note ? ` (${files.note})` : ""}`);
 		h.bus.publish(`agent/${agentId}/redone`, { agent: agentId, session: key, message: rec.task, tasks: rec.rows.length, files: files.restored ? files.restored.changed + files.restored.removed + files.restored.back : undefined }, { source: "pine" });
-		return { task: rec.task, prompt: typed(msg?.prompt ?? ""), stopped: 0, restored: files.restored, note: files.note, redo: left, more: mine().some(ownerMessage) };
+		return { task: rec.task, prompt: msg ? wrote(msg) : "", stopped: 0, restored: files.restored, note: files.note, redo: left, more: mine().some(ownerMessage) };
 	});
 }
 

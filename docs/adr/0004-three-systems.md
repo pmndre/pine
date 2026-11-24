@@ -14,7 +14,8 @@ The owner wants the three systems to be equal: the daemon, its sandbox, the app,
 
 ## Decision
 
-**Every pull request is tested on all three** (`.github/workflows/test.yml`): Linux x64 and arm64
+**Every push to `next` is tested on all three** (`.github/workflows/test.yml`; a pull request
+against `next` on Linux x64 alone, to keep it quick): Linux x64 and arm64
 with the sandbox set up as `pine init` sets it up, macOS, and Windows. A test that cannot run on a
 system skips itself and says why.
 

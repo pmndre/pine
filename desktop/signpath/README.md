@@ -17,7 +17,7 @@ projects and are left as they are: SignPath Foundation signs a project's own bin
 
 SignPath checks that every file it signs says it is "Pine" in the release's version. The packer
 writes that into `Pine.exe` and the installers (`desktop/scripts/pack.mjs`), `src/csharp.ts` into
-the helpers, and the `pack` job of `test.yml` checks all five files on Windows. Each says the
+the helpers, and the `pack` job of `test.yml` checks all five files on Windows (on a push to `next`). Each says the
 version as text ("0.41.0", which is what the configurations compare with `${version}`) and as the
 four numbers Windows keeps beside it (0.41.0.0). Should SignPath compare the four numbers, change
 `product-version="${version}"` to `product-version="${version}.0"` in both configurations.

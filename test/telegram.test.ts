@@ -495,12 +495,11 @@ test("tui: a secret is typed into the dialog without being shown, and never appe
 	term.type(["\x1b"]);
 	await until(() => !text().includes("Approval needed, and something only you have"));
 	await sees("it needs something only you have");
-	await sleep(300);
 	term.type("/approve");
 	term.type(["\r"]);
 	await sees("Approval needed, and something only you have");
 	term.type(["\x1b"]);
-	await sleep(300);
+	await until(() => !text().includes("Approval needed, and something only you have"), 4000, "the dialog to close again");
 	term.type("/deny");
 	term.type(["\r"]);
 	await sees(/denied/);

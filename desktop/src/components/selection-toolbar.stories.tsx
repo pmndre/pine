@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { QuoteIcon } from "lucide-react";
+import { BookmarkIcon, QuoteIcon, ReplyIcon } from "lucide-react";
 import { useRef } from "react";
 import { fn, within } from "storybook/test";
 import { SelectionToolbar as Bar, SelectionToolbarButton, useTextSelection } from "./selection-toolbar.tsx";
@@ -13,11 +13,24 @@ export const SelectionToolbar: Story = {
 	render: (args) => (
 		<Bar {...args}>
 			<SelectionToolbarButton icon={QuoteIcon} label="Quote" onClick={fn()} />
+			<SelectionToolbarButton icon={ReplyIcon} label="Reply" hint="Quote the selected text and reply to it" onClick={fn()} />
+			<SelectionToolbarButton icon={BookmarkIcon} label="Bookmark" onClick={fn()} />
 		</Bar>
 	),
 };
 
-function Selecting({ onQuote }: { onQuote: (text: string) => void }) {
+export const WhileStreaming: Story = {
+	args: {},
+	render: (args) => (
+		<Bar {...args}>
+			<SelectionToolbarButton icon={QuoteIcon} label="Quote" onClick={fn()} />
+			<SelectionToolbarButton icon={ReplyIcon} label="Reply" hint="Quote the selected text and reply to it" onClick={fn()} />
+			<SelectionToolbarButton icon={BookmarkIcon} label="Bookmark" hint="Bookmark it once the answer is done" disabled onClick={fn()} />
+		</Bar>
+	),
+};
+
+function Selecting({ onQuote, onReply, onBookmark }: { onQuote: (text: string) => void; onReply: (text: string) => void; onBookmark: (text: string) => void }) {
 	const root = useRef<HTMLDivElement>(null);
 	const frame = useRef<HTMLDivElement>(null);
 	const [selected, unselect] = useTextSelection(root);
@@ -31,6 +44,8 @@ function Selecting({ onQuote }: { onQuote: (text: string) => void }) {
 			{selected ? (
 				<Bar rect={selected.rect} bounds={frame}>
 					<SelectionToolbarButton icon={QuoteIcon} label="Quote" onClick={() => (onQuote(selected.text), window.getSelection()?.removeAllRanges(), unselect())} />
+					<SelectionToolbarButton icon={ReplyIcon} label="Reply" hint="Quote the selected text and reply to it" onClick={() => (onReply(selected.text), window.getSelection()?.removeAllRanges(), unselect())} />
+					<SelectionToolbarButton icon={BookmarkIcon} label="Bookmark" onClick={() => (onBookmark(selected.text), window.getSelection()?.removeAllRanges(), unselect())} />
 				</Bar>
 			) : null}
 		</div>
@@ -39,7 +54,7 @@ function Selecting({ onQuote }: { onQuote: (text: string) => void }) {
 
 export const OverSelectedText: Story = {
 	args: {},
-	render: () => <Selecting onQuote={fn()} />,
+	render: () => <Selecting onQuote={fn()} onReply={fn()} onBookmark={fn()} />,
 	// Selected as a person does, with the mouse: pressed, dragged and let go over the words.
 	play: async ({ canvas, userEvent }) => {
 		const answer = canvas.getByTestId("answer");

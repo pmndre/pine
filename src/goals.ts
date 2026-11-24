@@ -164,7 +164,7 @@ export class Goals {
 		let task: Task;
 		this.starting = true;
 		try {
-			task = this.m.submit({ agent, session: key, kind: "prompt", trust: "owner", priority: 10, prompt: startPrompt(objective) });
+			task = this.m.submit({ agent, session: key, kind: "prompt", trust: "owner", priority: 10, prompt: startPrompt(objective), shown: objective });
 		} finally {
 			this.starting = false;
 		}

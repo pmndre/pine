@@ -15,7 +15,9 @@ test("each agent has its own workspace, instructions and tools in one process", 
 			gonzo: { agent: { description: "law", tools: ["read", "bash", "grep"] }, persona: "PERSONA-GONZO you know German law\n", files: { "AGENTS.md": "WORKSPACE-RULES-GONZO\n" } },
 		},
 	});
-	const cmd = mockMsg([{ delayMs: 80, tools: [{ name: "bash", args: { command: "pwd" } }] }]);
+	// Each answers once both are at the model: they are, when they run side by side.
+	h.mock.state.scripts.pwd = [{ until: () => h.mock.state.maxInflight >= 2, tools: [{ name: "bash", args: { command: "pwd" } }] }];
+	const cmd = "@@REF:pwd@@";
 	const [a, b] = await Promise.all([h.pine.agents.run({ agent: "main", prompt: cmd, ...owner }), h.pine.agents.run({ agent: "gonzo", prompt: cmd, ...owner })]);
 	assert.ok(a.text.includes(h.workspace("main")), a.text);
 	assert.ok(b.text.includes(h.workspace("gonzo")), b.text);
@@ -106,7 +108,9 @@ test("the main agent hands a task to a specialist and gets the answer back", asy
 
 test("tasks handed to several agents in one message are worked on side by side, and every answer comes back", async () => {
 	const h = await harness({ pine: { limits: { maxConcurrentRuns: 4 } }, agents: { main: {}, a: {}, b: {} } });
-	h.mock.state.scripts.slow = [{ delayMs: 600, text: "took my time" }];
+	// Each answers once both are at the model: they are, when they are worked on side by side.
+	const asked = () => h.mock.state.requests.filter((q: any) => users(q).at(-1)?.startsWith("[task from agent main]")).length;
+	h.mock.state.scripts.slow = [{ until: () => asked() >= 2, text: "took my time" }];
 	const r = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "delegate", args: { agent: "a", task: "@@REF:slow@@ one" } }, { name: "delegate", args: { agent: "b", task: "@@REF:slow@@ two" } }] }]), ...owner });
 	const runs = h.pine.tasks.list({ limit: 10 }).filter((x: any) => x.kind === "delegate");
 	assert.deepEqual(runs.map((x: any) => x.agent).sort(), ["a", "b"]);
@@ -121,8 +125,11 @@ test("tasks handed to several agents in one message are worked on side by side, 
 
 test("delegation without waiting delivers the answer later as a message", async () => {
 	const h = await harness({ pine: { main: "main" }, agents: { main: {}, gonzo: {} } });
-	h.mock.state.scripts.slow = [{ delayMs: 60, text: "GONZO-ANSWER" }];
+	// Gonzo answers once main's turn is over, so that the answer comes as a message of its own.
+	let handed = false;
+	h.mock.state.scripts.slow = [{ until: () => handed, text: "GONZO-ANSWER" }];
 	const r = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "delegate", args: { agent: "gonzo", task: "@@REF:slow@@", wait: false } }] }]), ...owner });
+	handed = true;
 	assert.ok(/handed to gonzo/.test(r.text), r.text);
 	await until(() => h.pine.tasks.list({ agent: "main" }).some((t) => t.kind === "notify" && t.status === "done"), 5000, "the notify task");
 	const last = h.requestsFor("PERSONA-MAIN").at(-1);
@@ -218,15 +225,16 @@ test("sub-agents run in parallel with fresh contexts, even when only one model s
 	const took: Record<number, number> = {};
 	for (const maxConcurrentRuns of [1, 3]) {
 		const h = await harness({ pine: { limits: { maxConcurrentRuns } }, agents: { main: { files: { "AGENTS.md": "WS-MAIN\n" } } } });
-		for (const n of [1, 2, 3]) h.mock.state.scripts[`s${n}`] = [{ delayMs: 300, text: `answer ${n}` }];
+		const children = () => h.mock.state.requests.filter((q: any) => users(q)[0]?.includes("@@REF:s") && !users(q)[0].includes("<<MOCK"));
+		// With one slot each takes its time, one after the other; with three, each answers once all three are at the model.
+		for (const n of [1, 2, 3]) h.mock.state.scripts[`s${n}`] = [maxConcurrentRuns === 1 ? { delayMs: 300, text: `answer ${n}` } : { until: () => children().length >= 3, text: `answer ${n}` }];
 		const t0 = Date.now();
 		const r = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "subagent", args: { tasks: ["@@REF:s1@@", "@@REF:s2@@", "@@REF:s3@@"] } }] }], "PARENT-CONTEXT "), ...owner });
 		const ms = Date.now() - t0;
 		assert.equal(r.status, "done");
 		for (const n of [1, 2, 3]) assert.ok(r.text.includes(`## Sub-task ${n}: done\nanswer ${n}`), r.text);
-		const children = h.mock.state.requests.filter((q: any) => users(q)[0]?.includes("@@REF:s") && !users(q)[0].includes("<<MOCK"));
-		assert.equal(children.length, 3);
-		for (const c of children) {
+		assert.equal(children().length, 3);
+		for (const c of children()) {
 			assert.ok(!JSON.stringify(c.body.messages).includes("PARENT-CONTEXT"));
 			assert.ok(h.system(c).includes("WS-MAIN"), "a sub-agent is the same agent");
 			// (A sub-agent is declared what its conversation is declared, and refused when it calls what is not its to do: test/catalogue.test.ts.)
@@ -271,7 +279,8 @@ test("a message for a busy session can be queued or steered into the running tas
 	const h = await harness({ agents: { main: {} } });
 	const first = h.pine.agents.submit({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: "sleep 0.3; echo slept" } }] }, { text: "first done" }]), ...owner });
 	await until(() => h.pine.agents.status().running.length === 1);
-	await sleep(80);
+	// A message goes into the work once the model has been asked, not before.
+	await until(() => h.mock.state.requests.length >= 1, 5000, "the work to be at the model");
 	const steered = h.pine.agents.submit({ agent: "main", prompt: "STEERED-IN", kind: "prompt", whenBusy: "steer", ...owner });
 	assert.equal(steered.status, "done");
 	await h.pine.agents.wait(first.id);
@@ -282,12 +291,17 @@ test("a message for a busy session can be queued or steered into the running tas
 	await h.close();
 });
 
+/** A path for the shell, quoted: on Windows it is Git's bash, where a backslash in a path given as it is is no separator. */
+const shPath = (p: string) => `'${p.replace(/\\/g, "/")}'`;
+
 test("a steered message can be sent now: the step under way stops, the work reads it and goes on", async () => {
 	const h = await harness({ agents: { main: {} } });
 	const started = Date.now();
-	const first = h.pine.agents.submit({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: "sleep 6; echo slept" } }] }, { text: "first done" }]), ...owner });
+	const began = path.join(h.workspace("main"), "began");
+	const first = h.pine.agents.submit({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: `touch ${shPath(began)}; sleep 20; echo slept` } }] }, { text: "first done" }]), ...owner });
 	await until(() => h.pine.bus.query({ topic: "agent/main/started" }).length === 1 && h.mock.state.requests.length >= 1);
-	await sleep(150);
+	// The command is under way: it says so itself.
+	await until(() => fs.existsSync(began), 5000, "the command to begin");
 	const steered = h.pine.agents.submit({ agent: "main", prompt: "STATUS?", whenBusy: "steer", ...owner });
 	assert.equal(steered.meta.steered, first.id);
 	assert.equal(h.pine.tasks.get(steered.id)!.meta.read, undefined, "the command still runs: not read yet");
@@ -296,8 +310,8 @@ test("a steered message can be sent now: the step under way stops, the work read
 	const r = await h.pine.agents.wait(first.id);
 	assert.equal(r.status, "done", String(r.error));
 	// Counted from the press, not from the start, which a busy computer makes long: a command that was
-	// waited for would end some six seconds after it began.
-	assert.ok(Date.now() - sent < 4000, `the command was stopped, not waited for (${Date.now() - sent} ms after the press, ${Date.now() - started} ms in all)`);
+	// waited for would end some twenty seconds after it began.
+	assert.ok(Date.now() - sent < 10_000, `the command was stopped, not waited for (${Date.now() - sent} ms after the press, ${Date.now() - started} ms in all)`);
 	// pi may hand the message over itself as the step is cut off; either way it comes before pine's words.
 	const said = JSON.stringify(h.mock.state.requests.at(-1).body.messages.slice(-3));
 	assert.ok(said.includes("STATUS?") && said.includes("Your owner stopped your work") && said.indexOf("STATUS?") > said.indexOf("Command aborted"), `the work went on with the message: ${said}`);
@@ -308,15 +322,17 @@ test("a steered message can be sent now: the step under way stops, the work read
 });
 
 test("a cancelled or timed-out task stops its shell command", async () => {
-	const h = await harness({ agents: { main: { agent: { taskTimeoutSec: 0.25 } } } });
+	// (The cancelled task is the other agent's, which has no time limit: on a busy computer the limit could come first.)
+	const h = await harness({ agents: { main: { agent: { taskTimeoutSec: 0.25 } }, other: {} } });
 	const marker = path.join(h.workspace("main"), "still-running");
-	const r = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: `sleep 0.6; touch ${marker}` } }] }]), ...owner });
+	const r = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: `sleep 0.6; touch ${shPath(marker)}` } }] }]), ...owner });
 	assert.equal(r.status, "failed");
 	assert.ok(/timed out after 0.25 s/.test(r.error ?? ""), String(r.error));
-	const marker2 = path.join(h.workspace("main"), "still-running-2");
-	const t = h.pine.agents.submit({ agent: "main", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: `sleep 0.5; touch ${marker2}` } }] }]), session: "new", ...owner });
-	await until(() => h.pine.bus.query({ topic: "agent/main/started" }).length === 2 && h.mock.state.requests.length >= 2);
-	await sleep(60);
+	const marker2 = path.join(h.workspace("other"), "still-running-2");
+	const began = path.join(h.workspace("other"), "began");
+	const t = h.pine.agents.submit({ agent: "other", prompt: mockMsg([{ tools: [{ name: "bash", args: { command: `touch ${shPath(began)}; sleep 0.5; touch ${shPath(marker2)}` } }] }]), session: "new", ...owner });
+	// Cancelled while its command runs: the command says when it has begun.
+	await until(() => fs.existsSync(began), 5000, "the command to begin");
 	assert.equal(h.pine.agents.cancel(t.id), true);
 	assert.equal((await h.pine.agents.wait(t.id)).status, "cancelled");
 	await sleep(500);

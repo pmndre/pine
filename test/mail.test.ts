@@ -485,6 +485,7 @@ test("mail: a server without IDLE is asked again and again; a password that is n
 	assert.ok(plain.seen.includes("NOOP") && plain.seen.includes("UID SEARCH ALL") && !plain.seen.includes("IDLE"));
 
 	// A refused login is not tried again and again: the source is not running, and says why in pine's words, not the server's.
+	await until(() => info("wrong").error && info("other").error && /^not connected since/.test(info("gone").status ?? ""), 4000, "the other sources to have tried");
 	assert.deepEqual([info("wrong").running, info("wrong").error], [false, "the server refused to log in: check the user name and the password (Gmail, iCloud and Fastmail want an app password)"]);
 	assert.deepEqual([info("other").running, info("other").error], [false, 'the server refused to open the mailbox "Nope"']);
 	assert.ok(!JSON.stringify(h.pine.sources.list()).includes("Invalid credentials"), "what a server says is not repeated where agents read it unmarked");

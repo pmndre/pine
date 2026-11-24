@@ -54,6 +54,10 @@ export interface ImageRef {
 
 export interface TaskMeta {
 	quotes?: SentQuote[];
+	/**
+	 * What a UI shows of the message instead of `prompt`: with `quotes`, what was typed after them; without,
+	 * the owner's own words where pine wrote its own around them (the first message of a goal or a swarm).
+	 */
 	body?: string;
 	images?: ImageRef[];
 	/** Deliver the result to this agent session as a new message when the task ends. */

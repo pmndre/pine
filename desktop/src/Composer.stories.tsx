@@ -4,7 +4,7 @@ import { store, Tab } from "./model.ts";
 
 // The message box as a conversation shows it, without a daemon: what the agent runs on reads
 // "model" and "auto" here, as for an agent the app does not know yet.
-function Box({ draft = "", files = false, quotes = false, outside = false, paused = false, swarm = false }: { draft?: string; files?: boolean; quotes?: boolean; outside?: boolean; paused?: boolean; swarm?: boolean }) {
+function Box({ draft = "", files = false, quotes = false, replying = false, outside = false, paused = false, swarm = false }: { draft?: string; files?: boolean; quotes?: boolean; replying?: boolean; outside?: boolean; paused?: boolean; swarm?: boolean }) {
 	const tab = new Tab("chat", "main", "main");
 	tab.draft = draft;
 	if (paused) tab.goal = { agent: "main", session: "main", objective: "File every invoice of March", status: "paused", round: 3, until: 10, note: "paused by you after round 3" };
@@ -13,8 +13,12 @@ function Box({ draft = "", files = false, quotes = false, outside = false, pause
 	if (quotes)
 		tab.quotes.push(
 			{ id: 1, tab: tab.key, source: { task: 1, part: "answer" }, text: "The March invoices are all filed except the one from Northwind, which still waits for a purchase order number." },
-			{ id: 2, tab: tab.key, source: { task: 2, part: "answer" }, text: "Total: 4 812.50 EUR\n\nDue on 15 April." },
+			{ id: 2, tab: tab.key, source: { task: 2, part: "answer" }, text: "Total: 4 812.50 EUR\n\nDue on 15 April.", reply: "Pay it this week" },
 		);
+	if (quotes && replying) {
+		tab.quotes[0].reply = "Ask Northwind for the number today.\nCopy accounts in.";
+		tab.replying = 1;
+	}
 	if (outside) store.taints.set("main:main", "a web page");
 	else store.taints.delete("main:main");
 	return (
@@ -35,6 +39,8 @@ export const Written: Story = { args: { draft: "Sum up the invoice and say what 
 
 /** Parts of the conversation quoted from its selection toolbar, as badges above the input beside a file. */
 export const Quoted: Story = { args: { draft: "Why is that one still open?", quotes: true, files: true } };
+
+export const Replying: Story = { args: { draft: "And file the rest.", quotes: true, replying: true } };
 
 /** A goal that waits: its banner (an Alert) above the input, with Resume and Clear. */
 export const GoalPaused: Story = { args: { paused: true } };

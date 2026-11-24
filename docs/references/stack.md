@@ -129,7 +129,8 @@ Not verified yet, in rough order of importance:
    the suite's fake terminal). With the network
    granted, Linux still lets a command reach socket files in the temp folders, which macOS
    refuses. The Test workflow (`.github/workflows/test.yml`) runs the suite on Ubuntu 24.04 for
-   x64 and arm64 with the sandbox set up by `pine init`, on macOS and on Windows. On Windows
+   x64 and arm64 with the sandbox set up by `pine init`, on macOS and on Windows, for every push to
+   `next` (a pull request against `next` on Ubuntu x64 alone). On Windows
    pine has no sandbox (docs/adr/0004-three-systems.md): its tests run in `auto` mode there, and
    the ones about the sandbox skip themselves. Where there is no sandbox, an agent whose mode
    nobody chose works in `auto`, with your account; one set to `safe`, and every run started

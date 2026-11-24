@@ -87,7 +87,9 @@ test("boards: a conversation's own board is its list of work; a board with a nam
 test("boards: a pool of sub-agents works through more tasks than run at once, and each sees what the others noted", async () => {
 	const h = await harness({ pine: { limits: { maxConcurrentRuns: 3 } }, agents: { main: { agent: { subagents: { maxParallel: 2 } } } } });
 	h.mock.state.scripts.w1 = [{ tools: [call("board_post", { type: "note", text: "FOUND-BY-ONE gap-3 next to gap-4" })] }, { text: "answer one" }];
-	h.mock.state.scripts.w2 = [{ delayMs: 120, tools: [call("board_read")] }];
+	// The second reads the board once the first has posted its note: in that order however long each takes.
+	const noted = () => h.pine.agents.boards.list().some((b) => h.pine.agents.boards.items(b.id, { kind: "note" }).some((x) => x.text.includes("FOUND-BY-ONE")));
+	h.mock.state.scripts.w2 = [{ until: noted, tools: [call("board_read")] }];
 	for (const n of [3, 4, 5]) h.mock.state.scripts[`w${n}`] = [{ delayMs: 60, text: `answer ${n}` }];
 	const seen: number[] = [];
 	h.pine.bus.subscribe("pine/board", () => void seen.push(h.pine.agents.boards.counts(1).taken));
@@ -318,7 +320,8 @@ test("boards: a pool comes back when a sub-agent asks, the conversation answers,
 	const h = await harness({ pine: { limits: { maxConcurrentRuns: 4 } }, agents: { main: { agent: { subagents: { maxParallel: 2 } } } } });
 	const boards = h.pine.agents.boards;
 	h.mock.state.scripts.asks = [{ tools: [call("board_done", { id: 1, outcome: "blocked", result: "WHICH-WAY left or right?" })] }, { text: "stopped" }];
-	h.mock.state.scripts.slow = [{ delayMs: 500, text: "slow one done" }];
+	// Still at work when the question comes back, and done only once the second pool call is at work.
+	h.mock.state.scripts.slow = [{ until: () => turns(h).length >= 3 && h.pine.agents.pooling.size > 0, text: "slow one done" }];
 	h.mock.state.scripts.quick = [{ text: "quick one done" }];
 	// Whoever gets the first task after the answer does it.
 	h.pine.bus.subscribe("pine/board", () => {
@@ -470,7 +473,8 @@ test("boards: with a check, every task of a pool is followed by a second sub-age
 	const h = await harness({ pine: { limits: { maxConcurrentRuns: 4 } }, agents: { main: { agent: { subagents: { maxParallel: 2 } } } } });
 	const boards = h.pine.agents.boards;
 	h.mock.state.scripts.w1 = [{ text: "WROTE-ONE into out/1.md" }];
-	h.mock.state.scripts.w2 = [{ delayMs: 200, text: "WROTE-TWO into out/2.md" }];
+	// The second piece of work ends only once the first one's check has begun.
+	h.mock.state.scripts.w2 = [{ until: () => h.pine.tasks.list({ limit: 50 }).some((t) => t.meta.boardTask === 3), text: "WROTE-TWO into out/2.md" }];
 	// (A check names the work it checks, so the scripted model finds the worker's script in it: each script answers twice.)
 	h.mock.state.scripts.w1.push({ text: "unused" });
 	const r = await h.pine.agents.run({ agent: "main", session: "job", prompt: mockMsg([{ tools: [call("subagent", { check: "CHECK-IT against the chapter", note: "TWO-SENTENCES each", tasks: ["write one @@REF:w1@@", "write two @@REF:w2@@"] })] }]), ...owner });
@@ -616,7 +620,9 @@ test("boards: stages are worked one after the other, each shown what came of the
 test("boards: tasks split over several pool calls in one answer are one pool, not several", async () => {
 	const h = await harness({ pine: { limits: { maxConcurrentRuns: 6 } }, agents: { main: { agent: { subagents: { maxParallel: 2 } } } } });
 	const boards = h.pine.agents.boards;
-	for (const n of [1, 2, 3, 4]) h.mock.state.scripts[`w${n}`] = [{ delayMs: 80, text: `answer ${n}` }];
+	// The first two stay at work until the other call has put its tasks on the board too.
+	for (const n of [1, 2]) h.mock.state.scripts[`w${n}`] = [{ until: () => boards.list().some((b) => boards.items(b.id, { kind: "task" }).length >= 4), text: `answer ${n}` }];
+	for (const n of [3, 4]) h.mock.state.scripts[`w${n}`] = [{ delayMs: 80, text: `answer ${n}` }];
 	const taken: number[] = [];
 	h.pine.bus.subscribe("pine/board", () => void taken.push(boards.counts(1).taken));
 	const r = await h.pine.agents.run({ agent: "main", session: "job", prompt: mockMsg([{ tools: [call("subagent", { note: "THE-RULES", tasks: ["one @@REF:w1@@", "two @@REF:w2@@"] }), call("subagent", { note: "THE-RULES", tasks: ["three @@REF:w3@@", "four @@REF:w4@@"] })] }]), ...owner });
@@ -788,7 +794,9 @@ test("boards: the owner reads every board through the control API, posts on one,
 	assert.ok(!JSON.stringify(briefs).includes("look at the footer") && !JSON.stringify(briefs).includes("tokens.css"));
 
 	// A sub-agent of the pool has the task; the owner takes it back, which stops that sub-agent.
-	h.mock.state.scripts.slow = [{ delayMs: 5000, text: "too late" }];
+	// At work until the task is removed.
+	let removed = false;
+	h.mock.state.scripts.slow = [{ until: () => removed, text: "too late" }];
 	const changes: any[] = [];
 	h.pine.bus.subscribe("pine/board", (e) => void changes.push(e.payload));
 	const working = h.pine.agents.run({ agent: "main", session: "work", prompt: mockMsg([{ tools: [call("subagent", { pool: true, tasks: [] })] }]), ...owner });
@@ -809,6 +817,7 @@ test("boards: the owner reads every board through the control API, posts on one,
 	// (Once the new one is at the model: stopping a run reaches it from there on.)
 	await until(() => atModel() >= 2);
 	await req("POST", "/boards/items/1", { action: "remove" });
+	removed = true;
 	const r = await working;
 	assert.equal(r.status, "done");
 	assert.match(r.text, /No task on the board was ready|## Task #1/);
@@ -872,7 +881,8 @@ test("boards: a sub-agent whose answer ends with a question leaves its task bloc
 	const h = await harness({ pine: { limits: { maxConcurrentRuns: 4 } }, agents: { main: { agent: { subagents: { maxParallel: 2 } } } } });
 	const boards = h.pine.agents.boards;
 	h.mock.state.scripts.a = [{ text: "COUNT-A 12 lines.\n\nWhat reviewer rate should I use, in lines per hour?" }];
-	h.mock.state.scripts.b = [{ delayMs: 250, text: "COUNT-B 30 lines. What reviewer rate should I use?" }];
+	// It asks only after the answer for all was given, while the second pool call is at work.
+	h.mock.state.scripts.b = [{ until: () => turns(h).length >= 3 && h.pine.agents.pooling.size > 0, text: "COUNT-B 30 lines. What reviewer rate should I use?" }];
 	// Given out again with the answer, each does its task.
 	h.pine.bus.subscribe("pine/board", () => {
 		if (boards.item(1)?.state === "blocked") h.mock.state.scripts.a = [{ text: "COUNT-A 12 lines: 0.12 hours" }];

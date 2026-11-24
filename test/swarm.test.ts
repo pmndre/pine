@@ -24,14 +24,14 @@ const turns = (h: Harness, session = "main") => h.pine.tasks.list({ agent: "main
  * depends on which round the swarm is in. The check pine posts quotes the job, so the sub-agent that does
  * it finds the same name: it is told apart by how its task begins, and answers what `checker` says.
  */
-async function swarm(rounds: (round: number) => any[], o: { checker?: (n: number) => string; checkMs?: number; pine?: Record<string, unknown>; agents?: Record<string, any>; models?: any[] } = {}) {
+async function swarm(rounds: (round: number) => any[], o: { checker?: (n: number) => string; checkMs?: number; checkUntil?: () => boolean; pine?: Record<string, unknown>; agents?: Record<string, any>; models?: any[] } = {}) {
 	const h = await harness({ ...(o.models ? { models: o.models } : {}), pine: { limits: { maxConcurrentRuns: 4 }, ...(o.pine ?? {}) }, agents: { main: { agent: { subagents: { maxParallel: 2 } } }, ...(o.agents ?? {}) } });
 	let checks = 0;
 	Object.defineProperty(h.mock.state.scripts, "lead", {
 		get: () => {
 			const messages = h.mock.state.requests.at(-1)?.body.messages ?? [];
 			const last = rawTextOf([...messages].reverse().find((m: any) => m.role === "user")?.content ?? "");
-			if (/Check the answer below before the one who asked for it relies on it/.test(last)) return [{ ...(o.checkMs ? { delayMs: o.checkMs } : {}), text: (checks++, o.checker?.(checks) ?? "PASS") }];
+			if (/Check the answer below before the one who asked for it relies on it/.test(last)) return [{ ...(o.checkMs ? { delayMs: o.checkMs } : {}), ...(o.checkUntil ? { until: o.checkUntil } : {}), text: (checks++, o.checker?.(checks) ?? "PASS") }];
 			return rounds(swarmOf(h)?.round ?? 1);
 		},
 	});
@@ -157,10 +157,13 @@ test("swarm: a lead that does a small job itself has its answer checked all the 
 
 test("swarm: paused while the answer is checked, the check ends by itself and resume takes its word; a check that was stopped is the lead's to have done, after whatever it adds", async () => {
 	// The check takes a while; the owner pauses meanwhile. It passes with the swarm paused: resume finds that, and no turn starts.
-	const { h, job, checks } = await swarm(() => [{ text: "THE-ANSWER" }], { checkMs: 400 });
+	// The check answers only once the pause is in: on a slow machine any fixed time can run out before it.
+	let pausedAlready = false;
+	const { h, job, checks } = await swarm(() => [{ text: "THE-ANSWER" }], { checkUntil: () => pausedAlready });
 	h.pine.agents.swarms.set("main", "main", job);
 	await until(() => swarmOf(h)?.checking !== undefined, 5000, "the check to start");
 	const paused = h.pine.agents.swarms.pause("main", "main");
+	pausedAlready = true;
 	assert.deepEqual([paused.status, paused.checking], ["paused", undefined]);
 	await until(() => quiet(h), 5000, "the check to end");
 	assert.deepEqual([swarmOf(h)!.status, verdictOf(h.pine.agents.boards.item(1)!.result)], ["paused", "pass"]);
@@ -369,6 +372,9 @@ test("swarm: only the owner starts one, through the control API; it is paused, r
 	const started = await api("POST", "/agents/main/swarm", { session: "job", objective: "the job @@REF:lead@@" });
 	assert.deepEqual([started.status, started.body.swarm.status, started.body.swarm.round], [200, "active", 1]);
 	assert.equal((await api("GET", "/agents/main/swarm?session=job")).body.swarm.objective, "the job @@REF:lead@@");
+	// The lead is told the job in pine's frame; read back, the owner's message is the job as they wrote it.
+	const first = (await api("GET", "/tasks?agent=main&session=job")).body.find((t: any) => t.kind === "prompt" && t.parent === undefined);
+	assert.deepEqual([first.prompt, first.meta.body], [startPrompt("the job @@REF:lead@@"), "the job @@REF:lead@@"]);
 	assert.equal((await api("POST", "/agents/main/swarm", { session: "job", action: "nonsense" })).status, 400);
 	assert.equal((await api("POST", "/agents/main/swarm", { session: "job" })).status, 400);
 	assert.equal((await api("POST", "/agents/nobody/swarm", { session: "job", objective: "x" })).status, 404);
@@ -397,12 +403,15 @@ test("swarm: only the owner starts one, through the control API; it is paused, r
 test("swarm: /swarm in the terminal UI starts one, shows what pine does about it, and pauses, resumes and clears it", async () => {
 	const h = await harness({ pine: { main: "main", http: { port: 0 }, limits: { maxConcurrentRuns: 4 } }, agents: { main: { agent: { subagents: { maxParallel: 2 } } } } });
 	// Round 1 posts a task and ends; round 2 has it done and answers; then pine has that answer checked.
+	// The lead's first round and the check each answer once the screen has shown them at work: a fixed time
+	// can be over before the screen is drawn on a slow machine.
+	const shown = { working: false, checking: false };
 	Object.defineProperty(h.mock.state.scripts, "lead", {
 		get: () => {
 			const messages = h.mock.state.requests.at(-1)?.body.messages ?? [];
-			if (/Check the answer below before the one who asked/.test(rawTextOf([...messages].reverse().find((m: any) => m.role === "user")?.content ?? ""))) return [{ delayMs: 300, text: "PASS" }];
+			if (/Check the answer below before the one who asked/.test(rawTextOf([...messages].reverse().find((m: any) => m.role === "user")?.content ?? ""))) return [{ until: () => shown.checking, text: "PASS" }];
 			const round = swarmOf(h)?.round ?? 1;
-			return round === 1 ? [{ tools: [call("board_post", { type: "task", text: "piece @@REF:one@@" })] }, { delayMs: 250, text: "POSTED-IT" }] : [{ tools: [call("subagent", { pool: true })] }, { text: "ALL-SHELVES-SORTED" }];
+			return round === 1 ? [{ tools: [call("board_post", { type: "task", text: "piece @@REF:one@@" })] }, { until: () => shown.working, text: "POSTED-IT" }] : [{ tools: [call("subagent", { pool: true })] }, { text: "ALL-SHELVES-SORTED" }];
 		},
 	});
 	h.mock.state.scripts.one = [{ delayMs: 300, text: "ONE-DONE" }];
@@ -423,13 +432,23 @@ test("swarm: /swarm in the terminal UI starts one, shows what pine does about it
 	await send("/swarm tidy the archive @@REF:lead@@");
 	await sees("swarm started: main leads it");
 	await sees(/swarm · round 1 of 8 · (working|thinking)/);
+	shown.working = true;
 	await sees("swarm 1 task is not done: round 2 of 8 starts");
 	await sees("ALL-SHELVES-SORTED");
 	await sees("swarm the answer is being checked by a sub-agent that did none of the work");
 	await sees(/swarm · round 2 of 8 · checking the answer/);
+	shown.checking = true;
 	await sees("swarm done after 2 rounds: 1 task, and the answer was checked");
 	// The job was typed here, so it is shown once and as the owner's; what pine told the lead in a round is not shown as a message.
 	assert.ok(!text().includes("[elsewhere]") && !text().includes("[notify]") && !text().includes("the swarm is not finished") && !text().includes("your owner started a swarm") && !text().includes("Check the answer below"), text());
+	// Opened again, the conversation is read from pine's history: the owner's message is the job alone.
+	const again = new PineTui({ client, terminal: new FakeTerminal(130, 60) });
+	apps.push(again);
+	await again.start();
+	await until(() => again.screen().join("\n").includes("ALL-SHELVES-SORTED"), 5000, "the history to be shown");
+	const restored = again.screen().join("\n");
+	assert.ok(restored.includes("tidy the archive @@REF:lead@@") && !restored.includes("your owner started a swarm"), restored);
+	await again.stop();
 	await send("/swarm pause");
 	await sees("the swarm is not at work");
 	await send("/swarm clear");

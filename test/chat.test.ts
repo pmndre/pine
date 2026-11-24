@@ -668,7 +668,8 @@ test("slack: a socket that never answers is not waited for, neither with its gre
 	// A connection that Slack does not greet is not one: said so, and made again.
 	await until(() => /^cannot connect since \d\d:\d\d:\d\d \(\d+ attempts?\): Slack did not greet the connection in time\. listening to/.test(sourceInfo(h, "ungreeted").status ?? "") && silent.taken() >= 2, 5000, "the connection that is not greeted to be given up and tried again");
 	// The sockets of the attempts that were given up are closed, though nothing ever answered the goodbye.
-	assert.ok(silent.open() <= 1, `${silent.open()} sockets are open`);
+	// (Closing one takes a moment of its own: waited for. Were they left open, there would be more with every attempt.)
+	await until(() => silent.open() <= 1, 2000, `the given-up sockets to be closed (${silent.open()} are open)`);
 	await connected(h, "unanswered");
 	assert.equal(deaf.open(), 1);
 	// Stopped means stopped, also when the other side never says goodbye: no socket is left open, and nothing connects again.
@@ -1224,7 +1225,7 @@ test("slack, matrix and discord by asking: ids are checked, tokens are typed int
 	assert.match(h.toolResults().at(-1)!, /Added the event source "work" \(slack\)\. What is written in Slack is other people's words, not your owner's\./);
 	// A message that counts wakes the agent that subscribes, as outside content.
 	await h.pine.sources.subscribe("main", "work", { note: "Tell the owner what the boss wants.", throttle: "10ms" });
-	await until(() => slack.site.live().length === 1, 4000, "the app to be connected");
+	await until(() => slack.site.live().length === 1 && /^connected since/.test(h.pine.sources.list().find((s) => s.name === "work")?.status ?? ""), 4000, "the app to be connected");
 	slack.say({ user: BOSS, channel: RANDOM, channel_type: "channel", text: "call me" });
 	await until(() => h.pine.tasks.list({}).some((x: any) => x.kind === "event" && x.status === "done"), 6000, "the agent to be woken");
 	const woken = h.mock.state.requests.at(-1).body.messages.filter((m: any) => m.role === "user").at(-1);

@@ -72,20 +72,20 @@ test("debounce handles only the last event of a burst; throttle only the first",
 	const h = await harness({
 		pine: {
 			routes: [
-				{ name: "burst", on: "cam/+/motion", debounceMs: 80, publish: { topic: "seen/debounced", payload: { n: "{{payload.n}}", cam: "{{topic}}" } } },
+				{ name: "burst", on: "cam/+/motion", debounceMs: 600, publish: { topic: "seen/debounced", payload: { n: "{{payload.n}}", cam: "{{topic}}" } } },
 				{ name: "first", on: "door/bell", throttleMs: 3000, publish: { topic: "seen/throttled", payload: "{{payload}}" } },
 			],
 		},
 		agents: { main: {} },
 	});
-	// (The throttle's window is far longer than the burst: a busy computer may pause between two publishes.)
+	// (Both windows are far longer than the burst: a busy computer may pause between two publishes.)
 	for (const n of [1, 2, 3]) {
 		h.pine.bus.publish("cam/front/motion", { n });
 		h.pine.bus.publish("door/bell", { n });
 		await sleep(15);
 	}
 	h.pine.bus.publish("cam/back/motion", { n: 9 });
-	await sleep(160);
+	await until(() => h.pine.bus.query({ topic: "seen/debounced" }).length >= 2, 4000, "the end of both bursts");
 	const debounced = h.pine.bus.query({ topic: "seen/debounced" }).map((e) => e.payload);
 	assert.deepEqual(debounced, [{ n: 3, cam: "cam/front/motion" }, { n: 9, cam: "cam/back/motion" }]);
 	assert.deepEqual(h.pine.bus.query({ topic: "seen/throttled" }).map((e) => e.payload), [{ n: 1 }]);
@@ -131,7 +131,7 @@ test("an agent that keeps triggering itself through events is cut off", async ()
 	});
 	h.pine.bus.publish("loop/ping", { text: "start" }, { trust: "owner" });
 	await until(() => h.logs.some((l) => /dropped loop\/ping .* after \d+ hops/.test(l)), 8000, "the loop to be cut");
-	await sleep(60);
+	await until(() => h.pine.agents.status().running.length === 0, 4000, "the last run to end");
 	const pings = h.pine.bus.query({ topic: "loop/ping" });
 	assert.ok(pings.length >= 3 && pings.length <= 6, `loop stopped after ${pings.length} events`);
 	assert.equal(h.pine.agents.status().running.length, 0);

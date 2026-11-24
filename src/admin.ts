@@ -266,7 +266,7 @@ export function eraseAgent(cfg: PineConfig, store: { kv: Kv; tasks: TaskStore; b
 	unname(cfg, id);
 	// A worktree of one of its conversations stays in the owner's repository, which is not pine's to
 	// empty; `pine worktrees` (GET /worktrees) lists it as no conversation's.
-	for (const prefix of ["taint", "keep", "folder", "group", "worktree", "todos", "turns", "undone", "prefix", "note", "branch", "visited"]) store.kv.forget(`${prefix}:${id}:`);
+	for (const prefix of ["taint", "keep", "folder", "group", "worktree", "todos", "turns", "undone", "prefix", "note", "branch", "visited", "bookmarks"]) store.kv.forget(`${prefix}:${id}:`);
 	// Its groups of conversations, and how its list was sorted.
 	store.kv.set(`groups:${id}`, null);
 	// Which slot of a model server held one of its conversations (src/slots.ts).
@@ -332,7 +332,7 @@ export function checkAgentId(cfg: PineConfig, id: string): void {
 }
 
 /** The prefixes of what pine stores per conversation as "<prefix>:<agent>:<conversation>". */
-const BY_CONVERSATION = ["taint", "keep", "folder", "group", "worktree", "todos", "turns", "undone", "prefix", "note", "branch", "visited", "goal", "swarm"];
+const BY_CONVERSATION = ["taint", "keep", "folder", "group", "worktree", "todos", "turns", "undone", "prefix", "note", "branch", "visited", "goal", "swarm", "bookmarks"];
 
 /**
  * Give an agent another id, and with it everything that carries its name, so that nothing is

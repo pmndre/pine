@@ -783,6 +783,17 @@ function windowFromEvent(e: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent)
 	return w;
 }
 
+/**
+ * What the system lets a page do. One thing, for the app's own page alone: write text to the clipboard,
+ * which its Copy buttons and Copy Last Answer do through `navigator.clipboard` (Chromium asks for
+ * `clipboard-sanitized-write`, and refuses the write without it). Writing reads nothing, and the page
+ * runs no script but the app's own. A view's frame, a tab of the agent's browser and every other
+ * permission (the camera, the microphone, the place, reading the clipboard) are refused.
+ */
+function permits(contents: Electron.WebContents | null, permission: string, details: { isMainFrame?: boolean; requestingUrl?: string }): boolean {
+	return permission === "clipboard-sanitized-write" && Boolean(contents && byContents.has(contents.id) && details.isMainFrame) && originOf(details.requestingUrl ?? "") === ORIGIN;
+}
+
 /** Only pages on the web open outside the app; a link in an answer never starts a program or opens a file. */
 function openOutside(url: string): void {
 	try {
@@ -1490,7 +1501,7 @@ function wire(): void {
 	handle("pine:access-set", async (w, change: unknown) => accessForWindow(await accessOn().set(accessChange(change)), w));
 	handle("pine:access-pair", () => accessOn().openPairing());
 	handle("pine:access-cancel", () => accessOn().cancelPairing());
-	// The link of the open pairing, put on the clipboard here: the page names no text (and is given no clipboard of its own).
+	// The link of the open pairing, put on the clipboard here: the page is never told the link, so it cannot copy it itself.
 	handle("pine:access-copy", async () => {
 		const { pairing } = await accessOn().state();
 		if (!pairing) throw new Error("No pairing is open now: press Add a device.");
@@ -1714,14 +1725,14 @@ else {
 		openFolder(file);
 	});
 	app.on("web-contents-created", (_e, contents) => {
-		// Nothing the page shows gets the camera, the microphone, the place or anything else of the system's.
-		contents.session.setPermissionRequestHandler((_wc, _permission, done) => done(false));
+		// Nothing the page shows gets the camera, the microphone, the place or anything else of the system's (`permits`).
+		contents.session.setPermissionRequestHandler((wc, permission, done, details) => done(permits(wc, permission, details)));
 	});
 	void app.whenReady().then(() => {
 		loadPrefs();
 		protocol.handle("app", page);
 		protocol.handle("pine-media", media);
-		session.defaultSession.setPermissionRequestHandler((_wc, _permission, done) => done(false));
+		session.defaultSession.setPermissionRequestHandler((wc, permission, done, details) => done(permits(wc, permission, details)));
 		wire();
 		ipcMain.on("pine:term-focus", (e, focused) => {
 			const w = windowFromEvent(e);

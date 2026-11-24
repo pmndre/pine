@@ -7,13 +7,14 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const root = path.resolve(import.meta.dirname, "..");
 const given = process.argv.slice(2);
 /** Somebody who names a reporter gets that reporter and nothing beside it, so no second run either. */
 const plain = !given.some((a) => a === "--test-reporter" || a.startsWith("--test-reporter="));
 const failedList = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pine-test-")), "failed");
-const reporters = plain ? ["--test-reporter=spec", "--test-reporter-destination=stdout", `--test-reporter=${path.join(root, "desktop", "scripts", "failed-files.mjs")}`, "--test-reporter-destination=stdout"] : [];
+const reporters = plain ? ["--test-reporter=spec", "--test-reporter-destination=stdout", `--test-reporter=${pathToFileURL(path.join(root, "desktop", "scripts", "failed-files.mjs")).href}`, "--test-reporter-destination=stdout"] : [];
 
 function run(args) {
 	const child = spawn(process.execPath, ["--test", ...reporters, ...args], { stdio: "inherit", cwd: root, env: { ...process.env, PINE_DESKTOP_FAILED: failedList } });

@@ -1,8 +1,10 @@
 name: Test
 
-# pine's tests on every system it runs on, on every pull request and every push to next. A file with
-# a failure is run again alone (scripts/test.mjs): one that passes then was a wait that ran out on a
-# slow runner, and does not fail the run.
+# pine's tests on every system it runs on, on every push to next and every pull request against
+# main. A pull request against next runs them on Linux (x64) alone: the other systems are slow and
+# costly, and they are run on next once it is merged, before anything is released from there. A file
+# with a failure is run again alone (scripts/test.mjs): one that passes then was a wait that ran out
+# on a slow runner, and does not fail the run.
 #
 # pine: the type check and `npm test` on Linux (x64 and arm64), macOS and Windows. On Linux the
 # sandbox is set up first the way an owner sets it up, with `pine init` (bubblewrap, and the
@@ -33,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, windows-latest]
+        runner: ${{ fromJSON(github.event_name == 'pull_request' && github.base_ref != 'main' && '["ubuntu-24.04"]' || '["ubuntu-24.04", "ubuntu-24.04-arm", "macos-15", "windows-latest"]') }}
     runs-on: ${{ matrix.runner }}
     # macOS's runners take the longest: close to half an hour for the whole suite.
     timeout-minutes: 45
@@ -94,7 +96,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, macos-15]
+        runner: ${{ fromJSON(github.event_name == 'pull_request' && github.base_ref != 'main' && '["ubuntu-24.04"]' || '["ubuntu-24.04", "macos-15"]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
@@ -149,7 +151,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, windows-latest]
+        runner: ${{ fromJSON(github.event_name == 'pull_request' && github.base_ref != 'main' && '["ubuntu-24.04"]' || '["ubuntu-24.04", "windows-latest"]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     steps:

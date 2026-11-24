@@ -119,3 +119,40 @@ test("quotes: on a small limit they are cut, and what the owner typed is never c
 	assert.ok(task.prompt.startsWith(withQuotes(task.meta.quotes!, "")));
 	await h.close();
 });
+
+test("quotes: a reply goes with its quote, after it, is left out when empty, is cut before the quote, and comes back with undo", async () => {
+	// Checked where it comes in: a string of at most as many characters as a quote, trimmed, and none when empty.
+	const letter = "letter" as const;
+	assert.deepEqual(readQuotes([{ text: "a", source: letter, reply: "  why?  " }, { text: "b", source: letter, reply: "   " }]), [
+		{ text: "a", source: letter, reply: "why?" },
+		{ text: "b", source: letter },
+	]);
+	assert.equal(typeof readQuotes([{ text: "a", source: letter, reply: 5 }]), "string");
+	assert.equal(typeof readQuotes([{ text: "a", source: letter, reply: "x".repeat(10_001) }]), "string");
+
+	// Each reply follows its quote, and the message comes last.
+	assert.equal(withQuotes([{ text: "the cache", reply: "why?" }, { text: "the lockfile" }], "and fix it"), "> the cache\n\nwhy?\n\n> the lockfile\n\nand fix it");
+
+	// Where the room ends, the reply is cut first; with no room for any of it, the quote stays without one.
+	const long = { text: "x".repeat(50), source: letter, reply: "y".repeat(100) };
+	const cutReply = fitQuotes([long], 80);
+	assert.equal(cutReply[0].text, long.text);
+	assert.ok(cutReply[0].reply!.endsWith("…") && cutReply[0].reply!.length < 100, String(cutReply[0].reply));
+	assert.ok(withQuotes(cutReply, "").length <= 80, `${withQuotes(cutReply, "").length}`);
+	assert.deepEqual(fitQuotes([long], 54), [{ text: long.text, source: letter }]);
+
+	// Through the control API: the agent reads it after its quote, the task keeps it, and undo gives it back.
+	const h = await harness({ pine: { http: { port: 0 } }, agents: { main: {} } });
+	const headers = { authorization: `Bearer ${h.pine.token}`, "content-type": "application/json" };
+	const post = (route: string, body: unknown) => fetch(`http://127.0.0.1:${h.pine.http!.port}${route}`, { method: "POST", headers, body: JSON.stringify(body) });
+	const first = await h.pine.agents.run({ agent: "main", session: "s", trust: "owner", prompt: `start ${mockMsg([{ text: "The cache held an old copy of the lockfile." }])}` });
+	const quotes = [{ text: "an old copy of the lockfile", source: { task: first.id, part: "answer" }, reply: "why was it not cleared?" }];
+	const { task: id } = (await (await post("/agents/main/prompt", { prompt: `and how do we prevent it ${mockMsg([{ text: "ok" }])}`, session: "s", quotes, wait: false })).json()) as { task: number };
+	await until(() => h.pine.tasks.get(id)?.status === "done", 5000, "the message to be answered");
+	assert.ok(lastSaid(h).includes("> an old copy of the lockfile\n\nwhy was it not cleared?\n\nand how do we prevent it"), lastSaid(h));
+	assert.deepEqual(h.pine.tasks.get(id)!.meta.quotes, quotes);
+	const back = (await (await post("/agents/main/undo", { session: "s" })).json()) as { quotes?: SentQuote[]; body?: string };
+	assert.deepEqual(back.quotes, quotes);
+	assert.ok(back.body!.startsWith("and how do we prevent it"), String(back.body));
+	await h.close();
+});

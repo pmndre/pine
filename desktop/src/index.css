@@ -319,6 +319,9 @@
 	::highlight(pine-find) {
 		background-color: color-mix(in srgb, var(--warn) 32%, transparent);
 	}
+	::highlight(pine-bookmark) {
+		background-color: color-mix(in oklab, var(--primary) 30%, transparent);
+	}
 	::highlight(pine-find-at) {
 		background-color: var(--warn);
 		color: var(--background);

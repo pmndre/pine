@@ -9,6 +9,7 @@ export type QuoteSource = { task: number; part: "prompt" | "answer" } | "letter"
 export interface SentQuote {
 	text: string;
 	source: QuoteSource;
+	reply?: string;
 }
 
 export const MAX_QUOTES = 20;
@@ -22,8 +23,8 @@ export function quoteBlock(text: string): string {
 		.join("\n");
 }
 
-export function withQuotes(quotes: ReadonlyArray<{ text: string }>, body: string): string {
-	return [...quotes.map((q) => quoteBlock(q.text)), body.trim()].filter(Boolean).join("\n\n");
+export function withQuotes(quotes: ReadonlyArray<{ text: string; reply?: string }>, body: string): string {
+	return [...quotes.flatMap((q) => [quoteBlock(q.text), q.reply?.trim() ?? ""]), body.trim()].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -33,16 +34,27 @@ export function withQuotes(quotes: ReadonlyArray<{ text: string }>, body: string
 export function fitQuotes(quotes: SentQuote[], room: number): SentQuote[] {
 	const out: SentQuote[] = [];
 	let left = room;
+	const cut = (s: string, fits: (t: string) => boolean): string | undefined => {
+		let keep = Math.min(s.length, left);
+		while (keep > 0 && !fits(`${s.slice(0, keep).trimEnd()}…`)) keep = Math.floor(keep * 0.9);
+		return keep > 0 ? `${s.slice(0, keep).trimEnd()}…` : undefined;
+	};
 	for (const q of quotes) {
-		const size = quoteBlock(q.text).length + 2;
+		const block = quoteBlock(q.text).length + 2;
+		const reply = q.reply?.trim();
+		const size = block + (reply ? reply.length + 2 : 0);
 		if (size <= left) {
 			out.push(q);
 			left -= size;
 			continue;
 		}
-		let keep = Math.min(q.text.length, left);
-		while (keep > 0 && quoteBlock(`${q.text.slice(0, keep).trimEnd()}…`).length + 2 > left) keep = Math.floor(keep * 0.9);
-		if (keep > 0) out.push({ ...q, text: `${q.text.slice(0, keep).trimEnd()}…` });
+		if (reply && block <= left) {
+			const said = cut(reply, (t) => block + t.length + 2 <= left);
+			out.push(said ? { ...q, reply: said } : { text: q.text, source: q.source });
+			break;
+		}
+		const text = cut(q.text, (t) => quoteBlock(t).length + 2 <= left);
+		if (text) out.push({ text, source: q.source });
 		break;
 	}
 	return out;
@@ -53,7 +65,14 @@ export function sameSource(a: QuoteSource, b: QuoteSource): boolean {
 }
 
 export function shortQuotes(quotes: SentQuote[] | undefined, max = 2000): SentQuote[] | undefined {
-	return quotes?.map((q) => (q.text.length > max ? { ...q, text: `${q.text.slice(0, max)}…` } : q));
+	const cut = (s: string) => (s.length > max ? `${s.slice(0, max)}…` : s);
+	return quotes?.map((q) => ({ ...q, text: cut(q.text), ...(q.reply === undefined ? {} : { reply: cut(q.reply) }) }));
+}
+
+export function readSource(source: unknown): QuoteSource | undefined {
+	if (source === "letter" || source === "welcome") return source;
+	if (source && typeof source === "object" && Number.isSafeInteger((source as any).task) && (source as any).task > 0 && ((source as any).part === "prompt" || (source as any).part === "answer")) return { task: (source as any).task, part: (source as any).part };
+	return undefined;
 }
 
 export function readQuotes(value: unknown): SentQuote[] | string {
@@ -62,11 +81,14 @@ export function readQuotes(value: unknown): SentQuote[] | string {
 	const out: SentQuote[] = [];
 	for (const q of value) {
 		if (!q || typeof q !== "object") return "each quote is { text, source }";
-		const { text, source } = q as { text?: unknown; source?: unknown };
+		const { text, source, reply } = q as { text?: unknown; source?: unknown; reply?: unknown };
 		if (typeof text !== "string" || !text.trim()) return "a quote's text is a string that is not empty";
 		if (text.length > MAX_QUOTE_CHARS) return `a quote's text has at most ${MAX_QUOTE_CHARS} characters`;
-		if (source === "letter" || source === "welcome") out.push({ text, source });
-		else if (source && typeof source === "object" && Number.isSafeInteger((source as any).task) && (source as any).task > 0 && ((source as any).part === "prompt" || (source as any).part === "answer")) out.push({ text, source: { task: (source as any).task, part: (source as any).part } });
+		if (reply !== undefined && typeof reply !== "string") return "a quote's reply is a string";
+		if (typeof reply === "string" && reply.length > MAX_QUOTE_CHARS) return `a quote's reply has at most ${MAX_QUOTE_CHARS} characters`;
+		const said = typeof reply === "string" && reply.trim() ? { reply: reply.trim() } : {};
+		const from = readSource(source);
+		if (from) out.push({ text, source: from, ...said });
 		else return 'a quote\'s source is "letter", "welcome" or { task, part: "prompt" | "answer" }';
 	}
 	return out;
