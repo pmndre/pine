@@ -39,7 +39,7 @@ import { bridge } from "./bridge.ts";
 import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
-import { type Item, type Part, type Steer, splitQuotes, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
+import { type Item, type Part, type QuoteSource, type Steer, splitQuotes, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { childKind, clock, count, MODES, oneLine, plural, short, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
 
@@ -462,26 +462,33 @@ async function branchMenu(tab: Tab, task: number): Promise<void> {
 
 const squash = (text: string) => text.replace(/\s+/g, " ").trim();
 
-function quoteSource(tab: Tab, from: Item, quote: string, at: HTMLElement): number | undefined {
+function quoteSource(tab: Tab, from: Item, quote: string, at: HTMLElement): { item?: number; source?: QuoteSource } | undefined {
 	const first = quote.split(/\r?\n/).find((line) => line.trim());
 	if (!first) return undefined;
 	const want = squash(first);
 	const scope = at.closest("[data-message-id]")?.parentElement;
 	for (let i = tab.items.indexOf(from) - 1; i >= 0; i--) {
 		const it = tab.items[i];
-		if ("text" in it && typeof it.text === "string" && squash(it.text).includes(want)) return it.id;
+		if (it.t === "user") {
+			if (squash(splitQuotes(it.text).body).includes(want)) return { item: it.id };
+			continue;
+		}
+		if ("text" in it && typeof it.text === "string" && squash(it.text).includes(want)) return { item: it.id };
 		const el = scope?.querySelector(`[data-message-id="${it.id}"]`);
-		if (el && squash(el.textContent ?? "").includes(want)) return it.id;
+		if (el && squash(el.textContent ?? "").includes(want)) return { item: it.id };
+	}
+	for (const el of scope?.querySelectorAll<HTMLElement>("[data-quote-source]") ?? []) {
+		if (squash(el.textContent ?? "").includes(want)) return { source: el.dataset.quoteSource as QuoteSource };
 	}
 	return undefined;
 }
 
 function openQuote(tab: Tab, item: Extract<Item, { t: "user" }>, index: number, quote: string, at: HTMLElement): void {
 	const sent = item.quotes?.[index];
-	if (sent && squash(sent.text) === squash(quote)) return store.showQuote(sent);
-	const source = quoteSource(tab, item, quote, at);
-	if (source === undefined) return store.flash("The quoted message is no longer in this conversation.", "muted");
-	store.showQuote({ id: 0, text: quote, tab: tab.key, item: source });
+	if (sent && squash(sent.text) === squash(quote) && (sent.item !== undefined || sent.source)) return store.showQuote(sent);
+	const found = quoteSource(tab, item, quote, at);
+	if (!found) return store.flash("The quoted message is no longer in this conversation.", "muted");
+	store.showQuote({ id: 0, text: quote, tab: tab.key, ...found });
 }
 
 /** One item of a conversation, drawn as what it is. */
@@ -678,7 +685,7 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 	const h = has?.holdings;
 	const counts: Array<[string, number]> = h ? [["skill", h.skills.length], ["event source", h.sources.length], ["schedule", h.schedules.length], ["MCP server", h.servers.length], ["conversation", h.conversations.length]] : [];
 	return (
-		<Empty>
+		<Empty data-quote-source="welcome">
 			<EmptyHeader>
 				<EmptyMedia>
 					<AgentAvatar agent={{ id: tab.agent, color: info?.color, main: info?.main }} size="lg" />
@@ -977,15 +984,21 @@ function sourceOf(node: Node | null | undefined): number | undefined {
 	return id ? Number(id) : undefined;
 }
 
+function placeOf(node: Node | null | undefined): QuoteSource | undefined {
+	const el = node instanceof Element ? node : node?.parentElement;
+	return (el?.closest("[data-quote-source]")?.getAttribute("data-quote-source") as QuoteSource | null) ?? undefined;
+}
+
 function QuoteJump({ tab, root }: { tab: Tab; root: RefObject<HTMLElement | null> }) {
-	const { scrollToMessage } = useMessageScroller();
+	const { scrollToMessage, scrollToStart } = useMessageScroller();
 	const go = () => {
 		const want = store.pendingQuote;
 		if (!want || want.key !== tab.key || store.active !== tab) return;
 		store.pendingQuote = undefined;
-		const el = want.item === undefined ? null : root.current?.querySelector<HTMLElement>(`[data-message-id="${want.item}"]`);
-		if (!el || want.item === undefined) return store.flash("The quoted message is no longer on the page.", "muted");
-		scrollToMessage(String(want.item), { align: "center", behavior: "smooth" });
+		const el = want.item !== undefined ? root.current?.querySelector<HTMLElement>(`[data-message-id="${want.item}"]`) : want.source ? root.current?.querySelector<HTMLElement>(`[data-quote-source="${want.source}"]`) : null;
+		if (!el) return store.flash("The quoted message is no longer on the page.", "muted");
+		if (want.item !== undefined) scrollToMessage(String(want.item), { align: "center", behavior: "smooth" });
+		else scrollToStart({ behavior: "smooth" });
 		el.animate(
 			[
 				{ borderRadius: "0.75rem", backgroundColor: "color-mix(in oklab, var(--primary) 12%, transparent)", boxShadow: "inset 0 0 0 2px color-mix(in oklab, var(--primary) 45%, transparent)" },
@@ -1027,7 +1040,8 @@ export function Conversation({ tab }: { tab: Tab }) {
 		const text = selected.text.trim();
 		const sel = window.getSelection();
 		const item = sourceOf(sel?.anchorNode) ?? sourceOf(sel?.focusNode);
-		if (!tab.quotes.some((q) => q.text === text && q.item === item)) tab.quotes.push({ id: ++quoteIds, text, tab: tab.key, item });
+		const source = item === undefined ? (placeOf(sel?.anchorNode) ?? placeOf(sel?.focusNode)) : undefined;
+		if (!tab.quotes.some((q) => q.text === text && q.item === item && q.source === source)) tab.quotes.push({ id: ++quoteIds, text, tab: tab.key, item, source });
 		tab.touch();
 		window.getSelection()?.removeAllRanges();
 		unselect();
@@ -1070,7 +1084,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 												<Welcome tab={tab} />
 											</MessageScrollerItem>
 										) : null}
-										<MessageScrollerItem>
+										<MessageScrollerItem data-quote-source="letter">
 											<Letter tab={tab} />
 										</MessageScrollerItem>
 									</>

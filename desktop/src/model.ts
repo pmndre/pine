@@ -90,11 +90,14 @@ export interface Attachment {
 	preview?: string;
 }
 
+export type QuoteSource = "letter" | "welcome";
+
 export interface Quote {
 	id: number;
 	text: string;
 	tab: string;
 	item?: number;
+	source?: QuoteSource;
 }
 
 export function quoteBlock(text: string): string {
@@ -2457,11 +2460,11 @@ export class Store extends Model {
 		this.touch();
 	}
 
-	pendingQuote?: { key: string; item?: number };
+	pendingQuote?: { key: string; item?: number; source?: QuoteSource };
 
 	showQuote(quote: Quote): void {
 		const tab = this.tabs.find((t) => t.kind === "chat" && t.key === quote.tab);
-		this.pendingQuote = { key: quote.tab, item: quote.item };
+		this.pendingQuote = { key: quote.tab, item: quote.item, source: quote.source };
 		if (tab && tab !== this.active) this.activate(tab);
 		this.ask_("show-quote");
 	}
