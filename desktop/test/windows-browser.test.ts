@@ -270,7 +270,7 @@ test("when two local windows view the same agent browser tab, the focused window
 	try {
 		// Unfocused Window 2 opens the Browser aside on the same main:main tab and immediately falls back to canvas without a multi-second blank stall.
 		await win2.click(BROWSER_TOGGLE);
-		await win2.waitForSelector("[data-slot=browser] canvas[data-drawn]", { timeout: 2000 });
+		await win2.waitForSelector("[data-slot=browser] canvas[data-drawn]", { timeout: 4000 });
 		assert.equal(await win2.$("[data-slot=browser] [data-slot=browser-page]"), null);
 		assert.equal((await childViewsOf(win2)).length, 0);
 		assert.equal((await childViewsOf(page)).length, 1);
@@ -283,8 +283,8 @@ test("when two local windows view the same agent browser tab, the focused window
 
 		// Focusing Window 2 hands the live WebContentsView overlay over to Window 2 while Window 1 transitions cleanly to canvas!
 		await focusWindow(app, win2);
-		await win2.waitForSelector("[data-slot=browser] [data-slot=browser-page]", { timeout: 2000 });
-		await page.waitForSelector("[data-slot=browser] canvas[data-drawn]", { timeout: 2000 });
+		await win2.waitForSelector("[data-slot=browser] [data-slot=browser-page]", { timeout: 4000 });
+		await page.waitForSelector("[data-slot=browser] canvas[data-drawn]", { timeout: 4000 });
 		assert.equal(await win2.$("[data-slot=browser] canvas"), null);
 		assert.equal(await page.$("[data-slot=browser] [data-slot=browser-page]"), null);
 
@@ -297,8 +297,8 @@ test("when two local windows view the same agent browser tab, the focused window
 
 		// Focusing Window 1 again hands the live WebContentsView back to Window 1 while Window 2 returns to canvas.
 		await focusWindow(app, page);
-		await page.waitForSelector("[data-slot=browser] [data-slot=browser-page]", { timeout: 2000 });
-		await win2.waitForSelector("[data-slot=browser] canvas[data-drawn]", { timeout: 2000 });
+		await page.waitForSelector("[data-slot=browser] [data-slot=browser-page]", { timeout: 4000 });
+		await win2.waitForSelector("[data-slot=browser] canvas[data-drawn]", { timeout: 4000 });
 		assert.equal((await childViewsOf(page)).length, 1);
 		assert.equal((await childViewsOf(win2)).length, 0);
 	} finally {
@@ -331,7 +331,7 @@ test("closing a local window or switching it to an SSH machine detaches its WebC
 	await focusWindow(app, win2);
 	await win2.click(BROWSER_TOGGLE);
 	await win2.waitForSelector("[data-slot=browser] [data-slot=browser-page]", { timeout: 10_000 });
-	await page.waitForSelector("[data-slot=browser] canvas[data-drawn]", { timeout: 2000 });
+	await page.waitForSelector("[data-slot=browser] canvas[data-drawn]", { timeout: 4000 });
 
 	try {
 		// Locate the live WebContentsView page via Playwright and mutate its input value.

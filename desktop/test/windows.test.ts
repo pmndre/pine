@@ -612,7 +612,10 @@ test("quitting restores all open windows with their environment, bounds, tabs an
 			await waitClosed(reopened);
 		}
 
-		await app2.close();
+		const proc2 = app2.process();
+		const exited2 = proc2.exitCode === null ? new Promise<void>((r) => proc2.once("exit", () => r())) : Promise.resolve();
+		await app2.close().catch(() => {});
+		await exited2;
 		app2 = undefined;
 
 		// Relaunch after all windows were closed individually: opens a single window on the last-used environment (you@elsewhere).

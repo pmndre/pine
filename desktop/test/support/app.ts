@@ -71,13 +71,23 @@ async function quiet(app: ElectronApplication): Promise<void> {
 }
 
 /**
- * Marks `target` as the focused BrowserWindow in headless tests without showing any OS window.
+ * Marks `target` as the focused BrowserWindow in tests. When the window is visible (for example
+ * under `PINE_DESKTOP_SHOW=1` on Linux `xvfb-run`), moves real OS focus so
+ * `BrowserWindow.getFocusedWindow()` agrees with the emitted focus/blur events; in headless mode
+ * never shows or activates any OS window.
  * @param electronApp Running Electron application.
  * @param target Renderer page to focus.
  */
 export async function focusWindow(electronApp: ElectronApplication, target: Page): Promise<void> {
 	const handle = await electronApp.browserWindow(target);
-	await electronApp.evaluate(({ BrowserWindow }: any, win: any) => {
+	await electronApp.evaluate(async ({ BrowserWindow }: any, win: any) => {
+		if (win.isDestroyed()) return;
+		if (win.isVisible()) {
+			win.focus();
+			for (let i = 0; i < 40 && !win.isDestroyed() && BrowserWindow.getFocusedWindow() !== win; i++) {
+				await new Promise((r) => setTimeout(r, 25));
+			}
+		}
 		for (const other of BrowserWindow.getAllWindows()) {
 			if (other !== win && !other.isDestroyed()) other.emit("blur");
 		}
