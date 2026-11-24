@@ -8,7 +8,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
 import { type AgentInfo, api, type Approval, type Conversation, type GoalInfo, type GroupList, media, type WorktreeMade, type PineEvent, type Program, type Stats, type Task, type Todo, type TranscriptEntry } from "./api.ts";
-import { bridge, type Prefs, type ServiceState, type Update } from "./bridge.ts";
+import { bridge, type DraftAttachment, type Prefs, type ServiceState, type Update, type WindowLayout } from "./bridge.ts";
 import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, MODES, oneLine, plural, short, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
 import { runnable } from "./runnable.ts";
 import { applyLook, cleanLook, type ThemeEntry } from "./theme.ts";
@@ -225,6 +225,18 @@ export class Store extends Model {
 	updateLooking = false;
 	/** The pine home the app was told to use, when it is not the usual one. */
 	home?: string;
+	/** This window's identifier in the main process. */
+	windowId = 0;
+	/** SSH hosts currently open in other windows than this one. */
+	openHosts: string[] = [];
+	/** Per-window panel widths (pixels), persisted in this window's layout snapshot rather than shared localStorage. */
+	sidebarWidth?: number;
+	codeWidth?: number;
+	asideWidth?: number;
+	private initialLayout?: WindowLayout;
+	private initialNoTab = false;
+	private initialTab?: { agent: string; session: string };
+	private initialDraft?: { text: string; attachments: DraftAttachment[] };
 
 	agents: AgentInfo[] = [];
 	tabs: Tab[] = [];
@@ -311,6 +323,7 @@ export class Store extends Model {
 	voiceLanguage?: string;
 
 	private restoring = false;
+	private loading = false;
 	private started = false;
 	private timers: number[] = [];
 
@@ -343,10 +356,33 @@ export class Store extends Model {
 			if (this.initLines.length > 200) this.initLines.shift();
 			this.touch();
 		});
+		bridge.onOpenHosts((hosts: string[]) => {
+			this.openHosts = Array.isArray(hosts) ? hosts : [];
+			this.touch();
+		});
+		bridge.onPrefs((next: Prefs) => {
+			this.prefs = next;
+			this.touch();
+		});
 		const first = await bridge.state();
 		// Whether the event stream is up: a page loaded anew is not told it by an event.
 		this.connected = first.connected === true;
 		this.prefs = first.prefs;
+		this.windowId = first.windowId ?? 0;
+		this.openHosts = Array.isArray(first.openHosts) ? first.openHosts : [];
+		this.initialLayout = first.windowLayout;
+		this.initialNoTab = first.noTab === true;
+		this.initialTab = first.initialTab;
+		this.initialDraft = first.initialDraft;
+		if (first.windowLayout) {
+			this.sidebar = first.windowLayout.sidebar;
+			this.sidebarWidth = first.windowLayout.sidebarWidth;
+			this.code = first.windowLayout.code;
+			this.codeWidth = first.windowLayout.codeWidth;
+			this.aside = first.windowLayout.aside;
+			this.asideWidth = first.windowLayout.asideWidth;
+			this.folded = new Set(first.windowLayout.folded);
+		}
 		// The theme the window had last, until pine says which one is in force.
 		applyLook(cleanLook(first.prefs.look));
 		this.platform = first.platform;
@@ -435,7 +471,7 @@ export class Store extends Model {
 			}
 		}
 		for (const set of [this.pins, this.folded]) for (const key of [...set]) if (moved(key) !== key) set.delete(key), set.add(moved(key));
-		localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
+		this.saveWindowLayout();
 		if (this.settingsAgent === from) this.settingsAgent = to;
 		this.saveTabs();
 		this.agents = await this.askAgents().catch(() => this.agents);
@@ -530,6 +566,16 @@ export class Store extends Model {
 
 	/** Everything that is asked once the daemon answers: the agents, the tabs of last time, what waits for an answer. */
 	private async load(): Promise<void> {
+		if (this.loading) return;
+		this.loading = true;
+		try {
+			await this.loadInner();
+		} finally {
+			this.loading = false;
+		}
+	}
+
+	private async loadInner(): Promise<void> {
 		try {
 			this.agents = await this.askAgents();
 		} catch (e) {
@@ -545,28 +591,55 @@ export class Store extends Model {
 		this.timers = [window.setInterval(() => void this.pollPrograms(), 3000), window.setInterval(() => void this.refreshTaints(), 20_000), window.setInterval(() => void this.refreshAgents(), 8000), window.setInterval(embedded, 30_000)];
 		const first = this.agents.find((a) => a.main) ?? this.agents[0];
 		if (!first) return this.flash("this pine has no agents", "bad");
-		const saved = await api.tabs().catch(() => ({ tabs: [] as Array<{ agent: string; session: string }>, active: 0, code: false }));
+		// Consume one-shot startup directives (restored window layout, explicit tab, or NoTab).
+		const initTab = this.initialTab;
+		const initDraft = this.initialDraft;
+		const initLayout = this.initialLayout;
+		const initNoTab = this.initialNoTab;
+		this.initialTab = undefined;
+		this.initialDraft = undefined;
+		this.initialLayout = undefined;
+		this.initialNoTab = false;
 		// A daemon that was started again: what the tabs showed is asked for anew.
 		this.tabs = [];
 		this.active = undefined;
 		this.opened = false;
-		const again = saved.tabs.filter((t) => this.agents.some((a) => a.id === t.agent));
+		let startedEmpty = false;
 		this.restoring = true;
 		try {
-			if (!again.length) await this.openTab(first.id, "main");
-			for (const t of again) await this.openTab(t.agent, t.session, false);
-			const chats = this.tabs.filter((t) => t.kind === "chat");
-			this.activate(chats[again.length ? Math.min(saved.active, chats.length - 1) : 0] ?? this.tabs[0]);
+			if (initTab && this.agents.some((a) => a.id === initTab.agent)) {
+				if (initDraft) this.drafts.set(`${initTab.agent}:${initTab.session}`, { draft: initDraft.text, attachments: initDraft.attachments });
+				await this.openTab(initTab.agent, initTab.session, true);
+			} else if (initLayout) {
+				const again = initLayout.tabs.filter((t) => this.agents.some((a) => a.id === t.agent));
+				if (initLayout.noTab || !again.length) {
+					startedEmpty = true;
+				} else {
+					for (const t of again) await this.openTab(t.agent, t.session, false);
+					const chats = this.tabs.filter((t) => t.kind === "chat");
+					this.activate(chats[Math.min(initLayout.active, Math.max(0, chats.length - 1))] ?? this.tabs[0]);
+				}
+				this.code = initLayout.code === true;
+			} else if (initNoTab) {
+				startedEmpty = true;
+			} else {
+				const saved = await api.tabs().catch(() => ({ tabs: [] as Array<{ agent: string; session: string }>, active: 0, code: false }));
+				const again = saved.tabs.filter((t) => this.agents.some((a) => a.id === t.agent));
+				if (!again.length) await this.openTab(first.id, "main");
+				for (const t of again) await this.openTab(t.agent, t.session, false);
+				const chats = this.tabs.filter((t) => t.kind === "chat");
+				this.activate(chats[again.length ? Math.min(saved.active, chats.length - 1) : 0] ?? this.tabs[0]);
+				this.code = saved.code === true;
+			}
 		} finally {
 			this.restoring = false;
 			this.opened = true;
 		}
-		this.code = saved.code === true;
 		this.saveTabs();
 		void this.refreshTaints();
 		void this.refreshConversations();
 		void this.refreshSaid(true);
-		void this.pending();
+		void this.pending(startedEmpty);
 		void this.refreshThemes();
 		this.touch();
 	}
@@ -695,7 +768,7 @@ export class Store extends Model {
 	toggleFold(agent: string): void {
 		if (this.folded.has(agent)) this.folded.delete(agent);
 		else this.folded.add(agent);
-		localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
+		this.saveWindowLayout();
 		this.touch();
 	}
 
@@ -719,9 +792,10 @@ export class Store extends Model {
 	}
 
 	/** Questions that were asked before this window was there. */
-	private async pending(): Promise<void> {
+	private async pending(startedEmpty = false): Promise<void> {
 		const list = await api.approvals().catch(() => [] as Approval[]);
 		for (const req of list) {
+			if (startedEmpty && !this.tabs.length) continue;
 			const tab = await this.holderFor(req);
 			if (!tab || tab.approvals.has(req.id)) continue;
 			tab.approvals.set(req.id, tab.add({ t: "approval", req, state: "open" }));
@@ -870,7 +944,8 @@ export class Store extends Model {
 
 	/** How many tabs want the owner: shown on the app's icon. */
 	private badge(): void {
-		void bridge.badge(this.tabs.filter((t) => t.approvals.size > 0).length);
+		const ids = [...new Set(this.tabs.flatMap((t) => [...t.approvals.keys()]))];
+		void bridge.badge(this.tabs.filter((t) => t.approvals.size > 0).length, ids);
 	}
 
 	/**
@@ -898,10 +973,40 @@ export class Store extends Model {
 	/** The last save of the tabs, so that what needs the daemon to know a tab (a group for a new conversation) can wait for it. */
 	private tabsSaved: Promise<unknown> = Promise.resolve();
 
+	saveWindowLayout(): void {
+		if (this.restoring || !this.opened) return;
+		const chats = this.tabs.filter((t) => t.kind === "chat");
+		const active = Math.max(0, chats.indexOf(this.active!));
+		void bridge
+			.windowLayout({
+				host: this.service.host,
+				tabs: chats.map((t) => ({ agent: t.agent, session: t.session })),
+				active,
+				code: this.code,
+				noTab: chats.length === 0,
+				sidebar: this.sidebar,
+				sidebarWidth: this.sidebarWidth,
+				codeWidth: this.codeWidth,
+				aside: this.aside,
+				asideWidth: this.asideWidth,
+				folded: [...this.folded],
+			})
+			.catch(() => {});
+	}
+
+	setPanelWidth(which: "sidebar" | "code" | "aside", px: number): void {
+		if (!Number.isFinite(px) || px <= 0) return;
+		if (which === "sidebar") this.sidebarWidth = px;
+		else if (which === "code") this.codeWidth = px;
+		else this.asideWidth = px;
+		this.saveWindowLayout();
+	}
+
 	private saveTabs(): void {
 		if (this.restoring) return;
 		const chats = this.tabs.filter((t) => t.kind === "chat");
 		this.tabsSaved = api.saveTabs(chats.map((t) => ({ agent: t.agent, session: t.session })), Math.max(0, chats.indexOf(this.active!)), this.code).catch(() => {});
+		this.saveWindowLayout();
 	}
 
 	async openTab(agent: string, session: string, front = true): Promise<void> {
@@ -1097,7 +1202,7 @@ export class Store extends Model {
 	}
 
 	/** Show an open approval or question in a tab: its card, the tab's "!", and its dialog when the tab is in front. */
-	private takeAsk(tab: Tab, req: Approval, fresh: boolean): void {
+	private takeAsk(tab: Tab, req: Approval, fresh: boolean, askModal = true): void {
 		if (tab.approvals.has(req.id)) return;
 		if (fresh) this.endWork(tab);
 		tab.approvals.set(req.id, tab.add({ t: "approval", req, state: "open" }));
@@ -1106,6 +1211,7 @@ export class Store extends Model {
 		tab.touch();
 		this.touch();
 		this.badge();
+		if (!askModal) return void this.asked.add(req.id);
 		if (fresh ? tab === this.active && !this.asking && !this.picker && !this.publishing : false) this.ask(req.id);
 		else if (tab === this.active) this.askNext();
 	}
@@ -1190,7 +1296,7 @@ export class Store extends Model {
 		const done = await this.attempt(() => api.renameGroup(agent, name, to.trim()));
 		if (!done) return;
 		const folded = `${agent}:group:${name}`;
-		if (this.folded.delete(folded)) this.folded.add(`${agent}:group:${done.group}`), localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
+		if (this.folded.delete(folded)) (this.folded.add(`${agent}:group:${done.group}`), this.saveWindowLayout());
 		for (const [key, value] of this.placed) if (key.startsWith(`${agent}:`) && value === name) this.placed.set(key, done.group);
 		await this.refreshConversations(agent);
 	}
@@ -1207,7 +1313,7 @@ export class Store extends Model {
 		if (!gone) return;
 		for (const session of gone.removed) this.dropTabs(agent, session);
 		this.folded.delete(`${agent}:group:${name}`);
-		localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
+		this.saveWindowLayout();
 		this.flash(`Removed the group ${name}${gone.removed.length ? ` with ${plural(gone.removed.length, "conversation")}` : ""}.`, "muted", 4000);
 		await this.refreshConversations(agent);
 	}
@@ -1734,7 +1840,7 @@ export class Store extends Model {
 	showSidebar(open: boolean): void {
 		if (open === this.sidebar) return;
 		this.sidebar = open;
-		localStorage.setItem("pine.sidebar", open ? "shown" : "hidden");
+		this.saveWindowLayout();
 		this.touch();
 	}
 
@@ -1758,7 +1864,7 @@ export class Store extends Model {
 			this.saveTabs();
 		} else {
 			this.aside = true;
-			localStorage.setItem("pine.aside", "shown");
+			this.saveWindowLayout();
 		}
 	}
 
@@ -1770,7 +1876,7 @@ export class Store extends Model {
 			this.saveTabs();
 		} else {
 			this.aside = false;
-			localStorage.setItem("pine.aside", "hidden");
+			this.saveWindowLayout();
 		}
 	}
 
@@ -1839,6 +1945,10 @@ export class Store extends Model {
 				return this.openEvents();
 			case "updates":
 				return this.lookForUpdate(true);
+			case "new-window":
+				return void bridge.newWindow();
+			case "close-window":
+				return void bridge.closeWindow();
 			case "new":
 				return this.newConversation();
 			case "agent": {
@@ -1853,7 +1963,8 @@ export class Store extends Model {
 				return dir ? this.openFolder(dir) : undefined;
 			}
 			case "close":
-				return tab ? this.closeTab(tab) : undefined;
+				if (this.service.status !== "ready" || !this.opened || !tab) return void bridge.closeWindow();
+				return this.closeTab(tab);
 			case "next-tab":
 				return this.cycle(1);
 			case "prev-tab":
@@ -1942,10 +2053,11 @@ export class Store extends Model {
 
 		if (ns === "approval") {
 			if (e.topic === "approval/requested") {
+				const askModal = p._askModal !== false;
 				const tab = this.tabFor(p) ?? this.tabs.find((t) => t.kind === "chat" && t.agent === p.agent) ?? this.active;
 				// With no tab open, one is opened for it: what is asked is never left without a place to be answered.
-				if (!tab) return void this.holderFor(p).then((to) => to && this.takeAsk(to, p, true));
-				this.takeAsk(tab, p, true);
+				if (!tab) return void this.holderFor(p).then((to) => to && this.takeAsk(to, p, true, askModal));
+				this.takeAsk(tab, p, true, askModal);
 			} else if (e.topic === "approval/decided") {
 				for (const tab of this.tabs) {
 					const item = tab.approvals.get(p.id);

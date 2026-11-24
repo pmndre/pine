@@ -17,13 +17,13 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { type AgentInfo, api, type Conversation as Conv } from "./api.ts";
 import { bridge } from "./bridge.ts";
-import { CODE_KEY, CodePanel } from "./CodePanel.tsx";
+import { CodePanel } from "./CodePanel.tsx";
 import { COMMANDS } from "./commands.ts";
 import { TabMenu, type TabMenuAction } from "@/components/tab-menu";
 import { Conversation } from "./Conversation.tsx";
 import { Events } from "./Events.tsx";
 import { type Beside, ROOM, store, type Tab, useModel, useSignal } from "./model.ts";
-import { ASIDE_KEY, BrowserAside } from "./Browser.tsx";
+import { BrowserAside } from "./Browser.tsx";
 import { Settings } from "./Settings.tsx";
 import { ApprovalDialog } from "./ApprovalDialog.tsx";
 import { Palette } from "./Palette.tsx";
@@ -739,15 +739,15 @@ function BrowserAsk() {
 const SIDE_KEY = "pine.sidebar.width";
 const SIDE_WIDTH = 248;
 
-/** Remembers how wide a panel is, in pixels, for the next start. Only what the owner did is kept: a narrow window squeezes a panel without changing what it is set to. */
-const keepWidth = (layout: Layout, panel: string, key: string) => {
+/** Remembers how wide a panel is, in pixels, for this window's layout. Only what the owner did is kept: a narrow window squeezes a panel without changing what it is set to. */
+const keepWidth = (layout: Layout, panel: string, which: "sidebar" | "code" | "aside") => {
 	// The layout is in shares of the room the panels have together, and is told before the panels are
 	// drawn at their new widths (after a key): the room is the same before and after.
 	const group = document.getElementById(panel)?.parentElement;
 	const share = layout[panel];
 	if (!group || share === undefined) return;
 	const room = [...group.children].filter((el) => el.hasAttribute("data-panel")).reduce((sum, el) => sum + el.getBoundingClientRect().width, 0);
-	localStorage.setItem(key, String(Math.round((share * room) / 100)));
+	store.setPanelWidth(which, Math.round((share * room) / 100));
 };
 
 export function App() {
@@ -782,13 +782,13 @@ export function App() {
 				// setting in a wide window, and its sheet in a narrow one.
 				<SidebarProvider open={s.sidebar} onOpenChange={(open) => s.showSidebar(open)}>
 					{narrow ? <Sidebar /> : null}
-					<ResizablePanelGroup orientation="horizontal" onLayoutChanged={(layout, meta) => meta.isUserInteraction && keepWidth(layout, "sidebar-panel", SIDE_KEY)}>
+					<ResizablePanelGroup orientation="horizontal" onLayoutChanged={(layout, meta) => meta.isUserInteraction && keepWidth(layout, "sidebar-panel", "sidebar")}>
 						{column ? (
 							<>
-								<ResizablePanel id="sidebar-panel" className="flex" panelRef={side} defaultSize={Number(localStorage.getItem(SIDE_KEY)) || SIDE_WIDTH} minSize={190} maxSize={460} groupResizeBehavior="preserve-pixel-size">
+								<ResizablePanel id="sidebar-panel" className="flex" panelRef={side} defaultSize={s.sidebarWidth ?? (Number(localStorage.getItem(SIDE_KEY)) || SIDE_WIDTH)} minSize={190} maxSize={460} groupResizeBehavior="preserve-pixel-size">
 									<Sidebar />
 								</ResizablePanel>
-								<ResizableHandle className="bg-transparent" disableDoubleClick onDoubleClick={() => (side.current?.resize(SIDE_WIDTH), localStorage.setItem(SIDE_KEY, String(SIDE_WIDTH)))} title="Drag to make the side bar wider or narrower" />
+								<ResizableHandle className="bg-transparent" disableDoubleClick onDoubleClick={() => (side.current?.resize(SIDE_WIDTH), store.setPanelWidth("sidebar", SIDE_WIDTH))} title="Drag to make the side bar wider or narrower" />
 							</>
 						) : null}
 						<ResizablePanel id="main" className="flex">
@@ -797,7 +797,7 @@ export function App() {
 								<div ref={measureRoom} data-slot="room" className={cn("flex min-h-0 flex-1 pr-1.5 pb-1.5", !column && "pl-1.5")}>
 									{/* The conversation, the side panel beside it, and the browser's aside at the far right. Each panel's width is
 									    its own: dragging the edge between the two changes both, and both are kept. */}
-									<ResizablePanelGroup orientation="horizontal" onLayoutChanged={(layout, meta) => meta.isUserInteraction && (keepWidth(layout, "code-panel", CODE_KEY), keepWidth(layout, "browser-panel", ASIDE_KEY))}>
+									<ResizablePanelGroup orientation="horizontal" onLayoutChanged={(layout, meta) => meta.isUserInteraction && (keepWidth(layout, "code-panel", "code"), keepWidth(layout, "browser-panel", "aside"))}>
 										<ResizablePanel id="view" className="flex" minSize={320}>
 											{!tab ? <NoTab /> : tab.kind === "settings" ? <Settings /> : tab.kind === "events" ? <Events tab={tab} /> : <Conversation key={tab.id} tab={tab} />}
 										</ResizablePanel>

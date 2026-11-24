@@ -12,7 +12,7 @@ export const ESCAPE_KEEPERS = ".cm-editor, input, textarea, [contenteditable], [
  * last left it (`widthKey`, written by the panel group's owner); where it has none (`sheet`) it is
  * a stock sheet over the conversation, from the right, and putting the sheet away is `onClose`.
  */
-export function SideSheet({ id, slot, title, sheet, widthKey, defaultWidth, minSize = 320, bar, barClassName, onClose, children }: {
+export function SideSheet({ id, slot, title, sheet, widthKey, width: initialWidth, defaultWidth, minSize = 320, bar, barClassName, onClose, children }: {
 	/** The column's id in the panel group, by which its width is kept. */
 	id: string;
 	/** The frame's `data-slot`. */
@@ -21,6 +21,7 @@ export function SideSheet({ id, slot, title, sheet, widthKey, defaultWidth, minS
 	title: string;
 	sheet: boolean;
 	widthKey: string;
+	width?: number;
 	defaultWidth: number;
 	minSize?: number;
 	/** What the bar on top holds. */
@@ -29,7 +30,7 @@ export function SideSheet({ id, slot, title, sheet, widthKey, defaultWidth, minS
 	onClose: () => void;
 	children: ReactNode;
 }) {
-	const [width] = useState(() => Number(localStorage.getItem(widthKey)) || defaultWidth);
+	const [width] = useState(() => initialWidth ?? (Number(localStorage.getItem(widthKey)) || defaultWidth));
 	const frame = (
 		<div data-slot={slot} className={cn("flex min-w-0 flex-1 flex-col overflow-hidden bg-background", !sheet && "rounded-xl border")}>
 			{/* A sheet as wide as a phone-wide window reaches under the window's buttons at the top left on a Mac. */}

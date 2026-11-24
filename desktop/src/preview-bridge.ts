@@ -34,14 +34,18 @@ function standIn(): Bridge {
 	};
 
 	return {
+		mediaBase: "/__pine/media",
 		state: async () => {
 			const s = await service();
-			return { state: s.state, home: s.state.home, prefs: { ...prefs }, platform: s.platform, focused: document.hasFocus(), updates: false, versions: { app: "preview", electron: "none" } };
+			return { state: s.state, connected: true, home: s.state.home, prefs: { ...prefs }, platform: s.platform, focused: document.hasFocus(), updates: false, versions: { app: "preview", electron: "none" }, windowId: 1, openHosts: [] };
 		},
 		ready: () => {
 			follow();
 			void service().then((s) => tell(listeners.service, s.state));
 		},
+		newWindow: async () => {},
+		closeWindow: async () => {},
+		windowLayout: async () => {},
 		call: async (method: "GET" | "POST", url: string, body?: unknown) => {
 			const res = await fetch("/__pine/call", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ method, url, body }) });
 			return res.ok ? res.json() : { ok: false, status: res.status, data: { error: `the preview's server refused the call (${res.status})` } };
@@ -61,7 +65,7 @@ function standIn(): Bridge {
 		addHost: async () => {
 			throw new Error("Other machines are in the Pine app only.");
 		},
-		forgetHost: async () => ({ ...prefs }),
+		forgetHost: async (_host: string, _options?: { closeWindows?: boolean }) => ({ ...prefs }),
 		// No system dialog in a browser: a folder is named by its path.
 		pickFolder: async (title?: string) => window.prompt(`${title ?? "Choose a folder"}: its path`)?.trim() || undefined,
 		saveText: async (name: string, text: string) => {
@@ -103,5 +107,7 @@ function standIn(): Bridge {
 		onFocus: never,
 		onInitLine: never,
 		onVoice: never,
+		onOpenHosts: never,
+		onPrefs: never,
 	};
 }

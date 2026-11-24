@@ -328,6 +328,7 @@ export function BrowserAside({ tab }: { tab: Tab }) {
 			title="Browser"
 			sheet={sheet}
 			widthKey={ASIDE_KEY}
+			width={store.asideWidth}
 			defaultWidth={560}
 			barClassName="pl-3 text-sm font-medium"
 			onClose={() => void store.command("browser")}

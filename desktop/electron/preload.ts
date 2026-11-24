@@ -8,9 +8,47 @@ const on = (channel: string) => (fn: (...args: any[]) => void) => {
 	return () => void ipcRenderer.removeListener(channel, listener);
 };
 
+const windowArg = process.argv.find((a) => a.startsWith("--pine-window-id="));
+const windowId = windowArg ? Number(windowArg.slice("--pine-window-id=".length)) : 0;
+const mediaBase = windowId > 0 ? `pine-media://window-${windowId}` : "pine-media://daemon";
+
+export interface DraftAttachment {
+	name: string;
+	size: number;
+	data: string;
+	preview?: string;
+}
+
+export interface NewWindowOptions {
+	/** Explicit local computer when `null`; inherit caller's environment when `undefined`; SSH host when string. */
+	host?: string | null;
+	tab?: { agent: string; session: string };
+	moveFrom?: boolean;
+	draft?: { text: string; attachments: DraftAttachment[] };
+}
+
+export interface WindowLayout {
+	host?: string;
+	tabs: Array<{ agent: string; session: string }>;
+	active: number;
+	code: boolean;
+	noTab: boolean;
+	sidebar: boolean;
+	sidebarWidth?: number;
+	codeWidth?: number;
+	aside: boolean;
+	asideWidth?: number;
+	folded: string[];
+}
+
 const bridge = {
+	/** Per-window media base URL (`pine-media://window-<id>` in Electron, `/__pine/media` in preview). */
+	mediaBase,
 	state: () => ipcRenderer.invoke("pine:state"),
 	ready: () => ipcRenderer.send("pine:ready"),
+	newWindow: (options?: NewWindowOptions) => ipcRenderer.invoke("pine:new-window", options) as Promise<void>,
+	closeWindow: () => ipcRenderer.invoke("pine:close-window") as Promise<void>,
+	windowLayout: (snapshot: WindowLayout) => ipcRenderer.invoke("pine:window-layout", snapshot) as Promise<void>,
 	call: (method: "GET" | "POST", url: string, body?: unknown) => ipcRenderer.invoke("pine:call", method, url, body),
 	retry: () => ipcRenderer.invoke("pine:retry"),
 	/** Whether there is a newer app: what the start found, or with `again` what GitHub says now. Nothing where nobody is asked. */
@@ -24,13 +62,13 @@ const bridge = {
 	use: (host?: string) => ipcRenderer.invoke("pine:use", host),
 	/** Add a machine to the list, or take one out; what comes back is the prefs as they are now. */
 	addHost: (host: string) => ipcRenderer.invoke("pine:hosts-add", host),
-	forgetHost: (host: string) => ipcRenderer.invoke("pine:hosts-forget", host),
+	forgetHost: (host: string, options?: { closeWindows?: boolean }) => ipcRenderer.invoke("pine:hosts-forget", host, options),
 	pickFolder: (title?: string) => ipcRenderer.invoke("pine:pick-folder", title),
 	saveText: (name: string, text: string) => ipcRenderer.invoke("pine:save-text", name, text),
 	open: (url: string) => ipcRenderer.invoke("pine:open", url),
 	reveal: (file: string) => ipcRenderer.invoke("pine:reveal", file),
 	notify: (title: string, body: string, tab?: string) => ipcRenderer.invoke("pine:notify", title, body, tab),
-	badge: (count: number) => ipcRenderer.invoke("pine:badge", count),
+	badge: (count: number, ids?: string[]) => ipcRenderer.invoke("pine:badge", count, ids),
 	contextMenu: (items: unknown[]) => ipcRenderer.invoke("pine:context-menu", items),
 	/** `pine` for a terminal: what the shell has; with "install" or "remove", after doing that. */
 	command: (action?: "install" | "remove") => ipcRenderer.invoke("pine:command", action),
@@ -56,6 +94,8 @@ const bridge = {
 	onFocus: on("pine:focus"),
 	onInitLine: on("pine:init-line"),
 	onVoice: on("pine:voice"),
+	onOpenHosts: on("pine:open-hosts"),
+	onPrefs: on("pine:prefs-updated"),
 };
 
 contextBridge.exposeInMainWorld("pine", bridge);

@@ -1,6 +1,8 @@
 // What the page has of the world outside itself: the bridge the preload script exposes.
-import type { Bridge } from "../electron/preload.ts";
+import type { Bridge, DraftAttachment, NewWindowOptions, WindowLayout } from "../electron/preload.ts";
 import type { Look } from "./theme.ts";
+
+export type { DraftAttachment, NewWindowOptions, WindowLayout };
 
 declare global {
 	interface Window {
@@ -28,9 +30,26 @@ export interface Prefs {
 	agentAccent: boolean;
 }
 
+export interface AppState {
+	state: ServiceState;
+	connected: boolean;
+	home?: string;
+	prefs: Prefs;
+	platform: string;
+	focused: boolean;
+	updates: boolean;
+	versions: { app: string; electron: string };
+	windowId: number;
+	windowLayout?: WindowLayout;
+	noTab?: boolean;
+	initialTab?: { agent: string; session: string };
+	initialDraft?: { text: string; attachments: DraftAttachment[] };
+	openHosts: string[];
+}
+
 export type { Update } from "../electron/updates.ts";
 
 export const bridge = window.pine;
 
-/** Where the daemon's pictures, video and sound are fetched from: the app's scheme, or in the preview its server's path. */
-export const MEDIA_BASE = import.meta.env.DEV && __PINE_PREVIEW__ ? "/__pine/media" : "pine-media://daemon";
+/** Where the daemon's pictures, video and sound are fetched from: the window's own scheme, or in the preview its server's path. */
+export const MEDIA_BASE = typeof bridge?.mediaBase === "string" ? bridge.mediaBase : import.meta.env.DEV && __PINE_PREVIEW__ ? "/__pine/media" : "pine-media://daemon";
