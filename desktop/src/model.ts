@@ -434,6 +434,8 @@ export class Store extends Model {
 	private initialTab?: WindowTabRef;
 	private initialDraft?: WindowDraft;
 	private loadingHost?: string;
+	private envHome?: string;
+	private sentLook?: string;
 	private restoring = false;
 	private started = false;
 	private timers: number[] = [];
@@ -493,6 +495,7 @@ export class Store extends Model {
 		});
 		bridge.onPrefs?.((next: Prefs) => {
 			this.prefs = next;
+			this.home = next.home ?? this.envHome;
 			this.touch();
 		});
 		const first = await bridge.state();
@@ -540,6 +543,7 @@ export class Store extends Model {
 		this.selfUpdate = first.selfUpdate === true;
 		void this.lookForUpdate();
 		this.home = first.home;
+		this.envHome = first.prefs.home ? undefined : first.home;
 		document.documentElement.dataset.platform = this.platform;
 		bridge.ready();
 		await this.onService(first.state);
@@ -842,7 +846,7 @@ export class Store extends Model {
 	 * Take a machine off the list. A paired computer is asked about first: forgetting it here leaves
 	 * its access open, which only Remove in the Pine app on that computer closes.
 	 */
-	async forgetMachine(host: string): Promise<void> {
+	async forgetMachine(host: string, options?: { closeWindows?: boolean }): Promise<void> {
 		if (isPaired(host)) {
 			const name = this.nameOf(host);
 			const sure = await this.pick({
@@ -854,8 +858,26 @@ export class Store extends Model {
 			});
 			if (sure !== "forget") return;
 		}
-		const prefs = await this.attempt(() => bridge.forgetHost(host));
+		const prefs = await this.attempt(() => bridge.forgetHost(host, options));
 		if (prefs) (this.prefs = prefs), this.touch();
+	}
+
+	/** Whether this bridge supports opening additional desktop windows. */
+	get canOpenWindow(): boolean {
+		return typeof bridge.newWindow === "function";
+	}
+
+	/** How many other open windows are currently viewing `host`. */
+	otherWindowsOn(host: string): number {
+		const total = this.openHosts.filter((h) => h === host).length;
+		return Math.max(0, total - (this.service.host === host ? 1 : 0));
+	}
+
+	/** Open `host` (or this computer when omitted) in a new desktop window. */
+	async openMachineWindow(host?: string): Promise<void> {
+		if (!this.canOpenWindow) return;
+		if (!host && !this.local) return;
+		await this.attempt(() => bridge.newWindow!({ host: host ?? null }));
 	}
 
 	/** The name the owner sees for a machine of the list (machines.ts): a paired computer's name, never its id. */
@@ -1109,7 +1131,11 @@ export class Store extends Model {
 		this.theme = got.theme;
 		const look = cleanLook(got.themes.find((t) => t.id === got.theme));
 		applyLook(look);
-		if (look && JSON.stringify(look) !== JSON.stringify(this.prefs.look)) this.prefs = await bridge.prefs({ look }).catch(() => this.prefs);
+		const serialized = look ? JSON.stringify(look) : undefined;
+		if (look && serialized !== this.sentLook) {
+			this.sentLook = serialized;
+			this.prefs = await bridge.prefs({ look }).catch(() => this.prefs);
+		}
 		this.touch();
 	}
 

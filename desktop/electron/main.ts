@@ -162,9 +162,9 @@ function loadPrefs(): void {
  * What the window shows before the page draws: the page color of the theme it was last drawn in
  * (pmndre's before there was one). On a Mac the window is transparent, behind its vibrancy.
  */
-function windowBackground(): string {
+function windowBackground(look?: Look): string {
 	if (isMac) return "#00000000";
-	return (prefs.look?.colors.bg ?? "#1b1e28").slice(0, 7);
+	return ((look ?? prefs.look)?.colors.bg ?? "#1b1e28").slice(0, 7);
 }
 
 /**
@@ -175,8 +175,8 @@ function windowBackground(): string {
 const TITLE_BAR = 41.25;
 
 /** The system's window controls off a Mac, in the theme's colors: on the bar's background (the page's `sunk`), drawn in its quieter text. */
-function windowControls(zoom = 1): { color: string; symbolColor: string; height: number } {
-	const colors = prefs.look?.colors;
+function windowControls(zoom = 1, look?: Look): { color: string; symbolColor: string; height: number } {
+	const colors = (look ?? prefs.look)?.colors;
 	return { color: (colors?.sunk ?? "#171922").slice(0, 7), symbolColor: (colors?.["text-muted"] ?? colors?.text ?? "#a6accd").slice(0, 7), height: Math.round(TITLE_BAR * zoom) };
 }
 
@@ -192,16 +192,11 @@ function zoomBy(w: ManagedWindow | undefined, step: number | undefined): void {
 	refreshWindowBackground(w, 1.2 ** level);
 }
 
-/** Repaints a window's background (and off a Mac its controls) for the current theme. */
+/** Repaints a window's background (and off a Mac its controls) for its own environment's theme. */
 function refreshWindowBackground(w: ManagedWindow, zoom?: number): void {
 	if (w.win.isDestroyed()) return;
-	w.win.setBackgroundColor(windowBackground());
-	if (!isMac) w.win.setTitleBarOverlay(windowControls(zoom ?? w.win.webContents.getZoomFactor()));
-}
-
-/** Repaints every open window's background (and off a Mac its controls) for the current theme. */
-function refreshBackground(): void {
-	for (const w of windows.values()) refreshWindowBackground(w);
+	w.win.setBackgroundColor(windowBackground(w.look));
+	if (!isMac) w.win.setTitleBarOverlay(windowControls(zoom ?? w.win.webContents.getZoomFactor(), w.look));
 }
 
 function savePrefs(): void {
@@ -247,7 +242,9 @@ interface ManagedWindow {
 	initialTab?: WindowTabRef;
 	initialDraft?: WindowDraft;
 	pendingFolders: string[];
+	pendingCommands: string[];
 	pairingShown: boolean;
+	look?: Look;
 	badgeCount: number;
 	tabKeys: Set<string>;
 }
@@ -286,9 +283,9 @@ function primaryWindowForHost(host: string | undefined): ManagedWindow | undefin
 	return best;
 }
 
-/** Remote hosts currently displayed in at least one open window. */
+/** Remote hosts currently displayed across open windows (one entry per open remote window, so counts are preserved). */
 function openHostsList(): string[] {
-	return [...new Set([...windows.values()].filter((w) => !w.win.isDestroyed() && w.host).map((w) => w.host!))];
+	return [...windows.values()].filter((w) => !w.win.isDestroyed() && w.host).map((w) => w.host!);
 }
 
 function sendTo(w: ManagedWindow | undefined, channel: string, ...args: unknown[]): void {
@@ -681,9 +678,9 @@ async function pairFromAddress(url: string): Promise<void> {
 	const opened = await access.openPairing().catch(() => undefined);
 	if (!opened) return;
 	openOutside(opened.link);
-	const target = pairingTarget();
-	if (target?.ready) sendTo(target, "pine:menu", "pairing-shown");
-	else if (target) target.pairingShown = true;
+	const target = ensureLocalWindow();
+	if (target.ready) sendTo(target, "pine:menu", "pairing-shown");
+	else target.pairingShown = true;
 }
 /** Addresses the system handed the app before browser access existed (`open-url` on a cold start). */
 const pendingAddresses: string[] = [];
@@ -822,7 +819,9 @@ function createWindow(opts: CreateWindowOptions = {}): ManagedWindow {
 		initialTab: opts.initialTab,
 		initialDraft: opts.initialDraft,
 		pendingFolders: [],
+		pendingCommands: [],
 		pairingShown: false,
+		look: prefs.look,
 		badgeCount: 0,
 		tabKeys: new Set(initialTabs.map((t) => `${t.agent}:${t.session}`)),
 	};
@@ -870,6 +869,8 @@ function createWindow(opts: CreateWindowOptions = {}): ManagedWindow {
 	});
 	win.on("focus", () => {
 		w.focusedAt = ++focusSeq;
+		const themeKind = (w.look ?? prefs.look)?.kind ?? "dark";
+		if (nativeTheme.themeSource !== themeKind) nativeTheme.themeSource = themeKind;
 		sendTo(w, "pine:focus", true);
 	});
 	win.on("blur", () => sendTo(w, "pine:focus", false));
@@ -928,6 +929,14 @@ function showWindow(target?: ManagedWindow): ManagedWindow {
 
 function show(): ManagedWindow {
 	return showWindow(focusedWindow());
+}
+
+/** Focuses the most recently active local window, or spawns a new local window when only remote or zero windows are open. */
+function ensureLocalWindow(): ManagedWindow {
+	const existing = primaryWindowForHost(undefined);
+	if (existing) return showWindow(existing);
+	const w = createWindow({ host: undefined, cascadeFrom: focusedWindow(), chromeLayout: prefs.layout });
+	return showWindow(w);
 }
 
 // ---- `pine` for a terminal -----------------------------------------------------------------------
@@ -1185,7 +1194,14 @@ function buildMenu(): void {
 		app.dock?.setMenu(
 			Menu.buildFromTemplate([
 				{ label: "New Window", click: () => openNewWindow(undefined, focusedWindow()) },
-				item("Add a Device…", "add-device"),
+				{
+					label: "Add a Device…",
+					click: () => {
+						const target = ensureLocalWindow();
+						if (target.ready) sendTo(target, "pine:menu", "add-device");
+						else target.pendingCommands.push("add-device");
+					},
+				},
 			]),
 		);
 }
@@ -1364,33 +1380,61 @@ function wire(): void {
 		return publicPrefs();
 	});
 	handle("pine:prefs", (w, change: Partial<Prefs>) => {
-		if (typeof change.notify === "boolean") prefs.notify = change.notify;
-		if (typeof change.updates === "boolean") prefs.updates = change.updates;
+		let globalChanged = false;
+		if (typeof change.notify === "boolean") {
+			prefs.notify = change.notify;
+			globalChanged = true;
+		}
+		if (typeof change.updates === "boolean") {
+			prefs.updates = change.updates;
+			globalChanged = true;
+		}
 		if (typeof change.autoUpdate === "boolean") {
 			prefs.autoUpdate = change.autoUpdate;
+			globalChanged = true;
 			// Turned on with a newer release known: it is downloaded now. Either way the page is told how the update stands.
 			downloadUpdate();
 			broadcast("pine:update-state", withUpdater(known));
 		}
-		if (typeof change.keepRunning === "boolean") prefs.keepRunning = change.keepRunning;
+		if (typeof change.keepRunning === "boolean") {
+			prefs.keepRunning = change.keepRunning;
+			globalChanged = true;
+		}
 		if ("home" in change) {
 			const home = typeof change.home === "string" && change.home.trim() ? change.home.trim() : undefined;
-			// Another home is another pine: the one held for this computer is not used again (the page restarts or reconnects).
-			const old = held.get("");
-			if (home !== prefs.home && old) {
-				held.delete("");
-				if (old !== w.service) void letGo(old);
+			if (home !== prefs.home) {
+				prefs.home = home;
+				globalChanged = true;
+				// Another home is another pine: let go of the old local service and reconnect every open local window.
+				const old = held.get("");
+				if (old) {
+					held.delete("");
+					const entry = streams.get("");
+					if (entry?.service === old) {
+						entry.abort.abort();
+						streams.delete("");
+					}
+					void letGo(old);
+				}
+				for (const viewer of windowsForHost(undefined)) void startService(viewer);
 			}
-			prefs.home = home;
 		}
-		// The theme the page draws now: the window's frame (light or dark, the Mac's materials) and background follow it.
+		// The theme this window's environment draws now: each window keeps its own background/overlay,
+		// while OS-level nativeTheme.themeSource follows the focused window.
 		if ("look" in change) {
-			prefs.look = cleanLook(change.look);
-			nativeTheme.themeSource = prefs.look?.kind ?? "dark";
-			refreshBackground();
+			const look = cleanLook(change.look);
+			w.look = look;
+			refreshWindowBackground(w);
+			if (w.win.isFocused() || focusedWindow() === w) {
+				prefs.look = look;
+				nativeTheme.themeSource = look?.kind ?? "dark";
+				globalChanged = true;
+			}
 		}
-		savePrefs();
-		broadcastPrefs();
+		if (globalChanged) {
+			savePrefs();
+			broadcastPrefs();
+		}
 		return publicPrefs();
 	});
 	// Browser access: its state, and the owner's changes to it.
@@ -1573,20 +1617,20 @@ function waiting(): Electron.NativeImage {
  */
 const folderIn = (argv: string[]) => argv.slice(1).find((a) => !a.startsWith("-") && path.isAbsolute(a) && path.resolve(a) !== app.getAppPath());
 
-/** Folders handed to the app before any window exists (e.g. cold-start macOS open-file). */
+/** Folders handed to the app before initial windows are created (e.g. cold-start macOS open-file). */
 const startupFolders: string[] = [];
+let appStarted = false;
 function openFolder(dir: string): void {
 	try {
 		if (!fs.statSync(dir).isDirectory()) return;
 	} catch {
 		return;
 	}
-	const target = primaryWindowForHost(undefined) ?? focusedWindow();
-	if (!target) {
+	if (!appStarted) {
 		startupFolders.push(dir);
 		return;
 	}
-	showWindow(target);
+	const target = ensureLocalWindow();
 	if (target.ready) sendTo(target, "pine:menu", `folder:${dir}`);
 	else target.pendingFolders.push(dir);
 }
@@ -1595,11 +1639,11 @@ if (!app.requestSingleInstanceLock()) app.quit();
 else {
 	app.on("second-instance", (_e, argv) => {
 		// On Windows and Linux an address the system opens the app with comes as an argument of a second start.
-		show();
 		const address = argv.find((a) => a.toLowerCase().startsWith("pine:"));
 		if (address) return void pairFromAddress(address);
 		const dir = folderIn(argv);
-		if (dir) openFolder(dir);
+		if (dir) return void openFolder(dir);
+		show();
 	});
 	// On macOS an address comes as an event, also before the app is ready.
 	app.on("open-url", (e, url) => {
@@ -1641,6 +1685,7 @@ else {
 			const entry = streams.get(envKey);
 			if (w.service && entry?.service === w.service) sendTo(w, "pine:connection", entry.connected);
 			for (const dir of w.pendingFolders.splice(0)) sendTo(w, "pine:menu", `folder:${dir}`);
+			for (const cmd of w.pendingCommands.splice(0)) sendTo(w, "pine:menu", cmd);
 			if (w.pairingShown) {
 				w.pairingShown = false;
 				sendTo(w, "pine:menu", "pairing-shown");
@@ -1672,6 +1717,7 @@ else {
 				chromeLayout: prefs.layout,
 			});
 		}
+		appStarted = true;
 		for (const dir of startupFolders.splice(0)) openFolder(dir);
 		// Off a Mac a folder the app was started with comes as an argument of this first start, not as an event.
 		const dir = isMac ? undefined : folderIn(process.argv);
