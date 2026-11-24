@@ -156,7 +156,7 @@ function defaultLayout(): WindowLayout {
 	};
 }
 
-function cleanWindowLayout(raw: unknown, fallback: WindowLayout = defaultLayout()): WindowLayout {
+function cleanWindowLayout(raw: unknown, fallback: WindowLayout = baseDefaultLayout()): WindowLayout {
 	if (!raw || typeof raw !== "object") return fallback;
 	const r = raw as Record<string, unknown>;
 	const tabs = Array.isArray(r.tabs)
@@ -275,6 +275,8 @@ interface WindowEntry {
 	readyToShow: boolean;
 	wantFocus: boolean;
 	closing: boolean;
+	forgetting: boolean;
+	loadingDaemonTabs: boolean;
 	focused: boolean;
 	lastFocusedAt: number;
 	pageReady: boolean;
@@ -423,6 +425,8 @@ function unionTabsFor(host: string | undefined, primary?: WindowEntry): Array<{ 
 
 function syncRemainingUnion(host: string | undefined): void {
 	if (quitting) return;
+	const onHost = [...windows.values()].filter((w) => !w.closing && !w.win.isDestroyed() && w.host === host);
+	if (!onHost.length || onHost.some((w) => w.loadingDaemonTabs)) return;
 	const remaining = targetWindow((w) => w.host === host);
 	const s = remaining?.service ?? held.get(host ?? "");
 	if (!remaining || !s) return;
@@ -436,7 +440,7 @@ function syncRemainingUnion(host: string | undefined): void {
 function closeOrphanedSessions(s: Service | undefined, host: string | undefined, previousTabs: Array<{ agent: string; session: string }>, excludeWindow: WindowEntry): void {
 	if (!s || quitting || !previousTabs.length) return;
 	const remaining = [...windows.values()].filter((w) => w !== excludeWindow && !w.closing && !w.win.isDestroyed() && w.host === host);
-	if (!remaining.length) return;
+	if (!remaining.length || remaining.some((w) => w.loadingDaemonTabs)) return;
 	const seen = new Set<string>();
 	for (const t of previousTabs) {
 		if (!t.agent || !t.session || t.session === "main") continue;
@@ -687,6 +691,7 @@ async function dispatchServiceBatch(s: Service, record: ServiceStream, events: u
 }
 
 function setWindowState(entry: WindowEntry, next: ServiceState): void {
+	if (next.status === "error") entry.loadingDaemonTabs = false;
 	entry.state = next;
 	sendTo(entry, "pine:service", next);
 }
@@ -814,6 +819,7 @@ async function use(entry: WindowEntry, host: string | undefined): Promise<void> 
 	entry.host = host;
 	entry.service = undefined;
 	entry.initialTab = undefined;
+	entry.loadingDaemonTabs = true;
 	entry.layout = { ...entry.layout, tabs: [], active: 0, noTab: false };
 	prefs.use = validHost(host);
 	savePrefs();
@@ -1012,11 +1018,13 @@ function openWindow(init: OpenWindowInit = {}): WindowEntry {
 	const inheritedHost = init.from?.host && prefs.hosts.includes(init.from.host) ? init.from.host : undefined;
 	const host = init.host === null ? undefined : init.host !== undefined ? init.host : init.from ? inheritedHost : fallbackUse;
 	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list: add it in Settings > Environments.");
+	const hasOpenWindow = [...windows.values()].some((w) => !w.closing && !w.win.isDestroyed());
 	const environmentOpen = [...windows.values()].some((w) => !w.closing && !w.win.isDestroyed() && w.host === host);
 	const bootMode: BootMode = init.bootMode ?? (init.tab ? "tab" : environmentOpen ? "no-tab" : "daemon");
 	const sourceBounds = init.from && !init.from.win.isDestroyed() ? init.from.win.getBounds() : undefined;
 	const b = init.bounds ?? (sourceBounds ? cascadeBounds(sourceBounds) : prefs.bounds);
 	const lookValue = init.look ?? init.from?.look ?? prefs.look;
+	const seedLayout = hasOpenWindow ? baseDefaultLayout() : defaultLayout();
 
 	const win = new BrowserWindow({
 		width: b?.width ?? 1280,
@@ -1052,6 +1060,8 @@ function openWindow(init: OpenWindowInit = {}): WindowEntry {
 		readyToShow: false,
 		wantFocus: init.wantFocus !== false,
 		closing: false,
+		forgetting: false,
+		loadingDaemonTabs: bootMode === "daemon",
 		focused: Boolean(win.isFocused()),
 		lastFocusedAt: ++focusClock,
 		pageReady: false,
@@ -1064,7 +1074,7 @@ function openWindow(init: OpenWindowInit = {}): WindowEntry {
 		initialDraft: init.draft,
 		look: lookValue,
 		bounds: win.getBounds(),
-		layout: init.layout ? cleanWindowLayout(init.layout) : { ...defaultLayout(), ...(bootMode === "no-tab" ? { noTab: true } : init.tab ? { tabs: [init.tab], active: 0 } : {}) },
+		layout: init.layout ? cleanWindowLayout(init.layout, baseDefaultLayout()) : { ...seedLayout, ...(bootMode === "no-tab" ? { noTab: true } : init.tab ? { tabs: [init.tab], active: 0 } : {}) },
 	};
 	windows.set(id, entry);
 
@@ -1124,9 +1134,10 @@ function openWindow(init: OpenWindowInit = {}): WindowEntry {
 				prefs.layout = pickChromeLayout(entry.layout);
 			}
 		}
+		entry.closing = true;
 	});
 	win.on("closed", () => {
-		const wasForgetting = entry.closing;
+		const wasForgetting = entry.forgetting;
 		const closedHost = entry.host;
 		const closedService = entry.service ?? (wasForgetting ? undefined : held.get(closedHost ?? ""));
 		const previousTabs = [...(entry.initialTab ? [entry.initialTab] : []), ...entry.layout.tabs];
@@ -1462,6 +1473,7 @@ function wire(): void {
 				folded: cleaned.folded,
 			};
 		} else {
+			if (cleaned.noTab || cleaned.tabs.length > 0) caller.loadingDaemonTabs = false;
 			caller.layout = cleaned;
 		}
 		persistOpenWindows();
@@ -1532,6 +1544,7 @@ function wire(): void {
 			if (!s || (s.host ?? "") !== (caller.host ?? "")) return callDaemon(s, method, url, body);
 			const b = body as Record<string, unknown>;
 			if (Array.isArray(b.tabs)) {
+				caller.loadingDaemonTabs = false;
 				caller.layout = cleanWindowLayout({ ...caller.layout, tabs: b.tabs, active: b.active, code: b.code, noTab: b.tabs.length === 0 }, caller.layout);
 				persistOpenWindows();
 				return callDaemon(s, method, url, { ...b, tabs: unionTabsFor(caller.host, caller) });
@@ -1606,6 +1619,7 @@ function wire(): void {
 		if (prefs.use === host) prefs.use = undefined;
 		for (const w of others) {
 			w.closing = true;
+			w.forgetting = true;
 			++w.round;
 			w.host = undefined;
 			w.service = undefined;
@@ -1653,6 +1667,7 @@ function wire(): void {
 				browsers.detachWindow(w.win);
 				terminals.closeWindow(w.id);
 				w.service = undefined;
+				w.loadingDaemonTabs = true;
 				w.layout = { ...w.layout, tabs: [], active: 0, noTab: false };
 				setWindowState(w, { status: "starting", host: undefined });
 			}
@@ -1919,13 +1934,13 @@ else {
 		if (address) void pairFromAddress(address);
 		void firstCommand();
 		app.on("activate", () => {
-			if (windows.size === 0) {
+			const front = targetWindow();
+			if (!front) {
 				const w = openWindow({ bootMode: "daemon" });
 				showWindow(w);
 				persistOpenWindows();
 			} else {
-				const front = targetWindow();
-				if (front) showWindow(front);
+				showWindow(front);
 			}
 		});
 	});

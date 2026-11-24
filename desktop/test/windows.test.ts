@@ -123,23 +123,18 @@ test("two windows keep independent tabs, active tab, panel visibility, panel wid
 	if ((await w1FoldTrigger.getAttribute("aria-expanded")) === "true") await w1FoldTrigger.click();
 	assert.equal(await w1FoldTrigger.getAttribute("aria-expanded"), "false");
 
-	// Open Window 2 on the same environment: starts seeded with the front window's chrome (prefs.layout), then diverges independently!
+	// Open Window 2 on the same environment: open only scout, hide its side bar, open & widen #code-panel, keep browser aside closed.
 	const win2 = await openNewWindow(app, () => clickMenuItem(app, "File", "New Window"));
 	await win2.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
+	// Window 2 starts with main unfolded and default side bar width, unaffected by Window 1!
 	const w2SideInitial = Math.round(await win2.$eval("#sidebar-panel", (el: Element) => el.getBoundingClientRect().width));
-	assert.ok(Math.abs(w2SideInitial - w1SideAfter) <= 4);
+	assert.ok(Math.abs(w2SideInitial - w1SideBefore) <= 4);
 	const w2FoldTrigger = win2.locator("[data-slot=sidebar-menu-item]:has([data-slot=agent-label])").first().locator("[data-slot=collapsible-trigger]");
 	await w2FoldTrigger.waitFor();
-	assert.equal(await w2FoldTrigger.getAttribute("aria-expanded"), "false");
-	await w2FoldTrigger.click();
 	assert.equal(await w2FoldTrigger.getAttribute("aria-expanded"), "true");
 
 	await win2.locator("[data-slot=sidebar-menu-item]:has([data-slot=agent-label])", { has: win2.locator("[data-slot=agent-label] > :first-child", { hasText: /^scout$/ }) }).locator("[data-slot=agent-label]").click();
 	await win2.waitForSelector("[data-slot=tab][data-active]", { timeout: 20_000 });
-	if (await win2.$("#browser-panel")) {
-		await win2.click(BROWSER_TOGGLE);
-		await win2.waitForSelector("#browser-panel", { state: "detached" });
-	}
 	await win2.click(CODE_TOGGLE);
 	await win2.waitForSelector("#code-panel [data-slot=code-panel]", { timeout: 20_000 });
 	const w2CodeBefore = Math.round(await win2.$eval("#code-panel", (el: Element) => el.getBoundingClientRect().width));
