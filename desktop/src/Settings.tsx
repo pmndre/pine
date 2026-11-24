@@ -60,7 +60,7 @@ const SECTIONS: Array<{ id: string; label: string; icon: LucideIcon }> = (
 
 /**
  * Whether Settings > Browser access is offered: only by the desktop app's bridge, which has its calls,
- * and only while the app uses this computer's pine. Browser access is this computer's door: the web client,
+ * and only while this window uses this computer's pine. Browser access is this computer's door: the web client,
  * the mobile apps and another machine's pine have none to show.
  */
 const offersAccess = (s: { local: boolean; remote?: string }) => s.local && !s.remote && typeof bridge.access === "function";
@@ -2583,7 +2583,7 @@ function Environments() {
 				<>The first time, the app shows the machine's host key fingerprint. Compare it with what the machine shows, then trust it.</>,
 			];
 	return (
-		<Page title="Environments" lead={s.local ? "Where the pine this app uses runs: on this computer, or on another machine that you reach over SSH. Switch between them at the bottom of the side bar." : pairing ? `The pine this ${s.device} uses: the Pine app's pine on a computer paired with it. Switch between them at the bottom of the side bar.` : "The pine this app uses, on a machine that you reach over SSH. Switch between them at the bottom of the side bar."}>
+		<Page title="Environments" lead={s.local ? (s.canManageWindows ? "Where a window's pine runs: on this computer, or on another machine over SSH. Switch this window at the bottom of the side bar or in the title bar, or open a machine in a new window." : "Where the pine this app uses runs: on this computer, or on another machine that you reach over SSH. Switch between them at the bottom of the side bar.") : pairing ? `The pine this ${s.device} uses: the Pine app's pine on a computer paired with it. Switch between them at the bottom of the side bar.` : "The pine this app uses, on a machine that you reach over SSH. Switch between them at the bottom of the side bar."}>
 			<MachineList />
 			{/* In the pairing view, the list's how-to is all there is to say. */}
 			{!pairing ? (

@@ -4,9 +4,33 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { before, test } from "node:test";
+import zlib from "node:zlib";
 import type { Page } from "playwright-core";
 import { clickMenuItem, focusWindow, openNewWindow, waitClosed } from "./support/app.ts";
 import { app, CODE_EDGE, home, page, sees, started } from "./support/window.ts";
+
+function make1x1Png(): Buffer {
+	const chunk = (type: string, data: Buffer) => {
+		const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+		const len = Buffer.alloc(4);
+		len.writeUInt32BE(data.length);
+		const crc = Buffer.alloc(4);
+		crc.writeUInt32BE(zlib.crc32(body));
+		return Buffer.concat([len, body, crc]);
+	};
+	const ihdr = Buffer.alloc(13);
+	ihdr.writeUInt32BE(1, 0);
+	ihdr.writeUInt32BE(1, 4);
+	ihdr[8] = 8;
+	ihdr[9] = 2;
+	const idat = zlib.deflateSync(Buffer.from([0, 255, 0, 0]));
+	return Buffer.concat([
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+		chunk("IHDR", ihdr),
+		chunk("IDAT", idat),
+		chunk("IEND", Buffer.alloc(0)),
+	]);
+}
 
 before(() => started());
 
@@ -208,25 +232,59 @@ test("Move to New Window splits a chat tab into a new window on the same environ
 	assert.ok(savedName, "expected attached file in agent workspace inbox");
 	assert.equal(fs.readFileSync(path.join(inboxDir, savedName), "utf8"), "important attachment payload\n");
 
-	// Move to New Window on a remote SSH environment opens the new window on that same SSH environment.
-	await win2.evaluate(() => (window as any).pine.addHost("you@elsewhere"));
-	await win2.evaluate(() => (window as any).pine.use("you@elsewhere"));
-	await win2.waitForSelector("[data-slot=empty] >> text=The main agent of the other machine", { timeout: 60_000 });
-	await win2.locator("[data-slot=sidebar-menu-item]:has([data-slot=agent-label])", { has: win2.locator("[data-slot=agent-label] > :first-child", { hasText: /^helper$/ }) }).locator("[data-slot=agent-label]").click();
-	await win2.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 2);
-
-	await win2.locator("[data-slot=tab]").nth(1).click({ button: "right" });
+	// Attach a 1x1 PNG in win2, move main:split to win2b, close win2 (revoking win2's Document blob: URLs),
+	// and verify the composer image preview in win2b remains valid.
+	const pixelFile = path.join(home, "pixel.png");
+	fs.writeFileSync(pixelFile, make1x1Png());
+	await win2.locator('input[type="file"]').setInputFiles(pixelFile);
+	await win2.waitForSelector("[data-slot=composer] [data-slot=attachment-title] >> text=pixel.png", { timeout: 10_000 });
+	await win2.locator("[data-slot=tab]").first().click({ button: "right" });
 	await win2.waitForSelector("[data-slot=context-menu-content]", { timeout: 10_000 });
-	const win3 = await openNewWindow(app, () =>
+	const win2b = await openNewWindow(app, () =>
 		win2.locator("[data-slot=context-menu-content]").getByRole("menuitem", { name: "Move to New Window", exact: true }).click(),
+	);
+	await win2b.waitForSelector("[data-slot=composer] img", { timeout: 20_000 });
+	await focusWindow(app, win2);
+	await clickMenuItem(app, "File", "Close Window");
+	await waitClosed(win2);
+
+	const previewOk = await win2b.$eval("[data-slot=composer] img", async (el: Element) => {
+		const img = el as HTMLImageElement;
+		if (!img.complete) {
+			await new Promise<void>((resolve) => {
+				img.addEventListener("load", () => resolve(), { once: true });
+				img.addEventListener("error", () => resolve(), { once: true });
+			});
+		}
+		const fresh = new Image();
+		const reloaded = await new Promise<boolean>((resolve) => {
+			fresh.onload = () => resolve(fresh.complete && fresh.naturalWidth === 1);
+			fresh.onerror = () => resolve(false);
+			fresh.src = img.src;
+		});
+		return img.complete && img.naturalWidth === 1 && reloaded;
+	});
+	assert.equal(previewOk, true, "composer image blob: preview must remain valid after closing the source window");
+
+	// Move to New Window on a remote SSH environment opens the new window on that same SSH environment.
+	await win2b.evaluate(() => (window as any).pine.addHost("you@elsewhere"));
+	await win2b.evaluate(() => (window as any).pine.use("you@elsewhere"));
+	await win2b.waitForSelector("[data-slot=empty] >> text=The main agent of the other machine", { timeout: 60_000 });
+	await win2b.locator("[data-slot=sidebar-menu-item]:has([data-slot=agent-label])", { has: win2b.locator("[data-slot=agent-label] > :first-child", { hasText: /^helper$/ }) }).locator("[data-slot=agent-label]").click();
+	await win2b.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 2);
+
+	await win2b.locator("[data-slot=tab]").nth(1).click({ button: "right" });
+	await win2b.waitForSelector("[data-slot=context-menu-content]", { timeout: 10_000 });
+	const win3 = await openNewWindow(app, () =>
+		win2b.locator("[data-slot=context-menu-content]").getByRole("menuitem", { name: "Move to New Window", exact: true }).click(),
 	);
 	await win3.waitForSelector("[data-slot=tab][data-active]", { timeout: 60_000 });
 	assert.equal(await win3.evaluate(() => (window as any).pine.state().then((s: any) => s.state.host)), "you@elsewhere");
 	assert.match((await win3.locator("[data-slot=tab][data-active]").getAttribute("title")) ?? "", /^helper · main\b/);
-	await win2.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 1);
+	await win2b.waitForFunction(() => document.querySelectorAll("[data-slot=tab]").length === 1);
 
 	// Clean up.
-	for (const w of [win3, win2]) {
+	for (const w of [win3, win2b]) {
 		await focusWindow(app, w);
 		await clickMenuItem(app, "File", "Close Window");
 		await waitClosed(w);

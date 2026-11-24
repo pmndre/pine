@@ -73,6 +73,8 @@ interface WindowBounds {
 	height: number;
 }
 
+type ChromeLayout = Pick<WindowLayout, "sidebar" | "aside" | "view" | "order" | "widths" | "folded">;
+
 interface WindowSnapshot {
 	host?: string;
 	bounds: WindowBounds;
@@ -103,6 +105,8 @@ interface Prefs {
 	 */
 	look?: Look;
 	bounds?: WindowBounds;
+	/** Last-used window chrome (panels, widths and folded side bar state), restored when opening without a saved window list. */
+	layout?: ChromeLayout;
 	/** Open windows at the time the app quit, restored on the next launch. */
 	windows?: WindowSnapshot[];
 	/** Browser access: on or off, the service's address, open at login (access/control.ts). The host key and the devices are a file of their own beside this one. */
@@ -123,8 +127,33 @@ function cleanBounds(raw: unknown): WindowBounds | undefined {
 	return { ...(x !== undefined ? { x } : {}), ...(y !== undefined ? { y } : {}), width: Math.round(width), height: Math.round(height) };
 }
 
-function defaultLayout(): WindowLayout {
+function baseDefaultLayout(): WindowLayout {
 	return { tabs: [], active: 0, sidebar: true, code: false, aside: false, view: false, order: ["view", "aside", "code"], widths: {}, folded: [] };
+}
+
+function pickChromeLayout(layout: WindowLayout): ChromeLayout {
+	return {
+		sidebar: layout.sidebar,
+		aside: layout.aside,
+		view: layout.view,
+		order: layout.order ? [...layout.order] : undefined,
+		widths: { ...layout.widths },
+		folded: [...layout.folded],
+	};
+}
+
+function defaultLayout(): WindowLayout {
+	const base = baseDefaultLayout();
+	if (!prefs.layout) return base;
+	return {
+		...base,
+		sidebar: prefs.layout.sidebar,
+		aside: prefs.layout.aside,
+		view: prefs.layout.view,
+		order: prefs.layout.order?.length ? [...prefs.layout.order] : base.order,
+		widths: { ...prefs.layout.widths },
+		folded: [...prefs.layout.folded],
+	};
 }
 
 function cleanWindowLayout(raw: unknown, fallback: WindowLayout = defaultLayout()): WindowLayout {
@@ -137,7 +166,8 @@ function cleanWindowLayout(raw: unknown, fallback: WindowLayout = defaultLayout(
 				.map((t) => ({ agent: t.agent.slice(0, 120), session: t.session.slice(0, 200) }))
 		: fallback.tabs;
 	const active = typeof r.active === "number" && Number.isInteger(r.active) && r.active >= 0 ? r.active : fallback.active;
-	const w = r.widths && typeof r.widths === "object" ? (r.widths as Record<string, unknown>) : {};
+	const hasWidths = Boolean(r.widths && typeof r.widths === "object");
+	const w = hasWidths ? (r.widths as Record<string, unknown>) : {};
 	const px = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 120 && v <= 4000 ? Math.round(v) : undefined);
 	const order = Array.isArray(r.order) ? r.order.filter((x): x is "code" | "aside" | "view" => x === "code" || x === "aside" || x === "view") : fallback.order;
 	const folded = Array.isArray(r.folded) ? r.folded.filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 240).slice(0, 500) : fallback.folded;
@@ -150,14 +180,21 @@ function cleanWindowLayout(raw: unknown, fallback: WindowLayout = defaultLayout(
 		aside: typeof r.aside === "boolean" ? r.aside : fallback.aside,
 		view: typeof r.view === "boolean" ? r.view : fallback.view,
 		order: order?.length ? [...new Set(order)] : ["view", "aside", "code"],
-		widths: {
-			sidebar: px(w.sidebar) ?? fallback.widths.sidebar,
-			code: px(w.code) ?? fallback.widths.code,
-			aside: px(w.aside) ?? fallback.widths.aside,
-			view: px(w.view) ?? fallback.widths.view,
-		},
+		widths: hasWidths
+			? {
+					sidebar: px(w.sidebar),
+					code: px(w.code),
+					aside: px(w.aside),
+					view: px(w.view),
+				}
+			: { ...fallback.widths },
 		folded,
 	};
+}
+
+function cleanChromeLayout(raw: unknown): ChromeLayout | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	return pickChromeLayout(cleanWindowLayout(raw, baseDefaultLayout()));
 }
 
 function cleanWindowSnapshot(raw: unknown, hosts: string[]): WindowSnapshot | undefined {
@@ -170,7 +207,7 @@ function cleanWindowSnapshot(raw: unknown, hosts: string[]): WindowSnapshot | un
 	return {
 		...(host ? { host } : {}),
 		bounds,
-		layout: cleanWindowLayout(r.layout),
+		layout: cleanWindowLayout(r.layout, baseDefaultLayout()),
 		...(lookValue ? { look: lookValue } : {}),
 		...(r.focused === true ? { focused: true } : {}),
 	};
@@ -194,6 +231,7 @@ function loadPrefs(): void {
 			commandTried: raw.commandTried === true,
 			look: cleanLook(raw.look),
 			bounds: cleanBounds(raw.bounds),
+			layout: cleanChromeLayout(raw.layout),
 			windows: savedWindows,
 			access: readAccessPrefs(raw.access),
 		};
@@ -205,7 +243,7 @@ function loadPrefs(): void {
 	nativeTheme.themeSource = prefs.look?.kind ?? "dark";
 }
 
-const publicPrefs = () => ({ ...prefs, bounds: undefined, windows: undefined });
+const publicPrefs = () => ({ ...prefs, bounds: undefined, windows: undefined, layout: undefined });
 
 /**
  * What the window shows before the page draws: the page color of the theme it was last drawn in
@@ -234,6 +272,9 @@ type BootMode = "daemon" | "no-tab" | "tab" | "restore";
 interface WindowEntry {
 	id: string;
 	win: BrowserWindow;
+	readyToShow: boolean;
+	wantFocus: boolean;
+	closing: boolean;
 	focused: boolean;
 	lastFocusedAt: number;
 	pageReady: boolean;
@@ -257,10 +298,13 @@ let launch: Launch | undefined;
 let quitting = false;
 let listening: Listening | undefined;
 let voiceOwner: WindowEntry | undefined;
+let voiceRound = 0;
+
+const validHost = (host: string | undefined) => (host && prefs.hosts.includes(host) ? host : undefined);
 
 /** Active window for menus, cascades and fallback routing: OS-focused, else tracked-focused, else most recently active. */
 function targetWindow(predicate?: (w: WindowEntry) => boolean): WindowEntry | undefined {
-	const open = [...windows.values()].filter((w) => !w.win.isDestroyed() && (!predicate || predicate(w)));
+	const open = [...windows.values()].filter((w) => !w.closing && !w.win.isDestroyed() && (!predicate || predicate(w)));
 	if (!open.length) return undefined;
 	const osFocused = BrowserWindow.getFocusedWindow();
 	if (osFocused) {
@@ -303,7 +347,7 @@ function withLocalWindow(command: string): WindowEntry {
 function openHostsFor(caller: WindowEntry): string[] {
 	const out: string[] = [];
 	for (const w of windows.values()) {
-		if (w !== caller && !w.win.isDestroyed() && typeof w.host === "string") out.push(w.host);
+		if (w !== caller && !w.closing && !w.win.isDestroyed() && typeof w.host === "string") out.push(w.host);
 	}
 	return out;
 }
@@ -325,7 +369,7 @@ function snapshotOpenWindows(): WindowSnapshot[] {
 	const primary = targetWindow();
 	const out: WindowSnapshot[] = [];
 	for (const w of windows.values()) {
-		if (w.win.isDestroyed()) continue;
+		if (w.closing || w.win.isDestroyed()) continue;
 		const bounds = w.win.isMinimized() || w.win.isFullScreen() ? w.bounds : w.win.getBounds();
 		w.bounds = bounds;
 		out.push({
@@ -344,8 +388,9 @@ function persistOpenWindows(): void {
 	prefs.windows = snapshotOpenWindows();
 	const front = targetWindow();
 	if (front) {
-		prefs.use = front.host;
+		prefs.use = validHost(front.host);
 		prefs.bounds = front.bounds;
+		prefs.layout = pickChromeLayout(front.layout);
 	}
 	savePrefs();
 }
@@ -364,7 +409,7 @@ function unionTabsFor(host: string | undefined, primary?: WindowEntry): Array<{ 
 		seen.add(key);
 		out.push({ agent: t.agent, session: t.session });
 	};
-	const ordered = [...windows.values()].filter((w) => !w.win.isDestroyed() && w.host === host);
+	const ordered = [...windows.values()].filter((w) => !w.closing && !w.win.isDestroyed() && w.host === host);
 	if (primary && ordered.includes(primary)) {
 		ordered.splice(ordered.indexOf(primary), 1);
 		ordered.unshift(primary);
@@ -388,6 +433,21 @@ function syncRemainingUnion(host: string | undefined): void {
 	});
 }
 
+function closeOrphanedSessions(s: Service | undefined, host: string | undefined, previousTabs: Array<{ agent: string; session: string }>, excludeWindow: WindowEntry): void {
+	if (!s || quitting || !previousTabs.length) return;
+	const remaining = [...windows.values()].filter((w) => w !== excludeWindow && !w.closing && !w.win.isDestroyed() && w.host === host);
+	if (!remaining.length) return;
+	const seen = new Set<string>();
+	for (const t of previousTabs) {
+		if (!t.agent || !t.session || t.session === "main") continue;
+		const key = `${t.agent}:${t.session}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		if (remaining.some((w) => windowHoldsConversation(w, t.agent, t.session))) continue;
+		void callDaemon(s, "POST", `/agents/${encodeURIComponent(t.agent)}/close`, { session: t.session }).catch(() => {});
+	}
+}
+
 /**
  * The version of the pine this app runs (the one it carries, in a packed app) when the daemon of
  * this computer it attached to says an older one, by the rule of the update check. A daemon the
@@ -400,13 +460,19 @@ function olderThan(s: Service, host: string | undefined): string | undefined {
 }
 
 /** The agents' browsers: for this computer's pine only, whose browser servers can reach it. */
-const browsers = new BrowserHost((win) => {
-	const osFocused = BrowserWindow.getFocusedWindow();
-	if (osFocused) return osFocused === win;
-	for (const entry of windows.values()) {
-		if (entry.win === win) return entry.focused;
-	}
-	return false;
+const browsers = new BrowserHost({
+	isFocused: (win) => {
+		const osFocused = BrowserWindow.getFocusedWindow();
+		if (osFocused) return osFocused === win;
+		for (const entry of windows.values()) {
+			if (entry.win === win) return entry.focused;
+		}
+		return false;
+	},
+	onPreempted: (w) => {
+		const owner = [...windows.values()].find((x) => x.win === w);
+		if (owner) sendTo(owner, "pine:browser-preempted");
+	},
 });
 
 /** The owner's terminal of each conversation (terminal.ts): their own shell per window, which ends with its window or the app. */
@@ -442,6 +508,8 @@ interface ServiceStream {
 	connected: boolean;
 	taskSession: Map<number, { agent: string; session: string }>;
 	openApprovals: Set<string>;
+	approvalPayloads: Map<string, Record<string, unknown>>;
+	approvalSessions: Map<string, { agent: string; session: string }>;
 	approvalOwners: Map<string, Set<string>>;
 	queue: Promise<void>;
 }
@@ -453,7 +521,7 @@ const recentNotifications = new Map<string, number>();
 function refreshAppBadge(): void {
 	let total = 0;
 	for (const [s, record] of serviceStreams) {
-		if ([...windows.values()].some((w) => !w.win.isDestroyed() && w.service === s)) {
+		if ([...windows.values()].some((w) => !w.closing && !w.win.isDestroyed() && w.service === s)) {
 			total += record.openApprovals.size;
 		}
 	}
@@ -464,7 +532,7 @@ function refreshAppBadge(): void {
 }
 
 function recipientsForConversation(s: Service, agent: string, sessionName: string): WindowEntry[] {
-	const onService = [...windows.values()].filter((w) => !w.win.isDestroyed() && w.service === s);
+	const onService = [...windows.values()].filter((w) => !w.closing && !w.win.isDestroyed() && w.service === s);
 	const holders = onService.filter((w) => windowHoldsConversation(w, agent, sessionName));
 	if (holders.length) return holders;
 	const primary = targetWindow((w) => w.service === s);
@@ -485,6 +553,74 @@ async function resolveApprovalSession(s: Service, record: ServiceStream, p: Reco
 	return undefined;
 }
 
+function hasLiveApprovalOwner(s: Service, owners: Set<string> | undefined): boolean {
+	if (!owners) return false;
+	for (const id of owners) {
+		const w = windows.get(id);
+		if (w && !w.closing && !w.win.isDestroyed() && (w.service === s || (!w.service && w.host === s.host && w.state.status === "starting"))) return true;
+	}
+	return false;
+}
+
+function rehomeServiceApprovals(s: Service | undefined, leavingWindowId: string): void {
+	if (!s || quitting) return;
+	const record = serviceStreams.get(s);
+	if (!record || !record.openApprovals.size) return;
+	const stranded: string[] = [];
+	for (const id of record.openApprovals) {
+		const owners = record.approvalOwners.get(id);
+		owners?.delete(leavingWindowId);
+		if (!hasLiveApprovalOwner(s, owners)) stranded.push(id);
+	}
+	if (!stranded.length) return;
+	const hasRemaining = [...windows.values()].some((w) => !w.closing && !w.win.isDestroyed() && w.service === s);
+	if (!hasRemaining) return;
+	record.queue = record.queue
+		.then(async () => {
+			if (record.abort.signal.aborted || quitting) return;
+			if (stranded.some((id) => record.openApprovals.has(id) && !record.approvalPayloads.has(id))) {
+				const res = await callDaemon(s, "GET", "/approvals");
+				if (res.ok && Array.isArray(res.data)) {
+					const openIds = new Set<string>();
+					for (const item of res.data) {
+						if (item && typeof item === "object" && typeof (item as Record<string, unknown>).id === "string") {
+							const obj = item as Record<string, unknown>;
+							const reqId = obj.id as string;
+							openIds.add(reqId);
+							record.approvalPayloads.set(reqId, obj);
+						}
+					}
+					record.openApprovals = openIds;
+					refreshAppBadge();
+				}
+			}
+			if (record.abort.signal.aborted || quitting) return;
+			const buckets = new Map<WindowEntry, unknown[]>();
+			for (const id of stranded) {
+				if (!record.openApprovals.has(id)) continue;
+				if (hasLiveApprovalOwner(s, record.approvalOwners.get(id))) continue;
+				const req = record.approvalPayloads.get(id);
+				if (!req) continue;
+				const sessionInfo = record.approvalSessions.get(id) ?? (await resolveApprovalSession(s, record, req));
+				if (sessionInfo) record.approvalSessions.set(id, sessionInfo);
+				const targets = sessionInfo ? recipientsForConversation(s, sessionInfo.agent, sessionInfo.session) : [targetWindow((w) => w.service === s)].filter((w): w is WindowEntry => Boolean(w));
+				if (!targets.length) continue;
+				record.approvalOwners.set(id, new Set(targets.map((w) => w.id)));
+				const synthetic = { id: 0, ts: Date.now(), topic: "approval/requested", source: "pine", payload: req };
+				for (const w of targets) {
+					if (w.closing || w.win.isDestroyed() || w.service !== s) continue;
+					let list = buckets.get(w);
+					if (!list) buckets.set(w, (list = []));
+					list.push(synthetic);
+				}
+			}
+			for (const [w, list] of buckets) {
+				if (list.length) sendTo(w, "pine:events", list);
+			}
+		})
+		.catch(() => {});
+}
+
 async function dispatchServiceBatch(s: Service, record: ServiceStream, events: unknown[]): Promise<void> {
 	if (record.abort.signal.aborted) return;
 	for (const raw of events) {
@@ -500,11 +636,11 @@ async function dispatchServiceBatch(s: Service, record: ServiceStream, events: u
 		}
 	}
 
-	const onService = () => [...windows.values()].filter((w) => !w.win.isDestroyed() && w.service === s);
+	const onService = () => [...windows.values()].filter((w) => !w.closing && !w.win.isDestroyed() && w.service === s);
 	const buckets = new Map<WindowEntry, unknown[]>();
 	const push = (targets: WindowEntry[], item: unknown) => {
 		for (const w of targets) {
-			if (w.win.isDestroyed() || w.service !== s) continue;
+			if (w.closing || w.win.isDestroyed() || w.service !== s) continue;
 			let list = buckets.get(w);
 			if (!list) buckets.set(w, (list = []));
 			list.push(item);
@@ -520,6 +656,8 @@ async function dispatchServiceBatch(s: Service, record: ServiceStream, events: u
 			const targets = sessionInfo ? recipientsForConversation(s, sessionInfo.agent, sessionInfo.session) : [targetWindow((w) => w.service === s)].filter((w): w is WindowEntry => Boolean(w));
 			if (typeof p.id === "string") {
 				record.openApprovals.add(p.id);
+				record.approvalPayloads.set(p.id, p);
+				if (sessionInfo) record.approvalSessions.set(p.id, sessionInfo);
 				record.approvalOwners.set(p.id, new Set(targets.map((w) => w.id)));
 				refreshAppBadge();
 			}
@@ -527,6 +665,8 @@ async function dispatchServiceBatch(s: Service, record: ServiceStream, events: u
 		} else if (topic === "approval/decided") {
 			if (typeof p.id === "string") {
 				record.openApprovals.delete(p.id);
+				record.approvalPayloads.delete(p.id);
+				record.approvalSessions.delete(p.id);
 				record.approvalOwners.delete(p.id);
 				refreshAppBadge();
 			}
@@ -554,7 +694,7 @@ function setWindowState(entry: WindowEntry, next: ServiceState): void {
 function ensureServiceStream(s: Service): void {
 	if (serviceStreams.has(s)) return;
 	const abort = new AbortController();
-	const record: ServiceStream = { abort, connected: false, taskSession: new Map(), openApprovals: new Set(), approvalOwners: new Map(), queue: Promise.resolve() };
+	const record: ServiceStream = { abort, connected: false, taskSession: new Map(), openApprovals: new Set(), approvalPayloads: new Map(), approvalSessions: new Map(), approvalOwners: new Map(), queue: Promise.resolve() };
 	serviceStreams.set(s, record);
 	followEvents(s, abort.signal, {
 		batch: (events) => {
@@ -572,7 +712,7 @@ function ensureServiceStream(s: Service): void {
 			if (held.get(s.host ?? "") === s) held.delete(s.host ?? "");
 			void letGo(s);
 			for (const w of windows.values()) {
-				if (!w.win.isDestroyed() && w.host === s.host) void startWindowService(w);
+				if (!w.closing && !w.win.isDestroyed() && w.host === s.host) void startWindowService(w);
 			}
 			return true;
 		},
@@ -581,7 +721,7 @@ function ensureServiceStream(s: Service): void {
 
 function releaseUnusedStreams(): void {
 	for (const [s, record] of serviceStreams) {
-		const used = [...windows.values()].some((w) => !w.win.isDestroyed() && w.service === s);
+		const used = [...windows.values()].some((w) => !w.closing && !w.win.isDestroyed() && (w.service === s || (!w.service && w.host === s.host && w.state.status === "starting")));
 		if (!used) {
 			record.abort.abort();
 			serviceStreams.delete(s);
@@ -669,11 +809,17 @@ async function use(entry: WindowEntry, host: string | undefined): Promise<void> 
 	if (host === entry.host && entry.service) return;
 	if (host !== undefined) browsers.detachWindow(entry.win);
 	const previousHost = entry.host;
+	const previousService = entry.service ?? held.get(previousHost ?? "");
+	const previousTabs = [...(entry.initialTab ? [entry.initialTab] : []), ...entry.layout.tabs];
 	entry.host = host;
+	entry.service = undefined;
+	entry.initialTab = undefined;
 	entry.layout = { ...entry.layout, tabs: [], active: 0, noTab: false };
-	prefs.use = host;
+	prefs.use = validHost(host);
 	savePrefs();
 	syncRemainingUnion(previousHost);
+	closeOrphanedSessions(previousService, previousHost, previousTabs, entry);
+	rehomeServiceApprovals(previousService, entry.id);
 	notifyOpenHosts();
 	if (host !== undefined) terminals.closeWindow(entry.id);
 	await startWindowService(entry);
@@ -857,13 +1003,16 @@ interface OpenWindowInit {
 	moveFrom?: boolean;
 	layout?: WindowLayout;
 	look?: Look;
+	wantFocus?: boolean;
 }
 
 function openWindow(init: OpenWindowInit = {}): WindowEntry {
 	const id = String(nextWindowId++);
-	const host = init.host === null ? undefined : init.host !== undefined ? init.host : init.from ? init.from.host : prefs.use;
+	const fallbackUse = prefs.use && prefs.hosts.includes(prefs.use) ? prefs.use : undefined;
+	const inheritedHost = init.from?.host && prefs.hosts.includes(init.from.host) ? init.from.host : undefined;
+	const host = init.host === null ? undefined : init.host !== undefined ? init.host : init.from ? inheritedHost : fallbackUse;
 	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list: add it in Settings > Environments.");
-	const environmentOpen = [...windows.values()].some((w) => !w.win.isDestroyed() && w.host === host);
+	const environmentOpen = [...windows.values()].some((w) => !w.closing && !w.win.isDestroyed() && w.host === host);
 	const bootMode: BootMode = init.bootMode ?? (init.tab ? "tab" : environmentOpen ? "no-tab" : "daemon");
 	const sourceBounds = init.from && !init.from.win.isDestroyed() ? init.from.win.getBounds() : undefined;
 	const b = init.bounds ?? (sourceBounds ? cascadeBounds(sourceBounds) : prefs.bounds);
@@ -900,6 +1049,9 @@ function openWindow(init: OpenWindowInit = {}): WindowEntry {
 	const entry: WindowEntry = {
 		id,
 		win,
+		readyToShow: false,
+		wantFocus: init.wantFocus !== false,
+		closing: false,
 		focused: Boolean(win.isFocused()),
 		lastFocusedAt: ++focusClock,
 		pageReady: false,
@@ -916,7 +1068,16 @@ function openWindow(init: OpenWindowInit = {}): WindowEntry {
 	};
 	windows.set(id, entry);
 
-	win.once("ready-to-show", () => void (HEADLESS || win.show()));
+	win.once("ready-to-show", () => {
+		entry.readyToShow = true;
+		if (HEADLESS || win.isDestroyed() || entry.closing) return;
+		if (entry.wantFocus) {
+			win.show();
+			win.focus();
+		} else {
+			win.showInactive();
+		}
+	});
 	win.webContents.setWindowOpenHandler(({ url }) => (openOutside(url), { action: "deny" }));
 	win.webContents.on("will-navigate", (e, url) => {
 		if (originOf(url) !== ORIGIN) {
@@ -927,7 +1088,7 @@ function openWindow(init: OpenWindowInit = {}): WindowEntry {
 	win.webContents.on("will-attach-webview", (e) => e.preventDefault());
 
 	const keepBounds = () => {
-		if (win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
+		if (entry.closing || win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return;
 		entry.bounds = win.getBounds();
 		if (!quitting) {
 			prefs.bounds = entry.bounds;
@@ -939,8 +1100,8 @@ function openWindow(init: OpenWindowInit = {}): WindowEntry {
 	win.on("focus", () => {
 		entry.focused = true;
 		entry.lastFocusedAt = ++focusClock;
-		if (!quitting) {
-			prefs.use = entry.host;
+		if (!quitting && !entry.closing) {
+			prefs.use = validHost(entry.host);
 			prefs.bounds = entry.bounds;
 			persistOpenWindows();
 		}
@@ -952,28 +1113,37 @@ function openWindow(init: OpenWindowInit = {}): WindowEntry {
 		sendTo(entry, "pine:focus", false);
 	});
 	win.on("close", () => {
-		if (!quitting && !win.isDestroyed() && !win.isMinimized() && !win.isFullScreen()) {
+		if (!quitting && !entry.closing && !win.isDestroyed() && !win.isMinimized() && !win.isFullScreen()) {
 			entry.bounds = win.getBounds();
 		}
-		if (!quitting) {
-			const others = [...windows.values()].filter((w) => w !== entry && !w.win.isDestroyed());
+		if (!quitting && !entry.closing) {
+			const others = [...windows.values()].filter((w) => w !== entry && !w.closing && !w.win.isDestroyed());
 			if (!others.length) {
 				prefs.bounds = entry.bounds;
-				prefs.use = entry.host;
+				prefs.use = validHost(entry.host);
+				prefs.layout = pickChromeLayout(entry.layout);
 			}
 		}
 	});
 	win.on("closed", () => {
+		const wasForgetting = entry.closing;
 		const closedHost = entry.host;
+		const closedService = entry.service ?? (wasForgetting ? undefined : held.get(closedHost ?? ""));
+		const previousTabs = [...(entry.initialTab ? [entry.initialTab] : []), ...entry.layout.tabs];
 		windows.delete(id);
 		terminals.closeWindow(id);
 		if (voiceOwner === entry) {
+			++voiceRound;
 			listening?.cancel();
 			listening = undefined;
 			voiceOwner = undefined;
 		}
 		if (!quitting) persistOpenWindows();
-		syncRemainingUnion(closedHost);
+		if (!wasForgetting) {
+			syncRemainingUnion(closedHost);
+			closeOrphanedSessions(closedService, closedHost, previousTabs, entry);
+			rehomeServiceApprovals(closedService, id);
+		}
 		releaseUnusedStreams();
 		notifyOpenHosts();
 	});
@@ -987,7 +1157,8 @@ function openWindow(init: OpenWindowInit = {}): WindowEntry {
 
 function showWindow(entry: WindowEntry): void {
 	entry.lastFocusedAt = ++focusClock;
-	if (HEADLESS || entry.win.isDestroyed()) return;
+	entry.wantFocus = true;
+	if (HEADLESS || entry.win.isDestroyed() || !entry.readyToShow) return;
 	if (entry.win.isMinimized()) entry.win.restore();
 	entry.win.show();
 	entry.win.focus();
@@ -1222,13 +1393,14 @@ function wire(): void {
 			views: true,
 			selfUpdate: Boolean(updater),
 			windowLayout: bootMode === "restore" ? caller.layout : undefined,
+			chromeLayout: pickChromeLayout(caller.layout),
 			noTab: bootMode === "no-tab" ? true : undefined,
 			initialTab: bootMode === "tab" ? initialTab : undefined,
 			initialDraft: bootMode === "tab" ? initialDraft : undefined,
 			openHosts: openHostsFor(caller),
 		};
 	});
-	handle("pine:window-new", (caller, raw?: NewWindowOptions) => {
+	handle("pine:window-new", async (caller, raw?: NewWindowOptions) => {
 		const opts = raw && typeof raw === "object" ? raw : {};
 		const host = opts.host === null ? null : typeof opts.host === "string" ? opts.host : undefined;
 		const tab = opts.tab && typeof opts.tab.agent === "string" && opts.tab.agent && typeof opts.tab.session === "string" && opts.tab.session ? { agent: opts.tab.agent.slice(0, 120), session: opts.tab.session.slice(0, 200) } : undefined;
@@ -1246,13 +1418,52 @@ function wire(): void {
 		if (opts.moveFrom === true && tab && !caller.host && !next.host) {
 			terminals.transfer(caller.id, next.id, `${tab.agent}:${tab.session}`);
 		}
+		if (opts.moveFrom === true && tab && caller.service && (caller.host ?? "") === (next.host ?? "")) {
+			const s = caller.service;
+			const record = serviceStreams.get(s);
+			if (record && record.openApprovals.size) {
+				for (const approvalId of [...record.openApprovals]) {
+					let sessionInfo = record.approvalSessions.get(approvalId);
+					if (!sessionInfo) {
+						const payload = record.approvalPayloads.get(approvalId);
+						if (payload) {
+							sessionInfo = await resolveApprovalSession(s, record, payload);
+							if (sessionInfo) record.approvalSessions.set(approvalId, sessionInfo);
+						}
+					}
+					if (sessionInfo && sessionInfo.agent === tab.agent && sessionInfo.session === tab.session) {
+						let owners = record.approvalOwners.get(approvalId);
+						if (!owners) record.approvalOwners.set(approvalId, (owners = new Set()));
+						owners.delete(caller.id);
+						owners.add(next.id);
+					}
+				}
+			}
+		}
 		showWindow(next);
 	});
 	handle("pine:window-close", (caller) => {
 		if (!caller.win.isDestroyed()) caller.win.close();
 	});
 	handle("pine:window-layout", (caller, snapshot: unknown) => {
-		caller.layout = cleanWindowLayout(snapshot, caller.layout);
+		if (!snapshot || typeof snapshot !== "object" || caller.closing) return;
+		if ("host" in snapshot && typeof (snapshot as { host?: unknown }).host === "string" && (snapshot as { host: string }).host !== (caller.host ?? "")) {
+			return;
+		}
+		const cleaned = cleanWindowLayout(snapshot, caller.layout);
+		if (!caller.service) {
+			caller.layout = {
+				...caller.layout,
+				sidebar: cleaned.sidebar,
+				aside: cleaned.aside,
+				view: cleaned.view,
+				order: cleaned.order,
+				widths: cleaned.widths,
+				folded: cleaned.folded,
+			};
+		} else {
+			caller.layout = cleaned;
+		}
 		persistOpenWindows();
 	});
 	handle("pine:call", async (caller, method: string, url: string, body?: unknown) => {
@@ -1266,14 +1477,31 @@ function wire(): void {
 			if (!res.ok || !Array.isArray(res.data)) return res;
 			const record = serviceStreams.get(s);
 			if (record) {
-				record.openApprovals = new Set(res.data.map((a: any) => a?.id).filter((id: unknown): id is string => typeof id === "string"));
+				const openIds = new Set<string>();
+				for (const item of res.data) {
+					if (item && typeof item === "object" && typeof (item as Record<string, unknown>).id === "string") {
+						const obj = item as Record<string, unknown>;
+						const id = obj.id as string;
+						openIds.add(id);
+						record.approvalPayloads.set(id, obj);
+					}
+				}
+				record.openApprovals = openIds;
+				for (const knownId of [...record.approvalPayloads.keys()]) {
+					if (!openIds.has(knownId)) {
+						record.approvalPayloads.delete(knownId);
+						record.approvalSessions.delete(knownId);
+						record.approvalOwners.delete(knownId);
+					}
+				}
 				refreshAppBadge();
 			}
 			const visible: unknown[] = [];
 			for (const req of res.data) {
 				const reqObj = req && typeof req === "object" ? (req as Record<string, unknown>) : {};
 				const reqId = typeof reqObj.id === "string" ? reqObj.id : undefined;
-				const sessionInfo = record ? await resolveApprovalSession(s, record, reqObj) : undefined;
+				const sessionInfo = record ? ((reqId ? record.approvalSessions.get(reqId) : undefined) ?? (await resolveApprovalSession(s, record, reqObj))) : undefined;
+				if (record && reqId && sessionInfo) record.approvalSessions.set(reqId, sessionInfo);
 				if (sessionInfo && windowHoldsConversation(caller, sessionInfo.agent, sessionInfo.session)) {
 					if (record && reqId) {
 						let set = record.approvalOwners.get(reqId);
@@ -1287,7 +1515,7 @@ function wire(): void {
 					record && reqId
 						? [...(record.approvalOwners.get(reqId) ?? [])].filter((id) => {
 								const w = windows.get(id);
-								return Boolean(w && !w.win.isDestroyed() && w.service === s);
+								return Boolean(w && !w.closing && !w.win.isDestroyed() && (w.service === s || (!w.service && w.host === s.host && w.state.status === "starting")));
 							})
 						: [];
 				if (liveOwners.length) {
@@ -1301,6 +1529,7 @@ function wire(): void {
 			return { ...res, data: visible };
 		}
 		if (method === "POST" && url === "/ui/tabs" && body && typeof body === "object") {
+			if (!s || (s.host ?? "") !== (caller.host ?? "")) return callDaemon(s, method, url, body);
 			const b = body as Record<string, unknown>;
 			if (Array.isArray(b.tabs)) {
 				caller.layout = cleanWindowLayout({ ...caller.layout, tabs: b.tabs, active: b.active, code: b.code, noTab: b.tabs.length === 0 }, caller.layout);
@@ -1312,7 +1541,7 @@ function wire(): void {
 		if (closeMatch && body && typeof body === "object") {
 			const agent = decodeURIComponent(closeMatch[1]);
 			const sessionName = String((body as Record<string, unknown>).session ?? "");
-			const heldElsewhere = [...windows.values()].some((w) => w !== caller && !w.win.isDestroyed() && w.host === caller.host && windowHoldsConversation(w, agent, sessionName));
+			const heldElsewhere = [...windows.values()].some((w) => w !== caller && !w.closing && !w.win.isDestroyed() && w.host === caller.host && windowHoldsConversation(w, agent, sessionName));
 			if (heldElsewhere) return { ok: true, status: 200, data: { unsubscribed: [] } };
 		}
 		return callDaemon(s, method, url, body);
@@ -1371,14 +1600,21 @@ function wire(): void {
 	});
 	handle("pine:hosts-forget", (caller, host: string, options?: { closeWindows?: boolean }) => {
 		if (host === caller.host) throw new Error("The app uses this machine now. Use another one first.");
-		const others = [...windows.values()].filter((w) => w !== caller && !w.win.isDestroyed() && w.host === host);
+		const others = [...windows.values()].filter((w) => w !== caller && !w.closing && !w.win.isDestroyed() && w.host === host);
 		if (others.length && !options?.closeWindows) throw new Error("Another window uses this machine now. Close it first.");
-		for (const w of others) w.win.close();
 		prefs.hosts = prefs.hosts.filter((h) => h !== host);
 		if (prefs.use === host) prefs.use = undefined;
+		for (const w of others) {
+			w.closing = true;
+			++w.round;
+			w.host = undefined;
+			w.service = undefined;
+			w.win.close();
+		}
 		savePrefs();
 		const s = held.get(String(host));
 		if (s) (held.delete(String(host)), void letGo(s));
+		releaseUnusedStreams();
 		notifyOpenHosts();
 		notifyPrefs();
 		return { ...publicPrefs(), look: caller.look ?? prefs.look };
@@ -1412,15 +1648,17 @@ function wire(): void {
 		savePrefs();
 		notifyPrefs();
 		if (homeChanged) {
-			const localWindows = [...windows.values()].filter((w) => !w.win.isDestroyed() && w.host === undefined);
+			const localWindows = [...windows.values()].filter((w) => !w.closing && !w.win.isDestroyed() && w.host === undefined);
 			for (const w of localWindows) {
+				browsers.detachWindow(w.win);
+				terminals.closeWindow(w.id);
 				w.service = undefined;
 				w.layout = { ...w.layout, tabs: [], active: 0, noTab: false };
 				setWindowState(w, { status: "starting", host: undefined });
 			}
 			if (oldLocal) await letGo(oldLocal);
 			for (const w of localWindows) {
-				if (!w.win.isDestroyed() && w.host === undefined) void startWindowService(w);
+				if (!w.closing && !w.win.isDestroyed() && w.host === undefined) void startWindowService(w);
 			}
 		}
 		return { ...publicPrefs(), look: caller.look ?? prefs.look };
@@ -1482,34 +1720,73 @@ function wire(): void {
 		refreshAppBadge();
 	});
 	handle("pine:voice-start", async (caller, language?: string) => {
-		listening?.cancel();
+		const prevListening = listening;
+		const prevOwner = voiceOwner;
 		listening = undefined;
+		if (prevListening?.active) {
+			prevListening.cancel();
+		} else if (prevOwner && prevOwner !== caller) {
+			sendTo(prevOwner, "pine:voice", { type: "done" });
+		}
+		const myRound = ++voiceRound;
 		voiceOwner = caller;
 		const lang = typeof language === "string" && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(language) ? language : undefined;
 		let command: string[];
-		if (process.env.PINE_DESKTOP_VOICE) command = [process.env.PINE_DESKTOP_VOICE];
-		else {
-			if (!isMac) throw new Error(NOT_HERE);
-			launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
-			const source = path.join(pineRoot(launch) ?? "", "src", "tui", "voice.swift");
-			if (!fs.existsSync(source)) throw new Error("this pine has no voice input: the source of the voice helper was not found. Update pine.");
-			command = [await buildVoice(path.join(app.getPath("userData"), "voice"), source)];
+		try {
+			if (process.env.PINE_DESKTOP_VOICE) command = [process.env.PINE_DESKTOP_VOICE];
+			else {
+				if (!isMac) throw new Error(NOT_HERE);
+				launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
+				const source = path.join(pineRoot(launch) ?? "", "src", "tui", "voice.swift");
+				if (!fs.existsSync(source)) throw new Error("this pine has no voice input: the source of the voice helper was not found. Update pine.");
+				command = [await buildVoice(path.join(app.getPath("userData"), "voice"), source)];
+			}
+		} catch (e) {
+			if (myRound === voiceRound && voiceOwner === caller) voiceOwner = undefined;
+			throw e;
 		}
-		const mine: Listening = new Listening(command, lang, {
-			ready: () => listening === mine && sendTo(voiceOwner, "pine:voice", { type: "ready" }),
-			partial: (text) => listening === mine && sendTo(voiceOwner, "pine:voice", { type: "partial", text }),
-			model: (state) => listening === mine && sendTo(voiceOwner, "pine:voice", { type: "model", state }),
+		if (myRound !== voiceRound || caller.closing || caller.win.isDestroyed()) return;
+		let finished = false;
+		let mine: Listening | undefined;
+		mine = new Listening(command, lang, {
+			ready: () => {
+				if (myRound !== voiceRound) return;
+				sendTo(caller, "pine:voice", { type: "ready" });
+			},
+			partial: (text) => {
+				if (myRound !== voiceRound) return;
+				sendTo(caller, "pine:voice", { type: "partial", text });
+			},
+			model: (state) => {
+				if (myRound !== voiceRound) return;
+				sendTo(caller, "pine:voice", { type: "model", state });
+			},
 			done: (text, error) => {
-				if (listening !== mine) return;
+				if (myRound !== voiceRound) return;
+				finished = true;
 				listening = undefined;
-				sendTo(voiceOwner, "pine:voice", { type: "done", text, error });
+				if (voiceOwner === caller) voiceOwner = undefined;
+				sendTo(caller, "pine:voice", { type: "done", text, error });
 			},
 		});
-		listening = mine;
+		if (!finished && myRound === voiceRound) listening = mine;
 	});
-	handle("pine:voice-stop", (_caller, cancel?: boolean) => {
-		if (cancel) (listening?.cancel(), (listening = undefined));
-		else listening?.stop();
+	handle("pine:voice-stop", (caller, cancel?: boolean) => {
+		if (caller !== voiceOwner) return;
+		if (cancel) {
+			const active = listening;
+			listening = undefined;
+			active?.cancel();
+			++voiceRound;
+			if (!active) sendTo(caller, "pine:voice", { type: "done" });
+			voiceOwner = undefined;
+		} else if (listening) {
+			listening.stop();
+		} else {
+			++voiceRound;
+			voiceOwner = undefined;
+			sendTo(caller, "pine:voice", { type: "done" });
+		}
 	});
 	handle("pine:term-open", (caller, id: string, cwd?: string, cols?: number, rows?: number) => {
 		if (caller.host) throw new Error("The terminal is a shell on this computer.");
@@ -1556,6 +1833,10 @@ else {
 	app.on("second-instance", (_e, argv) => {
 		const address = argv.find((a) => a.toLowerCase().startsWith("pine:"));
 		if (address) {
+			if (!accessStarted || !appReady) {
+				pendingAddresses.push(address);
+				return;
+			}
 			void pairFromAddress(address).then((paired) => {
 				if (!paired) showWindow(targetWindow() ?? openWindow());
 			});
@@ -1566,6 +1847,7 @@ else {
 			openFolder(dir);
 			return;
 		}
+		if (!appReady) return;
 		showWindow(targetWindow() ?? openWindow());
 	});
 	app.on("open-url", (e, url) => {
@@ -1606,6 +1888,7 @@ else {
 		buildMenu();
 		if (prefs.windows?.length) {
 			let primaryEntry: WindowEntry | undefined;
+			let firstEntry: WindowEntry | undefined;
 			for (const snap of prefs.windows) {
 				const w = openWindow({
 					host: snap.host ?? null,
@@ -1613,9 +1896,12 @@ else {
 					bootMode: "restore",
 					layout: snap.layout,
 					look: snap.look,
+					wantFocus: Boolean(snap.focused),
 				});
+				firstEntry ??= w;
 				if (snap.focused) primaryEntry = w;
 			}
+			primaryEntry ??= firstEntry;
 			if (primaryEntry) showWindow(primaryEntry);
 			persistOpenWindows();
 		} else {
@@ -1651,8 +1937,9 @@ else {
 		prefs.windows = snapshotOpenWindows();
 		const front = targetWindow();
 		if (front) {
-			prefs.use = front.host;
+			prefs.use = validHost(front.host);
 			prefs.bounds = front.bounds;
+			prefs.layout = pickChromeLayout(front.layout);
 		}
 		quitting = true;
 		savePrefs();

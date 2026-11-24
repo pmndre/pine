@@ -129,6 +129,8 @@ export interface AppState {
 	selfUpdate?: boolean;
 	/** This window's saved tabs, active tab, panels, widths and folded side bar state, when kept per window. */
 	windowLayout?: WindowLayout;
+	/** Last-used window chrome (panels, widths and folded side bar state), for seeding a window when `windowLayout` is not set. */
+	chromeLayout?: Pick<WindowLayout, "sidebar" | "aside" | "view" | "order" | "widths" | "folded">;
 	/** Start on the "No tab is open" screen (`NoTab`) rather than loading the daemon's saved tabs. */
 	noTab?: boolean;
 	/** Open this single conversation tab when the window boots (`Move to New Window`, `Open in New Window`). */
@@ -154,7 +156,7 @@ export type UpdateCalls = "installUpdate" | "onUpdate";
  * The agent's real browser laid over the panel (electron/browser-host.ts): only the desktop app's bridge has these
  * calls, and only for this computer's pine. Elsewhere the panel draws the pictures the daemon hands over.
  */
-export type BrowserCalls = "browserShow" | "browserFocus" | "browserPicture";
+export type BrowserCalls = "browserShow" | "browserFocus" | "browserPicture" | "onBrowserPreempted";
 
 /** Multiple desktop windows and per-window layout: only the desktop app's bridge has these calls. */
 export type WindowCalls = "newWindow" | "closeWindow" | "windowLayout" | "onOpenHosts" | "onPrefs";
@@ -166,9 +168,9 @@ export type WindowCalls = "newWindow" | "closeWindow" | "windowLayout" | "onOpen
 export type PageBridge = Omit<Bridge, "state" | "mediaBase" | AccessCalls | UpdateCalls | BrowserCalls | WindowCalls> & Partial<Pick<Bridge, AccessCalls | UpdateCalls | BrowserCalls | WindowCalls>> & {
 	state: () => Promise<AppState>;
 	/**
-	 * Where the daemon's pictures, video and sound are fetched from, set by a bridge whose page
-	 * fetches them from another address than the app's scheme (the mobile app's, on its own origin; the web client's, whose page asks its bridge for the bytes).
-	 * The desktop app and the preview leave it out.
+	 * Where the daemon's pictures, video and sound are fetched from: the desktop app's preload sets it to
+	 * `pine-media://window-<id>` so each window routes media to its own daemon, the mobile app sets it to
+	 * its own origin, and the web client's page asks its bridge for the bytes. Only the preview leaves it out.
 	 */
 	mediaBase?: string;
 	/**

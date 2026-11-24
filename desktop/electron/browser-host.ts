@@ -73,6 +73,13 @@ export interface Bounds {
 	height: number;
 }
 
+export interface BrowserHostOptions {
+	/** Predicate reporting whether `win` currently has window focus. */
+	isFocused?: (win: BrowserWindow) => boolean;
+	/** Called when another focused window takes over the tab previously shown in `win`. */
+	onPreempted?: (win: BrowserWindow) => void;
+}
+
 /**
  * Hosts conversation agent browsers (`WebContentsView` tabs) inside Pine's local desktop windows.
  */
@@ -88,12 +95,18 @@ export class BrowserHost {
 	private n = 0;
 
 	private readonly isFocused: (win: BrowserWindow) => boolean;
+	private readonly onPreempted?: (win: BrowserWindow) => void;
 
 	/**
-	 * @param isFocused Predicate reporting whether `win` currently has window focus.
+	 * @param options Focus predicate or options configuring window focus checks and preemption callbacks.
 	 */
-	constructor(isFocused: (win: BrowserWindow) => boolean = (w) => w.isFocused()) {
-		this.isFocused = isFocused;
+	constructor(options: BrowserHostOptions | ((win: BrowserWindow) => boolean) = {}) {
+		if (typeof options === "function") {
+			this.isFocused = options;
+		} else {
+			this.isFocused = options.isFocused ?? ((w) => w.isFocused());
+			this.onPreempted = options.onPreempted;
+		}
 	}
 
 	/** Where a browser server connects, with the word: for the daemon alone, which hands it to its browser servers. */
@@ -156,8 +169,9 @@ export class BrowserHost {
 		for (const [otherWin, otherShown] of this.shownByWindow) {
 			if (otherWin === win || otherShown.view !== tab.view) continue;
 			if (this.isFocused(win) && !this.isFocused(otherWin)) {
-				otherWin.contentView.removeChildView(tab.view);
+				if (!otherWin.isDestroyed()) otherWin.contentView.removeChildView(tab.view);
 				this.shownByWindow.delete(otherWin);
+				this.onPreempted?.(otherWin);
 			} else {
 				return false;
 			}

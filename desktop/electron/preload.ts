@@ -5,6 +5,8 @@ import type { AccessChange, AccessState } from "./access/control.ts";
 
 /** Persisted per-window tabs, active tab, panel visibility, widths and folded side bar state. */
 export interface WindowLayout {
+	/** Environment this snapshot belongs to (`""` for this computer, or the SSH `host` string). */
+	host?: string;
 	/** Open conversation tabs in this window, in tab-bar order. */
 	tabs: Array<{ agent: string; session: string }>;
 	/** Active index within `tabs`. */
@@ -109,6 +111,8 @@ const bridge = {
 	browserFocus: () => ipcRenderer.invoke("pine:browser-focus") as Promise<void>,
 	/** A still picture of the page laid over the panel (a data: address), for while something of the app's own covers that place. */
 	browserPicture: () => ipcRenderer.invoke("pine:browser-picture") as Promise<string | undefined>,
+	/** Fires when another focused window takes over the agent browser tab shown in this window. */
+	onBrowserPreempted: on("pine:browser-preempted") as (fn: () => void) => () => void,
 	/** Browser access (Settings > Browser access): its state, as access/control.ts gives it. */
 	access: () => ipcRenderer.invoke("pine:access") as Promise<AccessState>,
 	/** Turns it on or off, names the service's address (empty: the official one), sets open at login. What comes back is the state now. */

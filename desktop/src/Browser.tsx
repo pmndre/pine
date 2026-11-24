@@ -85,6 +85,11 @@ export function BrowserView({ tab }: BrowserTabProps) {
 	useEffect(() => {
 		if (s.focused) setNoPage(false);
 	}, [s.focused]);
+
+	useEffect(() => {
+		const off = bridge?.onBrowserPreempted?.(() => setNoPage(true));
+		return () => void (typeof off === "function" && off());
+	}, []);
 	/** What the empty view offers: the ports of the conversation's running programs, and what the agent opened that is not one of those. */
 	const running = tab.programs.flatMap((p) => p.ports.map((port) => ({ port, command: p.command })));
 	const visited = (state?.visited ?? []).filter((url) => !running.some((r) => new RegExp(`^https?://(localhost|127\\.0\\.0\\.1):${r.port}/?$`).test(url)));
@@ -402,7 +407,6 @@ function HostedPage({ room, index, title, onRefused }: { room: string; index: nu
 		const show = bridge!.browserShow!;
 		let over = false;
 		let last = "";
-		let checkedAt = 0;
 		let misses = 0;
 		let frame = 0;
 		let timer: number | undefined;
@@ -415,11 +419,9 @@ function HostedPage({ room, index, title, onRefused }: { room: string; index: nu
 				const box = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
 				const away = box.width < 1 || box.height < 1 || covered(el, r);
 				const now = away ? "away" : `${index} ${box.x} ${box.y} ${box.width} ${box.height}`;
-				const recheck = !store.focused && !away && performance.now() - checkedAt >= 120;
-				if (now !== last || recheck) {
+				if (now !== last) {
 					const was = last;
 					last = now;
-					checkedAt = performance.now();
 					if (away) {
 						if (was && was !== "away") {
 							const picture = await bridge!.browserPicture?.().catch(() => undefined);
@@ -493,9 +495,7 @@ export function BrowserAside({ tab }: BrowserTabProps) {
 			slot="browser-aside"
 			title="Browser"
 			sheet={sheet}
-			widthKey={ASIDE_KEY}
-			defaultWidth={560}
-			initialWidth={store.panelWidth("aside", ASIDE_KEY, 560)}
+			defaultWidth={store.panelWidth("aside", ASIDE_KEY, 560)}
 			barClassName="pl-3 text-sm font-medium"
 			onClose={() => void store.command("browser")}
 			bar={

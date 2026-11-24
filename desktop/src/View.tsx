@@ -323,9 +323,7 @@ export function ViewAside() {
 			slot="view-aside"
 			title="View"
 			sheet={sheet}
-			widthKey={VIEW_KEY}
-			defaultWidth={560}
-			initialWidth={store.panelWidth("view", VIEW_KEY, 560)}
+			defaultWidth={store.panelWidth("view", VIEW_KEY, 560)}
 			barClassName="pl-3 text-sm font-medium"
 			onClose={() => void store.command("view")}
 			bar={

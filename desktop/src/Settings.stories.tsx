@@ -403,7 +403,7 @@ export const AccessNotOfferedWithoutLocal: Story = {
 	play: async ({ canvasElement }) => await generalInstead(canvasElement),
 };
 
-/** The desktop app on another machine's pine: Browser access is this computer's door, so it is not offered there. */
+/** A desktop window on another machine's pine: Browser access is this computer's door, so it is not offered there. */
 export const AccessNotOfferedOnAnotherMachine: Story = {
 	args: { section: "access" },
 	render: Environments.render,

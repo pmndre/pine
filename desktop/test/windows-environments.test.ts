@@ -11,6 +11,7 @@ import { after, before, test } from "node:test";
 import type { ElectronApplication, Page } from "playwright-core";
 import { mockMsg, startMock } from "../../baseline/tests/mock.mjs";
 import { clickMenuItem, focusWindow, launchApp, openNewWindow, waitClosed, windowTitle } from "./support/app.ts";
+import { daemonGone } from "./support/daemon.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -32,20 +33,6 @@ const daemonOf = (dir: string) => ({
 	port: [...fs.readFileSync(path.join(dir, "data", "pine.log"), "utf8").matchAll(/http listening on 127\.0\.0\.1:(\d+)/g)].at(-1)![1],
 	token: fs.readFileSync(path.join(dir, "data", "http-token"), "utf8").trim(),
 });
-
-async function daemonGone(port: string, dir: string): Promise<boolean> {
-	const token = fs.readFileSync(path.join(dir, "data", "http-token"), "utf8").trim();
-	const deadline = Date.now() + 15_000;
-	while (Date.now() < deadline) {
-		const alive = await fetch(`http://127.0.0.1:${port}/health`, {
-			headers: { authorization: `Bearer ${token}` },
-			signal: AbortSignal.timeout(1000),
-		}).then((r) => r.ok, () => false);
-		if (!alive) return true;
-		await new Promise((r) => setTimeout(r, 100));
-	}
-	return false;
-}
 
 function initGitFolder(prefix: string, name: string): string {
 	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
@@ -372,7 +359,16 @@ test("Settings > Environments marks an SSH host open in another window and asks 
 
 	assert.equal(await daemonGone(farPort, far), true);
 	assert.deepEqual((await page.evaluate(() => (window as any).pine.state())).prefs.hosts, []);
+	assert.deepEqual((await page.evaluate(() => (window as any).pine.state())).openHosts, []);
 	await localWin2.waitForFunction(() => (window as any).pine.state().then((s: any) => s.prefs.hosts.length === 0));
+
+	const localWin3 = await openNewWindow(app, () => clickMenuItem(app, "File", "New Window"));
+	await localWin3.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
+	await localWin3.waitForFunction(() => (window as any).pine.state().then((s: any) => !s.state.host && s.state.status === "ready"), undefined, { timeout: 20_000 });
+	assert.equal(await localWin3.evaluate(() => (window as any).pine.state().then((s: any) => s.state.host ?? null)), null);
+	await focusWindow(app, localWin3);
+	await clickMenuItem(app, "File", "Close Window");
+	await waitClosed(localWin3);
 
 	await focusWindow(app, localWin2);
 	await clickMenuItem(app, "File", "Close Window");

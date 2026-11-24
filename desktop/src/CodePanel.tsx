@@ -613,9 +613,7 @@ export function CodePanel({ tab }: { tab: Tab }) {
 			slot="code-panel"
 			title="Side panel"
 			sheet={sheet}
-			widthKey={CODE_KEY}
-			defaultWidth={520}
-			initialWidth={store.panelWidth("code", CODE_KEY, 520)}
+			defaultWidth={store.panelWidth("code", CODE_KEY, 520)}
 			onClose={() => void store.command("code")}
 			bar={
 				<>

@@ -8,11 +8,11 @@ export const ESCAPE_KEEPERS = ".cm-editor, input, textarea, [contenteditable], [
 
 /**
  * Something shown beside a conversation (the side panel, the browser's aside): a bar on top and a
- * body under it. Where the window has room it is a stock resizable column, as wide as the owner
- * last left it (`widthKey`, written by the panel group's owner); where it has none (`sheet`) it is
- * a stock sheet over the conversation, from the right, and putting the sheet away is `onClose`.
+ * body under it. Where the window has room it is a stock resizable column, mounted at `defaultWidth`
+ * (kept by the panel group's owner); where it has none (`sheet`) it is a stock sheet over the
+ * conversation, from the right, and putting the sheet away is `onClose`.
  */
-export function SideSheet({ id, slot, title, sheet, widthKey, defaultWidth, initialWidth, minSize = 320, bar, barClassName, onClose, children }: {
+export function SideSheet({ id, slot, title, sheet, defaultWidth, minSize = 320, bar, barClassName, onClose, children }: {
 	/** The column's id in the panel group, by which its width is kept. */
 	id: string;
 	/** The frame's `data-slot`. */
@@ -20,10 +20,7 @@ export function SideSheet({ id, slot, title, sheet, widthKey, defaultWidth, init
 	/** Its name, said to a screen reader when it is a sheet, and in the handle's tooltip. */
 	title: string;
 	sheet: boolean;
-	widthKey: string;
 	defaultWidth: number;
-	/** Per-window width resolved by the caller when widths are stored per window instead of `localStorage`. */
-	initialWidth?: number;
 	minSize?: number;
 	/** What the bar on top holds. */
 	bar: ReactNode;
@@ -31,7 +28,7 @@ export function SideSheet({ id, slot, title, sheet, widthKey, defaultWidth, init
 	onClose: () => void;
 	children: ReactNode;
 }) {
-	const [width] = useState(() => initialWidth ?? (Number(localStorage.getItem(widthKey)) || defaultWidth));
+	const [width] = useState(defaultWidth);
 	const frame = (
 		<div data-slot={slot} className={cn("flex min-w-0 flex-1 flex-col overflow-hidden bg-background", !sheet && "rounded-xl border")}>
 			{/* A sheet as wide as a phone-wide window reaches under the window's buttons at the top left on a Mac. */}

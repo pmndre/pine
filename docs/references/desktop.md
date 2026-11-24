@@ -519,7 +519,7 @@ whenever the window is on another machine or its side bar is hidden.
 
 | Action | What it does |
 |---|---|
-| `⌘N` (`Ctrl+N` off macOS), File > New Window, Dock > New Window, or `New window` in `⌘K` | Opens another window cascaded from the focused one on the same pine. When a window is already open on that pine, the new one starts on **No tab is open**; when none is open on that pine yet, it opens that pine's saved tabs |
+| `⌘N` (`Ctrl+N` off macOS), `/new-window`, File > New Window, Dock > New Window, or `New window` in `⌘K` | Opens another window cascaded from the focused one on the same pine. When a window is already open on that pine, the new one starts on **No tab is open**; when none is open on that pine yet, it opens that pine's saved tabs |
 | `Open in new window` | On any row in Settings > Environments, or in the machine menu at the foot of the side bar and in the title bar (`⌘`-click, `Ctrl`-click, or the row's new-window button): opens a window on that machine without changing the current window |
 | `Move to New Window` | In a conversation tab's right-click menu: closes the tab in this window and opens it in a new window on the same pine, carrying over any unsent draft, attachments and local conversation terminal |
 | `Open in New Window` | In the right-click menu of a conversation in the side bar (or an agent with one conversation): opens that conversation in a separate window on the same pine |
@@ -605,6 +605,7 @@ with Resume and Clear. Its tasks are in the Board tab of the side panel.
 | A terminal | A shell of yours beside each conversation, and ▶ on an answer's shell code blocks to run them in it: see "The terminal" |
 | `/browser` | A command of the app's own, which the terminal UI does not have: the browser at the right of the window (`⇧⌘B`, View > Toggle Browser). See "The browser" |
 | `/view` | A command of the app's own: the view at the right of the window (`⇧⌘O`, View > Toggle View). See "The view" |
+| `/new-window` | A command of the desktop app's own: opens another Pine window (`⌘N`, `Ctrl+N` off macOS, File > New Window). See "Several windows" |
 
 ### A sound in an answer
 
@@ -1100,21 +1101,28 @@ desktop/
 
 - The page asks for something new through `preload.ts` and a handler in `main.ts`, never by
   getting more of the system. A handler checks that the call comes from the app's own page.
-  `src/preview-bridge.ts` implements it too: it returns the `Bridge` type, so a missing method
-  fails `npm run check`. If it needs the daemon, `scripts/preview.ts` routes it under `/__pine/`.
+  `src/preview-bridge.ts` implements `PageBridge` (`src/bridge.ts`), omitting `mediaBase` and the
+  desktop-only calls (`WindowCalls` — `newWindow`, `closeWindow`, `windowLayout`, `onOpenHosts`,
+  `onPrefs` — along with browser access `AccessCalls`, self-update `UpdateCalls` and the embedded
+  browser overlay `BrowserCalls`), so a missing shared method fails `npm run check`. If it needs
+  the daemon, `scripts/preview.ts` routes it under `/__pine/`.
 - The page is also the Android and iOS app's ([mobile.md](mobile.md)): `mobile/src/mobile-bridge.ts`
-  returns the same `Bridge` type, and so does the web client's (`web/src/frame-bridge.ts`,
-  [web.md](web.md)). Four parts of the bridge are optional and only those two give them: `local: false` in `state()` (no machine of its own: the page hides This Mac (This computer
-  off macOS), Use this Mac, Set up pine, the local row of Settings > Environments, the local-only parts of
-  Settings > General and the palette's "Use the pine on this Mac" (each of these names this computer by
-  `computerWord` in `src/machines.ts`: Mac on macOS, computer elsewhere), and never sends `use(undefined)`),
-  `mediaBase` (where pictures, video and sound are fetched, in place of `pine-media://daemon`)
-  `deviceKey` (the client's own SSH key, with Copy and Share in Settings > Environments) and
-  `trustHostKey` (the owner's yes to the host key's fingerprint the page showed). A fifth,
-  `disconnect` (let go of the machine in use and show the list of machines), only the web
-  client gives; without it the page shows no Disconnect. Absent, the
-  page is the desktop's as before. A change of the page is checked in all three: `npm run check`
-  in `desktop/`, in `mobile/` and in `web/`.
+  returns `PageBridge`, and so does the web client's (`web/src/frame-bridge.ts`, [web.md](web.md)).
+  Where pictures, video and sound are fetched is set on `mediaBase`: `preload.ts` sets it to
+  `pine-media://window-<id>` so each desktop window fetches media from its own daemon, the mobile
+  bridge sets its platform's media origin, the web client's bridge sets its own scheme handled
+  over `postMessage` (`page-media.ts`), and only the preview omits `mediaBase` (`MEDIA_BASE` in
+  `src/bridge.ts` then uses `/__pine/media`). Three optional parts of `PageBridge` are given only
+  by the mobile and web bridges: `local: false` in `state()` (no machine of its own: the page
+  hides This Mac (This computer off macOS), Use this Mac, Set up pine, the local row of Settings >
+  Environments, the local-only parts of Settings > General and the palette's "Use the pine on this
+  Mac" (each of these names this computer by `computerWord` in `src/machines.ts`: Mac on macOS,
+  computer elsewhere), and never sends `use(undefined)`), `deviceKey` (the client's own SSH key,
+  with Copy and Share in Settings > Environments) and `trustHostKey` (the owner's yes to the host
+  key's fingerprint the page showed). Another, `disconnect` (let go of the machine in use and show
+  the list of machines), only the web client gives; without it the page shows no Disconnect.
+  Absent, the page is the desktop's as before. A change of the page is checked in all three:
+  `npm run check` in `desktop/`, in `mobile/` and in `web/`.
 - What the daemon can do is added to the control API (`src/http.ts`, `src/owner.ts`) with a
   test there, then to `api.ts`. The app never does a daemon's work itself.
 - Text an answer or a tool produced is drawn through `markdown.tsx` or as plain text, never

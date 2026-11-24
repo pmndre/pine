@@ -111,6 +111,40 @@ export const THREE = 1500;
 const MEDIA_KIND = (name: string): "image" | "video" | "audio" | undefined => (/\.(png|jpe?g|gif|webp)$/i.test(name) ? "image" : /\.(mp4|mov|webm|m4v)$/i.test(name) ? "video" : /\.(wav|mp3|m4a|ogg|flac|aiff?)$/i.test(name) ? "audio" : undefined);
 export const mediaKind = MEDIA_KIND;
 
+function readLocal(key: string): string | null {
+	try {
+		return localStorage.getItem(key);
+	} catch {
+		return null;
+	}
+}
+
+function readFolded(): string[] {
+	try {
+		const parsed = JSON.parse(readLocal("pine.folded") ?? "[]");
+		return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+	} catch {
+		return [];
+	}
+}
+
+function imageMime(name: string): string | undefined {
+	const ext = /\.(png|jpe?g|gif|webp)$/i.exec(name)?.[1].toLowerCase();
+	if (!ext) return undefined;
+	return ext === "jpg" ? "image/jpeg" : `image/${ext}`;
+}
+
+function hydrateAttachmentPreview(a: Attachment): Attachment {
+	const type = imageMime(a.name);
+	if (!type || !a.data) return a;
+	try {
+		const bytes = Uint8Array.from(atob(a.data), (c) => c.charCodeAt(0));
+		return { ...a, preview: URL.createObjectURL(new Blob([bytes], { type })) };
+	} catch {
+		return a;
+	}
+}
+
 /** One tab: a conversation, the work of one task, or the event log. */
 export class Tab extends Model {
 	id = uid();
@@ -338,21 +372,21 @@ export class Store extends Model {
 	private saidLater?: number;
 	/** A conversation that is to open with something looked for in it. */
 	pendingFind?: { key: string; query: string };
-	private readonly hasWindowLayout = typeof bridge.windowLayout === "function";
+	private useWindowLayout = false;
 	private bootLayout?: WindowLayout;
 	/** Per-window pixel widths of the side bar and panels beside a conversation. */
 	widths: { sidebar?: number; code?: number; aside?: number; view?: number } = {};
 	/** Agents whose list of conversations is folded away in the side bar. */
-	folded = new Set<string>(typeof bridge.windowLayout === "function" ? [] : JSON.parse(localStorage.getItem("pine.folded") ?? "[]"));
+	folded = new Set<string>(readFolded());
 	/** Whether the side bar shows as a column in a wide window. Kept like its width, so that it is after a restart as it was left. */
-	sidebar = typeof bridge.windowLayout === "function" ? true : localStorage.getItem("pine.sidebar") !== "hidden";
+	sidebar = readLocal("pine.sidebar") !== "hidden";
 	/** Whether the side panel is open. Kept by the daemon with the tabs, for the next start. */
 	code = false;
 	codeView: CodeView = "files";
 	/** Whether the browser's aside is open: a matter of this window alone, kept like the side bar. */
-	aside = typeof bridge.windowLayout === "function" ? false : localStorage.getItem("pine.aside") === "shown";
+	aside = readLocal("pine.aside") === "shown";
 	/** Whether the view's panel is open: kept like the aside. */
-	view_ = typeof bridge.windowLayout === "function" ? false : localStorage.getItem("pine.view") === "shown";
+	view_ = readLocal("pine.view") === "shown";
 	/** Whether this page can run a view at all (`AppState.views`): the desktop app's can, the others' cannot. */
 	viewsHere = false;
 	/** The view pine has in force (`ui.view`), the ones in its folder, and the one pine.json names; no view in force: no panel, no button. */
@@ -461,8 +495,13 @@ export class Store extends Model {
 			this.touch();
 		});
 		bridge.onPrefs?.((prefs: Prefs) => {
+			const prevConfiguredHome = this.prefs.home;
 			this.prefs = prefs;
 			this.home = prefs.home;
+			if (!this.remote && prefs.home !== prevConfiguredHome) {
+				this.serviceHome = undefined;
+				this.forgetPine();
+			}
 			this.touch();
 		});
 		const first = await bridge.state();
@@ -473,14 +512,24 @@ export class Store extends Model {
 		this.bootNoTab = first.noTab === true;
 		this.bootTab = first.initialTab;
 		this.bootDraft = first.initialDraft;
+		if (first?.prefs && typeof bridge.windowLayout === "function") {
+			this.useWindowLayout = true;
+			this.folded = new Set();
+			this.sidebar = true;
+			this.aside = false;
+			this.view_ = false;
+		}
+		const layout = first.windowLayout ?? first.chromeLayout;
+		if (layout) {
+			this.folded = new Set(layout.folded);
+			this.sidebar = layout.sidebar;
+			this.aside = layout.aside;
+			this.view_ = layout.view;
+			if (layout.order?.length) this.order = [...layout.order];
+			this.widths = { ...layout.widths };
+		}
 		if (first.windowLayout) {
-			this.folded = new Set(first.windowLayout.folded);
-			this.sidebar = first.windowLayout.sidebar;
 			this.code = first.windowLayout.code;
-			this.aside = first.windowLayout.aside;
-			this.view_ = first.windowLayout.view;
-			if (first.windowLayout.order?.length) this.order = [...first.windowLayout.order];
-			this.widths = { ...first.windowLayout.widths };
 			this.bootLayout = first.windowLayout;
 		}
 		// The theme the window had last, until pine says which one is in force.
@@ -701,11 +750,12 @@ export class Store extends Model {
 		const was = this.service.status;
 		const prevHome = this.serviceHome;
 		if (s.status === "ready") this.serviceHome = s.home;
-		else if (s.host !== this.service.host) this.serviceHome = undefined;
+		else if (s.host !== this.service.host || (s.status === "error" && s.kind === "no-home")) this.serviceHome = undefined;
 		const switchedHome = s.status === "ready" && prevHome !== undefined && s.home !== prevHome;
+		const lostHome = s.status === "error" && s.kind === "no-home" && (this.agents.length > 0 || this.opened);
 		// Another pine than before (another machine or another local home was picked): nothing of the last one is kept.
-		const moved = s.host !== this.service.host || switchedHome || s.status !== was;
-		if (s.host !== this.service.host || switchedHome) this.forgetPine();
+		const moved = s.host !== this.service.host || switchedHome || lostHome || s.status !== was;
+		if (s.host !== this.service.host || switchedHome || lostHome) this.forgetPine();
 		let ended = pairingEnded(this.service, s);
 		// Ended by the owner's Cancel: neither a failure to say nor a pairing to welcome.
 		if (ended && this.pairCancelled) {
@@ -878,6 +928,7 @@ export class Store extends Model {
 		this.agents = [];
 		this.tabs = [];
 		this.active = undefined;
+		this.opened = false;
 		this.conversations = new Map();
 		this.taints = new Map();
 		this.sessionModes = new Map();
@@ -1020,7 +1071,12 @@ export class Store extends Model {
 			this.tabs = [];
 			this.active = undefined;
 			this.opened = false;
-			if (bootDraft) this.drafts.set(`${bootTab.agent}:${bootTab.session}`, bootDraft);
+			if (bootDraft) {
+				this.drafts.set(`${bootTab.agent}:${bootTab.session}`, {
+					draft: bootDraft.draft,
+					attachments: bootDraft.attachments.map(hydrateAttachmentPreview),
+				});
+			}
 			this.restoring = true;
 			try {
 				await this.openTab(bootTab.agent, bootTab.session, false, false);
@@ -1234,20 +1290,21 @@ export class Store extends Model {
 
 	/** Pixel width of a resizable panel for this window, falling back to `localStorage` outside desktop windows. */
 	panelWidth(which: "sidebar" | "code" | "aside" | "view", key: string, defaultWidth: number): number {
-		if (this.hasWindowLayout) return this.widths[which] ?? defaultWidth;
-		return Number(localStorage.getItem(key)) || defaultWidth;
+		if (this.useWindowLayout) return this.widths[which] ?? defaultWidth;
+		return Number(readLocal(key)) || defaultWidth;
 	}
 
 	/** Records a user-resized panel width for this window without writing shared `localStorage` across windows. */
 	setPanelWidth(which: "sidebar" | "code" | "aside" | "view", key: string, px: number): void {
 		this.widths[which] = px;
-		if (this.hasWindowLayout) this.syncWindowLayout();
+		if (this.useWindowLayout) this.syncWindowLayout();
 		else localStorage.setItem(key, String(px));
 	}
 
 	private snapshotLayout(): WindowLayout {
 		const chats = this.tabs.filter((t) => t.kind === "chat");
 		return {
+			host: this.service.host ?? "",
 			tabs: chats.map((t) => ({ agent: t.agent, session: t.session })),
 			active: Math.max(0, chats.indexOf(this.active!)),
 			noTab: this.opened && chats.length === 0,
@@ -1262,11 +1319,11 @@ export class Store extends Model {
 	}
 
 	private syncWindowLayout(): void {
-		if (this.hasWindowLayout && !this.restoring) void bridge.windowLayout!(this.snapshotLayout()).catch(() => {});
+		if (this.useWindowLayout && !this.restoring) void Promise.resolve(bridge.windowLayout?.(this.snapshotLayout())).catch(() => {});
 	}
 
 	private saveFolded(): void {
-		if (this.hasWindowLayout) this.syncWindowLayout();
+		if (this.useWindowLayout) this.syncWindowLayout();
 		else localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
 	}
 
@@ -1566,6 +1623,7 @@ export class Store extends Model {
 		}
 		if (!filled) return;
 		await this.fill(tab);
+		void this.pending();
 		void this.refreshConversations(agent);
 	}
 
@@ -1849,11 +1907,13 @@ export class Store extends Model {
 			return true;
 		});
 		if (!opened || !this.tabs.includes(tab)) return;
+		const foreign = [...tab.approvals.values()].filter((item) => this.tabFor(item.req) !== tab).map((item) => item.req);
 		const before = this.tabs;
 		this.tabs = before.filter((t) => t !== tab);
+		const rehoming = this.tabs.length > 0 ? new Set(foreign.map((r) => r.id)) : undefined;
 		this.drafts.delete(tab.key);
 		for (const id of tab.approvals.keys()) {
-			this.asked.delete(id);
+			if (!rehoming?.has(id)) this.asked.delete(id);
 			if (this.asking === id) this.asking = undefined;
 		}
 		tab.approvals.clear();
@@ -1872,6 +1932,11 @@ export class Store extends Model {
 			this.saveTabs();
 			this.touch();
 			this.badge();
+		}
+		if (this.tabs.length > 0) {
+			for (const req of foreign) {
+				if (this.agent(req.agent)) void this.holderFor(req).then((to) => to && this.takeAsk(to, req, false));
+			}
 		}
 		void this.refreshConversations(tab.agent);
 	}
@@ -2553,7 +2618,7 @@ export class Store extends Model {
 	showSidebar(open: boolean): void {
 		if (open === this.sidebar) return;
 		this.sidebar = open;
-		if (this.hasWindowLayout) this.syncWindowLayout();
+		if (this.useWindowLayout) this.syncWindowLayout();
 		else localStorage.setItem("pine.sidebar", open ? "shown" : "hidden");
 		this.touch();
 	}
@@ -2590,7 +2655,7 @@ export class Store extends Model {
 		} else {
 			if (which === "view") this.view_ = true;
 			else this.aside = true;
-			if (this.hasWindowLayout) this.syncWindowLayout();
+			if (this.useWindowLayout) this.syncWindowLayout();
 			else localStorage.setItem(`pine.${which}`, "shown");
 		}
 	}
@@ -2604,7 +2669,7 @@ export class Store extends Model {
 		} else {
 			if (which === "view") this.view_ = false;
 			else this.aside = false;
-			if (this.hasWindowLayout) this.syncWindowLayout();
+			if (this.useWindowLayout) this.syncWindowLayout();
 			else localStorage.setItem(`pine.${which}`, "hidden");
 		}
 	}
@@ -2702,7 +2767,7 @@ export class Store extends Model {
 				return dir ? this.openFolder(dir) : undefined;
 			}
 			case "close":
-				if (!this.opened || !this.tabs.length) return void bridge.closeWindow?.();
+				if (this.service.status !== "ready" || !this.agents.length || !this.opened || !this.tabs.length) return void bridge.closeWindow?.();
 				return tab ? this.closeTab(tab) : void bridge.closeWindow?.();
 			case "next-tab":
 				return this.cycle(1);

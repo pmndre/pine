@@ -13,7 +13,6 @@ const meta = {
 		slot: "story-panel",
 		title: "Browser",
 		sheet: false,
-		widthKey: "pine.story.width",
 		defaultWidth: 360,
 		barClassName: "pl-3 text-sm font-medium",
 		onClose: () => {},
@@ -43,6 +42,12 @@ export const Column: Story = {
 			</ResizablePanelGroup>
 		</div>
 	),
+};
+
+/** Beside the conversation at a wider saved width. */
+export const WideColumn: Story = {
+	render: Column.render,
+	args: { defaultWidth: 520 },
 };
 
 /** Over the conversation, in a window without room for a column. */
