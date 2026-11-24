@@ -631,6 +631,9 @@ function MachineMenuContent({ side, align, close }: { side: "top" | "bottom"; al
 				onClick={(e) => {
 					if (s.canOpenWindow && (e.metaKey || e.ctrlKey)) {
 						openNewRef.current = true;
+						queueMicrotask(() => {
+							openNewRef.current = false;
+						});
 						void s.openMachineWindow(host);
 					}
 				}}

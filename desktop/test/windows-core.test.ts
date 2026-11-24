@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import type { ElectronApplication, Page } from "playwright-core";
-import { startMock } from "../../baseline/tests/mock.mjs";
+import { mockMsg, startMock } from "../../baseline/tests/mock.mjs";
 import { sandboxMissing } from "../../src/security.ts";
 import { allWindowBounds, clickMenu, launchApp, waitForWindow, windowCount } from "./support/app.ts";
 
@@ -304,9 +304,30 @@ test("shared SSE stream fans out live events without duplicate notifications or 
 	await win2.locator("[data-slot=no-tab]").getByRole("button", { name: /Open main/i }).click();
 	await win2.waitForSelector("[data-slot=tab][data-active]");
 
-	// Clear quiet notification log and track badge updates.
-	await app.evaluate(() => {
+	// Clear quiet notification log and spy on OS badge updates.
+	await app.evaluate(({ app: electronApp, BrowserWindow }: any) => {
 		(globalThis as any).quiet.notified = [];
+		const badges: number[] = ((globalThis as any).__badgeSpy = []);
+		if (process.platform === "darwin" && electronApp.dock) {
+			const orig = electronApp.dock.setBadge.bind(electronApp.dock);
+			electronApp.dock.setBadge = (text: string) => {
+				badges.push(Number(text) || 0);
+				return orig(text);
+			};
+		} else if (process.platform === "win32") {
+			const orig = BrowserWindow.prototype.setOverlayIcon;
+			BrowserWindow.prototype.setOverlayIcon = function (this: any, overlay: any, desc: string) {
+				const m = /^(\d+)/.exec(String(desc ?? ""));
+				badges.push(overlay && m ? Number(m[1]) : 0);
+				return orig.call(this, overlay, desc);
+			};
+		} else {
+			const orig = electronApp.setBadgeCount.bind(electronApp);
+			electronApp.setBadgeCount = (count: number) => {
+				badges.push(Number(count) || 0);
+				return orig(count);
+			};
+		}
 	});
 
 	// Send a prompt in win1 on main:main: both win1 and win2 receive the live echoed answer through the shared SSE stream.
@@ -319,5 +340,31 @@ test("shared SSE stream fans out live events without duplicate notifications or 
 	// At most one desktop notification was emitted (never duplicated by two windows viewing the same env).
 	const notified = await app.evaluate(() => (globalThis as any).quiet.notified);
 	assert.ok(notified.length <= 1, `expected at most 1 notification, got ${JSON.stringify(notified)}`);
+
+	// Trigger a real bash approval on main while both windows view main:main.
+	// Approval must route cleanly and aggregated OS badge count must be 1 (never double-counted as 2).
+	await app.evaluate(() => {
+		(globalThis as any).__badgeSpy.length = 0;
+	});
+	await win1.fill(
+		"[data-slot=composer] textarea",
+		mockMsg([{ tools: [{ name: "bash", args: { command: "echo badge-check" } }] }, { text: "badge check done" }], "run bash "),
+	);
+	await win1.locator("[data-slot=composer] textarea").press("Enter");
+	await win1.waitForSelector("[data-slot=dialog-content][data-tone=warn]", { timeout: 15_000 });
+	assert.match((await win1.textContent("[data-slot=dialog-content][data-tone=warn]")) ?? "", /Approval needed[\s\S]*echo badge-check/);
+	await new Promise((r) => setTimeout(r, 200));
+
+	const badgesWhileOpen: number[] = await app.evaluate(() => [...((globalThis as any).__badgeSpy ?? [])]);
+	assert.ok(badgesWhileOpen.includes(1), `expected badge count 1 while approval is open, got ${JSON.stringify(badgesWhileOpen)}`);
+	assert.equal(Math.max(0, ...badgesWhileOpen), 1, `expected deduplicated badge count 1 (not 2), got ${JSON.stringify(badgesWhileOpen)}`);
+
+	// Approve from win1; both windows finish the turn and badge resets to 0.
+	await win1.locator("[data-slot=dialog-content][data-tone=warn]").getByRole("button", { name: /^Allow/ }).click();
+	await win1.waitForSelector("[data-slot=markdown] >> text=badge check done", { timeout: 15_000 });
+	await win2.waitForSelector("[data-slot=markdown] >> text=badge check done", { timeout: 15_000 });
+	await new Promise((r) => setTimeout(r, 200));
+	const badgesAfter: number[] = await app.evaluate(() => [...((globalThis as any).__badgeSpy ?? [])]);
+	assert.equal(badgesAfter.at(-1), 0, `expected badge to reset to 0 after approval decided, got ${JSON.stringify(badgesAfter)}`);
 });
 

@@ -82,6 +82,12 @@ export interface WindowSnapshot {
 	layout?: WindowLayout;
 }
 
+/** Maximum number of open/persisted desktop windows. */
+export const MAX_WINDOWS = 20;
+
+const MAX_DRAFT_ATTACHMENTS = 50;
+const MAX_DRAFT_QUOTES = 20;
+
 const VALID_BESIDE = new Set(["code", "aside", "view"]);
 
 /** Sanitizes a persisted or IPC-supplied pixel width. */
@@ -223,9 +229,90 @@ export function cleanWindows(raw: unknown, hosts: string[]): WindowSnapshot[] {
 			layout = { ...layout, host: undefined, tabs: [], active: 0, noTab: false };
 		}
 		out.push({ ...(bounds ? { bounds } : {}), ...(host ? { host } : {}), ...(layout ? { layout } : {}) });
-		if (out.length >= 20) break;
+		if (out.length >= MAX_WINDOWS) break;
 	}
 	return out;
+}
+
+/** Sanitizes a single attachment carried in a transferred draft. */
+function cleanAttachment(raw: unknown): WindowAttachment | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const a = raw as Record<string, unknown>;
+	const size = Number(a.size);
+	if (typeof a.name !== "string" || typeof a.data !== "string" || !Number.isFinite(size) || size < 0) return undefined;
+	return {
+		name: a.name,
+		size: Math.round(size),
+		data: a.data,
+		...(typeof a.preview === "string" ? { preview: a.preview } : {}),
+	};
+}
+
+/** Sanitizes a single quote carried in a transferred draft. */
+function cleanQuote(raw: unknown): WindowQuote | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const q = raw as Record<string, unknown>;
+	if (typeof q.id !== "number" || !Number.isFinite(q.id) || typeof q.tab !== "string" || typeof q.text !== "string") return undefined;
+	const src = q.source;
+	let source: WindowQuote["source"] | undefined;
+	if (src === "letter" || src === "welcome") {
+		source = src;
+	} else if (src && typeof src === "object") {
+		const s = src as Record<string, unknown>;
+		if (Number.isSafeInteger(s.task) && (s.task as number) > 0 && (s.part === "prompt" || s.part === "answer")) {
+			source = { task: s.task as number, part: s.part };
+		}
+	}
+	if (!source) return undefined;
+	return { id: q.id, tab: q.tab, text: q.text, source };
+}
+
+/** Sanitizes a transferred unsent draft from IPC. */
+function cleanDraft(raw: unknown): WindowDraft | undefined {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+	const d = raw as Record<string, unknown>;
+	if (typeof d.draft !== "string") return undefined;
+	const attachments: WindowAttachment[] = [];
+	if (Array.isArray(d.attachments)) {
+		for (const item of d.attachments) {
+			const clean = cleanAttachment(item);
+			if (clean) attachments.push(clean);
+			if (attachments.length >= MAX_DRAFT_ATTACHMENTS) break;
+		}
+	}
+	let quotes: WindowQuote[] | undefined;
+	if (Array.isArray(d.quotes)) {
+		quotes = [];
+		for (const item of d.quotes) {
+			const clean = cleanQuote(item);
+			if (clean) quotes.push(clean);
+			if (quotes.length >= MAX_DRAFT_QUOTES) break;
+		}
+	}
+	return {
+		draft: d.draft,
+		attachments,
+		...(quotes !== undefined ? { quotes } : {}),
+	};
+}
+
+/** Sanitizes `NewWindowOptions` supplied over IPC (`pine:new-window`). */
+export function cleanNewWindowOptions(raw: unknown): NewWindowOptions | undefined {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+	const r = raw as Record<string, unknown>;
+	const out: NewWindowOptions = {};
+	if (r.host === null) out.host = null;
+	else if (typeof r.host === "string" && r.host) out.host = r.host;
+	if (r.tab && typeof r.tab === "object" && !Array.isArray(r.tab)) {
+		const t = r.tab as Record<string, unknown>;
+		const agent = typeof t.agent === "string" ? t.agent : "";
+		const session = typeof t.session === "string" ? t.session : "";
+		if (agent && session) out.tab = { agent, session };
+	}
+	if (typeof r.moveFrom === "boolean") out.moveFrom = r.moveFrom;
+	const draft = cleanDraft(r.draft);
+	if (draft) out.draft = draft;
+	return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** Offset in pixels for cascading a new window from an existing window. */

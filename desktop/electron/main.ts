@@ -23,7 +23,7 @@ import { shellKeeps, Terminals } from "./terminal.ts";
 import { makeUpdater } from "./updater.ts";
 import { ahead, DOWNLOADS, LATEST, lookForUpdate, type Update } from "./updates.ts";
 import { cleanLook, type Look } from "../src/theme.ts";
-import { cascadeBounds, chromeOf, cleanBounds, cleanChromeLayout, cleanWindowLayout, cleanWindows, type ChromeLayout, type NewWindowOptions, type WindowBounds, type WindowDraft, type WindowLayout, type WindowSnapshot, type WindowTabRef } from "./window-layout.ts";
+import { cascadeBounds, chromeOf, cleanBounds, cleanChromeLayout, cleanNewWindowOptions, cleanWindowLayout, cleanWindows, MAX_WINDOWS, type ChromeLayout, type NewWindowOptions, type WindowBounds, type WindowDraft, type WindowLayout, type WindowSnapshot, type WindowTabRef } from "./window-layout.ts";
 
 // `pine` in a terminal, from an AppImage (command.ts): the link in the PATH leads to the AppImage
 // itself, whose folder under /tmp is another one at every start, and its runtime says by which name
@@ -356,6 +356,8 @@ interface ServiceStream {
 	connected: boolean;
 	/** Unique open approval/question IDs on this environment, for deduplicated Dock/taskbar badges. */
 	approvals: Set<string>;
+	/** Bounded map of task ID -> "agent:session" populated from `agent/<agent>/started` events. */
+	taskToKey: Map<number, string>;
 }
 
 /** One shared SSE subscriber per active environment (`""` for local, `host` for remote). */
@@ -387,6 +389,8 @@ async function startService(w: ManagedWindow): Promise<void> {
  * while another is shown. They are let go of when the app quits.
  */
 const held = new Map<string, Service>();
+/** In-flight connection attempts keyed by `host ?? ""` so concurrent callers share one connection. */
+const connecting = new Map<string, Promise<Service>>();
 
 /** The WSL distribution for a host string, if it names one. */
 const wslOf = (host: string | undefined) => (host?.startsWith("wsl:") ? host.slice(4) : undefined);
@@ -403,20 +407,31 @@ const forDaemon = (host: string | undefined, p: string) => {
  * computer's, also while a window shows another machine's pine.
  */
 async function hold(host: string | undefined): Promise<Service> {
-	let s = held.get(host ?? "");
-	// One held from before answers still: it is used again at once. One that does not is let go of and made anew.
-	if (s && !(await answers(s))) {
-		if (held.get(host ?? "") === s) held.delete(host ?? "");
-		void letGo(s);
-		s = undefined;
+	const key = host ?? "";
+	const inflight = connecting.get(key);
+	if (inflight) return inflight;
+	const work = (async () => {
+		let s = held.get(key);
+		// One held from before answers still: it is used again at once. One that does not is let go of and made anew.
+		if (s && !(await answers(s))) {
+			if (held.get(key) === s) held.delete(key);
+			void letGo(s);
+			s = undefined;
+		}
+		if (s) return s;
+		const made = host ? await connectSsh(host, await loginEnv()) : await connect((launch = await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined)), { home: prefs.home ?? process.env.PINE_HOME, keep: prefs.keepRunning });
+		// Asked for twice (Try again while it connected, or browser access at the same time): the one that came first is kept.
+		const first = held.get(key);
+		if (first) void letGo(made);
+		else held.set(key, made);
+		return first ?? made;
+	})();
+	connecting.set(key, work);
+	try {
+		return await work;
+	} finally {
+		if (connecting.get(key) === work) connecting.delete(key);
 	}
-	if (s) return s;
-	const made = host ? await connectSsh(host, await loginEnv()) : await connect((launch = await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined)), { home: prefs.home ?? process.env.PINE_HOME, keep: prefs.keepRunning });
-	// Asked for twice (Try again while it connected, or browser access at the same time): the one that came first is kept.
-	const first = held.get(host ?? "");
-	if (first) void letGo(made);
-	else held.set(host ?? "", made);
-	return first ?? made;
 }
 
 /** Whether a pine still answers: one on another machine may have lost its connection meanwhile. */
@@ -455,7 +470,7 @@ function ensureStream(envKey: string, s: Service): ServiceStream {
 	if (existing && existing.service === s) return existing;
 	existing?.abort.abort();
 	const abort = new AbortController();
-	const entry: ServiceStream = { service: s, abort, connected: false, approvals: new Set() };
+	const entry: ServiceStream = { service: s, abort, connected: false, approvals: new Set(), taskToKey: new Map() };
 	streams.set(envKey, entry);
 	followEvents(s, abort.signal, {
 		batch: (events) => {
@@ -464,24 +479,48 @@ function ensureStream(envKey: string, s: Service): ServiceStream {
 			const perWindow = new Map<ManagedWindow, unknown[]>();
 			for (const ev of events as Array<{ topic?: string; payload?: Record<string, unknown> }>) {
 				const p = ev?.payload ?? {};
-				if (ev?.topic === "approval/requested" && typeof p.id === "string") {
+				const topic = ev?.topic;
+				if (typeof topic === "string" && topic.startsWith("agent/") && topic.endsWith("/started")) {
+					const agentFromTopic = topic.slice("agent/".length, -"/started".length);
+					const agent = typeof p.agent === "string" && p.agent ? p.agent : agentFromTopic;
+					if (agent && typeof p.task === "number" && typeof p.session === "string" && p.session) {
+						entry.taskToKey.delete(p.task);
+						entry.taskToKey.set(p.task, `${agent}:${p.session}`);
+						if (entry.taskToKey.size > 500) {
+							const oldest = entry.taskToKey.keys().next().value;
+							if (oldest !== undefined) entry.taskToKey.delete(oldest);
+						}
+					}
+				}
+				if (topic === "approval/requested" && typeof p.id === "string") {
 					if (!entry.approvals.has(p.id)) {
 						entry.approvals.add(p.id);
 						badgeChanged = true;
 					}
-				} else if (ev?.topic === "approval/decided" && typeof p.id === "string") {
+				} else if (topic === "approval/decided" && typeof p.id === "string") {
 					if (entry.approvals.delete(p.id)) badgeChanged = true;
 				}
 				let recipients: ManagedWindow[];
-				if (ev?.topic === "approval/requested") {
-					const key = typeof p.agent === "string" && typeof p.session === "string" ? `${p.agent}:${p.session}` : "";
-					const holders = key ? targets.filter((w) => w.tabKeys.has(key)) : [];
+				if (topic === "approval/requested") {
+					const key =
+						(typeof p.root === "number" ? entry.taskToKey.get(p.root) : undefined) ??
+						(typeof p.task === "number" ? entry.taskToKey.get(p.task) : undefined) ??
+						(typeof p.agent === "string" && typeof p.session === "string" && p.session ? `${p.agent}:${p.session}` : "");
+					let holders = key ? targets.filter((w) => w.tabKeys.has(key)) : [];
+					if (!holders.length && typeof p.agent === "string" && p.agent) {
+						const prefix = `${p.agent}:`;
+						holders = targets.filter((w) => [...w.tabKeys].some((k) => k.startsWith(prefix)));
+					}
+					if (!holders.length && typeof p.of === "string" && p.of && p.of !== p.agent) {
+						const prefix = `${p.of}:`;
+						holders = targets.filter((w) => [...w.tabKeys].some((k) => k.startsWith(prefix)));
+					}
 					if (holders.length) recipients = holders;
 					else {
 						const primary = primaryWindowForHost(s.host);
 						recipients = primary && primary.service === s ? [primary] : targets.slice(0, 1);
 					}
-				} else if (ev?.topic === "pine/conversation" && p.change === "open") {
+				} else if (topic === "pine/conversation" && p.change === "open") {
 					const key = typeof p.agent === "string" ? `${p.agent}:${typeof p.session === "string" && p.session ? p.session : "main"}` : "";
 					const holders = key ? targets.filter((w) => w.tabKeys.has(key)) : [];
 					if (holders.length) recipients = holders;
@@ -607,9 +646,9 @@ function notifyPaired(name: string): void {
  * owner answers in the app, which a click brings forward. Said whatever the notification preference,
  * as a question that waits for the owner is, but only while the window is not in front: there the toast asks.
  */
-/** Which window should display an incoming Browser access pairing question: focused/primary local window, else focused window. */
+/** Which window should display an incoming Browser access pairing question: focused window, else primary local window. */
 function pairingTarget(): ManagedWindow | undefined {
-	return primaryWindowForHost(undefined) ?? focusedWindow();
+	return focusedWindow() ?? primaryWindowForHost(undefined);
 }
 
 /** Filters an AccessState for a specific window so PairingQuestion only appears in the single target window. */
@@ -619,8 +658,9 @@ function accessForWindow(s: AccessState, w: ManagedWindow): AccessState {
 }
 
 function notifyAsked(request: { name: string; code: string }): void {
-	const anyVisibleFocused = [...windows.values()].some((w) => !w.win.isDestroyed() && w.win.isVisible() && w.win.isFocused());
-	if (!Notification.isSupported() || anyVisibleFocused) return;
+	const target = pairingTarget();
+	const targetVisibleFocused = Boolean(target && !target.win.isDestroyed() && target.win.isVisible() && target.win.isFocused());
+	if (!Notification.isSupported() || targetVisibleFocused) return;
 	const n = new Notification({ title: `${request.name} wants to connect`.slice(0, 80), body: `Allow it in Pine if the device shows ${request.code}.`, silent: false });
 	n.on("click", () => showWindow(pairingTarget()));
 	n.show();
@@ -861,7 +901,7 @@ function createWindow(opts: CreateWindowOptions = {}): ManagedWindow {
 	win.on("close", () => {
 		browsers.detach(win);
 		if (!quitting) {
-			prefs.use = w.host;
+			if (!w.host || prefs.hosts.includes(w.host)) prefs.use = w.host;
 			if (w.bounds) prefs.bounds = w.bounds;
 			if (w.layout) prefs.layout = chromeOf(w.layout);
 			else if (w.chromeLayout) prefs.layout = w.chromeLayout;
@@ -904,6 +944,7 @@ function createWindow(opts: CreateWindowOptions = {}): ManagedWindow {
 
 /** Opens a new window interactively (New Window menu/shortcut/palette, or with explicit host/tab/draft). */
 function openNewWindow(options?: NewWindowOptions, caller?: ManagedWindow): ManagedWindow {
+	if (windows.size >= MAX_WINDOWS) throw new Error(`There are ${MAX_WINDOWS} windows open already: close one first.`);
 	const host = options?.host === null ? undefined : typeof options?.host === "string" ? options.host : (caller?.host ?? prefs.use);
 	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list: add it in Settings > Environments.");
 	const envAlreadyOpen = windowsForHost(host).length > 0;
@@ -1100,7 +1141,7 @@ function buildMenu(): void {
 					accelerator: "CmdOrCtrl+N",
 					click: (_m, bw) => {
 						const from = bw && "webContents" in bw ? byContents.get((bw as BrowserWindow).webContents.id) : focusedWindow();
-						openNewWindow(undefined, from);
+						if (windows.size < MAX_WINDOWS) openNewWindow(undefined, from);
 					},
 				},
 				{ type: "separator" },
@@ -1200,7 +1241,7 @@ function buildMenu(): void {
 	if (isMac)
 		app.dock?.setMenu(
 			Menu.buildFromTemplate([
-				{ label: "New Window", click: () => openNewWindow(undefined, focusedWindow()) },
+				{ label: "New Window", click: () => (windows.size < MAX_WINDOWS ? openNewWindow(undefined, focusedWindow()) : undefined) },
 				{
 					label: "Add a Device…",
 					click: () => {
@@ -1339,8 +1380,8 @@ function wire(): void {
 		return worded(action === "install" ? await install(RESOURCES, env) : action === "remove" ? await remove(RESOURCES, env) : look(RESOURCES, env));
 	});
 	handle("pine:use", (w, host?: string) => useInWindow(w, typeof host === "string" ? host : undefined));
-	handle("pine:new-window", (w, options?: NewWindowOptions) => {
-		openNewWindow(options, w);
+	handle("pine:new-window", (w, raw?: unknown) => {
+		openNewWindow(cleanNewWindowOptions(raw), w);
 	});
 	handle("pine:close-window", (w) => {
 		if (!w.win.isDestroyed()) w.win.close();
@@ -1373,10 +1414,10 @@ function wire(): void {
 		const using = windowsForHost(host);
 		if (using.includes(w)) throw new Error("The app uses this machine now. Use another one first.");
 		if (using.length && !options?.closeWindows) throw new Error("Another window uses this machine now.");
-		for (const other of using) if (!other.win.isDestroyed()) other.win.close();
 		if (prefs.hosts.includes(host)) notePrefs(prefsFile(), `machine ${host} left the list: forgotten in Settings > Environments`);
 		prefs.hosts = prefs.hosts.filter((h) => h !== host);
 		if (prefs.use === host) prefs.use = undefined;
+		for (const other of using) if (!other.win.isDestroyed()) other.win.close();
 		savePrefs();
 		// Its connection ends, and a pine it started there with it.
 		const s = held.get(String(host));
@@ -1530,36 +1571,44 @@ function wire(): void {
 	// Dictating a message. The words are recognised on this computer by the helper the terminal UI
 	// uses too (src/tui/voice.ts): voice.swift on a Mac, voice.cs on Windows, whisper.cpp on Linux.
 	handle("pine:voice-start", async (w, language?: string) => {
+		const prev = listeningWindow;
 		listening?.cancel();
 		listening = undefined;
 		listeningWindow = w;
+		if (prev && prev !== w && !prev.win.isDestroyed()) sendTo(prev, "pine:voice", { type: "done" });
 		const lang = typeof language === "string" && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(language) ? language : undefined;
 		let command: string[];
-		if (process.env.PINE_DESKTOP_VOICE) command = process.env.PINE_DESKTOP_VOICE.startsWith("[") ? (JSON.parse(process.env.PINE_DESKTOP_VOICE) as string[]).map(String) : [process.env.PINE_DESKTOP_VOICE];
-		else {
-			if (!isMac && !isWindows && process.platform !== "linux") throw new Error(NOT_HERE);
-			if (isWindows) {
-				const source = [...(app.isPackaged ? [path.join(process.resourcesPath, "pine")] : []), path.join(APP_ROOT, "..")].map((root) => path.join(root, "src", "tui", "voice.cs")).find((f) => fs.existsSync(f));
-				if (!source) throw new Error("this app has no voice input on Windows: its helper's source was not found. Update the app.");
-				if (!csc()) throw new Error(NO_CSC);
-				command = [buildVoiceWindows(path.join(app.getPath("userData"), "voice"), { source })];
-			} else if (isMac) {
-				launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
-				const source = path.join(pineRoot(launch) ?? "", "src", "tui", "voice.swift");
-				if (!fs.existsSync(source)) throw new Error("this pine has no voice input: the source of the voice helper was not found. Update pine.");
-				command = [await buildVoice(path.join(app.getPath("userData"), "voice"), source)];
-			} else {
-				launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
-				const root = pineRoot(launch) ?? "";
-				const helper = [".js", ".ts"].map((ext) => path.join(root, "src", "tui", `voice-whisper${ext}`)).find((f) => fs.existsSync(f));
-				if (!helper) throw new Error("this pine has no voice input on Linux: its helper was not found. Update pine.");
-				const node = launch.argv.length > 1 ? launch.argv[0] : onPath("node", launch.env);
-				if (!node) throw new Error("voice input on Linux runs on Node, and no node was found on this computer. Install Node 24 or newer from https://nodejs.org, then try again.");
-				const tools = voiceTools("linux", undefined, { node, helper });
-				if (tools.unavailable) throw new Error(tools.unavailable);
-				command = await tools.program();
+		try {
+			if (process.env.PINE_DESKTOP_VOICE) command = process.env.PINE_DESKTOP_VOICE.startsWith("[") ? (JSON.parse(process.env.PINE_DESKTOP_VOICE) as string[]).map(String) : [process.env.PINE_DESKTOP_VOICE];
+			else {
+				if (!isMac && !isWindows && process.platform !== "linux") throw new Error(NOT_HERE);
+				if (isWindows) {
+					const source = [...(app.isPackaged ? [path.join(process.resourcesPath, "pine")] : []), path.join(APP_ROOT, "..")].map((root) => path.join(root, "src", "tui", "voice.cs")).find((f) => fs.existsSync(f));
+					if (!source) throw new Error("this app has no voice input on Windows: its helper's source was not found. Update the app.");
+					if (!csc()) throw new Error(NO_CSC);
+					command = [buildVoiceWindows(path.join(app.getPath("userData"), "voice"), { source })];
+				} else if (isMac) {
+					launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
+					const source = path.join(pineRoot(launch) ?? "", "src", "tui", "voice.swift");
+					if (!fs.existsSync(source)) throw new Error("this pine has no voice input: the source of the voice helper was not found. Update pine.");
+					command = [await buildVoice(path.join(app.getPath("userData"), "voice"), source)];
+				} else {
+					launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
+					const root = pineRoot(launch) ?? "";
+					const helper = [".js", ".ts"].map((ext) => path.join(root, "src", "tui", `voice-whisper${ext}`)).find((f) => fs.existsSync(f));
+					if (!helper) throw new Error("this pine has no voice input on Linux: its helper was not found. Update pine.");
+					const node = launch.argv.length > 1 ? launch.argv[0] : onPath("node", launch.env);
+					if (!node) throw new Error("voice input on Linux runs on Node, and no node was found on this computer. Install Node 24 or newer from https://nodejs.org, then try again.");
+					const tools = voiceTools("linux", undefined, { node, helper });
+					if (tools.unavailable) throw new Error(tools.unavailable);
+					command = await tools.program();
+				}
 			}
+		} catch (e) {
+			if (listeningWindow === w) listeningWindow = undefined;
+			throw e;
 		}
+		if (w.win.isDestroyed() || listeningWindow !== w) return;
 		const mine: Listening = new Listening(command, lang, {
 			ready: () => listening === mine && sendTo(w, "pine:voice", { type: "ready" }),
 			partial: (text) => listening === mine && sendTo(w, "pine:voice", { type: "partial", text }),
@@ -1573,7 +1622,8 @@ function wire(): void {
 		});
 		listening = mine;
 	});
-	handle("pine:voice-stop", (_w, cancel?: boolean) => {
+	handle("pine:voice-stop", (w, cancel?: boolean) => {
+		if (w !== listeningWindow) return;
 		if (cancel) (listening?.cancel(), (listening = undefined), (listeningWindow = undefined));
 		else listening?.stop();
 	});

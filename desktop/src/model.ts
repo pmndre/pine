@@ -624,7 +624,7 @@ export class Store extends Model {
 			}
 		}
 		for (const set of [this.pins, this.folded]) for (const key of [...set]) if (moved(key) !== key) set.delete(key), set.add(moved(key));
-		localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
+		if (typeof bridge.windowLayout !== "function") localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
 		if (this.settingsAgent === from) this.settingsAgent = to;
 		this.saveTabs();
 		this.agents = await this.askAgents().catch(() => this.agents);
@@ -909,6 +909,7 @@ export class Store extends Model {
 
 	/** What the page knew of the pine it used, let go of when it uses another. */
 	private forgetPine(): void {
+		this.opened = false;
 		this.agents = [];
 		this.tabs = [];
 		this.active = undefined;
@@ -1561,7 +1562,7 @@ export class Store extends Model {
 
 	/** Reports this window's tabs and panel layout to the main process (desktop) or directly to the daemon (web/mobile/preview). */
 	private reportLayout(): void {
-		if (this.restoring || !this.opened) return;
+		if (this.restoring || !this.opened || this.service.status !== "ready") return;
 		const chats = this.tabs.filter((t) => t.kind === "chat");
 		const activeIndex = Math.max(0, chats.indexOf(this.active!));
 		if (typeof bridge.windowLayout === "function") {
@@ -1978,7 +1979,11 @@ export class Store extends Model {
 		const done = await this.attempt(() => api.renameGroup(agent, name, to.trim()));
 		if (!done) return;
 		const folded = `${agent}:group:${name}`;
-		if (this.folded.delete(folded)) this.folded.add(`${agent}:group:${done.group}`), localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
+		if (this.folded.delete(folded)) {
+			this.folded.add(`${agent}:group:${done.group}`);
+			if (typeof bridge.windowLayout !== "function") localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
+			this.reportLayout();
+		}
 		for (const [key, value] of this.placed) if (key.startsWith(`${agent}:`) && value === name) this.placed.set(key, done.group);
 		await this.refreshConversations(agent);
 	}
@@ -1994,8 +1999,10 @@ export class Store extends Model {
 		const gone = await this.attempt(() => api.removeGroup(agent, name));
 		if (!gone) return;
 		for (const session of gone.removed) this.dropTabs(agent, session);
-		this.folded.delete(`${agent}:group:${name}`);
-		localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
+		if (this.folded.delete(`${agent}:group:${name}`)) {
+			if (typeof bridge.windowLayout !== "function") localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
+			this.reportLayout();
+		}
 		this.flash(`Removed the group ${name}${gone.removed.length ? ` with ${plural(gone.removed.length, "conversation")}` : ""}.`, "muted", 4000);
 		await this.refreshConversations(agent);
 	}

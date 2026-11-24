@@ -325,6 +325,7 @@ export function ViewAside() {
 			title="View"
 			sheet={sheet}
 			widthKey={VIEW_KEY}
+			savedWidth={s.widthOf("view")}
 			defaultWidth={560}
 			barClassName="pl-3 text-sm font-medium"
 			onClose={() => void store.command("view")}

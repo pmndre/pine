@@ -234,10 +234,10 @@ pine packed into the app; the `pine` of your shell.
 | Theme | The window's colors: one of the themes in the `themes` folder of pine's home, dark ones and light ones. It is pine's setting `ui.theme` (see "Themes" below), so every Pine app on that pine shows it, and the main agent can change it when you ask. A theme file pine cannot read is named under the list, with what is wrong with it |
 | Notifications | A system notification when an agent is done, stops with an error, needs your approval or asks you something while the window is not in front. The words are pine's own ("main is done"), never the agent's |
 
-Closing the window does not quit the app on a Mac: it, and a daemon it started, stay until
-you quit (`⌘Q`). On Linux and Windows closing the window quits the app. On every system the window
-closes with its own button: `⌘W` (`Ctrl+W`) closes a tab, never the window, and the Window menu has
-Minimise and Zoom only. A daemon the app
+Closing a window does not quit the app on a Mac: it, and a daemon it started, stay until
+you quit (`⌘Q`). On Linux and Windows closing the last window quits the app. On every system
+`⌘W` (`Ctrl+W`) closes the active tab, or the window when no tab is open, and `⇧⌘W`
+(`Ctrl+Shift+W`) closes the focused window directly. A daemon the app
 started that stops answering is started again; one it started is stopped by closing its input,
 so that it closes its database before it ends, on every system.
 
