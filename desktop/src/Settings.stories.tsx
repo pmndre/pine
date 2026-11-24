@@ -129,6 +129,19 @@ export const Environments: Story = {
 	render: (args) => {
 		store.prefs = { ...store.prefs, hosts: ["me@build-box", "studio"], use: "me@build-box" };
 		store.service = { status: "ready", mode: "on build-box", started: false, home: "build-box:~/.pine", version: "0.23.0", from: "ssh me@build-box", host: "me@build-box", label: "build-box" };
+		store.openHosts = [];
+		store.connected = true;
+		return <Tab {...args} />;
+	},
+};
+
+/** Multi-window Environments: this window is on this Mac, while another window is open on me@build-box (showing `in another window` and `Open in new window` on every row). */
+export const EnvironmentsMultiWindow: Story = {
+	args: { section: "environments" },
+	render: (args) => {
+		store.prefs = { ...store.prefs, hosts: ["me@build-box", "studio"], use: undefined };
+		store.service = { status: "ready", mode: "safe", started: true, home: "/Users/owner/.pine", version: "0.23.0", from: "checkout" };
+		store.openHosts = ["me@build-box"];
 		store.connected = true;
 		return <Tab {...args} />;
 	},

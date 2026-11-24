@@ -248,24 +248,35 @@ shows it, the main agent can set it (`set_setting ui.theme`), and with another m
 
 ## Environments: the pine of another machine
 
-The app can use the pine of another machine instead of the one on this computer: a server, a
-desktop at home, anything you reach with `ssh`. It uses one pine at a time. The foot of the side
-bar says which (`pine 0.23.0 · started here`, or `pine 0.23.0 · server`): a click on it lists
-This Mac and the machines you added, and Environments… leads to Settings > Environments, where
-machines are added and forgotten. The palette (`⌘K`) has "Use the pine on …" too. In a terminal,
+The app can use the pine of another machine alongside or instead of the one on this computer: a server, a
+desktop at home, anything you reach with `ssh`. Each window chooses its own environment independently, so
+you can keep this computer's pine in one window and one or more SSH machines in other windows at the same
+time — or open several windows on the same pine side by side. The foot of the side
+bar says which pine the window uses (`pine 0.23.0 · started here`, or `pine 0.23.0 · server`): a click on it lists
+This Mac and the machines you added (click to switch this window; `⌘`-click or click the open-in-new-window
+button beside a machine to open it in a new window), and Environments… leads to Settings > Environments, where
+machines are added, opened in new windows, and forgotten. Whenever a window is viewing a remote machine or
+its side bar is collapsed, a clickable environment pill in the title bar shows the machine and opens the same
+menu. Every window's title reflects its active tab and machine (`<tab> — <machine> — Pine` on a remote host,
+`<tab> — Pine` on this computer, or `<machine> — Pine` / `Pine` with no tab open). The palette (`⌘K`) has
+"Use the pine on …" and "New Window" too. In a terminal,
 `pine --ssh <host>` does the same for the terminal UI ([tui.md](tui.md#the-pine-of-another-machine)).
 
 | What | How |
 |---|---|
 | Add a machine | Settings > Environments: type the host as you would after `ssh` (`server`, `user@server`, a name from `~/.ssh/config`) and Add. Anything else (an option for ssh, spaces, `;`) is refused before ssh ever runs. It is connected to when you pick it |
-| Use another pine | Pick it at the foot of the side bar, or Use on its line in Settings > Environments. The window shows that pine's agents, conversations and settings, and the tabs that pine keeps. The app remembers which one it used, and uses it again at its next start |
-| Switch back | The pine you left goes on: switching stops nothing, so an agent at work there finishes its task. Going back to it is immediate. Approvals and notices of a pine you are not looking at wait until you switch to it |
+| Use another pine | Pick it at the foot of the side bar, from the title bar environment pill, or Use on its line in Settings > Environments. Only that window switches to that pine's agents, conversations and settings; other open windows stay where they are |
+| Open in a new window | Click **Open in new window** on any row in Settings > Environments (including the current one), or `⌘`-click / click the open-in-new-window icon beside a machine in the side bar or title bar machine menu. Opening an environment with no other window open restores that daemon's saved tabs; opening another window on an environment already viewed elsewhere starts on the empty no-tab screen |
+| Switch back | The pine you left goes on: switching or closing a window stops nothing, so an agent at work there finishes its task. Going back to it is immediate. Approvals and notices of a pine you are not looking at wait until a window views it |
 | One that is not reached | The first screen says why (ssh's own words, and what to do), with Try again and Use this Mac |
-| Forget a machine | Forget on its line (not the one in use). Its connection ends |
+| Forget a machine | Forget on its line in Settings > Environments (not the one this window uses). If other windows are viewing that machine, the row shows an **in another window** badge and Forget asks to confirm (**Close its window and forget** / **Close its N windows and forget**), closing those windows, ending the SSH connection, and removing the machine |
 | Quitting | Every connection ends. A pine the app started on another machine stops with it; one that was already running there goes on. This computer's pine follows Keep pine running, as before |
 
-What is chosen is kept in the app's `prefs.json`: `hosts`, the machines you added, and `use`,
-the one in use (none: this computer's).
+What is chosen is kept in the app's `prefs.json`: `hosts`, the machines you added, `use`,
+the last-used machine (none: this computer's), and `windows`, the set of open windows preserved across
+quit (`⌘Q`) and relaunch (each with its machine, bounds, tabs and panel layout). Closing windows individually
+removes them from that set; if all windows are closed before quitting (or when clicking the Dock icon with
+no window open), one window opens on the last-used machine and bounds.
 
 How it connects (`src/remote.ts`): one ssh connection to the machine runs `pine service` there,
 with the PATH of your login shell there (sh, bash, zsh, fish, csh or tcsh) and nvm's node when
@@ -290,7 +301,7 @@ What is this computer's stays this computer's. With another machine's pine:
 
 | | |
 |---|---|
-| Folders | A conversation's folder is a path on that machine: choosing one asks for the path instead of opening the Finder, and a folder dropped from the Finder is refused. Show in the Finder is not offered |
+| Folders | A conversation's folder is a path on that machine: choosing one asks for the path instead of opening the Finder, and a folder dropped from the Finder is refused. Show in the Finder is not offered. Opening a local folder from the OS (Finder, Dock drop, or second-instance launch) automatically targets the most recently active local window, or opens a new local window when only remote (or zero) windows are open |
 | The terminal and Run | The terminal beside a conversation and the Run button of a command in an answer are shells of this computer: they are not offered, and that pine's agents are not told about them |
 | The browser | The Browser aside shows the browser on that machine; an address you type there (`localhost:3000`) is one of that machine |
 | Settings > App | About the app and this computer's pine (home folder, Keep pine running, the browser build). It says which machine's pine is in use |
@@ -451,6 +462,7 @@ daemon's doing. What differs is how it is drawn and reached.
 | Notifications | See the settings above. The app's icon carries the number of conversations that wait for you |
 | Find | `⌘F` marks what you look for in the conversation |
 | Themes | Any VS Code colour theme, chosen in Settings > App: the window, code in answers, diffs and the editor, and the terminal all follow it. See "Themes" |
+| Multiple windows | `⌘N` (File > New Window, the macOS Dock menu's **New Window**, or the command palette) opens an additional window slightly cascaded from the focused one. `⌘W` closes the active tab, or closes the window when no tab is open; `⇧⌘W` (File > Close Window) closes the focused window directly. Each window keeps its own environment, tabs, active tab, panel layout, and theme background (OS appearance follows the focused window). Quitting (`⌘Q`) restores all open windows on the next launch |
 | Several views at once | A conversation, its changes and a file in the editor side by side |
 | A terminal | A shell of yours beside each conversation, and ▶ on an answer's shell code blocks to run them in it: see "The terminal" |
 | `/browser` | A command of the app's own, which the terminal UI does not have: the browser at the right of the window (`⇧⌘B`, View > Toggle Browser). See "The browser" |

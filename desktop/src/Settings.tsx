@@ -2041,9 +2041,11 @@ function Environments() {
 	const s = useModel(store);
 	const [host, setHost] = useState("");
 	const [error, setError] = useState<string>();
+	const [confirmForget, setConfirmForget] = useState<{ host: string; count: number }>();
 	const field = useId();
 	const state = s.service;
 	const here = s.platform === "darwin" ? "This Mac" : "This computer";
+	const otherCount = (h?: string) => (h ? s.openHosts.filter((x) => x === h).length : 0);
 	const add = async () => {
 		setError(undefined);
 		try {
@@ -2054,13 +2056,19 @@ function Environments() {
 			setError(errText(e));
 		}
 	};
-	const forget = async (h: string) => {
-		const prefs = await s.attempt(() => bridge.forgetHost(h));
-		if (prefs) (s.prefs = prefs), s.touch();
+	const forget = (h: string) => {
+		const count = otherCount(h);
+		if (count > 0) {
+			setConfirmForget({ host: h, count });
+			return;
+		}
+		void s.forgetMachine(h);
 	};
-	/** How the pine of a row is, when it is the one the app uses; nothing is asked of the others. */
+	/** How the pine of a row is, when it is the one this window uses, or open in another window. */
 	const status = (h?: string) => {
-		if (state.host !== h) return null;
+		if (state.host !== h) {
+			return h && otherCount(h) > 0 ? <Badge variant="secondary">in another window</Badge> : null;
+		}
 		if (state.status === "starting") return <Badge variant="outline"><Spinner data-icon="inline-start" />connecting</Badge>;
 		if (state.status === "error") return <Badge variant="destructive">not reached</Badge>;
 		return <Badge variant={s.connected ? "default" : "outline"}>{s.connected ? "in use" : "not answering"}</Badge>;
@@ -2080,12 +2088,13 @@ function Environments() {
 			<ItemActions>
 				{state.host === h && state.status === "error" ? <Button variant="outline" size="xs" onClick={() => void bridge.retry()}>Try again</Button> : null}
 				{state.host === h ? null : <Button variant="outline" size="xs" onClick={() => void s.useMachine(h)}>Use</Button>}
-				{h && state.host !== h ? <Button variant="ghost" size="xs" onClick={() => void forget(h)}>Forget</Button> : null}
+				<Button variant="outline" size="xs" onClick={() => void s.openMachineWindow(h)}>Open in new window</Button>
+				{h && state.host !== h ? <Button variant="ghost" size="xs" onClick={() => forget(h)}>Forget</Button> : null}
 			</ItemActions>
 		</Item>
 	);
 	return (
-		<Page title="Environments" lead="The pine this app uses: the one on this computer, or one on another machine that you reach with ssh. One at a time: the foot of the side bar switches between them.">
+		<Page title="Environments" lead="The pine this window uses: the one on this computer, or one on another machine that you reach with ssh. Open any machine in this window or in a new window.">
 			<ItemGroup>
 				{row(undefined)}
 				{s.prefs.hosts.map(row)}
@@ -2112,6 +2121,33 @@ function Environments() {
 					<p>With another machine's pine, a conversation's folder is a path on that machine, and the terminal and the Run button of a command, which are this computer's, are not offered.</p>
 				</AlertDescription>
 			</Alert>
+			{confirmForget ? (
+				<AlertDialog open onOpenChange={(open) => open || setConfirmForget(undefined)}>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>Forget {confirmForget.host}?</AlertDialogTitle>
+						</AlertDialogHeader>
+						<p className="text-muted-foreground">
+							{confirmForget.count === 1
+								? "Another window is using this machine. Forgetting it will close that window and end its SSH connection."
+								: `${confirmForget.count} other windows are using this machine. Forgetting it will close those windows and end its SSH connection.`}
+						</p>
+						<AlertDialogFooter>
+							<AlertDialogCancel>Cancel</AlertDialogCancel>
+							<Button
+								variant="destructive"
+								onClick={() => {
+									const target = confirmForget.host;
+									setConfirmForget(undefined);
+									void s.forgetMachine(target, true);
+								}}
+							>
+								{confirmForget.count === 1 ? "Close its window and forget" : `Close its ${confirmForget.count} windows and forget`}
+							</Button>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
+			) : null}
 		</Page>
 	);
 }
@@ -2244,8 +2280,8 @@ function AppPage() {
 							</FieldDescription>
 						</FieldContent>
 						<div className="flex items-center gap-1.5">
-							{s.prefs.home ? <Button variant="outline" size="xs" onClick={() => void set({ home: "" }).then(() => !s.remote && bridge.retry())}>Use ~/.pine</Button> : null}
-							<Button variant="outline" size="xs" onClick={() => void bridge.pickFolder("A pine home folder").then((dir: string | undefined) => dir && set({ home: dir }).then(() => (s.remote ? undefined : service?.started ? bridge.restart() : bridge.retry())))}><FolderIcon data-icon="inline-start" />Choose…</Button>
+							{s.prefs.home ? <Button variant="outline" size="xs" onClick={() => void set({ home: "" })}>Use ~/.pine</Button> : null}
+							<Button variant="outline" size="xs" onClick={() => void bridge.pickFolder("A pine home folder").then((dir: string | undefined) => { if (dir) void set({ home: dir }); })}><FolderIcon data-icon="inline-start" />Choose…</Button>
 						</div>
 					</Field>
 				</FieldGroup>

@@ -11,7 +11,7 @@ import { type AgentInfo, api, type Approval, type Conversation, type GoalInfo, t
 import { bridge, type DraftAttachment, type Prefs, type ServiceState, type Update, type WindowLayout } from "./bridge.ts";
 import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, MODES, oneLine, plural, short, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
 import { runnable } from "./runnable.ts";
-import { applyLook, cleanLook, type ThemeEntry } from "./theme.ts";
+import { applyLook, cleanLook, type Look, type ThemeEntry } from "./theme.ts";
 
 /** The reasoning levels, each with what it means for the answer. */
 export const REASONING_ABOUT: Record<string, string> = { off: "answers at once", minimal: "a moment of thought", low: "thinks briefly", medium: "thinks it through", high: "thinks long", xhigh: "thinks very long", max: "as long as the model can" };
@@ -509,10 +509,15 @@ export class Store extends Model {
 		this.touch();
 	}
 
+	private appliedLook?: Look;
+	private loadedHome?: string;
+	private pendingFolders: string[] = [];
+
 	private async onService(s: ServiceState): Promise<void> {
 		const was = this.service.status;
-		// Another pine than before (another machine was picked): nothing of the last one is kept, not even what an agent of the same name was doing.
-		if (s.host !== this.service.host) this.forgetPine();
+		// Another pine than before (another machine or another local home): nothing of the last one is kept, not even what an agent of the same name was doing.
+		if (s.host !== this.service.host || (s.status === "ready" && this.loadedHome && s.home !== this.loadedHome)) this.forgetPine();
+		if (s.status === "ready") this.loadedHome = s.home;
 		this.service = s;
 		this.touch();
 		if (s.status === "ready" && (was !== "ready" || !this.agents.length)) await this.load();
@@ -551,6 +556,20 @@ export class Store extends Model {
 	async useMachine(host?: string): Promise<void> {
 		if (host === this.service.host && this.service.status === "ready") return;
 		await this.attempt(() => bridge.use(host));
+	}
+
+	/** Open a new window on a machine of the list, or with none this computer's. */
+	async openMachineWindow(host?: string): Promise<void> {
+		await this.attempt(() => bridge.newWindow({ host: host ?? null }));
+	}
+
+	/** Forget a configured SSH host, optionally closing any other windows viewing it. */
+	async forgetMachine(host: string, closeWindows = false): Promise<boolean> {
+		const prefs = await this.attempt(() => bridge.forgetHost(host, closeWindows ? { closeWindows: true } : undefined));
+		if (!prefs) return false;
+		this.prefs = prefs;
+		this.touch();
+		return true;
 	}
 
 	/**
@@ -642,6 +661,9 @@ export class Store extends Model {
 		void this.pending(startedEmpty);
 		void this.refreshThemes();
 		this.touch();
+		if (!this.remote && this.pendingFolders.length) {
+			for (const dir of this.pendingFolders.splice(0)) void this.openFolder(dir);
+		}
 	}
 
 	/**
@@ -655,7 +677,10 @@ export class Store extends Model {
 		this.theme = got.theme;
 		const look = cleanLook(got.themes.find((t) => t.id === got.theme));
 		applyLook(look);
-		if (look && JSON.stringify(look) !== JSON.stringify(this.prefs.look)) this.prefs = await bridge.prefs({ look }).catch(() => this.prefs);
+		if (look && JSON.stringify(look) !== JSON.stringify(this.appliedLook)) {
+			this.appliedLook = look;
+			this.prefs = await bridge.prefs({ look }).catch(() => this.prefs);
+		}
 		this.touch();
 	}
 
@@ -1916,7 +1941,15 @@ export class Store extends Model {
 		const tab = this.active;
 		const chat = tab?.kind === "chat" ? tab : undefined;
 		// A folder opened with the app from the Finder is this computer's.
-		if (name.startsWith("folder:")) return this.remote ? this.flash(`That folder is on this computer, and the app uses the pine on ${this.remote}. Use this Mac's pine to open it.`, "warn", 7000) : this.openFolder(name.slice(7));
+		if (name.startsWith("folder:")) {
+			if (this.remote) return this.flash(`That folder is on this computer, and the app uses the pine on ${this.remote}. Use this Mac's pine to open it.`, "warn", 7000);
+			const dir = name.slice(7);
+			if (!this.opened || !this.agents.length) {
+				this.pendingFolders.push(dir);
+				return;
+			}
+			return this.openFolder(dir);
+		}
 		if (name.startsWith("focus:")) return this.activate(this.tabs.find((t) => t.key === name.slice(6)));
 		if (name.startsWith("tab-")) return this.activate(this.tabs[Number(name.slice(4)) - 1]);
 		if (name.startsWith("code-")) {

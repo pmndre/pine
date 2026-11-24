@@ -449,6 +449,101 @@ function Sidebar() {
 	);
 }
 
+/** Shared machine switcher dropdown used by the sidebar footer and the title bar environment pill. */
+function MachineMenu({ trigger, side = "top", align = "start" }: { trigger: React.ReactElement; side?: "top" | "bottom"; align?: "start" | "end" }) {
+	const s = useModel(store);
+	const [open, setOpen] = useState(false);
+	const modClickRef = useRef(false);
+	const state = s.service;
+	const here = s.platform === "darwin" ? "This Mac" : "This computer";
+	const row = (host: string | undefined, label: string) => (
+		<div key={host ?? ""} className="flex items-center gap-0.5">
+			<DropdownMenuRadioItem
+				value={host ?? ""}
+				closeOnClick
+				data-host={host}
+				className="min-w-0 flex-1"
+				onClick={(e) => {
+					if (e.metaKey || e.ctrlKey) {
+						modClickRef.current = true;
+						e.preventDefault();
+						setOpen(false);
+						void s.openMachineWindow(host);
+					}
+				}}
+			>
+				{host ? <ServerIcon /> : <LaptopIcon />}
+				<span className="truncate">{label}</span>
+			</DropdownMenuRadioItem>
+			<Button
+				variant="ghost"
+				size="icon-xs"
+				aria-label={`Open ${label} in new window`}
+				title="Open in new window"
+				data-open-window={host ?? "local"}
+				onClick={(e) => {
+					e.stopPropagation();
+					setOpen(false);
+					void s.openMachineWindow(host);
+				}}
+			>
+				<ExternalLinkIcon />
+			</Button>
+		</div>
+	);
+	return (
+		<DropdownMenu open={open} onOpenChange={setOpen}>
+			<DropdownMenuTrigger render={trigger} />
+			<DropdownMenuContent side={side} align={align} className="min-w-60">
+				<DropdownMenuGroup>
+					<DropdownMenuLabel>Use the pine on</DropdownMenuLabel>
+					<DropdownMenuRadioGroup
+						value={state.host ?? ""}
+						onValueChange={(host: string) => {
+							if (modClickRef.current) {
+								modClickRef.current = false;
+								return;
+							}
+							void s.useMachine(host || undefined);
+						}}
+					>
+						{row(undefined, here)}
+						{s.prefs.hosts.map((host) => row(host, host))}
+					</DropdownMenuRadioGroup>
+				</DropdownMenuGroup>
+				<DropdownMenuSeparator />
+				<DropdownMenuItem onClick={() => s.openSettings("environments")}><SettingsIcon />Environments…</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
+/**
+ * Clickable environment pill shown in the title bar whenever viewing a remote SSH machine or when
+ * the sidebar is collapsed. Opens the same machine switcher as the sidebar footer.
+ */
+export function EnvironmentPill() {
+	const s = useModel(store);
+	const state = s.service;
+	const here = s.platform === "darwin" ? "This Mac" : "This computer";
+	const label = s.remote ?? here;
+	const dotTone = state.status === "error" ? "bg-destructive" : state.status !== "ready" ? "bg-warn" : s.connected ? "bg-primary" : "bg-destructive";
+	const about = state.status === "ready" ? `${state.home} · ${state.host ? `over SSH (${state.host})` : state.started ? "started by this app" : "a pine that was already running"}` : "";
+	return (
+		<MachineMenu
+			side="bottom"
+			align="end"
+			trigger={
+				<Button variant="outline" size="xs" data-slot="window-environment" className="app-no-drag max-w-44" title={about} aria-label={`Environment: ${label}. Switch or open in a new window`}>
+					<span className={cn(DOT, dotTone)} />
+					<span className="min-w-0 truncate">{label}</span>
+					<ChevronsUpDownIcon data-icon="inline-end" className="text-faint" />
+				</Button>
+			}
+		/>
+	);
+}
+
 /**
  * The pine the app uses, at the foot of the side bar, as large as the rows above it: its state and
  * version, and on which machine it runs. A click lists the machines (this one, and those added in
@@ -457,7 +552,6 @@ function Sidebar() {
 function Machines() {
 	const s = useModel(store);
 	const state = s.service;
-	const here = s.platform === "darwin" ? "This Mac" : "This computer";
 	const on = state.status === "ready" ? state.label : state.host;
 	const text =
 		state.status !== "ready"
@@ -472,27 +566,17 @@ function Machines() {
 	const about = state.status === "ready" ? `${state.home} · ${state.host ? `over SSH (${state.host})` : state.started ? "started by this app" : "a pine that was already running"}` : "";
 	return (
 		<SidebarMenuItem className="app-no-drag">
-			<DropdownMenu>
-				<DropdownMenuTrigger render={<SidebarMenuButton data-slot="service-status" title={about} aria-label={`The pine the app uses: ${text}. Use another one`} />}>
-					{/* The dot stands in the place of the icons in the rows above it: its middle under theirs, and what is written beside it under their names. */}
-					<span className="grid size-4 flex-none place-items-center"><span className={cn(DOT, state.status === "error" ? "bg-destructive" : state.status !== "ready" ? "bg-warn" : s.connected ? "bg-primary" : "bg-destructive")} /></span>
-					<span className="min-w-0 flex-1 truncate">{text}</span>
-					<ChevronsUpDownIcon className="text-faint" />
-				</DropdownMenuTrigger>
-				<DropdownMenuContent side="top" className="min-w-56">
-					<DropdownMenuGroup>
-						<DropdownMenuLabel>Use the pine on</DropdownMenuLabel>
-						<DropdownMenuRadioGroup value={state.host ?? ""} onValueChange={(host: string) => void s.useMachine(host || undefined)}>
-							<DropdownMenuRadioItem value="" closeOnClick><LaptopIcon />{here}</DropdownMenuRadioItem>
-							{s.prefs.hosts.map((host) => (
-								<DropdownMenuRadioItem key={host} value={host} closeOnClick data-host={host}><ServerIcon /><span className="truncate">{host}</span></DropdownMenuRadioItem>
-							))}
-						</DropdownMenuRadioGroup>
-					</DropdownMenuGroup>
-					<DropdownMenuSeparator />
-					<DropdownMenuItem onClick={() => s.openSettings("environments")}><SettingsIcon />Environments…</DropdownMenuItem>
-				</DropdownMenuContent>
-			</DropdownMenu>
+			<MachineMenu
+				side="top"
+				trigger={
+					<SidebarMenuButton data-slot="service-status" title={about} aria-label={`The pine the app uses: ${text}. Use another one`}>
+						{/* The dot stands in the place of the icons in the rows above it: its middle under theirs, and what is written beside it under their names. */}
+						<span className="grid size-4 flex-none place-items-center"><span className={cn(DOT, state.status === "error" ? "bg-destructive" : state.status !== "ready" ? "bg-warn" : s.connected ? "bg-primary" : "bg-destructive")} /></span>
+						<span className="min-w-0 flex-1 truncate">{text}</span>
+						<ChevronsUpDownIcon className="text-faint" />
+					</SidebarMenuButton>
+				}
+			/>
 		</SidebarMenuItem>
 	);
 }
@@ -605,6 +689,7 @@ function TitleBar() {
 			</ScrollArea>
 			<Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon" className="app-no-drag" onClick={() => void s.newConversation()} aria-label={with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent"} />}><PlusIcon /></TooltipTrigger><TooltipContent>{with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent"}<Kbd>⌘T</Kbd></TooltipContent></Tooltip>
 			<span className="min-w-0 flex-1" />
+			{s.service.host || !column ? <EnvironmentPill /> : null}
 			<BesideToggle which="code" label="Side panel: the agent, its files, changes, output and what is running" keys="⌥⌘B" icon={<PanelRightIcon />} />
 			<BesideToggle which="aside" label="Browser: the page the agent works in" keys="⇧⌘B" icon={<GlobeIcon />} />
 		</header>
@@ -764,6 +849,11 @@ export function App() {
 	}, []);
 	const ready = s.service.status === "ready" && s.agents.length > 0 && s.opened;
 	const tab = s.active;
+	const tabLabel = !ready || !tab ? undefined : tab.kind === "events" ? "Events" : tab.kind === "settings" ? "Settings" : tab.kind === "task" ? `${tab.agent} #${tab.task}` : tab.session === "main" ? tab.agent : `${tab.agent} · ${s.titleOf(tab.agent, tab.session)}`;
+	const title = [tabLabel, s.remote, "Pine"].filter(Boolean).join(" — ");
+	useEffect(() => {
+		document.title = title;
+	}, [title]);
 	const side = usePanelRef();
 	// Narrower than stock's breakpoint (Tailwind's `md`), the side bar lies over the page instead of beside it, as stock's
 	// own sheet. (The panel beside a conversation does the same below `lg`: CodePanel.tsx.)

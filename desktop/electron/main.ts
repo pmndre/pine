@@ -276,11 +276,11 @@ function targetWindow(candidates?: ManagedWindow[]): ManagedWindow | undefined {
 }
 
 function openHostsFor(mw: ManagedWindow): string[] {
-	const set = new Set<string>();
+	const out: string[] = [];
 	for (const w of allWindows()) {
-		if (w !== mw && w.host !== undefined) set.add(w.host);
+		if (w !== mw && w.host !== undefined) out.push(w.host);
 	}
-	return [...set];
+	return out;
 }
 
 function broadcastOpenHosts(): void {
@@ -990,7 +990,9 @@ function wire(): void {
 		openNewWindow(mw, options);
 	});
 	handle("pine:close-window", (mw) => {
-		if (!mw.win.isDestroyed()) mw.win.close();
+		setImmediate(() => {
+			if (!mw.win.isDestroyed()) mw.win.close();
+		});
 	});
 	handle("pine:window-layout", (mw, snapshot: WindowLayout) => {
 		if (!snapshot || typeof snapshot !== "object") return;
@@ -1080,7 +1082,7 @@ function wire(): void {
 		}
 		return publicPrefs();
 	});
-	handle("pine:hosts-forget", (mw, host: string, options?: { closeWindows?: boolean }) => {
+	handle("pine:hosts-forget", async (mw, host: string, options?: { closeWindows?: boolean }) => {
 		if (host === mw.host) throw new Error("This window uses this machine now. Use another one first.");
 		const others = windowsOnEnv(String(host)).filter((w) => w !== mw);
 		if (others.length && !options?.closeWindows) throw new Error("Another window uses this machine now. Close it first.");
@@ -1094,7 +1096,7 @@ function wire(): void {
 			streams.get(String(host))?.controller.abort();
 			streams.delete(String(host));
 			held.delete(String(host));
-			void letGo(s);
+			await letGo(s).catch(() => {});
 		}
 		broadcastPrefs();
 		broadcastOpenHosts();
@@ -1114,7 +1116,7 @@ function wire(): void {
 					streams.get("")?.controller.abort();
 					streams.delete("");
 					held.delete("");
-					if (old !== mw.service) void letGo(old);
+					void letGo(old);
 				}
 			}
 			prefs.home = home;
@@ -1131,9 +1133,7 @@ function wire(): void {
 		savePrefs();
 		broadcastPrefs();
 		if (homeChanged) {
-			for (const w of windowsOnEnv("")) {
-				if (w !== mw) void startWindowService(w);
-			}
+			for (const w of windowsOnEnv("")) void startWindowService(w);
 		}
 		return publicPrefs();
 	});
