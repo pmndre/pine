@@ -56,6 +56,7 @@ const SYNONYMS: string[][] = [
 	["check", "verify", "verifier", "critic", "reviewer", "review", "validate", "judge", "audit"],
 	["stages", "stage", "phases", "phase", "dependency", "dependencies", "depends", "pipeline", "sequence"],
 	["interface", "ui", "gui", "frontend", "dashboard", "widget", "panel"],
+	["narrow", "narrower", "narrowing", "column", "columns", "sheet", "sidebar"],
 	["click", "press", "tap", "button", "pressed", "clicked"],
 	// Not "theme": its stem is "them", a word of every other question.
 	["colour", "color", "palette", "accent", "tint", "hue"],
