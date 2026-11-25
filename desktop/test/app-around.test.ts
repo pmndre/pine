@@ -1162,7 +1162,7 @@ test("another machine's pine is used from the foot of the side bar, and this Mac
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ text: "Run this:\n\n```bash\necho far\n```" }], "far commands "));
 	await page.keyboard.press("Enter");
 	const md = page.locator("[data-slot=markdown]", { hasText: "Run this" }).last();
-	await md.locator('[data-streamdown="code-block"]').first().waitFor();
+	await md.locator("[data-slot=code-block]").first().waitFor();
 	assert.equal(await md.locator("[data-run]").count(), 0);
 	await shot("18-other-machine");
 

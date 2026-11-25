@@ -311,10 +311,12 @@ test("a message is answered, with the turn's work folded into a line", async () 
 	// A folded part is there and closed.
 	assert.equal(await page.getAttribute("[data-slot=markdown] [data-details] [data-slot=collapsible-trigger]", "aria-expanded"), "false");
 	// Code is colored on the page, with its language and a copy button, and nothing to download.
-	await page.waitForFunction(() => document.querySelectorAll('[data-slot=markdown] [data-streamdown="code-block"] span[style]').length > 0);
-	assert.match(await page.textContent('[data-slot=markdown] [data-streamdown="code-block-header"]'), /ts/);
-	assert.ok(await page.$('[data-slot=markdown] [data-streamdown="code-block"] button[title="Copy Code"], [data-slot=markdown] [data-streamdown="code-block"] button[aria-label="Copy Code"]'));
-	assert.equal(await page.$$eval('[data-slot=markdown] [data-streamdown="code-block"] button[title*="ownload"], [data-slot=markdown] [data-streamdown="code-block"] button[aria-label*="ownload"]', (els: Element[]) => els.length), 0);
+	// It is the stock Code Block, colored with pine's code colors, in one frame.
+	await page.waitForFunction(() => document.querySelectorAll('[data-slot=markdown] [data-slot=code-block] [data-slot=code-block-line] span[style*="var(--code-"]').length > 0);
+	assert.match(await page.textContent("[data-slot=markdown] [data-slot=code-block-title]"), /ts/);
+	assert.ok(await page.$("[data-slot=markdown] [data-slot=code-block] [data-slot=code-block-copy-button]"));
+	assert.equal(await page.$$eval("[data-slot=markdown] [data-slot=code-block] [data-streamdown]", (els: Element[]) => els.length), 0);
+	assert.equal(await page.$$eval('[data-slot=markdown] [data-slot=code-block] button[title*="ownload"], [data-slot=markdown] [data-slot=code-block] button[aria-label*="ownload"]', (els: Element[]) => els.length), 0);
 	await shot("02-answer");
 });
 
@@ -656,6 +658,9 @@ test("what an answer points at on the web is not fetched by itself, and what it 
 		'<iframe src="https://example.com"></iframe><svg><circle r="5"></circle></svg><video src="https://example.com/v.mp4"></video><object data="x"></object>',
 		"| a | b |\n|---|---|\n| 1 | 2 |",
 		"Read [the docs](https://example.com/docs).",
+		"A claim[^1].",
+		"- an item\n\n  its second paragraph\n\n- another item",
+		"[^1]: Its source.",
 	].join("\n\n");
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ text }], "pictures "));
 	await page.keyboard.press("Enter");
@@ -680,8 +685,18 @@ test("what an answer points at on the web is not fetched by itself, and what it 
 	const link = md.locator("[data-href]");
 	assert.equal(await link.getAttribute("data-href"), "https://example.com/docs");
 	assert.match(await md.locator("[data-href] + [data-target]").textContent(), /example\.com\/docs/);
-	// A table is kept in a box of its own that scrolls sideways.
-	assert.equal(await md.locator("table").evaluate((t: HTMLElement) => getComputedStyle(t.parentElement!).overflowX), "auto");
+	// A table is shadcn's, and scrolls sideways in a ScrollArea of its own, with no height of its own.
+	assert.equal(await md.locator("table[data-slot=table]").evaluate((t: HTMLElement) => getComputedStyle(t.closest("[data-slot=scroll-area-viewport]")!).overflowX), "scroll");
+	assert.equal(await md.locator("[data-slot=scroll-area-scrollbar][data-orientation=horizontal]").count(), 1);
+	// A footnote's number and its note are words alone: no address of a place in the page, no heading for
+	// screen readers drawn for everyone.
+	assert.doesNotMatch(await md.textContent(), /user-content|Footnotes/);
+	assert.equal(await md.locator("section[data-footnotes] ol li").count(), 1);
+	assert.ok(await md.locator("section[data-footnotes]").evaluate((s: HTMLElement) => parseFloat(getComputedStyle(s).fontSize) < parseFloat(getComputedStyle(s.parentElement!).fontSize)));
+	// A list's marker is outside its text, and an item's two paragraphs stay two.
+	const item = md.locator("li", { hasText: "an item" }).first();
+	assert.equal(await item.evaluate((li: HTMLElement) => getComputedStyle(li.parentElement!).listStylePosition), "outside");
+	assert.equal(await item.locator("p").evaluateAll((ps: HTMLElement[]) => ps.map((p) => getComputedStyle(p).display).join()), "block,block");
 	assert.deepEqual(await page.evaluate(() => (window as any).refused), []);
 	await shot("02b-pictures");
 });
@@ -690,14 +705,16 @@ const terminalText = () => page.$eval("[data-slot=terminal] .xterm-rows", (el: E
 const terminalShows = (text: string) => page.waitForFunction((t) => (document.querySelector("[data-slot=terminal] .xterm-rows")?.textContent ?? "").includes(t), text, { timeout: 10_000 });
 
 test("a shell block of an answer runs in the conversation's terminal with its button, and only as it is shown", async () => {
-	const text = ["Run this:", "```bash\necho pine-ran-$((6*7))\n```", "Not this one:", "```ts\nconst a = 1;\n```", "Nor this:", "```sh\necho shown\u202Ehidden-ran\n```"].join("\n\n");
+	const text = ["Run this:", "```bash\necho pine-ran-$((6*7))\n```", "Not this one:", "```ts title=\"src/a.ts\"\nconst a = 1;\n```", "Nor this:", "```sh\necho shown\u202Ehidden-ran\n```"].join("\n\n");
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ text }], "commands "));
 	await page.keyboard.press("Enter");
 	const md = page.locator("[data-slot=markdown]", { hasText: "Run this" }).last();
 	await md.locator("[data-run]").first().waitFor();
 	// Only a block for a shell has the button, beside its copy button.
 	assert.equal(await md.locator("[data-run]").count(), 2);
-	assert.equal(await md.locator('[data-streamdown="code-block"]', { hasText: "const a = 1" }).locator("[data-run]").count(), 0);
+	assert.equal(await md.locator("[data-slot=code-block]", { hasText: "const a = 1" }).locator("[data-run]").count(), 0);
+	// A block whose opening line names its file has the file's name in its header, with an icon.
+	assert.equal(await md.locator("[data-slot=code-block]", { hasText: "const a = 1" }).locator("[data-slot=code-block-title]").textContent(), "src/a.ts");
 	// The click opens the terminal beside the conversation, in its agent's workspace, and runs the block there.
 	await md.locator("[data-run]").first().click();
 	await sees("[data-slot=code-panel] [data-slot=terminal]");
