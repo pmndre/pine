@@ -281,6 +281,22 @@ test("conversations are kept in groups: one made from the agent's menu is filled
 		throw new Error(`no menu for ${pick}`);
 	};
 	const agentLine = page.locator("[data-slot=sidebar-menu-item]:has([data-slot=agent-label])", { has: page.locator("[data-slot=agent-label] > :first-child", { hasText: /^scout$/ }) });
+	// A drag as the side bar is told of it: the events of the row and of the place it is dropped on, one
+	// after the other. Playwright's dragTo moves the mouse, and a list that redraws as the daemon tells it
+	// something (it does, live) can take the row away mid-drag, which drops nothing: a test of Chromium's
+	// pointer, not of the side bar.
+	const drag = async (source: any, target: any) => {
+		const data = await page.evaluateHandle(() => new DataTransfer());
+		// The element itself, as a browser keeps it: dragend goes to it after the drop, wherever the list put the row.
+		const held = await source.locator("xpath=ancestor-or-self::li[1]").elementHandle();
+		await held.dispatchEvent("dragstart", { dataTransfer: data });
+		await target.dispatchEvent("dragenter", { dataTransfer: data });
+		await target.dispatchEvent("dragover", { dataTransfer: data });
+		await target.dispatchEvent("drop", { dataTransfer: data });
+		await held.dispatchEvent("dragend", { dataTransfer: data });
+		await held.dispose();
+		await data.dispose();
+	};
 
 	// A group is made from the agent's menu, empty, with a name the owner types.
 	assert.ok((await choose(agentLine, "group")).includes("Sort by Last Used ✓"), "the list is sorted by when a conversation was last used, as it was");
@@ -293,7 +309,7 @@ test("conversations are kept in groups: one made from the agent's menu is filled
 
 	// A conversation dragged onto the group goes into it, with its branch; a branch is not dragged by itself.
 	assert.equal(await row("okapi-try").locator("xpath=ancestor::li[1]").getAttribute("draggable"), "false");
-	await row("okapi-api").dragTo(group("Okapi").locator("[data-slot=group-label]"));
+	await drag(row("okapi-api"), group("Okapi").locator("[data-slot=group-label]"));
 	await group("Okapi").locator("[role=option]", { hasText: /okapi-try$/ }).waitFor();
 	assert.deepEqual([await groupOf("okapi-api"), await groupOf("okapi-try")], ["Okapi", "Okapi"]);
 	// In the group, a conversation's name stands one step further in than outside it.
@@ -313,7 +329,7 @@ test("conversations are kept in groups: one made from the agent's menu is filled
 	assert.equal(await groupOf("okapi-web"), "Okapi");
 
 	// Dragged onto the agent's line, a conversation leaves its group; a move made by another hand (here the control API) is followed.
-	await group("Okapi").locator("[role=option]", { hasText: /okapi-web$/ }).dragTo(agentLine);
+	await drag(group("Okapi").locator("[role=option]", { hasText: /okapi-web$/ }), agentLine);
 	await page.waitForFunction(() => ![...document.querySelectorAll("[data-slot=conversation-group] [role=option]")].some((e) => /okapi-web$/.test(e.textContent ?? "")));
 	assert.equal(await groupOf("okapi-web"), undefined);
 	assert.ok((await api("POST", "/agents/scout/group", { session: "llama", group: "Okapi" })).ok);
