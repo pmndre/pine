@@ -161,7 +161,7 @@ export type UpdateCalls = "installUpdate" | "onUpdate";
 export type BrowserCalls = "browserShow" | "browserFocus" | "browserPicture" | "onBrowserPreempted";
 
 /** Multi-window lifecycle and coordination calls: only the desktop app's bridge provides these. */
-export type WindowCalls = "newWindow" | "closeWindow" | "windowLayout" | "onOpenHosts" | "onPrefs";
+export type WindowCalls = "newWindow" | "closeWindow" | "windowLayout" | "onOpenHosts" | "onPrefs" | "tabDrag" | "tabDragEnd" | "tabDrop" | "onTabDrag" | "onTabGone";
 
 /**
  * The bridge as the page sees it: the preload script's, or a stand-in of the same shape (the

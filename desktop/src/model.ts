@@ -262,6 +262,15 @@ const NO_AGENTS = "This pine has no agents.";
 /** Kept once the home-screen suggestion was made, so that it is never made again. */
 const HOME_SCREEN_KEY = "pine.homeScreen";
 const sessionName = () => `s${Date.now().toString(36)}`;
+/** What a tab has not sent yet, to go with it into another window; nothing when it has nothing. */
+const draftOf = (tab: Tab): WindowDraft | undefined =>
+	tab.draft.trim() || tab.attachments.length || tab.quotes.length
+		? {
+				draft: tab.draft,
+				attachments: tab.attachments.map((a) => ({ name: a.name, size: a.size, data: a.data, ...(a.preview ? { preview: a.preview } : {}) })),
+				...(tab.quotes.length ? { quotes: tab.quotes.map((q) => ({ ...q })) } : {}),
+			}
+		: undefined;
 /** What a conversation is told when it moves into a worktree. */
 const worktreeNote = (made: WorktreeMade) =>
 	`This conversation now works in the worktree ${made.branch} at ${tilde(made.path)}${made.base ? `, made from ${made.base}` : ""}: a separate checkout, so other conversations' files are not touched. What is not committed in the folder stayed there.${made.copied.length ? ` Copied from .worktreeinclude: ${made.copied.join(", ")}.` : ""} Merge it back from the folder's chip.`;
@@ -434,6 +443,8 @@ export class Store extends Model {
 	voiceLanguage?: string;
 	/** Desktop-only: unique identifier of this window. */
 	windowId?: string;
+	/** Desktop-only: a tab of another window on this machine's pine is being dragged, and this window's tab row may take it. */
+	tabDragIn = false;
 	/** Desktop-only: remote hosts currently displayed in any open window. */
 	openHosts: string[] = [];
 	/** Per-window panel widths in pixels, synced with the main process on desktop. */
@@ -503,6 +514,11 @@ export class Store extends Model {
 			this.openHosts = Array.isArray(hosts) ? hosts : [];
 			this.touch();
 		});
+		bridge.onTabDrag?.((on: boolean) => {
+			this.tabDragIn = on === true;
+			this.touch();
+		});
+		bridge.onTabGone?.((key: string) => this.tabGone(String(key)));
 		bridge.onPrefs?.((next: Prefs) => {
 			this.prefs = next;
 			this.home = next.home ?? this.envHome;
@@ -1814,14 +1830,7 @@ export class Store extends Model {
 	async moveTabToNewWindow(tab: Tab): Promise<void> {
 		if (tab.kind !== "chat" || typeof bridge.newWindow !== "function") return;
 		if (!this.tabs.includes(tab)) return;
-		const hasDraft = Boolean(tab.draft.trim() || tab.attachments.length || tab.quotes.length);
-		const draft: WindowDraft | undefined = hasDraft
-			? {
-					draft: tab.draft,
-					attachments: tab.attachments.map((a) => ({ name: a.name, size: a.size, data: a.data, ...(a.preview ? { preview: a.preview } : {}) })),
-					...(tab.quotes.length ? { quotes: tab.quotes.map((q) => ({ ...q })) } : {}),
-				}
-			: undefined;
+		const draft = draftOf(tab);
 		const ok = await this.attempt(async () => {
 			await bridge.newWindow!({
 				host: this.service.host ?? null,
@@ -1833,6 +1842,64 @@ export class Store extends Model {
 		});
 		if (!ok) return;
 		this.shut([tab], undefined, { detach: true });
+	}
+
+	/**
+	 * A tab of this window is picked up. A conversation's is told to the main process, with its draft, so that another
+	 * window can take it or it can be torn off into a window of its own; the drag itself carries nothing of it.
+	 */
+	startTabDrag(tab: Tab): void {
+		if (tab.kind !== "chat" || typeof bridge.tabDrag !== "function") return;
+		const draft = draftOf(tab);
+		void bridge.tabDrag({ tab: { agent: tab.agent, session: tab.session }, ...(draft ? { draft } : {}) }).catch(() => {});
+	}
+
+	/**
+	 * The drag of a tab of this window ended. Where nothing took it (`outside`), the main process tears it off when it was let go
+	 * outside every window: the tab then lives in a window of its own, and goes from this one. `x` and `y` are where it ended on the screen.
+	 */
+	async endTabDrag(tab: Tab, outside: boolean, x: number, y: number): Promise<void> {
+		if (typeof bridge.tabDragEnd !== "function") return;
+		const alone = this.tabs.length === 1;
+		const torn = await bridge.tabDragEnd({ outside: outside && tab.kind === "chat", alone, x, y }).catch(() => false);
+		if (torn && this.tabs.includes(tab)) this.shut([tab], undefined, { detach: true });
+	}
+
+	/** A tab of another window was let go on this one's tab row, to stand at `at`: it is asked for, and opened here with its draft. */
+	async dropTab(at: number): Promise<void> {
+		this.tabDragIn = false;
+		this.touch();
+		if (typeof bridge.tabDrop !== "function") return;
+		const got = await bridge.tabDrop().catch(() => undefined);
+		if (!got?.tab) return;
+		const { agent, session } = got.tab;
+		const key = `${agent}:${session}`;
+		let tab = this.tabs.find((t) => t.kind === "chat" && t.key === key);
+		const draft = got.draft;
+		if (tab) {
+			// Open here already: the draft comes along only where this one has none.
+			if (draft && !(tab.draft.trim() || tab.attachments.length || tab.quotes.length)) ((tab.draft = draft.draft), (tab.attachments = draft.attachments), (tab.quotes = draft.quotes ?? []), tab.touch());
+		} else {
+			if (draft) this.drafts.set(key, { draft: draft.draft, attachments: draft.attachments, quotes: draft.quotes ?? [] });
+			await this.openTab(agent, session, true, false);
+			tab = this.tabs.find((t) => t.kind === "chat" && t.key === key);
+			if (!tab) return;
+			void this.fill(tab).then(() => this.refreshConversations(agent));
+		}
+		const from = this.tabs.indexOf(tab);
+		this.moveTab(from, from < at ? at - 1 : at);
+		this.activate(tab);
+		// What it was asked and nobody answered yet is shown here now.
+		const asks = await api.approvals().catch(() => [] as Approval[]);
+		for (const req of asks) if (this.tabFor(req) === tab && this.tabs.includes(tab)) this.takeAsk(tab, req, false);
+	}
+
+	/** A tab of this window was dropped on another window, which has the conversation now. A window left with no tab closes, as in a browser. */
+	private tabGone(key: string): void {
+		const tab = this.tabs.find((t) => t.kind === "chat" && t.key === key);
+		if (!tab) return;
+		this.shut([tab], undefined, { detach: true });
+		if (!this.tabs.length && typeof bridge.closeWindow === "function") void bridge.closeWindow().catch(() => {});
 	}
 
 	/** Opens a conversation directly in a new window on the same environment. */
@@ -1878,8 +1945,9 @@ export class Store extends Model {
 			this.touch();
 		}
 		// What a closed tab was asked stays open in the daemon: it goes to the tab it would have gone to had this one not been there.
+		// A tab that went to another window takes it along: that window shows it.
 		for (const tab of tabs) {
-			for (const item of tab.approvals.values()) if (this.agent(item.req.agent)) void this.holderFor(item.req).then((to) => to && this.takeAsk(to, item.req, false));
+			if (!detach) for (const item of tab.approvals.values()) if (this.agent(item.req.agent)) void this.holderFor(item.req).then((to) => to && this.takeAsk(to, item.req, false));
 			tab.approvals.clear();
 		}
 		for (const agent of new Set(tabs.map((t) => t.agent))) void this.refreshConversations(agent);

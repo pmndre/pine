@@ -315,6 +315,62 @@ export function cleanNewWindowOptions(raw: unknown): NewWindowOptions | undefine
 	return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/** A conversation tab being dragged, as its window tells the main process when the drag starts (`pine:tab-drag`). */
+export interface TabDrag {
+	tab: WindowTabRef;
+	/** The tab's unsent draft, which goes with it wherever it is dropped. */
+	draft?: WindowDraft;
+}
+
+/** Sanitizes a `TabDrag` supplied over IPC. */
+export function cleanTabDrag(raw: unknown): TabDrag | undefined {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+	const r = raw as Record<string, unknown>;
+	const [tab] = cleanTabs([r.tab]);
+	if (!tab) return undefined;
+	const draft = cleanDraft(r.draft);
+	return { tab, ...(draft ? { draft } : {}) };
+}
+
+/** How a tab drag ended, as its window tells the main process (`pine:tab-drag-end`). */
+export interface TabDragEnd {
+	/** Nothing took the drop: the tab may have been let go outside every window. */
+	outside: boolean;
+	/** The tab was the window's only one: the window itself moves there instead of a new one opening. */
+	alone: boolean;
+	/** Where the drag ended on the screen, as the page saw it. Only a window that is never shown (the tests') goes by it. */
+	x?: number;
+	y?: number;
+}
+
+/** Sanitizes a `TabDragEnd` supplied over IPC. */
+export function cleanTabDragEnd(raw: unknown): TabDragEnd {
+	const r = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+	const coord = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 100_000 ? Math.round(v) : undefined);
+	const x = coord(r.x);
+	const y = coord(r.y);
+	return { outside: r.outside === true, alone: r.alone === true, ...(x !== undefined && y !== undefined ? { x, y } : {}) };
+}
+
+type Rect = { x: number; y: number; width: number; height: number };
+
+/** Whether a point of the screen lies inside a rectangle. */
+export function insideRect(point: { x: number; y: number }, r: Rect): boolean {
+	return point.x >= r.x && point.x < r.x + r.width && point.y >= r.y && point.y < r.y + r.height;
+}
+
+/** Where the pointer lies in a window torn off by its tab: on the tab row, a little in from the left, as if the tab had been picked up there. */
+export const TEAR_OFF_GRIP = { x: 140, y: 22 };
+
+/** The bounds of a window torn off at `point`: the size of the window it came from, the pointer on its tab row, inside `workArea`. */
+export function tearOffBounds(point: { x: number; y: number }, size: { width: number; height: number }, workArea: Rect): Rect {
+	const width = Math.min(size.width, workArea.width);
+	const height = Math.min(size.height, workArea.height);
+	const x = Math.max(workArea.x, Math.min(point.x - TEAR_OFF_GRIP.x, workArea.x + workArea.width - width));
+	const y = Math.max(workArea.y, Math.min(point.y - TEAR_OFF_GRIP.y, workArea.y + workArea.height - height));
+	return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
+}
+
 /** Offset in pixels for cascading a new window from an existing window. */
 export const CASCADE_STEP = 24;
 

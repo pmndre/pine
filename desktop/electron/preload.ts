@@ -2,7 +2,7 @@
 // for, each by name. The page has no Node, no token and no other way out.
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AccessChange, AccessState } from "./access/control.ts";
-import type { NewWindowOptions, WindowLayout } from "./window-layout.ts";
+import type { NewWindowOptions, TabDrag, TabDragEnd, WindowLayout } from "./window-layout.ts";
 
 const windowIdArg = process.argv.find((a) => a.startsWith("--pine-window-id="));
 const windowId = windowIdArg ? windowIdArg.slice("--pine-window-id=".length) : "";
@@ -40,6 +40,16 @@ const bridge = {
 	forgetHost: (host: string, options?: { closeWindows?: boolean }) => ipcRenderer.invoke("pine:hosts-forget", host, options),
 	/** Open a new desktop window, optionally targeting a host, a specific tab, or moving a tab with its draft. */
 	newWindow: (options?: NewWindowOptions) => ipcRenderer.invoke("pine:new-window", options) as Promise<void>,
+	/** A conversation tab of this window is being dragged: the main process holds it (and its draft) for the window it is dropped on. */
+	tabDrag: (drag: TabDrag) => ipcRenderer.invoke("pine:tab-drag", drag) as Promise<void>,
+	/** The drag of this window's tab ended; let go outside every window, it is torn off. True: the tab left, and this window closes it. */
+	tabDragEnd: (end: TabDragEnd) => ipcRenderer.invoke("pine:tab-drag-end", end) as Promise<boolean>,
+	/** A tab of another window was dropped here: the tab to open, with its draft, or nothing where it may not come. */
+	tabDrop: () => ipcRenderer.invoke("pine:tab-drop") as Promise<TabDrag | undefined>,
+	/** Whether a tab of another window on the same machine's pine is being dragged, which this window may take. */
+	onTabDrag: on("pine:tab-drag") as (fn: (on: boolean) => void) => () => void,
+	/** A tab of this window ("agent:session") was dropped on another window, which has it now. */
+	onTabGone: on("pine:tab-gone") as (fn: (key: string) => void) => () => void,
 	/** Close this desktop window. */
 	closeWindow: () => ipcRenderer.invoke("pine:close-window") as Promise<void>,
 	/** Report this window's current tabs and panel layout to the main process for persistence and daemon sync. */

@@ -23,7 +23,7 @@ import { shellKeeps, Terminals } from "./terminal.ts";
 import { makeUpdater } from "./updater.ts";
 import { ahead, DOWNLOADS, LATEST, lookForUpdate, type Update } from "./updates.ts";
 import { cleanLook, type Look } from "../src/theme.ts";
-import { cascadeBounds, chromeOf, cleanBounds, cleanChromeLayout, cleanNewWindowOptions, cleanWindowLayout, cleanWindows, MAX_WINDOWS, type ChromeLayout, type NewWindowOptions, type WindowBounds, type WindowDraft, type WindowLayout, type WindowSnapshot, type WindowTabRef } from "./window-layout.ts";
+import { cascadeBounds, chromeOf, cleanBounds, cleanChromeLayout, cleanNewWindowOptions, cleanTabDrag, cleanTabDragEnd, cleanWindowLayout, cleanWindows, insideRect, MAX_WINDOWS, tearOffBounds, type ChromeLayout, type TabDrag, type NewWindowOptions, type WindowBounds, type WindowDraft, type WindowLayout, type WindowSnapshot, type WindowTabRef } from "./window-layout.ts";
 
 // `pine` in a terminal, from an AppImage (command.ts): the link in the PATH leads to the AppImage
 // itself, whose folder under /tmp is another one at every start, and its runtime says by which name
@@ -938,6 +938,7 @@ function createWindow(opts: CreateWindowOptions = {}): ManagedWindow {
 	});
 	win.on("blur", () => sendTo(w, "pine:focus", false));
 	win.on("closed", () => {
+		if (tabDrag?.from === w) ((tabDrag = undefined), broadcast("pine:tab-drag", false));
 		browsers.detach(win);
 		windows.delete(w.id);
 		byContents.delete(wcId);
@@ -959,8 +960,8 @@ function createWindow(opts: CreateWindowOptions = {}): ManagedWindow {
 	return w;
 }
 
-/** Opens a new window interactively (New Window menu/shortcut/palette, or with explicit host/tab/draft). */
-function openNewWindow(options?: NewWindowOptions, caller?: ManagedWindow): ManagedWindow {
+/** Opens a new window interactively (New Window menu/shortcut/palette, or with explicit host/tab/draft); `bounds` places it (a tab torn off). */
+function openNewWindow(options?: NewWindowOptions, caller?: ManagedWindow, bounds?: WindowBounds): ManagedWindow {
 	if (windows.size >= MAX_WINDOWS) throw new Error(`There are ${MAX_WINDOWS} windows open already: close one first.`);
 	const host = options?.host === null ? undefined : typeof options?.host === "string" ? options.host : (caller?.host ?? prefs.use);
 	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list: add it in Settings > Environments.");
@@ -969,6 +970,7 @@ function openNewWindow(options?: NewWindowOptions, caller?: ManagedWindow): Mana
 	const chrome = caller?.layout ? chromeOf(caller.layout) : caller?.chromeLayout ?? prefs.layout;
 	const created = createWindow({
 		host,
+		bounds,
 		cascadeFrom: caller ?? focusedWindow(),
 		chromeLayout: chrome,
 		noTab: !hasTab && envAlreadyOpen,
@@ -1002,6 +1004,79 @@ function ensureLocalWindow(): ManagedWindow {
 	if (existing) return showWindow(existing);
 	const w = createWindow({ host: undefined, cascadeFrom: focusedWindow(), chromeLayout: prefs.layout });
 	return showWindow(w);
+}
+
+// ---- a tab dragged out of its window ---------------------------------------------------------------
+
+/**
+ * The conversation tab being dragged, held here and not on the drag: the system's drag data can be read by
+ * other apps, and the draft rides along. A drop in another window may reach this process a moment after
+ * the source said the drag ended (two pages, two processes), so the record stays that long.
+ */
+let tabDrag: (TabDrag & { from: ManagedWindow; host?: string; ended?: number; done?: boolean }) | undefined;
+const TAB_DROP_GRACE_MS = 2000;
+
+/** The other windows on the same machine's pine may take the tab being dragged; they show where it would land. */
+function startTabDrag(w: ManagedWindow, drag: TabDrag): void {
+	broadcast("pine:tab-drag", false);
+	tabDrag = { ...drag, from: w, host: w.host };
+	for (const other of windowsForHost(w.host)) if (other !== w) sendTo(other, "pine:tab-drag", true);
+}
+
+/**
+ * The drag ended in the window it began in. Let go outside every window of the app, the tab is torn off:
+ * a new window opens there on that conversation, or with the window's only tab the window itself moves there.
+ * Says whether the tab left, which the page then closes. Where it ended is the pointer's place as the system
+ * says it; a window that is never shown (the tests') has no pointer, and goes by the page's.
+ */
+function endTabDrag(w: ManagedWindow, raw: unknown): boolean {
+	const drag = tabDrag;
+	broadcast("pine:tab-drag", false);
+	if (!drag || drag.from !== w || drag.done) return false;
+	drag.ended = Date.now();
+	const end = cleanTabDragEnd(raw);
+	if (!end.outside || w.win.isDestroyed()) return false;
+	const point = HEADLESS && end.x !== undefined && end.y !== undefined ? { x: end.x, y: end.y } : screen.getCursorScreenPoint();
+	// On a window of the app (the source's own page included) it was no tear-off: a drop there that nothing took.
+	if ([...windows.values()].some((o) => !o.win.isDestroyed() && insideRect(point, o.win.getBounds()))) return false;
+	// A window that fills the screen is not moved by its only tab.
+	if (end.alone && (w.win.isFullScreen() || w.win.isMaximized())) return false;
+	drag.done = true;
+	const bounds = tearOffBounds(point, w.win.getBounds(), screen.getDisplayNearestPoint(point).workArea);
+	if (end.alone) {
+		w.win.setBounds(bounds);
+		return false;
+	}
+	try {
+		openNewWindow({ host: w.host ?? null, tab: drag.tab, moveFrom: true, ...(drag.draft ? { draft: drag.draft } : {}) }, w, bounds);
+	} catch {
+		// As many windows as there may be: the tab stays where it was.
+		return false;
+	}
+	return true;
+}
+
+/**
+ * A tab of another window was dropped on this one's tab row: it moves here, with its draft and its terminal, and
+ * the window it left closes it (and closes itself when that was its last). Only between windows on the same
+ * machine's pine, since a conversation of one daemon does not exist on another. What comes back is the tab to open.
+ */
+function dropTab(w: ManagedWindow): TabDrag | undefined {
+	const drag = tabDrag;
+	if (!drag || drag.done || drag.from === w || drag.from.win.isDestroyed()) return undefined;
+	if (drag.ended && Date.now() - drag.ended > TAB_DROP_GRACE_MS) return undefined;
+	const host = drag.host ?? "";
+	if ((drag.from.host ?? "") !== host || (w.host ?? "") !== host) return undefined;
+	drag.done = true;
+	broadcast("pine:tab-drag", false);
+	const key = `${drag.tab.agent}:${drag.tab.session}`;
+	// The conversation's shell goes with it, unless this window has one of its own for it already (it was open in both).
+	if (!w.host) {
+		if (terminals.has(key, w.id)) terminals.close(key, drag.from.id);
+		else terminals.transfer(drag.from.id, w.id, key);
+	}
+	sendTo(drag.from, "pine:tab-gone", key);
+	return { tab: drag.tab, ...(drag.draft ? { draft: drag.draft } : {}) };
 }
 
 // ---- `pine` for a terminal -----------------------------------------------------------------------
@@ -1400,6 +1475,12 @@ function wire(): void {
 	handle("pine:new-window", (w, raw?: unknown) => {
 		openNewWindow(cleanNewWindowOptions(raw), w);
 	});
+	handle("pine:tab-drag", (w, raw?: unknown) => {
+		const drag = cleanTabDrag(raw);
+		if (drag) startTabDrag(w, drag);
+	});
+	handle("pine:tab-drag-end", (w, raw?: unknown) => endTabDrag(w, raw));
+	handle("pine:tab-drop", (w) => dropTab(w));
 	handle("pine:close-window", (w) => {
 		if (!w.win.isDestroyed()) w.win.close();
 	});

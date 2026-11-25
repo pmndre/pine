@@ -767,11 +767,23 @@ function EnvironmentPill() {
 
 const TAB_DRAG_NONCE = Math.random().toString(36).slice(2);
 const tabDragOrigin = () => (store.windowId || TAB_DRAG_NONCE).toLowerCase();
+/**
+ * What a drag over a tab row would bring: a tab of this window ("own"), a tab of another window on this machine's pine that
+ * the main process holds ("other"), or nothing this row takes. Of another window's drag only that it is a tab can be read here.
+ */
+const tabDragKind = (e: React.DragEvent): "own" | "other" | undefined =>
+	e.dataTransfer.types.includes(`application/x-pine-tab-${tabDragOrigin()}`) ? "own" : store.tabDragIn && e.dataTransfer.types.includes("application/x-pine-tab") ? "other" : undefined;
+/** Which half of a tab the pointer is over: a tab let go there lands before it or after it. */
+const halfOf = (e: React.DragEvent): "before" | "after" => {
+	const r = e.currentTarget.getBoundingClientRect();
+	return e.clientX < r.left + r.width / 2 ? "before" : "after";
+};
 
 function TabButton({ tab, index }: { tab: Tab; index: number }) {
 	useModel(tab);
 	const s = store;
-	const [drop, setDrop] = useState(false);
+	// Where a dragged tab would land: before this one or after it, by the half of it the pointer is over.
+	const [drop, setDrop] = useState<"before" | "after" | false>(false);
 	const on = s.active === tab;
 	const kept = tab.kind === "chat" && (tab.session === "main" || s.pins.has(tab.key));
 	// The tab brought to the front is scrolled into view when there are more tabs than the row shows.
@@ -799,29 +811,36 @@ function TabButton({ tab, index }: { tab: Tab; index: number }) {
 					ref={ref}
 					data-slot="tab"
 					data-active={on || undefined}
-					className={cn("group/tab relative flex h-8 max-w-55 min-w-28 flex-initial items-center gap-2 rounded-md pr-1.5 pl-2.5 app-no-drag", on ? "bg-background text-foreground ring-1 ring-border" : "text-muted-foreground hover:bg-accent hover:text-foreground", drop && "before:absolute before:inset-y-1 before:-left-0.5 before:w-0.5 before:rounded-full before:bg-primary")}
+					className={cn("group/tab relative flex h-8 max-w-55 min-w-28 flex-initial items-center gap-2 rounded-md pr-1.5 pl-2.5 app-no-drag", on ? "bg-background text-foreground ring-1 ring-border" : "text-muted-foreground hover:bg-accent hover:text-foreground", drop && "before:absolute before:inset-y-1 before:w-0.5 before:rounded-full before:bg-primary", drop === "after" ? "before:-right-0.5" : "before:-left-0.5")}
 					draggable
 					onDragStart={(e) => {
 						const origin = tabDragOrigin();
 						e.dataTransfer.setData("application/x-pine-tab", JSON.stringify({ window: origin, index }));
 						e.dataTransfer.setData(`application/x-pine-tab-${origin}`, String(index));
 						e.dataTransfer.effectAllowed = "move";
+						s.startTabDrag(tab);
 					}}
+					// Let go where nothing took it, and outside every window, the tab is torn off into a window of its own.
+					onDragEnd={(e) => void s.endTabDrag(tab, e.dataTransfer.dropEffect === "none", e.screenX, e.screenY)}
 					onDragOver={(e) => {
-						if (e.dataTransfer.types.includes(`application/x-pine-tab-${tabDragOrigin()}`)) {
-							e.preventDefault();
-							setDrop(true);
-						}
+						if (!tabDragKind(e)) return;
+						e.preventDefault();
+						e.dataTransfer.dropEffect = "move";
+						setDrop(halfOf(e));
 					}}
 					onDragLeave={() => setDrop(false)}
 					onDrop={(e) => {
+						const kind = tabDragKind(e);
+						const at = halfOf(e) === "after" ? index + 1 : index;
 						setDrop(false);
-						const raw = e.dataTransfer.getData("application/x-pine-tab");
+						if (!kind) return;
+						e.preventDefault();
+						if (kind === "other") return void s.dropTab(at);
 						try {
-							const parsed = JSON.parse(raw) as { window?: unknown; index?: unknown };
-							if (parsed.window === tabDragOrigin() && typeof parsed.index === "number") s.moveTab(parsed.index, index);
+							const parsed = JSON.parse(e.dataTransfer.getData("application/x-pine-tab")) as { window?: unknown; index?: unknown };
+							if (parsed.window === tabDragOrigin() && typeof parsed.index === "number") s.moveTab(parsed.index, parsed.index < at ? at - 1 : at);
 						} catch {
-							// ignore payloads from other windows or sources
+							// not a tab of this window
 						}
 					}}
 					onClick={() => s.activate(tab)}
@@ -918,8 +937,27 @@ export function TitleBar() {
 function NoTab() {
 	const s = store;
 	const main = s.agents.find((a) => a.main) ?? s.agents[0];
+	const [drop, setDrop] = useState(false);
+	// A window with no tab has no row to drop a tab on: the whole of it takes a tab of another window.
 	return (
-		<Empty data-slot="no-tab">
+		<Empty
+			data-slot="no-tab"
+			data-drop={drop || undefined}
+			className="data-[drop]:bg-accent"
+			onDragOver={(e) => {
+				if (tabDragKind(e) !== "other") return;
+				e.preventDefault();
+				e.dataTransfer.dropEffect = "move";
+				setDrop(true);
+			}}
+			onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setDrop(false)}
+			onDrop={(e) => {
+				setDrop(false);
+				if (tabDragKind(e) !== "other") return;
+				e.preventDefault();
+				void s.dropTab(0);
+			}}
+		>
 			<EmptyHeader>
 				<EmptyMedia variant="icon"><MessageSquareIcon /></EmptyMedia>
 				<EmptyTitle>No tab is open</EmptyTitle>

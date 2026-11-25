@@ -8,11 +8,16 @@ import {
 	cleanBounds,
 	cleanChromeLayout,
 	cleanNewWindowOptions,
+	cleanTabDrag,
+	cleanTabDragEnd,
 	cleanTabs,
 	cleanWidths,
 	cleanWindowLayout,
 	cleanWindows,
+	insideRect,
 	MAX_WINDOWS,
+	TEAR_OFF_GRIP,
+	tearOffBounds,
 } from "../electron/window-layout.ts";
 
 test("cleanBounds validates dimensions, rounds numbers, and keeps valid optional coordinates", () => {
@@ -305,4 +310,39 @@ test("cascadeBounds offsets normally, wraps at right/bottom edges, and clamps ov
 		cascadeBounds({ x: 50, y: 50, width: 2000, height: 1500 }, workArea),
 		{ x: workArea.x, y: workArea.y, width: workArea.width, height: workArea.height },
 	);
+});
+
+test("a dragged tab from IPC keeps one conversation and a clean draft, and nothing else", () => {
+	assert.equal(cleanTabDrag(null), undefined);
+	assert.equal(cleanTabDrag({ tab: { agent: "", session: "s" } }), undefined);
+	assert.equal(cleanTabDrag({ tab: "main:main" }), undefined);
+	assert.deepEqual(cleanTabDrag({ tab: { agent: "scout", session: "s1", extra: 1 }, other: true }), { tab: { agent: "scout", session: "s1" } });
+	assert.deepEqual(cleanTabDrag({ tab: { agent: "scout", session: "s1" }, draft: { draft: "hi", attachments: [{ name: "a.txt", size: 2, data: "aGk=" }, { name: 3 }] } }), {
+		tab: { agent: "scout", session: "s1" },
+		draft: { draft: "hi", attachments: [{ name: "a.txt", size: 2, data: "aGk=" }] },
+	});
+	// A draft that is not one is dropped, the tab still goes.
+	assert.deepEqual(cleanTabDrag({ tab: { agent: "scout", session: "s1" }, draft: { draft: 5 } }), { tab: { agent: "scout", session: "s1" } });
+});
+
+test("the end of a tab drag says only true for true, and a place only with both numbers", () => {
+	assert.deepEqual(cleanTabDragEnd(undefined), { outside: false, alone: false });
+	assert.deepEqual(cleanTabDragEnd({ outside: "yes", alone: 1 }), { outside: false, alone: false });
+	assert.deepEqual(cleanTabDragEnd({ outside: true, alone: true, x: 10.6, y: -4 }), { outside: true, alone: true, x: 11, y: -4 });
+	assert.deepEqual(cleanTabDragEnd({ outside: true, x: 10 }), { outside: true, alone: false });
+	assert.deepEqual(cleanTabDragEnd({ outside: true, x: Infinity, y: 1 }), { outside: true, alone: false });
+	assert.deepEqual(cleanTabDragEnd({ outside: true, x: 1e9, y: 1 }), { outside: true, alone: false });
+});
+
+test("a torn-off window keeps its size and puts the pointer on its tab row, inside the screen", () => {
+	const area = { x: 0, y: 25, width: 1512, height: 944 };
+	assert.deepEqual(tearOffBounds({ x: 900, y: 300 }, { width: 700, height: 500 }, area), { x: 900 - TEAR_OFF_GRIP.x, y: 300 - TEAR_OFF_GRIP.y, width: 700, height: 500 });
+	// Near the right and bottom edges it is pushed back in; near the top left it stops at the edge.
+	assert.deepEqual(tearOffBounds({ x: 1500, y: 960 }, { width: 700, height: 500 }, area), { x: 1512 - 700, y: 25 + 944 - 500, width: 700, height: 500 });
+	assert.deepEqual(tearOffBounds({ x: 5, y: 0 }, { width: 700, height: 500 }, area), { x: 0, y: 25, width: 700, height: 500 });
+	// Larger than the screen it takes the screen; on a second display it stays there.
+	assert.deepEqual(tearOffBounds({ x: 200, y: 200 }, { width: 3000, height: 2000 }, area), { x: 0, y: 25, width: 1512, height: 944 });
+	assert.deepEqual(tearOffBounds({ x: 2000, y: 300 }, { width: 700, height: 500 }, { x: 1512, y: 0, width: 1920, height: 1080 }), { x: 2000 - TEAR_OFF_GRIP.x, y: 300 - TEAR_OFF_GRIP.y, width: 700, height: 500 });
+	assert.equal(insideRect({ x: 10, y: 10 }, { x: 0, y: 0, width: 10, height: 20 }), false);
+	assert.equal(insideRect({ x: 9, y: 19 }, { x: 0, y: 0, width: 10, height: 20 }), true);
 });
