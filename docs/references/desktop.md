@@ -1309,8 +1309,8 @@ text color. Settings keeps to this; other parts of the page are brought to it as
   before pine answers, Electron's native theme (the window's frame, the Mac's materials, the system's
   own controls) is its kind, and off a Mac the window's background before the page draws is its page
   color. There is no light, dark or system setting: a theme is dark or light. Storybook draws the
-  stories in pine's own themes (`.storybook/themes.ts`, resolved as pine resolves them), pmndre and
-  GitHub Light for Chromatic's dark and light modes, and any of them from the toolbar.
+  stories in pine's own themes (`.storybook/themes.ts`, resolved as pine resolves them), pmndre at
+  first, and any of them from the toolbar.
 - An agent may have a color of its own (`color` in its `agent.json`, picked on its avatar at the top
   of its page in Settings > Agents or with Color in the side bar's menu: None, nine presets apart
   from each other and from the mint, or Other with any color, saved as it is picked). The popover
@@ -1356,7 +1356,7 @@ from "loading".
 - The app test that forbids an animation running smoothly forever while agents work lets
   `[data-slot=skeleton]` through, and only it: a skeleton lasts only while content first loads.
 
-### Stories and Chromatic
+### Stories
 
 Buttons, switches, inputs, fields, toggle groups (the segmented controls), selects, the edges that resize
 the side bar, the code panel and the browser (Resizable), the side bar itself (Sidebar, fixed in place with
@@ -1387,13 +1387,7 @@ stand-ins: the bridge in `.storybook/preview.tsx` is one whose every call does n
 | `npm run storybook` | Storybook at http://localhost:6006. The Theme menu in its toolbar picks one of pine's themes (pmndre at first). |
 | `npm run build-storybook` | The stories built into `storybook-static/`. |
 
-Every push to `next` publishes the stories to Chromatic (`.github/workflows/chromatic.yml`),
-accepted as they are (`autoAcceptChanges`): that build is the baseline. Chromatic is a place to
-look at the app's parts, not a test, and puts no check on a pull request. To see what a branch
-changes in a picture, run the workflow by hand on it (`gh workflow run chromatic.yml --ref
-<branch>`): it is compared with the baseline and never fails. It needs the repository secret
-`CHROMATIC_PROJECT_TOKEN`; without it the job says so and passes.
-Chromatic takes each story in light and dark, each at a phone's width (360, the window's
-smallest) and at the window's first width (1280), through its modes (`.storybook/modes.ts`,
-which set the `theme` global and a viewport), so no dark or phone twin of a story is written:
-four snapshots a story. The same two widths are the Viewport menu in Storybook's toolbar.
+Storybook is a place to look at the app's parts, not a test, and nothing publishes it: no check of a
+pull request comes from it. Its toolbar draws a story in any of pine's themes and at the app's two
+widths (`.storybook/modes.ts`): a phone's (360, the window's smallest) and the window's first (1280),
+so no dark or phone twin of a story is written.

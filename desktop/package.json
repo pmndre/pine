@@ -54,7 +54,6 @@
     "@vitejs/plugin-react": "^6.3.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
-    "chromatic": "^18.14.6",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
     "cn": "^0.5.2",
