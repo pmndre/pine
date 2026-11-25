@@ -162,6 +162,44 @@ async function nodeForWsl() {
 	return kept;
 }
 
+/**
+ * Drops files in staged `node_modules` that are never read at runtime (TypeScript declarations,
+ * sourcemaps, docs, and native prebuilds for other platforms/architectures). Keeping only what
+ * runs cuts the app's file count by ~60% so macOS codesign and Squirrel.Mac ShipIt finish much faster.
+ */
+function pruneNodeModules(dir) {
+	if (!fs.existsSync(dir)) return;
+	const walk = (at) => {
+		for (const entry of fs.readdirSync(at, { withFileTypes: true })) {
+			const full = path.join(at, entry.name);
+			if (entry.isDirectory()) {
+				walk(full);
+				if (!fs.readdirSync(full).length) fs.rmdirSync(full);
+			} else if (entry.isFile() && (/\.d\.[cm]?ts$/.test(entry.name) || entry.name.endsWith(".map") || /\.(md|markdown)$/i.test(entry.name))) {
+				fs.rmSync(full);
+			}
+		}
+	};
+	walk(dir);
+	// @earendil-works/pi-tui ships prebuilds for every OS and arch; keep only this app's (plus linux for WSL on Windows).
+	const piTuiNative = path.join(dir, "@earendil-works", "pi-tui", "native");
+	if (fs.existsSync(piTuiNative)) {
+		const keepPlatforms = new Set(system === "win32" ? ["win32", "linux"] : [system]);
+		for (const plat of fs.readdirSync(piTuiNative)) {
+			const platDir = path.join(piTuiNative, plat);
+			if (!keepPlatforms.has(plat)) {
+				fs.rmSync(platDir, { recursive: true, force: true });
+				continue;
+			}
+			const prebuilds = path.join(platDir, "prebuilds");
+			if (!fs.existsSync(prebuilds)) continue;
+			for (const target of fs.readdirSync(prebuilds)) {
+				if (target !== `${plat}-${arch}`) fs.rmSync(path.join(prebuilds, target), { recursive: true, force: true });
+			}
+		}
+	}
+}
+
 const pineVersion = process.env.PINE_VERSION ?? JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")).version;
 let node;
 let wslNode;
@@ -175,6 +213,7 @@ if (carries && !prepackaged) {
 	// npm is a .cmd on Windows, which runs only through the shell there.
 	if (system === "win32") execFileSync(`npm ${install.join(" ")}`, { cwd: stage, stdio: "inherit", shell: true });
 	else run("npm", install, stage);
+	pruneNodeModules(path.join(stage, "node_modules"));
 	// Its helpers, built: a Mac without Apple's developer tools could not build them itself. They are Mac programs only.
 	// (On Windows the C# ones, which the release then signs with the rest of the app.)
 	if (system === "darwin" || system === "win32") run(process.execPath, [path.join(repo, "scripts", "helpers.mjs"), stage], repo);
