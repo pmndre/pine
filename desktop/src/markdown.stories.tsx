@@ -63,5 +63,12 @@ export const CodeBlocks: Story = {
 	},
 };
 
+/** The rest of an answer's text: headings on the answer's scale, a quote, tasks as read-only boxes, keys, bold, a separator. */
+export const Text: Story = {
+	args: {
+		text: ["# A heading", "", "## A smaller one", "", "> A quote, in the text's own color.", ">", "> > And one inside it.", "", "- [x] a task done", "- [ ] a task to do", "", "---", "", "**Bold**, *italic*, ~~struck~~, and <kbd>Cmd</kbd> <kbd>K</kbd>."].join("\n"),
+	},
+};
+
 /** A footnote: its number in the text and the note below a separator, without addresses of places in the page. */
 export const Footnotes: Story = { args: { text: "A claim[^1] and another[^2].\n\n[^1]: Its source.\n[^2]: Another source." } };

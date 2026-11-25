@@ -34,7 +34,10 @@ import { CodeBlock, CodeBlockActions, CodeBlockContent, CodeBlockCopyButton, Cod
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Kbd } from "@/components/ui/kbd";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Pulse } from "@/components/pulse";
 import { type Heard, Sound } from "@/components/sound";
@@ -60,7 +63,8 @@ export const CLEAN: Schema = {
 		ol: ["start", "reversed"],
 		// GFM's mark on its footnotes, which are drawn smaller; nothing else reads it.
 		section: ["dataFootnotes"],
-		li: ["value"],
+		// A task's state, which taskBoxes puts there: drawn as a box that cannot be changed.
+		li: ["value", ["dataTask", "done", "todo"]],
 		details: ["open"],
 		abbr: ["title"],
 		time: ["dateTime"],
@@ -96,7 +100,31 @@ function quietFootnotes() {
 	return walk;
 }
 
-const REHYPE = [rehypeRaw, quietFootnotes, [rehypeSanitize, CLEAN]] as const;
+/**
+ * A task list's item (`- [x] done`) as GFM writes it: a checkbox input in front of the item's words,
+ * which CLEAN takes away with every input. Its state goes onto the item instead (`data-task`), which
+ * the item draws as the stock Checkbox, read only. It only moves a done/to-do mark, so raw HTML that
+ * imitates it gains a drawn box and nothing more.
+ */
+function taskBoxes() {
+	const isBox = (node: HastNode) => node.tagName === "input" && node.properties?.type === "checkbox";
+	const walk = (node: HastNode) => {
+		if (node.tagName === "li") {
+			const first = node.children?.find((child) => child.type === "element");
+			const box = first && isBox(first) ? first : first?.tagName === "p" ? first.children?.find(isBox) : undefined;
+			if (box) {
+				node.properties = { ...node.properties, dataTask: box.properties?.checked ? "done" : "todo" };
+				const drop = (parent: HastNode) => (parent.children = parent.children?.filter((child) => child !== box));
+				drop(node);
+				if (first && first !== box) drop(first);
+			}
+		}
+		node.children?.forEach(walk);
+	};
+	return walk;
+}
+
+const REHYPE = [rehypeRaw, quietFootnotes, taskBoxes, [rehypeSanitize, CLEAN]] as const;
 
 const isWeb = (url: string) => /^https?:\/\//i.test(url);
 const DATA_IMAGE = /^data:image\/(png|jpeg|gif|webp);base64,/i;
@@ -399,8 +427,53 @@ function NumberedList({ node: _, className, ...props }: React.ComponentProps<"ol
 	return <ol className={cn("ml-6 list-decimal [&>li]:mt-2", className)} {...props} />;
 }
 
-function ListItem({ node: _, className, ...props }: React.ComponentProps<"li"> & ExtraProps) {
-	return <li className={cn("[&>p:not(:first-child)]:mt-2", className)} {...props} />;
+function ListItem({ node: _, className, children, ...props }: React.ComponentProps<"li"> & ExtraProps & { "data-task"?: "done" | "todo" }) {
+	const task = props["data-task"];
+	// A task: the stock Checkbox where the marker was, read only, centred on the first line of its words.
+	if (task) {
+		return (
+			<li className={cn("-ms-6 flex list-none items-start gap-2", className)} {...props}>
+				<span className="flex h-lh items-center">
+					<Checkbox checked={task === "done"} readOnly aria-label={task === "done" ? "Done" : "To do"} />
+				</span>
+				<div className="min-w-0 flex-1 [&>p:not(:first-child)]:mt-2">{children}</div>
+			</li>
+		);
+	}
+	return (
+		<li className={cn("[&>p:not(:first-child)]:mt-2", className)} {...props}>
+			{children}
+		</li>
+	);
+}
+
+// A quote as shadcn's typography draws one: a thin rule and italics, in the text's own color, so that
+// it reads as well as the rest of the answer.
+function Quote({ node: _, className, ...props }: React.ComponentProps<"blockquote"> & ExtraProps) {
+	return <blockquote className={cn("flex flex-col gap-2 border-s-2 ps-6 italic", className)} {...props} />;
+}
+
+// Headings on the answer's own scale: the reading part is at the body's size, and a heading stands a
+// step or two above it, not at Streamdown's fixed 30 pixels. Space above sets a heading apart from
+// what it closes, as shadcn's typography does.
+const HEADING = { h1: "text-xl", h2: "text-lg", h3: "text-base", h4: "text-base", h5: "text-base", h6: "text-base" } as const;
+function heading(Tag: keyof typeof HEADING) {
+	return function Heading({ node: _, className, ...props }: React.ComponentProps<"h1"> & ExtraProps) {
+		return <Tag className={cn("mt-6 font-semibold text-balance", HEADING[Tag], className)} {...props} />;
+	};
+}
+
+function KeyName({ node: _, ...props }: React.ComponentProps<"kbd"> & ExtraProps) {
+	return <Kbd {...props} />;
+}
+
+/** Bold as <strong>, which says it matters, where Streamdown draws a span. */
+function Strong({ node: _, ...props }: React.ComponentProps<"strong"> & ExtraProps) {
+	return <strong className="font-semibold" {...props} />;
+}
+
+function Rule() {
+	return <Separator />;
 }
 
 /** A section of the answer; the footnotes are secondary text, muted as a description is. */
@@ -424,6 +497,16 @@ const COMPONENTS: Components = {
 	ul: List,
 	ol: NumberedList,
 	li: ListItem,
+	blockquote: Quote,
+	h1: heading("h1"),
+	h2: heading("h2"),
+	h3: heading("h3"),
+	h4: heading("h4"),
+	h5: heading("h5"),
+	h6: heading("h6"),
+	kbd: KeyName,
+	strong: Strong,
+	hr: Rule,
 	section: Section,
 	table: AnswerTable,
 	thead: bare(TableHeader),

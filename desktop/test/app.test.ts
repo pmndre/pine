@@ -286,7 +286,7 @@ test("a message is answered, with the turn's work folded into a line", async () 
 	const steps = [{ tools: [{ name: "read", args: { path: "notes.md" } }], text: "Let me look at the notes first." }, { text: "The notes say **first line**.\n\n```ts\nconst a = 1;\n```\n\n<details><summary>Full file</summary>\n\nfirst line\n\n</details>\n\n[the docs](https://example.com/docs)" }];
 	await page.fill("[data-slot=composer] textarea", mockMsg(steps, "What do the notes say? "));
 	await page.keyboard.press("Enter");
-	await sees('[data-slot=markdown] [data-streamdown="strong"]');
+	await sees("[data-slot=markdown] strong");
 	assert.match(await page.textContent("[data-slot=markdown]"), /first line/);
 	// The work of the turn (what it said on the way, and the tool call) is one line, which a click opens.
 	await page.waitForFunction(() => /1 tool call · read/.test(document.querySelector("[data-item=work] > [data-slot=trace-collapsible-trigger]")?.textContent ?? ""));
@@ -660,6 +660,8 @@ test("what an answer points at on the web is not fetched by itself, and what it 
 		"Read [the docs](https://example.com/docs).",
 		"A claim[^1].",
 		"- an item\n\n  its second paragraph\n\n- another item",
+		"- [x] a task done\n- [ ] a task to do",
+		"# A heading\n\n> A quote with <kbd>K</kbd> and **bold**.",
 		"[^1]: Its source.",
 	].join("\n\n");
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ text }], "pictures "));
@@ -677,7 +679,8 @@ test("what an answer points at on the web is not fetched by itself, and what it 
 	assert.equal(await md.locator('button[title*="ownload"], button[aria-label*="ownload"]').count(), 0);
 	// What could act or restyle is gone, and the words stay. The one svg allowed is pine's own arrow beside a link.
 	assert.equal(await page.evaluate(() => (window as any).hacked), undefined);
-	assert.equal(await md.locator("script, style, form, input, button:not([data-remote]), iframe, svg:not([data-target] > svg), video, object, a[href]").count(), 0);
+	// The one input and svg pine draws itself are a task's read-only box and its check mark (stock Checkbox).
+	assert.equal(await md.locator("script, style, form, input:not(li[data-task] input), button:not([data-remote]), iframe, svg:not([data-target] > svg, li[data-task] svg), video, object, a[href]").count(), 0);
 	assert.equal(await md.locator('[class~="evil"], #evil, [data-x], [aria-label="evil"], [onclick]').count(), 0);
 	assert.equal(await md.getByText("styled", { exact: true }).evaluate((el: HTMLElement) => el.getAttribute("style")), null);
 	assert.doesNotMatch(await md.textContent(), /display: none/);
@@ -693,6 +696,12 @@ test("what an answer points at on the web is not fetched by itself, and what it 
 	assert.equal(await md.locator("section[data-footnotes] ol li").count(), 1);
 	assert.ok(await md.locator("section[data-footnotes]").evaluate((s: HTMLElement) => parseFloat(getComputedStyle(s).fontSize) < parseFloat(getComputedStyle(s.parentElement!).fontSize)));
 	// A list's marker is outside its text, and an item's two paragraphs stay two.
+	// A task keeps whether it is done, as a box that cannot be changed, where CLEAN takes every input away.
+	assert.deepEqual(await md.locator("li[data-task] [data-slot=checkbox]").evaluateAll((boxes: HTMLElement[]) => boxes.map((b) => b.getAttribute("aria-checked"))), ["true", "false"]);
+	// A heading stands a step above the text, not at a size of its own; a key is shadcn's Kbd; bold is <strong>.
+	assert.ok(await md.locator("h1").evaluate((h: HTMLElement) => parseFloat(getComputedStyle(h).fontSize) <= 1.25 * parseFloat(getComputedStyle(h.parentElement!).fontSize)));
+	assert.equal(await md.locator("blockquote [data-slot=kbd]").count(), 1);
+	assert.equal(await md.locator("blockquote strong").count(), 1);
 	const item = md.locator("li", { hasText: "an item" }).first();
 	assert.equal(await item.evaluate((li: HTMLElement) => getComputedStyle(li.parentElement!).listStylePosition), "outside");
 	assert.equal(await item.locator("p").evaluateAll((ps: HTMLElement[]) => ps.map((p) => getComputedStyle(p).display).join()), "block,block");
