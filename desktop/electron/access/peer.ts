@@ -191,9 +191,7 @@ function start(options: PeerOptions, label: string | undefined): Peer {
 		path() {
 			if (done) return undefined;
 			const pair = pc.getSelectedCandidatePair();
-			if (!pair) return undefined;
-			if (pair.local.type === "relay" || pair.remote.type === "relay") return "relay";
-			return pathOf(pair.remote.address, pair.local.address);
+			return pair ? pathOfPair(pair) : undefined;
 		},
 		buffered: () => stream?.buffered() ?? 0,
 		close: () => close(),
@@ -285,6 +283,12 @@ export async function tryRelay(relay: RelayServer, ms = 5000): Promise<RelayTry>
 			end("refused");
 		}
 	});
+}
+
+/** The path of the pair a connection chose: through the relay when either end is an address on it, else by the addresses. */
+export function pathOfPair(pair: { local: { type: string; address: string }; remote: { type: string; address: string } }): PeerPath {
+	if (pair.local.type === "relay" || pair.remote.type === "relay") return "relay";
+	return pathOf(pair.remote.address, pair.local.address);
 }
 
 /** Same network when the other peer's address is one no network outside would hand out. */

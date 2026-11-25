@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { createToastManager, Toast, ToastContent, ToastDescription, ToastPortal, ToastProvider, ToastTitle, ToastViewport, toast, useToastManager } from "@/components/ui/toast";
 import { QrCode } from "@/components/qr-code";
+import { useAccessState } from "./access-state.ts";
 import { type AccessState, bridge } from "./bridge.ts";
 import { computerWord } from "./machines.ts";
 import { store, useModel } from "./model.ts";
@@ -143,33 +144,24 @@ function usePausedNotice(state: AccessState | undefined, platform: string, resum
 	}, [paused]);
 }
 
-/** Whether an answer of the bridge is a state of browser access (Storybook's stand-in answers every call with a function). */
-const isState = (s: unknown): s is AccessState => typeof s === "object" && s !== null && Array.isArray((s as AccessState).devices);
-
 /** The parts above, wired to the bridge and the store. Nothing where the bridge has no browser access (the web client, the mobile app). */
 export function DevicePairing() {
 	const s = useModel(store);
-	const [state, setState] = useState<AccessState>();
-	const [now, setNow] = useState(Date.now);
-	const opened = s.devicePairing;
-	useInterval(() => setNow(Date.now()), opened ? 1000 : null);
 	const has = typeof bridge.onAccess === "function";
-
-	useEffect(() => {
-		if (!has) return;
-		const told = (next: AccessState) => {
-			setState(next);
+	const [state, answered] = useAccessState({
+		on: has,
+		told: (next) => {
 			if (next.request && store.devicePairing && !store.devicePairing.asked) {
 				store.devicePairing = { ...store.devicePairing, asked: true };
 				store.touch();
 			}
-		};
-		const stop = bridge.onAccess!(told);
-		void Promise.resolve(bridge.access?.()).then((first) => isState(first) && setState(first), () => {});
-		return () => void (typeof stop === "function" && stop());
-	}, [has]);
+		},
+	});
+	const [now, setNow] = useState(Date.now);
+	const opened = s.devicePairing;
+	useInterval(() => setNow(Date.now()), opened ? 1000 : null);
 	useEffect(() => setNow(Date.now()), [opened?.link]);
-	usePausedNotice(state, s.platform, () => void store.attempt(async () => setState(await bridge.setAccess!({ visible: true }))));
+	usePausedNotice(state, s.platform, () => void store.attempt(() => answered(bridge.setAccess!({ visible: true }))));
 	if (!has) return null;
 
 	const answer = (yes: boolean, request: Request) => {

@@ -270,19 +270,27 @@ test("quitting preserves all open windows on relaunch, while closing all windows
 				check();
 			}),
 	);
-	await clickMenu(app, ["File", "Close Window"], 0);
-	await app.evaluate(
-		({ BrowserWindow }: any) =>
-			new Promise<void>((resolve, reject) => {
-				const deadline = Date.now() + 5000;
-				const check = () => (BrowserWindow.getAllWindows().length === 0 ? resolve() : Date.now() > deadline ? reject(new Error("last window did not close")) : setTimeout(check, 50));
-				check();
-			}),
-	);
-
-	// On macOS, prefs.windows should now be empty; quit and relaunch -> should open 1 single window.
-	await app.close();
+	if (process.platform === "darwin") {
+		// On a Mac the app stays when its last window closes: wait for the window, then quit.
+		await clickMenu(app, ["File", "Close Window"], 0);
+		await app.evaluate(
+			({ BrowserWindow }: any) =>
+				new Promise<void>((resolve, reject) => {
+					const deadline = Date.now() + 5000;
+					const check = () => (BrowserWindow.getAllWindows().length === 0 ? resolve() : Date.now() > deadline ? reject(new Error("last window did not close")) : setTimeout(check, 50));
+					check();
+				}),
+		);
+		await app.close();
+	} else {
+		// Elsewhere closing the last window quits the app (window-all-closed): nothing is left to ask, so wait for it to end.
+		const ended = app.waitForEvent("close", { timeout: 15_000 });
+		await clickMenu(app, ["File", "Close Window"], 0);
+		await ended;
+	}
 	app = undefined;
+
+	// Closing every window one by one leaves none to restore: a relaunch opens a single window.
 
 	const prefsAfterCloseAll = JSON.parse(fs.readFileSync(path.join(dataDir, "prefs.json"), "utf8"));
 	assert.equal(prefsAfterCloseAll.windows?.length ?? 0, 0, `expected 0 saved windows after closing all: ${JSON.stringify(prefsAfterCloseAll.windows)}`);
@@ -294,7 +302,11 @@ test("quitting preserves all open windows on relaunch, while closing all windows
 });
 
 test("shared SSE stream fans out live events without duplicate notifications or double-counted badges", async () => {
-	assert.ok(app, "app is running from previous test");
+	// Started here when the test before left no app, so that its failure does not become this one's too.
+	if (!app || app.windows().length === 0) {
+		await app?.close().catch(() => {});
+		app = (await startPineApp()).app;
+	}
 	const win1 = app.windows()[0];
 	await win1.waitForSelector("[data-slot=tab][data-active]");
 

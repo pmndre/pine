@@ -66,6 +66,8 @@ export interface Bounds {
 export interface BrowserHostOptions {
 	/** Called when a window's currently attached WebContentsView is claimed by another window. */
 	onPreempted?: (win: BrowserWindow) => void;
+	/** Whether `win` is the window in front, by the app's own record of focus events (the system's focus is not settled under a virtual screen, nor for a window never shown). */
+	inFront?: (win: BrowserWindow) => boolean;
 }
 
 export class BrowserHost {
@@ -79,9 +81,11 @@ export class BrowserHost {
 	private n = 0;
 
 	private readonly onPreempted?: (win: BrowserWindow) => void;
+	private readonly inFront: (win: BrowserWindow) => boolean;
 
 	constructor(options?: BrowserHostOptions) {
 		this.onPreempted = options?.onPreempted;
+		this.inFront = options?.inFront ?? ((win) => win.isFocused());
 	}
 
 	/** Where a browser server connects, with the word: for the daemon alone, which hands it to its browser servers. */
@@ -139,8 +143,8 @@ export class BrowserHost {
 				this.shownByWindow.delete(ownerWin);
 				continue;
 			}
-			// If the current owner is focused and the requester is not, keep it there so the requester falls back to canvas.
-			if (ownerWin.isFocused() && !win.isFocused()) return false;
+			// If the current owner is in front and the requester is not, keep it there so the requester falls back to canvas.
+			if (this.inFront(ownerWin) && !this.inFront(win)) return false;
 			this.detachView(ownerWin, tab.view);
 			this.shownByWindow.delete(ownerWin);
 			this.onPreempted?.(ownerWin);

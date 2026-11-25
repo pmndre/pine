@@ -17,6 +17,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { EmptyView } from "@/components/empty-view";
+import { useAccessState } from "./access-state.ts";
 import { type AccessChange, type AccessDevice, type AccessState, bridge } from "./bridge.ts";
 import { computerWord } from "./machines.ts";
 import { store } from "./model.ts";
@@ -266,26 +267,17 @@ export function BrowserAccessFailed({ error }: { error: string }) {
 	);
 }
 
-/** Whether an answer of the bridge is a state of browser access (Storybook's stand-in answers every call with a function). */
-const isState = (s: unknown): s is AccessState => typeof s === "object" && s !== null && Array.isArray((s as AccessState).devices);
-
 /** The section in the app: the state from the bridge, told again on every change; the calls made through it. */
 export function BrowserAccess() {
-	const [state, setState] = useState<AccessState>();
 	const [loadError, setLoadError] = useState<string>();
+	const [state, answered] = useAccessState({ failed: (e) => setLoadError(errText(e)) });
 	const [now, setNow] = useState(Date.now);
 	useInterval(() => setNow(Date.now()), state?.devices.length ? 1000 : null);
-
-	useEffect(() => {
-		const stop = bridge.onAccess?.(setState);
-		void Promise.resolve(bridge.access?.()).then((s) => isState(s) && setState(s), (e: unknown) => setLoadError(errText(e)));
-		return () => void (typeof stop === "function" && stop());
-	}, []);
 
 	if (!state) return loadError ? <BrowserAccessFailed error={loadError} /> : <BrowserAccessSkeleton />;
 	const actions: AccessActions = {
 		async set(change) {
-			setState(await bridge.setAccess!(change));
+			await answered(bridge.setAccess!(change));
 		},
 		add: () => void store.addDevice(),
 		remove: (id) => void store.attempt(() => bridge.removeDevice!(id)),

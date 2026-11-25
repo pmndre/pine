@@ -325,6 +325,12 @@ function persistOpenWindows(): void {
 
 /** The agents' browsers, tracked per local BrowserWindow: for this computer's pine only, whose browser servers can reach it. */
 const browsers = new BrowserHost({
+	// The window focused last, by the focus events this app saw: the same order focusedWindow() falls back to.
+	inFront: (win) => {
+		let best: ManagedWindow | undefined;
+		for (const w of windows.values()) if (!w.win.isDestroyed() && (!best || w.focusedAt > best.focusedAt)) best = w;
+		return best?.win === win;
+	},
 	onPreempted: (win) => {
 		if (!win.isDestroyed()) win.webContents.send("pine:browser-preempted");
 	},
