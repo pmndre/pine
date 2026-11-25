@@ -10,6 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { app, autoUpdater } from "electron";
+import { createSquirrelUpdater, FAILED, isShipItRunning, readBundleId, readDiskVersion } from "./squirrel.ts";
 import type { UpdaterState } from "./updates.ts";
 
 export interface Updater {
@@ -22,9 +23,6 @@ export interface Updater {
 	quitting(): void;
 }
 
-const FAILED = "The update could not be downloaded or installed here.";
-const READ_ONLY = "This app cannot replace itself where it is (the disk image, or a folder it cannot write): move it to Applications.";
-
 /** The updater of this app: the stand-in of a test, macOS's for a packaged app on a Mac, none otherwise (a checkout updates nothing). */
 export function makeUpdater(changed: (state: UpdaterState) => void): Updater | undefined {
 	if (process.env.PINE_DESKTOP_UPDATER) return standIn(process.env.PINE_DESKTOP_UPDATER, changed);
@@ -33,39 +31,16 @@ export function makeUpdater(changed: (state: UpdaterState) => void): Updater | u
 }
 
 function squirrel(changed: (state: UpdaterState) => void): Updater {
-	let now: UpdaterState = { state: "idle" };
-	let version = "";
-	const set = (s: UpdaterState) => changed((now = s));
-	autoUpdater.on("update-downloaded", () => set({ state: "ready", version }));
-	// The feed names a release, so "nothing newer" means Squirrel.Mac would not take it: a failure, not a download that never ends.
-	autoUpdater.on("update-not-available", () => set({ state: "failed", version, reason: FAILED }));
-	// Squirrel.Mac's own words are not shown; only whether it is the place the app runs from that is the trouble.
-	autoUpdater.on("error", (e) => set({ state: "failed", version, reason: /read-only|translocat/i.test(String(e?.message)) ? READ_ONLY : FAILED }));
-	return {
-		state: () => now,
-		download(feed, v) {
-			if (now.state !== "idle" && now.state !== "failed" && version === v) return;
-			version = v;
-			set({ state: "downloading", version });
-			try {
-				// The feed is a file on the release ({ url, name, pub_date }), served as Squirrel.Mac's default server would answer.
-				// Its requests say no more of this Mac than the update check's do.
-				autoUpdater.setFeedURL({ url: feed, serverType: "default", headers: { "User-Agent": "Pine" } });
-				autoUpdater.checkForUpdates();
-			} catch {
-				set({ state: "failed", version, reason: FAILED });
-			}
-		},
-		install() {
-			try {
-				autoUpdater.quitAndInstall();
-			} catch {
-				set({ state: "failed", version, reason: FAILED });
-			}
-		},
-		// Squirrel.Mac installs a downloaded update when the app quits by itself.
-		quitting: () => {},
-	};
+	const infoPlist = path.resolve(process.execPath, "..", "..", "Info.plist");
+	const bundleId = readBundleId(infoPlist);
+	return createSquirrelUpdater(changed, {
+		autoUpdater,
+		currentVersion: () => app.getVersion(),
+		relaunch: () => app.relaunch(),
+		quit: () => app.quit(),
+		shipItRunning: () => isShipItRunning(bundleId),
+		diskVersion: () => readDiskVersion(infoPlist),
+	});
 }
 
 function standIn(folder: string, changed: (state: UpdaterState) => void): Updater {
