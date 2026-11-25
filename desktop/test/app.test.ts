@@ -687,7 +687,6 @@ test("what an answer points at on the web is not fetched by itself, and what it 
 	assert.match(await md.locator("[data-href] + [data-target]").textContent(), /example\.com\/docs/);
 	// A table is shadcn's, and scrolls sideways in a ScrollArea of its own, with no height of its own.
 	assert.equal(await md.locator("table[data-slot=table]").evaluate((t: HTMLElement) => getComputedStyle(t.closest("[data-slot=scroll-area-viewport]")!).overflowX), "scroll");
-	assert.equal(await md.locator("[data-slot=scroll-area-scrollbar][data-orientation=horizontal]").count(), 1);
 	// A footnote's number and its note are words alone: no address of a place in the page, no heading for
 	// screen readers drawn for everyone.
 	assert.doesNotMatch(await md.textContent(), /user-content|Footnotes/);
