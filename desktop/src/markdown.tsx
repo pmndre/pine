@@ -333,8 +333,9 @@ const CONTROLS: ControlsConfig = { code: { copy: true, download: false }, table:
 // Details above. `data-slot="markdown"` and `data-live` are what the tests look for.
 // A table breaks between words only: `wrap-anywhere` makes a cell's narrowest width one letter, and
 // in a narrow window the table then squeezes a column to a letter a line instead of scrolling in
-// its wrapper. Headers stay on one line, as stock shadcn's TableHead does.
-const LOOK = "cursor-auto select-text wrap-anywhere [&_table]:wrap-break-word [&_th]:whitespace-nowrap";
+// its wrapper. Headers stay on one line, as stock shadcn's TableHead does. An address or a piece of
+// code is one long word: it still breaks anywhere, or its column alone is wider than a phone.
+const LOOK = "cursor-auto select-text wrap-anywhere [&_table]:wrap-break-word [&_th]:whitespace-nowrap [&_table_:is(a,code)]:wrap-anywhere";
 
 /** Markdown, drawn into the page. While `live`, the text grows; what the reader opened stays open. */
 export const Markdown = memo(function Markdown({ text, where, live }: { text: string; where?: Where; live?: boolean }): ReactNode {
