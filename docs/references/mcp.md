@@ -1,19 +1,20 @@
 # MCP servers
 
-pi has MCP built in; pine decides which agent gets which server. In your own conversations a
-server is one tool, named after it, and each of its tools is an action of that tool: the server
-`notes` is the tool `notes` with the action `lookup`. Characters such as `-` in a server's name
-become `_` (`home-link` is the tool `home_link`), and a server named like one of pine's own tools
-gets `mcp_` in front (`manual` is `mcp_manual`). Each of its tools also has a name of its own,
-`mcp__<server>__<tool>` (`mcp__home_link__status`): runs started from outside are given the tools
-under those names, and `approve` patterns use them. The server's own `taints` and `approve`
-settings apply either way.
+pine decides which agent gets which MCP server. In your own conversations a server is one tool,
+named after it, and each of its tools is an action of that tool: the server `notes` is the tool
+`notes` with the action `lookup`. A `-` in the name becomes `_` (`home-link` is the tool
+`home_link`), and a server named like one of pine's own tools gets `mcp_` in front (`manual` is
+`mcp_manual`). The bundled `web` server is the exception: its tools stay tools of their own
+(`mcp__web__search`, `mcp__web__fetch`). Each tool also has a full name,
+`mcp__<server>__<tool>` (`mcp__home_link__status`): runs started from outside are given the
+tools under those names, and `approve` patterns use them.
 
-That tool's description carries what the server says about using its tools as a whole (the
-instructions it sends when it connects, the first 2048 characters, as Claude takes them), and a
-line for each action. An argument that several of the server's tools take is described in full,
-once; any other keeps a clause. A server written for Claude (a first call that passes `"new"`, an
-id to pass on) is therefore used the way its authors meant without further words from you.
+The tool's description carries the instructions the server sends when it connects (the first
+2048 characters) and a line for each action, so a server written for Claude (a first call that
+passes `"new"`, an id to pass on) is used the way its authors meant.
+
+Telegram messages and MQTT commands are not MCP servers but event sources that can send, used
+with the `send` tool ([sources.md](sources.md), "Sending through a source").
 
 ## Global and per agent
 
@@ -33,8 +34,6 @@ Servers of one agent go in its `agent.json`:
 { "mcp": { "library": { "command": "library-mcp", "args": ["--stdio"] } } }
 ```
 
-Who gets what:
-
 | Setting | Effect |
 |---|---|
 | `agents` on a global server | Which agents get it. Default: all (`["*"]`). |
@@ -44,69 +43,62 @@ Who gets what:
 | A server in `agent.json` with a global server's name | Replaces the global one for this agent (an entry with `"enabled": false` does not: the global server stays). |
 | `"enabled": false` | Switches a server off without deleting it. |
 
-`pine check` prints the resulting list per agent.
+`pine check` prints the resulting list per agent. Servers you set up for your own interactive pi
+(its `mcp.json`) do not reach pine's agents.
 
 ## Adding a server
 
-Three ways, all ending in the same entry in `pine.json` (for everyone) or an `agent.json`:
+Three ways, all ending in the same entry in `pine.json` (for everyone) or an `agent.json`.
 
 **Ask an agent.** "Connect this MCP server: https://mcp.example.com/mcp", or "look at
-example.com and install their MCP server". The agent calls `add_mcp_server` with the server's
-URL, or for a local server with the command that starts it (`npx -y @example/mcp@latest`); you
-get an approval dialog with the name, the URL or the command, and who gets it. Said just
-like that, it is for the conversation you are in: only that conversation has the server's
-tools, and the server is removed with the conversation (in an agent's main conversation it is
-the agent's, in all its conversations). Say "for you as an agent" to keep it for the agent from
-any conversation, and ask the **main agent** for "all agents": only it can add or remove a
-server for everyone. `remove_mcp_server` takes a server out again, and the main agent signs in
-to a remote one that needs it with `sign_in_mcp_server` (you finish in the browser). See [setup.md](setup.md).
+example.com and install their MCP server". The agent calls `add_mcp_server` with the URL, or for
+a local server the command that starts it (`npx -y @example/mcp@latest`). You get a dialog with
+the name, the URL or the command, and who gets it, in every mode, bypass included (in plan mode
+the agent only says what it would add). Who gets it:
 
-If you allow it, the server is written to the configuration, without a restart. The agent
-does not have the new tools in the turn in which it added the server, so pine calls it again
-by itself as soon as that turn ends, in the same conversation, and it goes on with the tools.
-You do not have to send a message, and there is no need for a new conversation. The question comes in every mode, bypass included, because
-it changes pine itself. (Plan mode is the exception the other way: there the agent adds
-nothing, and says what it would add.)
+- Said just like that: the conversation you are in. Only it has the tools, and the server is
+  removed with it (in the main conversation that is the agent).
+- "For you as an agent": all the agent's conversations.
+- "All agents": only the main agent can add or remove those.
 
-A server added in one conversation is missing in the agent's other conversations. `/mcp` in
-the terminal UI says so: "only this conversation", or "only the conversation X of main, not
-this one"; `pine mcp list` says "only the conversation X of main". The agent sees the same
-with its `mcp_servers` tool, which also says for each server whether its tools are in the
-agent's tool list (connected) or missing (it did not start, or it needs a sign-in). To have
-such a server in every conversation of the agent, tell the agent "add it for yourself as an
-agent", in the conversation that has it or in another: it adds the server again under the
-same name with `scope: "agent"`, you confirm, and the entry of the one conversation is
-replaced. A key the server needs is named again (`secrets`) and typed again in that dialog:
-the one pine kept for the old entry goes with it.
+The change applies without a restart. The agent does not have the new tools in the turn in which
+it added the server, so pine calls it again by itself when that turn ends, in the same
+conversation; you need not send a message or start a new conversation.
 
-A **local server** is a program that somebody else wrote and that keeps running while the agent
-works. One that an agent adds therefore runs where the commands of the agent that uses it run
-(`"sandboxed": true` in its entry): it reaches what that agent's shell reaches and nothing
-more. For an agent in `safe` or `manual` mode that is its sandbox: its workspace, its private
-home folder and the network, and pine's home is closed to the program by the operating system.
-For an agent in `auto` or `bypass` mode (the main agent, unless you say otherwise) there is
-no sandbox: the program runs with your rights, your home folder and the network, and nothing
-of the operating system keeps it out of pine's home. Either way it gets nothing of the
-daemon's environment. The dialog shows the exact command and says which of the two it is.
-Read the command: it is what will run. The command is one program with its arguments; shell
-operators (`&&`, a pipe, `$(...)`) are refused. Where the machine has no sandbox, an agent in
-`safe` or `manual` mode cannot add a local server at all.
+A server added in one conversation is missing in the agent's others: `/mcp`, `pine mcp list`
+and the agent's `mcp_servers` tool say so ("only the conversation X of main"); `mcp_servers`
+also says whether each server's tools are there or missing (it did not start, or needs a
+sign-in). To have it everywhere, tell the agent "add it for yourself as an agent": it adds it
+again with `scope: "agent"`, you confirm (and type any key again), and that entry replaces the
+conversation's.
 
-If a local server needs a sign-in, the agent signs in once it has the server's tools: with the
-server's own action for it where there is one (`login`, `sign_in`), and otherwise with the command
-its documentation names (often the same command with `login` at the end), which it runs in its
-shell, giving you the link it prints. It does not hand you a command to run for it. If it needs a key or token in its environment, the agent names the variable
-(`secrets`, for example `EXAMPLE_API_KEY`) and never the key: the dialog has a field for it,
-you type it there, and pine keeps it in `.env` and takes it out again with the server.
+`remove_mcp_server` takes a server out. The main agent signs in to a remote server that needs it
+with `sign_in_mcp_server` (you finish in the browser). See [setup.md](setup.md).
+
+**A local server an agent adds** is a program somebody else wrote. It runs where that agent's
+commands run (`"sandboxed": true` in its entry) and reaches what its shell reaches:
+
+- In `safe` or `manual` mode: the sandbox (its workspace, its private home folder, the network);
+  pine's home is closed to it. Where the machine has no sandbox, such an agent cannot add a local
+  server at all.
+- In `auto` or `bypass` mode (the main agent, unless you say otherwise): no sandbox. The program
+  runs with your rights, your home folder and the network.
+
+Either way it gets nothing of the daemon's environment. The dialog shows the exact command and
+which of the two it is: read it, it is what will run. The command is one program with its
+arguments; shell operators (`&&`, a pipe, `$(...)`) are refused.
+
+A local server that needs a sign-in: once it has the tools, the agent uses the server's own
+action for it (`login`, `sign_in`), or else runs the command the documentation names and gives
+you the link it prints. A key the server reads from its environment the agent names (`secrets`,
+e.g. `EXAMPLE_API_KEY`), never the value: you type it into the dialog, pine keeps it in `.env`
+and removes it with the server.
 
 Your yes makes it a server of yours: using it does not mark the conversation as having read
-outside content. It is written with `"approve": "tainted"`, which only matters after the
-conversation has read something from outside (a web page, say): from then on the server's tools
-that act ask each time, until you answer "Always here" in that dialog, which settles it for the
-conversation. Its
-read-only tools never ask. If the server itself returns other people's text (mail, tickets, a
-web search), add `"taints": true` to its entry; if you want no questions at all, remove
-`approve`.
+outside content. It is written with `"approve": "tainted"`: after the conversation has read
+something from outside, the server's tools that act ask each time until you answer "Always here";
+its read-only tools never ask. If the server returns other people's text (mail, tickets, a web
+search), add `"taints": true`; for no questions at all, remove `approve`.
 
 **From a shell.**
 
@@ -119,11 +111,11 @@ pine mcp add library --agent gonzo -- /usr/local/bin/library-mcp --stdio
 ```
 
 Options: `--agent <id>` (only that agent), `--taints`, `--approve always|tainted`,
-`--timeout <seconds>`, `--description "..."`, `--exposure direct|codemode|deferred|hidden`.
-`pine mcp list --offline` lists without connecting. A remote server needs an https URL (http only for
-`localhost`). If a daemon is running the change applies at once; otherwise at the next start.
-`pine mcp remove <name>` takes it out again (`--agent <id>` for one in an `agent.json`), and
-`pine mcp list` shows every server, who gets it, and whether it connects:
+`--timeout <seconds>`, `--description "..."`, `--exposure direct|codemode|deferred|hidden`. A
+remote server needs an https URL (http only on this computer: `localhost`, `127.0.0.1`, `[::1]`).
+With a daemon running the change applies at once, otherwise at the next start. `pine mcp remove
+<name>` takes it out (`--agent <id>` for one in an `agent.json`). `pine mcp list` shows every
+server, who gets it and whether it connects (`--offline`: without connecting):
 
 ```
 notes          needs sign-in    all: main
@@ -132,27 +124,21 @@ web            connected        all: main
                bundled: web  [outside content]
 ```
 
-**By hand.** Edit the file as described below, run `pine check`, restart.
+**By hand.** Edit the file as below, run `pine check`, restart.
 
 ## Signing in (OAuth)
 
 A remote server that answers "unauthorized" and supports OAuth needs you to sign in once:
-
-```bash
-pine mcp login notes
-```
-
-or `/mcp login notes` in the terminal UI. Your browser opens the server's sign-in page; when
-you approve, pine stores the tokens in `data/pi/mcp-auth.json` (closed to agents) and refreshes
-them on its own afterwards. Open conversations get the server's tools from their next message.
-`pine mcp logout <name>` deletes the tokens.
+`pine mcp login notes`, `/mcp login notes` in the terminal UI, or Sign in under Settings > MCP
+servers in the app. Your browser opens the server's sign-in page; pine stores the tokens in
+`data/pi/mcp-auth.json` (closed to agents) and refreshes them itself. Open conversations get the
+server's tools from their next message. `pine mcp logout <name>` deletes the tokens.
 
 The sign-in is pi's: it follows the server's OAuth metadata and registers itself as a client.
-For servers that need a pre-registered client or a particular client name, add an `oauth`
+For a server that needs a pre-registered client or a particular client name, add an `oauth`
 block to the entry (`clientId`, `clientSecret`, `callbackPort`, `clientName`,
-`clientRegistration`); pi's `docs/mcp.md` describes each. A server that takes a fixed token
-instead needs no sign-in: put `"headers": { "Authorization": "Bearer ${TOKEN}" }` in the entry
-and the token in `.env`.
+`clientRegistration`; pi's `docs/mcp.md` describes each). A server that takes a fixed token needs
+no sign-in: `"headers": { "Authorization": "Bearer ${TOKEN}" }`, with the token in `.env`.
 
 ## Server entries
 
@@ -162,69 +148,54 @@ An entry has the shape of an `mcpServers` entry in pi's `mcp.json`:
 |---|---|
 | `command`, `args`, `env`, `cwd` | A local server started as a child process (stdio). |
 | `url`, `headers` | A remote server (streamable HTTP). |
-| `exposure` | How tools reach the model. pine's default is `direct`: every tool is declared. `codemode` offers one scripting tool instead, `deferred` makes tools searchable, `hidden` hides them. Use `deferred` or `codemode` for servers with dozens of tools. |
-| `toolExposure` | Per-tool override, for example `{ "delete_*": "hidden" }`. |
+| `exposure` | How tools reach the model. pine's default is `direct`: every tool is declared. `codemode` offers one scripting tool instead, `deferred` makes tools searchable, `hidden` makes them unreachable. Use `deferred` or `codemode` for servers with dozens of tools. |
+| `toolExposure` | Per-tool override, e.g. `{ "delete_*": "hidden" }`. |
 | `description` | One sentence for the model about what the server offers. |
-| `url` (remote servers) | Also decides where the `download` tool fetches from without asking: addresses on the same scheme, host and port. A server that hands out download links for its files on its own host works with it out of the box. See "Files and pictures from a remote server". |
-| `headers` (remote servers) | Sent with every call to the server, and by the `download` tool with a link that one of the server's own tools returned in the conversation. Never with any other address, and never for a server with `taints: true`. |
-| `timeout` | Seconds one call to this server may take before the agent is told it timed out. Default 60. Raise it for a server with slow tools, e.g. `"timeout": 180`. |
+| `url` (remote servers) | Also where the `download` tool fetches from without asking: the same scheme, host and port. See "Files and pictures from a remote server". |
+| `headers` (remote servers) | Sent with every call to the server, and by `download` with a link one of the server's own tools returned in the conversation. Never with any other address, and never for a server with `taints: true`. |
+| `timeout` | Seconds one call may take before the agent is told it timed out. Default 60; e.g. `"timeout": 180` for slow tools. |
 
-and the keys pine adds (besides `agents` and `enabled` from the table at the top):
+and the keys pine adds (besides `agents` and `enabled` above):
 
 | Key | Meaning |
 |---|---|
 | `pine` | Use a server that ships with pine (`"web"`, `"browser"`, `"commands"` or `"computer"`), configured through `options`. |
-| `sandboxed` | For a local server: `true` runs its program where the commands of the agent that uses it run, with that agent's home folder and environment, instead of as a process of the daemon's: inside the sandbox for an agent in `safe` or `manual` mode, with your rights for one in `auto` or `bypass` mode. Written by `add_mcp_server` for every local server an agent adds. Add it to a server of your own to hold it the same way; take it out only if you trust the program with your account and pine's home. |
-| `session` | In an `agent.json` only, written by `add_mcp_server`: the one conversation the server was added for. Other conversations of the agent do not get it, and it is removed with that conversation. |
-| `taints` | `true` when the server returns content written by others (web pages, mail, tickets, chat). A session that calls it becomes tainted. Default `false`, `true` for the bundled `web`, `browser` and `computer`. |
-| `approve` | `"always"`: every call needs your approval, each time (except in bypass mode, where nothing asks). `"tainted"`: once the session has seen outside content, the server's tools that act need approval (its read-only tools do not), and you can answer "always in this conversation"; use it for servers that change things or send things out. Default `"never"`. |
+| `sandboxed` | For a local server: `true` runs it where the commands of the agent that uses it run, with that agent's home folder and environment: in the sandbox in `safe` or `manual` mode, with your rights in `auto` or `bypass` mode. Written by `add_mcp_server` for every local server an agent adds. A server you add yourself (`pine mcp add <name> -- <command>`, or an entry you write) runs as a normal process of yours without it, and what it reaches agents reach through it: give it the narrowest credentials, or set `sandboxed`. |
+| `session` | In an `agent.json` only, written by `add_mcp_server`: the one conversation the server was added for; it is removed with that conversation. |
+| `taints` | `true` when the server returns content written by others (web pages, mail, tickets, chat): a conversation that calls it is marked. Default `false`; `true` for the bundled `web`, `browser` and `computer`. |
+| `approve` | `"always"`: every call asks, each time (except in bypass mode, where nothing asks). `"tainted"`: after outside content, the server's tools that act ask (its read-only tools do not), and you can answer "always in this conversation". Default `"never"`. |
 
-Each session starts its own copy of a local server and stops it when the session closes. A
-local server that you added yourself (`pine mcp add <name> -- <command>`, or an entry you
-wrote) is a normal process of yours: it is not sandboxed, and what it can reach, agents can
-reach through it. Give it the narrowest credentials that do the job, or set `"sandboxed": true`.
-One that an agent added has that from the start; it is in a sandbox when the agent is.
+Each conversation starts its own copy of a local server and stops it when the conversation
+closes.
 
-What a server says about its own tools counts in two places. A tool it declares read-only
-(`readOnlyHint`) is not asked about (unless the server has `"approve": "always"`), and it is
-the only kind of MCP tool that runs in plan mode:
-search and page reading of `web`, a snapshot or a screenshot of the browser, looking at an app.
-Every other tool is refused in plan mode, opening a page in the browser and the tools of a
-`commands` server among them: pine cannot know that one of those only looks.
-
-pi's `mcp.json` files are not read. The daemon gives pi a folder of its own (`data/pi`) and
-agent sessions load no MCP configuration file, so servers you set up for your own interactive
-pi do not appear in agents.
+A tool the server declares read-only (`readOnlyHint`) is not asked about (unless `"approve":
+"always"`), and it is the only kind of MCP tool that runs in plan mode: search and page reading
+of `web`, a snapshot or screenshot of the browser, looking at an app. Every other MCP tool is
+refused in plan mode, opening a page and every `commands` tool among them.
 
 ## Files and pictures from a remote server
 
-A server that makes files (pictures, sound, documents) keeps them where it runs. When it is
-reached over the network, that can be another computer, and three things follow:
+A server that makes files (pictures, sound, documents) keeps them where it runs, which for a
+server reached over the network can be another computer:
 
-- **A picture in a tool's answer is already shown.** The terminal UI draws it where the tool
-  ran. pine adds a line to such an answer that tells the agent so, since a model that reads
-  only text sees a file name and a link there and no picture. The agent does not show it a
-  second time and does not fetch it unless you want the file. (The line is not added when the
-  answer goes to a chat such as Telegram, where nothing was drawn.)
-- **A file path in an answer is a path on the server's computer.** On the agent's own disk
-  that file does not exist: `cp` and `read` answer "No such file or directory". The agent's
-  prompt names the servers that are reached over the network (every `url` that is not
-  `localhost` or `127.0.0.1`) and says so.
+- **A picture in a tool's answer is already shown** where the tool ran. pine tells the agent so,
+  and it does not show or fetch it again unless you want the file. (Not when the answer goes to a
+  chat such as Telegram, where nothing was drawn.)
+- **A file path in an answer is a path on the server's computer.** On the agent's disk it does
+  not exist: `cp` and `read` answer "No such file or directory". The agent's prompt names the
+  servers reached over the network (every `url` not on `localhost` or `127.0.0.1`) and says so.
 - **The agent gets the file with the `download` tool and the link from the answer.** A link on
-  the server's own address (same scheme, host and port as its `url`) is fetched without a
-  question. If the server has `headers` (its key), pine sends them with such a link itself:
-  only with an address that one of the server's own tools returned in this conversation, exactly
-  as it was returned, and not for a server with `taints: true`. The agent never sees the key and
-  cannot send it anywhere else. Any other address on the server is fetched without the key, and
-  a server that wants it answers HTTP 401: the agent calls the tool again and downloads the
-  link it gets. After a `/reset` or a restart of pine the links given before count no longer.
-- **The `download` tool says how the file is shown.** When what it saved is a picture, a video
-  or a sound (by the name it was saved under), its answer ends with the line to write into the
-  reply: `![short caption](path)`, with the `!` in front. A server's own words for the next step
-  ("play it", "attach it") do not say how, and a plain link `[..](..)` shows and plays nothing.
+  the server's own address (scheme, host and port of its `url`) is fetched without a question.
+  With `headers` (its key), pine sends them with such a link itself: only for an address one of
+  the server's own tools returned in this conversation, exactly as returned, and not for a server
+  with `taints: true`. The agent never sees the key. Another address on the server is fetched
+  without it; a server that wants it answers 401, and the agent calls the tool again for a fresh
+  link. After `/reset` or a restart of pine, earlier links no longer count.
+- **`download` says how to show the file.** For a picture, video or sound its answer ends with
+  the line to write into the reply: `![short caption](path)`, with the `!`. A plain link
+  `[..](..)` shows and plays nothing.
 
-A server of your own that returns its files' paths is better off returning only a name and a
-link: a path is of use to nobody who is not on the same computer.
+A server of your own is better off returning a name and a link than a path.
 
 ## Bundled: web
 
@@ -236,33 +207,31 @@ Search and page reading without a browser.
 
 | Tool | What it does |
 |---|---|
-| `mcp__web__search(query, count?)` | Web search. Uses the Brave Search API when `braveApiKey` is set, otherwise DuckDuckGo's HTML page (fine for light use; it may rate-limit). |
-| `mcp__web__fetch(url, max_chars?, start?)` | Fetches a page and returns its text. `start` continues a long page. |
+| `mcp__web__search(query, count?)` | Web search: the Brave Search API when `braveApiKey` is set, otherwise DuckDuckGo's HTML page (fine for light use; it may rate-limit). |
+| `mcp__web__fetch(url, max_chars?, start?)` | A page's text. `start` continues a long page. |
 
 | Option | Default | Meaning |
 |---|---|---|
 | `braveApiKey` | none | Brave Search API key. |
 | `allowHosts` | all | Only these hosts (and their subdomains) can be fetched. Without `braveApiKey` the search is such a fetch too: add `duckduckgo.com`. |
 | `denyHosts` | none | These cannot. |
-| `allowPrivate` | `false` | Allow every address on this computer and your own network, without asking. Leave it off: this server never asks. To look at one local address the agent uses the browser, which asks you for that address, see "Local addresses" below. |
+| `allowPrivate` | `false` | Allow every address on this computer and your network, without asking. Leave it off: to look at one local address the agent uses the browser, which asks you ("Local addresses"). |
 | `maxBytes` | 2 MB | Cut-off for one response. |
-| `maxUrlLength` | 2000 | Longer URLs are refused, which limits how much can be smuggled out in one. |
+| `maxUrlLength` | 2000 | Longer URLs are refused, which limits what can be smuggled out in one. |
 | `timeoutMs` | 20000 | Per request. |
-| `userAgent` | a desktop Safari | What the server says it is when it fetches a page. |
+| `userAgent` | a desktop Safari | What it says it is when it fetches. |
 
-It only speaks http and https, follows redirects itself and checks every hop, and refuses
-loopback, private, link-local and similar addresses at the moment the connection is made. A page
-therefore cannot send an agent to your router, your NAS or pine's own control port. Results are
-wrapped in markers that say they are outside content, and the server is marked `taints`.
+It speaks only http and https, checks every redirect itself, and refuses loopback, private and
+link-local addresses at the moment it connects: a page cannot send an agent to your router, your
+NAS or pine's control port. Results are marked as outside content.
 
-Once you have agents with private files, move `web` and `browser` to a research agent that has
-nothing private in its workspace and let the others delegate to it.
-[security.md](security.md) explains why.
+Once you have agents with private files, give `web` and `browser` to a research agent with
+nothing private in its workspace and let the others delegate to it ([security.md](security.md)).
 
 ## Bundled: commands
 
-Turns fixed commands into typed tools, so an agent that should "check the printer" does not
-need a shell for it.
+Turns fixed commands into typed tools, so an agent that should "check the printer" needs no
+shell for it.
 
 ```json
 "tools": { "pine": "commands", "agents": ["house"], "options": { "commands": {
@@ -282,170 +251,135 @@ need a shell for it.
 | `run` | Program and arguments. `{{name}}` inserts a parameter. |
 | `params.<name>` | `type` (`string`, `number`, `boolean`), `description`, `enum`, `pattern` (must match the whole value), `default`, `required` (default true). |
 | `timeoutSec` | Default 30. |
-| `cwd`, `env` | Working folder (default: where the conversation's tools start: the agent's workspace, or the folder opened for the conversation) and extra environment. |
-| `sandbox` | `true` runs the command inside the agent's sandbox (the variant in which instruction files are read-only). It has no effect on a machine without a working sandbox. Default `false`: these are your commands, and most need the network. |
+| `cwd`, `env` | Working folder (default: where the conversation's tools start: the workspace, or the folder opened for the conversation) and extra environment. |
+| `sandbox` | `true` runs the command inside the agent's sandbox (no effect on a machine without one). Default `false`: these are your commands, and most need the network. |
 | `maxOutput` | Characters of output returned. Default 30000. |
 
-Arguments are passed as a list, never through a shell: a parameter value of `x; rm -rf ~` is one
-harmless argument. A value that starts with `-` is refused unless the parameter is a number or
-has a `pattern` or `enum`, so the model cannot turn a value into an option. Constrain parameters
-with `pattern` or `enum` wherever you can.
-
-Mark a commands server `"approve": "tainted"` if any of its commands changes something.
+Arguments are passed as a list, never through a shell: a value of `x; rm -rf ~` is one harmless
+argument. A value starting with `-` is refused unless the parameter is a number or has a
+`pattern` or `enum`, so a value cannot become an option. Constrain parameters with `pattern` or
+`enum` wherever you can, and mark the server `"approve": "tainted"` if any command changes
+something.
 
 ## Bundled: browser
 
-A real browser, for pages that need JavaScript, clicks, forms or a login. It is Microsoft's
-Playwright MCP server with a guard around it.
+A real browser, for pages that need JavaScript, clicks, forms or a login: Microsoft's Playwright
+MCP server with a guard around it.
 
 ```json
 "browser": { "pine": "browser", "options": { "headed": false } }
 ```
 
-`pine init` downloads the browser itself; `pine browser-install` fetches it again after an update.
+`pine init` downloads the browser; `pine browser-install` fetches it again after an update.
 
-The tools appear as `mcp__browser__browser_navigate`, `..._snapshot`, `..._click`, `..._type`,
+The tools are `mcp__browser__browser_navigate`, `..._snapshot`, `..._click`, `..._type`,
 `..._fill_form`, `..._press_key`, `..._select_option`, `..._hover`, `..._wait_for`, `..._find`,
 `..._tabs`, `..._navigate_back`, `..._handle_dialog`, `..._close`, `..._take_screenshot`,
 `..._console_messages`. A page is read as a snapshot: a text outline in which every element has
-a reference the click and type tools take. To see what a page looks like, the agent takes a
-screenshot, which a model that can see pictures gets as a picture; to see why a page it built
-does not work, it reads the page's console messages.
+a reference the click and type tools take. A screenshot shows what the page looks like (to a
+model that can see); the console messages show why a page the agent built does not work.
 
 ### Seeing the browser, and logging in yourself
 
-The browser has no window: the agent works in it unseen. When you want to watch, or a page
-needs you (a login, a captcha, a payment to confirm), ask the agent to show the browser. It
-has two more tools for that in your own conversations, and nothing in the configuration has to
-change:
+The browser has no window: the agent works in it unseen. When you want to watch, or a page needs
+you (a login, a captcha, a payment to confirm), ask the agent to show the browser. In your own
+conversations it has two tools for that:
 
 | Tool | What it does |
 |---|---|
-| `mcp__browser__browser_show` | The browser becomes a window on the screen of the computer pine runs on, on the page the agent is on, with the same logins. You can click and type in it; the agent goes on working in the same window. Takes about a second |
+| `mcp__browser__browser_show` | The browser becomes a window on the screen of the computer pine runs on, on the agent's page, with the same logins. You click and type in it; the agent goes on working in the same window |
 | `mcp__browser__browser_hide` | The window closes and the browser goes on without one, on the same page, with the same logins |
 
-- In the Pine app there is no window to open: the browser is beside the conversation, at the
-  right of the window, live, and yours to use there ([desktop.md](desktop.md), "The browser"). While
-  the app runs, `browser_show` opens it there and `browser_hide` has nothing
-  to close. What follows about sharing the browser holds there in the same way. The browser is
-  then the app's own tabs: `profile`, `headed`, `browser`, `executablePath` and `viewport` do
-  not apply, logins last as long as the app runs, and showing it reloads nothing. The guard,
-  `allowHosts`, `denyHosts` and the blocked tools are the same.
-- While the window is open you and the agent share one browser. The agent is told so, and that
-  what you ask for on the web is to be done in that window, on the page you are on, not with a
-  web search.
-- The agent does not act on a page it has not seen. Before each of its calls pine compares the
-  tabs with what the agent last saw. If you opened a page or a tab meanwhile, the agent is
-  moved to it, and a call that would act (open another address, click, type, close a tab) is
-  not carried out: the agent gets your page instead and is told to work there, or to open a
-  new tab for anything else. So a page you opened is not replaced behind your back. A call
-  that only looks (a snapshot, a screenshot) goes through, on your page.
-- The page is loaded again when the window appears or goes, so text typed into a form is lost
-  and has to be typed again. Cookies and the site's stored data are kept; where several tabs
-  were open, the one in front comes back.
-- What you log in to in the window, the agent is logged in to as well: it is one browser.
-  Without `profile` the logins last as long as that conversation's browser runs: at the
-  latest until pine restarts or the conversation is reset. With `profile` they are kept.
-- A run that was started from outside (an event, a message from somebody else) does not have
-  these tools and cannot put a window on your screen.
-- On a machine without a screen (a server, Docker) no window can open. The agent is told so
-  and carries on without one.
+- In the Pine app the browser is beside the conversation, live, and yours to use
+  ([desktop.md](desktop.md), "The browser"); `browser_show` opens it there. It is the app's own
+  tabs then: `profile`, `headed`, `browser`, `executablePath` and `viewport` do not apply, and
+  logins last as long as the app runs. The guard, `allowHosts`, `denyHosts` and the blocked tools
+  are the same.
+- While the window is open you and the agent share one browser. The agent is told that what you
+  ask for on the web is to be done there, on your page, not with a web search.
+- The agent does not act on a page it has not seen. If you opened a page or a tab meanwhile, the
+  agent is moved to it, and a call that would act (open an address, click, type, close a tab) is
+  not carried out: the agent gets your page and works there, or opens a new tab. A call that only
+  looks goes through, on your page.
+- The page is loaded again when the window appears or goes, so text typed into a form is lost.
+  Cookies and site data are kept.
+- What you log in to in the window, the agent is logged in to too. Without `profile` the logins
+  last until pine restarts or the conversation is reset; with `profile` they are kept.
+- A run started from outside does not have these tools. Without a screen (a server, Docker) no
+  window can open; the agent is told so.
 - `"block": ["browser_show", "browser_hide"]` takes the tools away. `"headed": true` starts the
   browser with a window every time.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `headed` | `false` | `true`: the browser has a window from the start, in every conversation. To see it now and then, ask the agent instead (`browser_show`). |
+| `headed` | `false` | `true`: a window from the start, in every conversation. To see it now and then, ask the agent instead. |
 | `profile` | none | A folder for a persistent profile: cookies and logins survive. Without it every session starts clean. |
-| `images` | `true` | `false`: a screenshot comes back without its picture. Set it for a model that cannot see pictures. |
+| `images` | `true` | `false`: a screenshot comes back without its picture, for a model that cannot see. |
 | `tools` | `"core"` | `"core"`: the sixteen tools above. `"all"`: everything Playwright offers that is not blocked. Or a list of names. |
 | `block` | `[]` | Further tool names to withhold. |
 | `allowHosts`, `denyHosts` | none | Limit where the browser may go. Subdomains are included. |
-| `allowPrivate` | `false` | Allow every address on this computer and your own network, without asking. Leave it off: one local address at a time is allowed by answering a question, see "Local addresses" below. |
-| `browser` | `chromium` | `chrome` or `msedge` use an installed browser instead of Playwright's Chromium. |
+| `allowPrivate` | `false` | Allow every address on this computer and your network, without asking. Leave it off: one local address at a time is allowed by your yes ("Local addresses"). |
+| `browser` | `chromium` | `chrome` or `msedge`: an installed browser instead of Playwright's Chromium. |
 | `executablePath`, `viewport`, `caps`, `extraArgs` | | Passed on to Playwright MCP. With `"caps": "storage"` and `"tools": "all"` the agent also gets the tools that read and change cookies. |
 
 What the guard does:
 
-- **No local network, unless you say yes.** Everything the browser requests goes through a
-  proxy inside the guard, which refuses loopback, private and link-local addresses, judged on
-  the address it actually connects to. A page cannot reach your router, your NAS, the model
-  server or pine's control port, whether by link, redirect, script or DNS trick. The one
-  exception is an address you allowed for a conversation ("Local addresses" below). `file:`
-  URLs are blocked by Playwright.
-- **No road around the proxy.** A proxy carries what a browser asks it to carry, and a browser
-  can also send things without asking: WebRTC (what video calls use) opens connections of its
-  own, and so does the newer web transport over QUIC. Both are switched off outside the proxy,
-  and the browser looks no names up itself. A page that uses WebRTC still loads; a call that
-  needs a direct connection between two computers does not come about.
-- **No code on your machine.** `browser_run_code_unsafe` (runs code in the server process),
-  `browser_file_upload` and `browser_drop` (hand local files to a page), `browser_install`, and
-  `browser_storage_state` and `browser_set_storage_state` (write and read a file of cookies)
-  are removed from the tool list and refused if called, whatever `tools` says. Tools that a
-  page itself declares (WebMCP) are not collected.
-- **One step at a time.** Calls a model issues in parallel are run one after another; a browser
-  has one page in front.
-- **Snapshots inline.** Playwright writes snapshots to files; the guard puts their content into
-  the tool result (cut at 24,000 characters; `browser_find` locates things on longer pages).
-  A screenshot comes as a picture, with the name of the file it was saved as. One that gives
-  up because the page is still loading its fonts is taken a second time.
+- **No local network unless you say yes.** Everything the browser requests goes through a proxy
+  that refuses loopback, private and link-local addresses, judged on the address it actually
+  connects to, whether by link, redirect, script or DNS trick. The one exception is an address you
+  allowed ("Local addresses"). `file:` URLs are blocked.
+- **No road around the proxy.** WebRTC and QUIC connections outside the proxy are switched off,
+  and the browser looks no names up itself. A page that uses WebRTC still loads; a direct call
+  between two computers does not come about.
+- **No code on your machine.** `browser_run_code_unsafe`, `browser_file_upload`, `browser_drop`,
+  `browser_install`, `browser_storage_state` and `browser_set_storage_state` are removed and
+  refused, whatever `tools` says. Tools a page declares itself (WebMCP) are not collected.
+- **One step at a time.** Calls issued in parallel run one after another.
+- **Snapshots inline**, cut at 24,000 characters (`browser_find` locates things on longer pages).
+  A screenshot comes as a picture, with the name of its file.
 
-A browser is the widest door for outside content: sessions that use it are tainted, and with a
-`profile` it is signed in as you wherever you signed in. Treat a persistent profile like a
-password; do not give it to an agent that also handles untrusted events.
+A browser is the widest door for outside content: conversations that use it are marked, and with
+a `profile` it is signed in as you wherever you signed in. Treat a persistent profile like a
+password, and do not give it to an agent that also handles untrusted events.
 
 ### Local addresses
 
 An agent that builds a web page wants to look at it: a development server on
-`http://localhost:5173`, or a device at `http://192.168.1.20`. The browser cannot reach those by
-itself. When the agent opens one with `browser_navigate`, pine asks the owner first, like any
-approval. The agent does not call another tool for this and does not need `request_access`: it
-opens the address and waits.
+`http://localhost:5173`, a device at `http://192.168.1.20`. When the agent opens such an address
+with `browser_navigate`, pine asks you first. The agent needs no other tool and no
+`request_access`: it opens the address and waits.
 
-- A yes allows that host and that port, for that conversation and its sub-agents, until the
+- A yes allows that host and port for that conversation and its sub-agents, until the
   conversation is reset or the daemon restarts. `localhost:5173` and `127.0.0.1:5173` are two
   questions; so are two ports.
-- A no blocks the call. The agent should not try another spelling of the address, or start a
-  browser of its own from the shell instead.
+- A no blocks the call. The agent does not try another spelling, or a browser of its own.
 - Only what the agent itself opens is asked about. What a page loads, links or redirects to on
-  another local address is refused. If the page really needs it (an API or a WebSocket on
-  another port), the agent opens that address with `browser_navigate` once, which asks. The
-  page itself only sees a request that failed, and for a WebSocket the error `Establishing a
-  tunnel via proxy server failed`; so pine adds a line to the agent's next browser result that
-  names the address the page reached for and says what to do.
-- Asked about are addresses that are local by their own name: `localhost`, names ending in
-  `.localhost`, `.local` or `.internal`, and IP addresses in private ranges. A name that only
-  turns out to be local when it is looked up (`nas.home`) is refused without a question; for
-  that the owner sets `allowPrivate`.
+  another local address is refused; the page sees a failed request, for a WebSocket the error
+  `Establishing a tunnel via proxy server failed`, and pine adds a line to the agent's next
+  browser result naming the address. If the page needs it (an API or a WebSocket on another
+  port), the agent opens that address with `browser_navigate` once, which asks.
+- Asked about are addresses local by their own name: `localhost`, names ending in `.localhost`,
+  `.local` or `.internal`, and IP addresses in private ranges. A name that turns out local only
+  when looked up (`nas.home`) is refused without a question; for that, set `allowPrivate`.
 - pine's own control port is never opened, and never asked about.
-- In bypass mode there is no question. A run that an event from outside started cannot ask at
-  all. In a conversation that has read outside content the question says so.
+- In bypass mode there is no question. A run started from outside cannot ask, nor can a
+  sub-agent. After outside content the question says so.
 - `allowHosts` and `denyHosts` still apply.
 
-A server the agent starts from its own shell (`npm run dev`) can only listen on a port when the
-shell has network access. The main agent has it (`auto` mode); an agent in the sandbox
-(`safe` or `manual` mode) needs `request_access` with `network: true`, or `sandbox.network`.
-Start the server in the background and give it a moment before opening the page. An agent in
-`auto` mode can also stop it again with `kill`; in the sandbox a command cannot stop what an
-earlier command started.
+A server the agent starts from its shell (`npm run dev`) can listen only when the shell has
+network access: in `auto` and `bypass` mode it has; in the sandbox (`safe`, `manual`) the agent
+asks with `request_access` (`network: true`), or you set `sandbox.network`. The agent starts it
+in the background (`background: true` on the shell tool) and stops it with `stop_program`
+([coding.md](coding.md), "Commands in the background").
 
 ## Bundled: computer
 
-Operating the apps on the Mac pine runs on: reading a window as an outline, pressing its
-controls, clicking in a picture of it, typing. On macOS, Windows, and Linux with X11 ([computer.md](computer.md)).
+Operating the apps on the computer pine runs on: reading a window as an outline, pressing its
+controls, clicking in a picture of it, typing. On macOS, Windows, and Linux with X11.
 
 ```json
 "computer": { "pine": "computer" }
 ```
 
-It is given only to an agent that reaches the owner's whole account, in the owner's own
-conversations, and the owner is asked once per app in a conversation. The tools, the two ways
-to work (by outline for any model, by picture for one that can see), what macOS has to be told
-and the options are in [computer.md](computer.md).
-
-## Telegram, MQTT and other outputs
-
-Sending a Telegram message or an MQTT command is not an MCP server. Both are event sources
-that can also send, and an agent uses its `send` tool for them: the daemon already holds the
-connection, and the source decides who may be messaged and which topics may be written. See
-"Sending through a source" in [sources.md](sources.md).
+Only an agent in `auto` or `bypass` mode has it, in your own conversations, and you are asked once
+per app in a conversation. Everything else is in [computer.md](computer.md).

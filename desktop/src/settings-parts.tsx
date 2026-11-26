@@ -17,7 +17,7 @@ import { FieldContent, FieldDescription, FieldGroup, FieldLegend, FieldSet } fro
 // - a note: a stock Alert.
 // Every control and every button outside a list is the stock height (h-8); in a list `sm`, an icon alone
 // `icon-sm`. Forms that add something open in a Dialog.
-// A button's variant says what it does (docs/references/desktop.md, "How the page is drawn"):
+// A button's variant says what it does (docs/dev/desktop.md, "How the page is drawn"):
 // - default (filled): the one action that finishes something (a dialog's submit, Save changes). At most one in view.
 // - outline: everything that opens, adds, changes or shows something (New…, Add…, Connect…, Sign in, Change…).
 // - ghost: taking something away or backing out (Remove on a row, which asks first; Sign out; Discard; the way back).

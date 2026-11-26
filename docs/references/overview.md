@@ -2,9 +2,10 @@
 
 ## The picture
 
-You talk to an agent in the terminal UI, in the Pine app (on a Mac, on a phone, or in a web
-browser) or on Telegram. An agent is given four things, each by asking it: two that wake it, and
-two that it uses while it works.
+pine is a daemon that runs agents. You talk to an agent in the terminal UI ([tui.md](tui.md)), the
+Pine app ([desktop.md](desktop.md)) on a computer, phone ([mobile.md](mobile.md)) or in a browser
+([web.md](web.md)), or on Telegram. Each agent is given four things, each by asking it: two that
+wake it and two it uses while it works.
 
 ```
           you:  terminal UI · Pine app · Telegram
@@ -19,196 +20,95 @@ two that it uses while it works.
  schedules ────────────► │           │
    repeating · once      └─────┬─────┘
                                │  delegate ──► other agents
-                               │  subagent ──► with distinct prompts, in parallel
+                               │  subagent ──► copies of itself, in parallel
                                ▼
                  answers · messages · actions
 ```
 
 | Given | What it is | Tools | More |
 |---|---|---|---|
-| Events | Something that happens elsewhere wakes the agent: a file arrives, a device reports, a web address changes, you write on Telegram | `add_source`, `subscribe`, `send` | [sources.md](sources.md) |
-| Schedules | The time wakes the agent, with a task: at set times, every so often, or once | `add_schedule` | [events.md](events.md) |
-| MCP servers | Tools from outside that the agent can call | `add_mcp_server` | [mcp.md](mcp.md) |
-| Skills | How something is done, written down once | `add_skill` | [agents.md](agents.md) |
+| Events | Something elsewhere wakes the agent: a file arrives, a device reports, a page changes, you write on Telegram | `add_source`, `subscribe`, `send` | [sources.md](sources.md) |
+| Schedules | The time wakes the agent with a task: at set times, every so often, or once | `add_schedule` | [events.md](events.md), "Schedules" |
+| MCP servers | Tools from outside | `add_mcp_server` | [mcp.md](mcp.md) |
+| Skills | How something is done, written down once | `add_skill` | [agents.md](agents.md), "Skills" |
 
-Each of the four is set up for the conversation it was asked for in, for the agent, or (by the
-main agent only) for all agents. Only the main agent creates other agents and registers new
-types of event source. What an agent has of each, and whom it is for, it asks a tool:
-`sources`, `schedules`, `mcp_servers`, `skills`. See [setup.md](setup.md).
+Each is set up for the conversation it was asked in, for the agent, or (by the main agent only)
+for all agents; an agent lists what it has with `sources`, `schedules`, `mcp_servers`, `skills`
+([setup.md](setup.md)). Only the main agent creates agents and administers pine.
 
-How pine itself works is not in an agent's prompt. An agent looks it up with its `manual`
-tool, which searches these pages ([agents.md](agents.md)).
-
-## Inside the daemon
-
-Underneath, everything is an event in one log, and three things turn events into work:
-subscriptions, schedules with a task, and routes.
-
-```
-      what wakes an agent                       the daemon                        model server
-┌────────────────────────────────┐   ┌──────────────────────────────┐      ┌──────────────────┐
-│ event sources                  │   │  event log (SQLite)          │      │ llama-server or  │
-│  telegram  a bot, long polling │──►│  topic · payload · trust     │      │ any OpenAI-style │
-│  mqtt      a broker            │   │        │                     │      │ endpoint         │
-│  folder    new, changed files  │   │        ▼                     │      └────────▲─────────┘
-│  webhook   calls from services │   │  subscriptions, schedules    │               │
-│  ftp       uploads             │   │  with a task, and routes     │               │ model slots
-│  http      an address, polled  │   │   when · debounce · throttle │               │ (priority queue)
-│  command   run again and again │   │        │                     │               │
-│ schedules  cron · every · at   │   │        │                     │               │
-└────────────────────────────────┘   │        ├─ set state          │               │
-            ▲                        │        ├─ publish event      │               │
-            │   answers, and what    │        ├─ one model call ────┼───────────────┤
-            │   agents send          │        │                     │               │
-            └────────────────────────┤        └─ agent task         │               │
-                                     │             │                │               │
-                                     │   ┌─────────▼────────────┐   │               │
-                                     │   │ task queue (SQLite)  │   │               │
-                                     │   │ one lane per session │   │               │
-                                     │   └─────────┬────────────┘   │               │
-                                     │   ┌─────────▼────────────┐   │               │
-                                     │   │ pi session           │───┼───────────────┘
-                                     │   │  workspace, AGENTS.md│   │
-                                     │   │  tools, MCP, skills  │   │
-                                     │   │  policy gate         │   │
-                                     │   └──┬───────────────┬───┘   │
-                                     │      │ delegate      │ subagent
-                                     │      ▼               ▼       │
-                                     │  other agents    copies of itself
-                                     └──────────────────────────────┘
-```
+How pine works is not in an agent's prompt: an agent looks it up with its `manual` tool, which
+searches these pages ([agents.md](agents.md), "The manual tool").
 
 ## Events
 
-Everything that happens is an event. An event has:
+Everything that happens is an event in one log (`data/pine.db`, kept `limits.eventRetentionDays`).
+An event has a `topic` (`source/telegram/message`, `agent/gonzo/done`), a `payload`, the
+`source` that published it, and a `trust`: `owner` or `untrusted`, set by how the content entered.
+Topics and patterns: [events.md](events.md), "Topics".
 
-| Field | Meaning |
-|---|---|
-| `id`, `ts` | Position in the log and time |
-| `topic` | For example `source/telegram/message`, `source/house/message`, `agent/gonzo/done` |
-| `source` | Who published it: `source:<name>` (`source:<name>@<agent>` for an agent's own source), `http`, `api`, `timer`, `route:<name>`, `router`, `agent:<id>`, `approvals`, `pine` |
-| `payload` | Any JSON |
-| `trust` | `owner` or `untrusted`; set by the publisher according to how the content arrived |
-| `cause`, `hops` | The event that led to this one, and how many agent or route steps lie between it and an outside trigger |
-| `reply` | Optional: the topic and fields an answer should be published with |
-
-Events are stored in `data/pine.db` and pruned after `limits.eventRetentionDays`. A source can
-report noisy telemetry without storing it.
-
-Topics pine itself uses:
+Topics pine publishes itself (agents cannot publish on `agent/`, `approval/`, `board/`, `pine/`,
+`state/` or `timer/`):
 
 | Topic | Published when |
 |---|---|
 | `agent/<id>/started`, `agent/<id>/done`, `agent/<id>/failed` | A task starts or ends |
 | `agent/<id>/tool` | A tool call starts or ends (live only, not stored) |
-| `agent/<id>/todos` | The agent changed its list of steps (`items`, each with `text` and `status`; live only) |
-| `board/<name>/task`, `/note`, `/done`, `/failed`, `/blocked` | Something happened on a board with a name that an agent or all agents have ([boards.md](boards.md)) |
-| `pine/board` | A board changed (`board`, `scope`, `agent`, `session`, `name`, `change`; live only): a UI asks the control API for the rest |
-| `agent/<id>/steered` | A message was given to a task that was already working (`task`), instead of becoming work of its own (live only) |
-| `agent/<id>/read` | The work (`task`) read a message that was steered into it (`by`), at `at` (live only) |
-| `agent/<id>/goal` | The goal of a conversation was set, judged, paused, resumed or cleared (the goal with its `objective`, `status`, `round`, `note` and the judge's `reason`, and `event`: what just happened) |
-| `agent/<id>/swarm` | The swarm of a conversation was started, went into another round, had its answer checked, was paused, resumed, cleared or is done (the swarm with its `objective`, `status`, `round`, `note`, and `event`: what just happened; [boards.md](boards.md), "A swarm") |
-| `agent/<id>/undone`, `agent/<id>/redone` | The owner took back their last message in a conversation, or brought it back (`session`, `message`, how many `tasks` and `files`) |
-| `agent/<id>/delta`, `agent/<id>/thinking`, `agent/<id>/message` | Streamed answer text; what the model thinks (`phase: "start"`, then pieces of `text`, then `phase: "end"` with `ms`); the end of a model message with token counts (live only) |
-| `state/<key>` | Shared state changes |
-| `timer/<name>` | A schedule fires (`timer/<name>@<agent>` for an agent's own; `topic` on the schedule overrides it) |
-| `source/<name>/<event>` | An event source reports something (`source/<name>@<agent>/<event>` for an agent's own source) |
-| `out/source/<name>` | An answer on its way out through a source that can send |
-| `hook/<name>` | A hook under `http.hooks` in `pine.json` was called (a `webhook` source reports `source/<name>/received` instead) |
-| `approval/requested`, `approval/decided` | An approval is asked for or answered |
-| `pine/started`, `pine/route-failed` | Daemon lifecycle and route errors |
-| `pine/settings` | A setting was changed, by you or by the main agent (`key`: which one, and nothing else; live only): a UI that shows settings asks the control API for the rest |
-| `pine/conversation` | A conversation was changed by another hand than the UI's that shows it, so that a terminal UI's or the Pine app's tabs follow: by the main agent (`open`, `close`, `rename`, `remove`, `pin`), or by you in another UI (`folder`: its folder was opened or closed, or a worktree made or discarded for it), or by either (`group`: it was put into a group or taken out; without a `session`, one of the agent's groups was made, renamed or removed, or its list sorted otherwise). It names the conversation and nothing else. Not kept in the event log |
-
-Agents cannot publish on `agent/`, `approval/`, `board/`, `pine/`, `state/` or `timer/`.
+| `agent/<id>/goal`, `agent/<id>/swarm` | A goal or a swarm changed ([agents.md](agents.md), "Goal mode"; [boards.md](boards.md), "A swarm") |
+| `board/<name>/task`, `/note`, `/done`, `/failed`, `/blocked` | Something happened on a named board ([boards.md](boards.md)) |
+| `state/<key>` | Shared state changed |
+| `timer/<name>` | A schedule fired (`timer/<name>@<agent>` for an agent's own) |
+| `source/<name>/<event>` | An event source reported (`source/<name>@<agent>/<event>` for an agent's own) |
+| `out/source/<name>` | An answer going out through a source that can send |
+| `hook/<name>` | A hook of `http.hooks` was called |
+| `approval/requested`, `approval/decided` | An approval was asked or answered |
+| `pine/started`, `pine/route-failed` | The daemon started; a route failed |
 
 ## From event to work
 
-Three things start work, and the first two need nothing written by hand:
+Three things turn an event into work:
 
-- **A subscription.** An agent subscribes a conversation to an event source (a folder, an MQTT
-  device, a web address, a command, a webhook, an FTP drop, Telegram). Each event the source
-  reports arrives in that conversation as a message and starts a turn. A source that nobody is
-  subscribed to is not running, unless it has `"start": "always"`. See [sources.md](sources.md).
-- **A schedule with a task.** When it is time, the agent is woken with the task, in the
-  conversation the schedule belongs to. See [events.md](events.md).
-- **A route.** A rule you write in `pine.json`: it names topic patterns and what to do. It can
-  combine the first of these with one of the other two:
-  1. **Rule.** Write shared state (`set`) or publish another event (`publish`). No model.
-  2. **One model call** (`call`). No tools, no history: classify an image, summarise a reading.
-     The answer can be published as a new event.
-  3. **Agent turn** (`agent`). A task in an agent's session with its tools.
+- **A subscription.** A conversation subscribed to a source gets each of its events as a message
+  and starts a turn. A source nobody subscribes to does not run. See [sources.md](sources.md).
+- **A schedule with a task** wakes its agent with the task. See [events.md](events.md),
+  "Schedules".
+- **A route**, a rule in `pine.json`: on matching topics it sets state, publishes an event, makes
+  one model call without tools, runs a script, or wakes an agent. Most events should stop before
+  an agent. See [events.md](events.md), "Routes".
 
-  Most events a route handles should stop at 1 or 2. See [events.md](events.md).
+A task is a prompt for one agent in one conversation (session). Tasks of one conversation run one
+after another, except a message you send while it works, which goes into that work
+([agents.md](agents.md), "A message while the agent works"). Different conversations run side by
+side, up to `limits.maxConcurrentRuns`, and a model can have a limit of its own (`limits.models`);
+a run that only waits gives its place up. Conversations are kept on disk and survive restarts
+([agents.md](agents.md), "Sessions"). After a restart queued tasks run, and a task that was
+running is marked failed, since its tool calls may already have had effects.
 
-## Tasks, sessions, slots
-
-A task is a prompt for one agent in one session. Tasks for the same session run one after another;
-different sessions run side by side, limited by `limits.maxConcurrentRuns` model slots (a model
-can have a number of its own, `limits.models`: one on your own computer serves one or two at a
-time). A run
-that only waits (for a delegated task, for sub-agents, for an approval) gives its slot up
-meanwhile, so a chain of agents works even with one slot. One exception to "one after
-another": a message sent with `"whenBusy": "steer"`, as the terminal UI and the Pine app send
-yours, is given to the task that is working, read at its next step and answered first
-([agents.md](agents.md), "A message while the agent works").
-
-A session is a pi `AgentSession`: the model loop, tool calls, compaction and retries are pi's.
-Named sessions are stored as JSONL under `agents/<id>/sessions/<key>/` and survive restarts.
-`"session": "new"` gives a fresh one that is closed when the task ends. A live session is
-closed after `idleMs` without work and resumed from disk when needed. A named session other
-than `main` that is not pinned, not in a group, not open in a tab of the terminal UI, not
-subscribed to a source and without a schedule of its own is removed after `limits.conversationDays` (7; `0`:
-never) without a message. A run that an outside event started works in a session of its own,
-`<name>~u`, so its history is never shared with yours.
-
-When the daemon restarts, queued tasks run; a task that was running is marked failed
-("interrupted by a daemon restart") because its tool calls may already have had effects.
-A shell command that an agent started in the background goes on without the daemon, and its
-conversation is told how it ended when the daemon is back ([coding.md](coding.md)).
-
-## Answers
-
-When a task ends, pine publishes `agent/<id>/done` or `agent/<id>/failed`. If the task has a
-reply target, the final text is also published there, for example on `out/source/telegram` with
-the chat id, and the Telegram source sends it. An agent that answers exactly `NO_REPLY` (or
-`SILENT`) sends nothing, which is how routine checks stay quiet. A task that failed sends a
-line saying so; a cancelled one sends nothing.
+When a task ends, its answer goes to where the task came from (a Telegram chat, your UI). An
+answer of exactly `NO_REPLY` sends nothing ([agents.md](agents.md), "What an agent's answer does").
 
 ## Agents working together
 
-- `delegate` gives another agent a task. That agent runs it in its own workspace with its own
-  tools and sees only the task text, held to the caller's mode where that is stricter. By
-  default it can go to everyone but the main agent. By default the caller waits for the answer; with
-  `wait: false` the answer arrives later as a message in the caller's session.
-- `subagent` runs several copies of the same agent in parallel, each with its own task and an
-  empty context, and returns their final answers. It keeps large searches out of the caller's
-  context. The copies can run on another model than the agent's own (`model`) and reason more
-  or less (`thinking`).
-- Shared state (`state_get`, `state_set`) holds small facts such as `house/mode` that every agent
-  can read and that can be shown to an agent in every turn.
-- A board holds the tasks of a job that several work on: a pool of sub-agents works through
-  any number of them a few at a time, one that cannot decide something asks, and the agent
-  that gave out the work answers ([boards.md](boards.md)). With `/swarm` you give an agent a
-  whole job to lead that way: pine calls it again while tasks are not done, and has its answer
-  checked before the job counts as done.
-- A goal (`/goal`) keeps one agent working, round after round, until a judge says that what
-  you asked for is reached ([agents.md](agents.md), "Goal mode").
-- `publish_event` lets an agent put an event on a topic you allowed, which routes then act on.
-- `send` lets an agent reach out through a source that can send: a message to you on Telegram,
-  a command to a device over MQTT.
+| Way | What it does | More |
+|---|---|---|
+| Delegating | `delegate` hands work to another agent, which does it in its own workspace, held to the stricter of the two modes | [agents.md](agents.md), "Handing work to another agent" |
+| Sub-agents | `subagent` runs copies of the agent in parallel, each with an empty context, on its model or another | [agents.md](agents.md), "Sub-agents" |
+| Boards | What several runs share: work to take and notes | [boards.md](boards.md) |
+| A swarm | `/swarm`: you give an agent something to lead until it is done and checked | [boards.md](boards.md), "A swarm" |
+| A goal | `/goal`: one agent keeps working until a judge says the goal is met | [agents.md](agents.md), "Goal mode" |
+| Shared state | Small facts every agent and route can read (`state_get`, `state_set`) | [agents.md](agents.md), "Shared state" |
+| Events and messages | `publish_event` on an allowed topic; `send` through a source that can send (Telegram, MQTT) | [sources.md](sources.md) |
 
-Loops are cut: a delegation chain cannot revisit an agent or exceed
-`limits.maxDelegationDepth`, and events more than `limits.maxEventHops` steps away from an
-outside trigger are not routed.
+Loops are cut: a delegation chain cannot revisit an agent or go deeper than
+`limits.maxDelegationDepth`, and events more than `limits.maxEventHops` steps from an outside
+trigger are not routed.
 
 ## Trust
 
-How content entered decides what it can do. See [security.md](security.md) for all of it.
+How content entered decides what it can do; the rest is in [security.md](security.md).
 
 | Content | Arrives as | Runs with |
 |---|---|---|
-| Your message in the terminal UI, in the Pine app or from your paired Telegram account, `pine send`, a schedule (yours, or one an agent made at your wish) | `owner` | The agent's full tool set, in the named session |
-| A webhook, an MQTT message, a new file, handled by a route | `untrusted` | The agent's `untrusted` profile (read-only tools by default), in a separate session |
-| An event of a source a conversation is subscribed to | framed as data; taints that conversation unless the source is marked as yours | The conversation's own tool set, but sending information out needs your approval. With `"separate": true` on the subscription: as the row above |
-| A web page, or the result of an MCP server marked `taints`, read during your own request | taints the session | Full tool set; from then on sending information out needs your approval |
+| Your message (terminal UI, Pine app, your paired Telegram account, `pine send`), a schedule | `owner` | The agent's full tool set |
+| An event a route hands to an agent (a webhook, an MQTT message, a new file) | `untrusted` | The agent's `untrusted` profile (read-only tools by default), in a separate session (`~u`) |
+| An event of a source a conversation subscribes to | data in that conversation; marks it as having read outside content, unless the source is marked as yours | The conversation's tools; sending something out then asks you. With `"separate": true` on the subscription, as the row above |
+| A web page, or the result of an MCP server marked `taints` | marks the conversation | The full tool set; sending something out then asks you |

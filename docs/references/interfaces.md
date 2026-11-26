@@ -7,7 +7,7 @@ in the conversation where the page was made, and the agent answers by changing t
 
 > Make tic tac toe in your browser. You are X, I am O. Tell me when I have won.
 
-Nothing in pine is special for this. It is three things pine has anyway, put together:
+It is three things pine has anyway, put together:
 
 | Piece | What it is | Where it is described |
 |---|---|---|
@@ -44,13 +44,12 @@ For the agent that is asked for such a page. Each step is a tool call it has.
    the page reported, for example `{ "cell": 4 }`. Answer by writing `state.json` anew: the
    page looks at it every second and draws what it says.
 
-**One port for everything.** Your owner's yes for the page is for one host and one port. The
-page, its state and its event stream therefore come from the same server on the same port, as
-below. A page that reaches for another port on this computer (a WebSocket server of its own on
-a second port, an API) is refused by the browser's guard: the request fails, and a WebSocket
-fails with `Establishing a tunnel via proxy server failed`. That is not the browser being
-unable to carry a WebSocket; on the port that was allowed it carries one. Use one port, or open
-the second address once with `browser_navigate` so that your owner is asked.
+**One port for everything.** Your owner's yes for the page is for one host and one port, so the
+page, its state and its event stream come from one server on one port, as below. A page that
+reaches for another port on this computer (a WebSocket server of its own, an API) is refused by
+the browser's guard: the request fails, and a WebSocket fails with `Establishing a tunnel via
+proxy server failed`. On the allowed port a WebSocket works. Use one port, or open the second
+address once with `browser_navigate` so that your owner is asked.
 
 | Name | What it is |
 |---|---|
@@ -60,10 +59,10 @@ the second address once with `browser_navigate` so that your owner is asked.
 
 ## The server
 
-The example is for Node. Where the shell has no `node` (the pine of the Pine app brings its
-own, which a shell does not see), the same is written in Python or whatever is there: what
-counts is that `/events` answers with `content-type: text/event-stream` and writes `data:
-<one line of JSON>` and an empty line for each report.
+The example is for Node. Where the shell has no `node` (the Pine app's pine brings its own, which
+a shell does not see), write the same in Python or whatever is there: `/events` answers with
+`content-type: text/event-stream` and writes `data: <one line of JSON>` and an empty line for
+each report.
 
 ```js
 // server.mjs: serves the page, and passes on what the page reports as an event stream.
@@ -153,12 +152,12 @@ writes there may repeat something it read elsewhere.
 
 | | |
 |---|---|
-| Where the events arrive | In the conversation that set the source up, as a message of pine's own that says it is an event and not the owner's words. The agent has the tools it has there |
-| Outside content | Like every event source, what the page reports counts as outside content: the conversation is marked, and from then on pine asks before the agent sends something out ([security.md](security.md)). The page's server takes a report from anything on this computer that can reach its port, so a report is not proof that the owner pressed something |
-| A click that is not answered | Nearly always the subscription's throttle: ten seconds unless it was given, during which further events are ignored and not kept. Subscribe again with `throttle: "0s"`. The event log shows it: the click is there as an event, and no turn of the agent's followed it |
+| Where the events arrive | In the conversation that set the source up, as a message of pine's own that says it is an event, not the owner's words |
+| Outside content | What the page reports is outside content: the conversation is marked, and from then on pine asks before the agent sends something out ([security.md](security.md)). Anything on this computer that reaches the port can report, so a report is no proof that the owner pressed something |
+| A click that is not answered | Nearly always the subscription's throttle (ten seconds unless given), during which events are ignored and not kept. Subscribe again with `throttle: "0s"`. In the event log the click is there, and no turn followed it |
 | How many | A `stream` source passes on at most 30 reports a minute and drops the rest. For a page that is pressed more often, give `perMinute` in its options (up to 600) |
-| The agent's own clicks | What the agent does in the page with its browser tools is reported by the page like the owner's clicks. A page that the agent changes through `state.json` does not have that problem; one it clicks in itself has to tell the two apart |
-| The server keeps running | It is listed under Running in the code pane, with its port, and stopped there or with `stop_program`. Resetting or removing the conversation stops it, and removing the conversation removes a source that was its own. A `stream` source whose server is gone says so where the sources are listed, and connects again by itself when the server is back |
+| The agent's own clicks | What the agent does in the page with its browser tools is reported like the owner's clicks. Change the page through `state.json`; a page the agent clicks in itself has to tell the two apart |
+| The server keeps running | Listed under Running in the code pane, with its port; stopped there or with `stop_program`. Resetting or removing the conversation stops it, and removing the conversation removes its own source. A `stream` source whose server is gone says so where sources are listed, and reconnects when the server is back |
 | On Linux | A conversation that has read outside content cannot start a command in the background. Start the server before the first event arrives |
 | Other browsers | The page is an ordinary web page. It works in the agent's browser in the Pine app, in the window `browser_show` opens, and in your own browser on this computer |
 | A state that changes by itself | The same way round: an event from another source (a Zigbee hub over `mqtt`, a sensor) wakes the agent, the agent writes `state.json`, and the page shows the room as it is now |

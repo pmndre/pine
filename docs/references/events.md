@@ -1,9 +1,9 @@
 # Events, routes and schedules
 
-> To let an agent react to a folder, a device or a web request, you usually do not need this
-> page: ask it, or configure a [source](sources.md) and have the agent subscribe. To have it do
-> something at a time, ask it too: see "Schedules" below. Routes are for rules of your own:
-> setting state, chaining events, single model calls.
+> To let an agent react to a folder, a device or a web request, ask it, or configure a
+> [source](sources.md) and have the agent subscribe. To have it do something at a time, ask it
+> too ("Schedules" below). Routes are for rules of your own: setting state, chaining events,
+> single model calls, scripts.
 
 ## Topics
 
@@ -21,37 +21,26 @@ Where events come from:
 | Source | Topics | Trust |
 |---|---|---|
 | Webhook `POST /hook/<name>` | `hook/<name>` (or the hook's `topic`) | untrusted |
-| Event sources ([sources.md](sources.md)) | `source/<name>/<event>`, or `source/<name>@<agent>/<event>` for an agent's own | untrusted; owner for a source whose entry says `"trust": "owner"` (`add_source` writes that for `telegram`, whose account you pair) |
-| `pine emit`, `POST /events` | whatever you name | owner |
+| Event sources ([sources.md](sources.md)) | `source/<name>/<event>`, or `source/<name>@<agent>/<event>` for an agent's own | untrusted; owner for a source with `"trust": "owner"` (`add_source` writes that for a Telegram account you paired) |
+| `pine emit`, `POST /events` | whatever you name | owner (untrusted if the request says so) |
 | Schedules | `timer/<name>`, or `timer/<name>@<agent>` for an agent's own | owner |
 | Agents (`publish_event`) | topics in the agent's `publish` list | owner, or untrusted if the run was restricted |
-| A board with a name ([boards.md](boards.md)) | `board/<name>/task`, `/note`, `/done`, `/failed`, `/blocked` | owner for a post from one of your own conversations that had read nothing from outside, untrusted otherwise |
+| A board with a name ([boards.md](boards.md), "Events of a board") | `board/<name>/task`, `/note`, `/done`, `/failed`, `/blocked` | owner for a post from your own conversation that read nothing from outside, untrusted otherwise |
 | pine | `agent/...`, `state/...`, `approval/...`, `pine/...` | untrusted |
 
-Watch them:
-
-```bash
-pine events -f
-```
-
-```bash
-pine events --topic "source/#" --limit 50
-```
+Watch them with `pine events -f`, or `pine events --topic "source/#" --limit 50`.
 
 ## Routes
 
-A route is an entry in `routes` in `pine.json`. You can write it there yourself, or ask the main
-agent: it lists, adds and removes routes with `routes`, `add_route` and `remove_route`
-([setup.md](setup.md), "Routes"), checked and without a restart. In the Pine app, Settings >
-Events > Routes adds one with a form that says it as When (the topic, an optional `when`, a
-throttle or debounce) and Then (one of `agent`, `set`, `publish`, `call` with `publish` as "Ask a
-model", or `ask` with `publish` as "Make a decision", which makes one question: several are
-written into `pine.json` or proposed by the main agent).
+A route is an entry in `routes` in `pine.json`. Write it yourself, or ask the main agent
+(`routes`, `add_route`, `remove_route`: checked, no restart; [setup.md](setup.md), "Routes"). In
+the Pine app, Settings > Events > Routes adds one with a form: When (the topic, a `when`, a
+throttle or debounce) and Then (Wake an agent, Set shared state, Publish an event, Ask a model,
+Make a decision).
 
-Most setups need no route. An agent that reacts to what a source reports is subscribed to it
-([sources.md](sources.md)), and work at a time is a schedule (below). A route does a small job when an
-event comes in, without waking an agent: it saves a value in shared state for later, sends the
-event on under another topic, or asks a model a quick question before an agent is woken.
+Most setups need no route: an agent that reacts to a source is subscribed to it, and work at a
+time is a schedule. A route does a small job without waking an agent, or decides first whether
+one should be woken.
 
 ```json
 {
@@ -66,19 +55,17 @@ event on under another topic, or asks a model a quick question before an agent i
 }
 ```
 
-Here `house` is an `mqtt` source and `telegram` a `telegram` source, both in `pine.json`
-([sources.md](sources.md)). For a source an agent set up for itself the topic carries the
-agent's name: `out/source/telegram@main`.
-A route that listens to a source by its name (`source/<name>/...`) keeps that source running, as a
-subscription does; a route on a wider pattern (`source/#`) does not start anything.
+Here `house` is an `mqtt` source and `telegram` a `telegram` source in `pine.json`. For a source
+an agent set up for itself the topic carries its name: `out/source/telegram@main`. A route on a
+source by its name (`source/<name>/...`) keeps that source running, as a subscription does; a
+wider pattern (`source/#`) starts nothing.
 
-**An agent's own routes.** Any agent, not only the main one, makes routes of its own with
-`add_route`: on events of its own sources (`source/<name>@<agent>/...`) or its own shared state
-(`state/agent/<agent>/...`), acting within itself. They ask a decision model, run a script in its
-sandbox, answer through its own source (`out/source/<name>@<agent>`), write its own state
-(`agent/<agent>/...`), or wake that agent and no other; never with `trust`. You confirm each, and
-they go with the agent when it is removed or renamed (`of` in the route). A chat that answers on its
-own is one of them:
+**An agent's own routes.** Any agent can make routes with `add_route` on its own sources' events
+(`source/<name>@<agent>/...`) or its own shared state (`state/agent/<agent>/...`), acting only
+within itself: ask a decision model, run a script in its sandbox, answer through its own source
+(`out/source/<name>@<agent>`), write its own state (`agent/<agent>/...`), or wake itself; never
+with `trust`. You confirm each; `of` in the route ties it to the agent, so it goes with it when
+the agent is removed or renamed. A chat that answers on its own:
 
 ```json
 { "name": "eightball", "on": "source/telegram@eightball/message", "of": "eightball",
@@ -88,41 +75,40 @@ own is one of them:
   "publish": { "topic": "out/source/telegram@eightball", "payload": { "text": "{{answers.reply.choice}}" } } }
 ```
 
-An option is a word or a short phrase, and it comes back as the answer as it is. Subscribe the
-agent only to the messages it should answer itself, or not at all.
+An option comes back as the answer exactly as written. Subscribe the agent only to the messages
+it should answer itself, or not at all.
 
 | Key | Meaning |
 |---|---|
 | `name` | For logs and errors. Default `route<n>`. |
 | `on` | A topic pattern or a list of them. |
-| `when` | A filter; every entry must hold. See below. |
-| `debounceMs` | Wait until no matching event has arrived for this long, then handle the last one. For bursts (a camera uploading five images). |
+| `when` | A filter; every entry must hold. See "Filters". |
+| `debounceMs` | Wait until no matching event came for this long, then handle the last one. For bursts. |
 | `throttleMs` | Handle one event, then ignore matching ones for this long. For repeating alarms. |
 | `key` | Template for what counts as "the same" for debounce and throttle. Default `{{topic}}`. |
-| `set` | Write shared state: `{ "house/mode": "{{payload.value}}" }`. `null`, or a value that is exactly one `{{path}}` that finds nothing, deletes the key. |
-| `publish` | Publish another event: `{ "topic": "...", "payload": {...} }`. Without `payload` the original payload is passed on; after a `call` it is `{ "text": <the answer>, "of": <the original payload> }`. |
-| `call` | One model call: `{ "prompt": "...", "system": "...", "model": "provider/id" }`. Its answer is `{{result}}`. |
-| `ask` | Typed questions about the event: `{ "questions": {...}, "data": "...", "model": "decider" }`, where `model` is a decision model by its name or a chat model as `provider/id`. Its answers are `{{answers.<name>}}`; without a `payload` of its own, `publish` sends `{ "answers": ..., "of": <the original payload> }`. With `ask`, `set` runs after the answers, so it can write them into shared state. See "Typed questions" below. |
-| `run` | Run a command, with no model: `{ "command": "python3 ui/answer.py", "agent": "main", "timeout": "30s" }`. It runs in that agent's sandbox and workspace (default: the main agent) and is given the event as JSON on stdin; what it prints is `{{output}}`. See "Running a script" below. |
+| `set` | Write shared state: `{ "house/mode": "{{payload.value}}" }`. `null`, or exactly one `{{path}}` that finds nothing, deletes the key. |
+| `publish` | Publish another event: `{ "topic": "...", "payload": {...} }`. Without `payload`: the original payload; after `call`, `{ "text": <answer>, "of": <original> }`; after `ask`, `{ "answers": ..., "of": ... }`; after `run`, `{ "output": ..., "answers"?: ..., "of": ... }`. |
+| `call` | One model call without tools: `{ "prompt": "...", "system": "...", "model": "provider/id" }`. Its answer is `{{result}}`. It gets the event's images if the model reads them. |
+| `ask` | Typed questions to a decision model: `{ "questions": {...}, "data": "...", "model": "decider" }`. Answers are `{{answers.<name>}}`. See "Typed questions". |
+| `run` | A command, no model: `{ "command": "python3 ui/answer.py", "agent": "main", "timeout": "30s" }`. Its output is `{{output}}`. See "Running a script". |
 | `agent` | Give an agent a task. |
 | `prompt` | The task text. Default: the payload's `text`, or the payload as JSON. |
-| `label` | A short line for the task in listings (`pine tasks`, the UIs). A template. |
-| `session` | Session key template. Default `main`. `new` for one-off work. |
-| `whenBusy` | `steer` (default): if the conversation is working, the event is given to that work, which reads it at its next step, so two events that come close together give one run and one answer; if that work ends first, it is done next as a task of its own. An event whose answer goes somewhere else than the running work's (a Telegram message while the agent works on something else) waits instead, so that it is answered where it came from. `queue`: the task waits until the conversation is free. See "Sessions" in [agents.md](agents.md). |
+| `label` | A short line for the task in `pine tasks` and the UIs. A template. |
+| `session` | Conversation template. Default `main`; `new` for one-off work. |
+| `whenBusy` | `steer` (default): an event for a conversation that is working goes into that work, which reads it at its next step; one whose answer goes elsewhere (a Telegram message) waits instead. `queue`: wait until the conversation is free ([agents.md](agents.md), "A message while the agent works"). |
 | `priority` | Higher runs first when model slots are scarce. Default 10 for owner events, 0 otherwise. |
 | `reply` | Where the agent's answer goes: `{ "topic": "...", "payload": {...} }`. Default: the event's own reply target. `false`: nowhere. |
-| `trust` | Override the event's trust. `"owner"` gives events on this route the agent's full tool set: only for sources nobody else can write to. `pine check` lists such routes. |
+| `trust` | Override the event's trust. `"owner"` gives events on this route the agent's full tools: only for sources nobody else can write to. `pine check` lists such routes. |
 
-A route needs at least one of `set`, `publish`, `call`, `ask`, `run`, `agent`. They run in the order `set`,
-`call`, `ask`, `run`, `publish`, `agent` (with `ask` or `run`, `set` comes after them), so one route can classify with `call` and pass the result on with
-`publish`. `call` and `agent` cannot be in the same route: publish the result and let a second
-route start the agent, as in the example below. `ask` stands with `run`, `publish` or `set` in the same way.
+A route needs at least one of `set`, `publish`, `call`, `ask`, `run`, `agent`. They run in the
+order `set`, `call`, `ask`, `run`, `publish`, `agent`; with `ask` or `run`, `set` comes after
+them so it can store their result. `call` and `ask` do not go with `agent` (nor with each other):
+publish the result and let a second route wake the agent.
 
 ### Running a script
 
-`run` is how a route reacts at once, without a model and without waking an agent: a script the
-agent wrote does what has to happen. A page that shows a decision, a light that is switched, a file
-that is written. An agent builds it once; from then on each event costs the script, not a turn.
+`run` reacts at once, without a model and without waking an agent: a script the agent wrote
+switches a light, writes a file, updates a page. Each event then costs the script, not a turn.
 
 ```json
 { "name": "desk", "on": "source/ui@main/message",
@@ -131,26 +117,24 @@ that is written. An agent builds it once; from then on each event costs the scri
   "run": { "command": "python3 ui/answer.py" } }
 ```
 
-The script is handed one line of JSON on stdin: `topic`, `payload`, `trust`, `ts`, `elapsedMs` (since
-the event arrived), and `answers` after `ask`, `result` after `call`. Here it writes the answer and
-the time into the page's `state.json`. What it prints is `{{output}}` for `publish` and `set`, as JSON
-when it is JSON. The command is fixed text: nothing of the event goes into the command line, only
-into stdin. It runs in the sandbox of `run.agent` (the main agent unless the route names another),
-in its workspace, as that agent's sources run their commands: in every mode, and not at all where
-there is no sandbox. 30 seconds at most unless `timeout` says otherwise; when it fails, the route
-fails (`pine/route-failed`) with the end of what it wrote on stderr.
+The script gets one line of JSON on stdin: `topic`, `payload`, `trust`, `ts`, `elapsedMs` (since
+the event arrived), and `answers` after `ask` or `result` after `call`. What it prints is
+`{{output}}` (parsed when it is JSON). The command is fixed text: nothing of the event goes into
+the command line. It runs in the sandbox and workspace of `run.agent` (default: the main agent),
+as that agent's sources run commands, and not at all where there is no sandbox. 30 seconds at
+most unless `timeout` says otherwise; a failure fails the route (`pine/route-failed`, with the end
+of its stderr).
 
-A route and a subscription are separate: an agent subscribed to the same source is still woken for
-every event. For "a script, and the agent only sometimes", do not subscribe it; add a second route
-that wakes it with a `when` on the answers or the output.
+A route and a subscription are separate: an agent subscribed to the same source is still woken
+for every event. For "a script, and the agent only sometimes", do not subscribe it; add a second
+route that wakes it with a `when` on the answers or the output.
 
 ### Trying a route
 
-To see what a route does without waiting for a real event, write shared state. Every write is an
-event on `state/<key>`, and an agent may write keys under `agent/<its id>/`. So a route on
-`state/agent/main/try` fires when the main agent writes `agent/main/try` with `state_set`, and
-`{{payload.value}}` is what it wrote. To read what the route did, let it write that into shared
-state too, and read it with `state_get` a few seconds later. To try a decision model:
+Write shared state instead of waiting for a real event. Every write is an event on
+`state/<key>`, and an agent may write keys under `agent/<its id>/`. A route on
+`state/agent/main/try` fires when the main agent sets `agent/main/try` with `state_set`;
+`{{payload.value}}` is what it wrote. Let the route write its result into state too:
 
 ```json
 { "name": "try-decider", "on": "state/agent/main/try",
@@ -159,14 +143,14 @@ state too, and read it with `state_get` a few seconds later. To try a decision m
   "set": { "agent/main/try-answer": "{{answers}}" } }
 ```
 
-`state_set` `agent/main/try` to a sample text, then `state_get` `agent/main/try-answer`:
-`{"overdue": {"yes": 0.999}}`. When nothing arrives in a few seconds, the route failed. Remove the
-route afterwards (`remove_route`).
+`state_set` `agent/main/try` to a sample text, then `state_get` `agent/main/try-answer` a few
+seconds later: `{"overdue": {"yes": 0.999}}`. Nothing there means the route failed. Remove the
+route afterwards.
 
 ### Templates
 
 `{{path}}` is replaced in `prompt`, `label`, `session`, `key`, `set`, `publish`, `reply`, `call`
-and the `data` of `ask` (never in its questions).
+and the `data` of `ask` (never in its questions or in `run`'s command).
 
 | Path | Value |
 |---|---|
@@ -174,10 +158,11 @@ and the `data` of `ask` (never in its questions).
 | `topic`, `source`, `id`, `ts`, `time` | Event fields; `time` is local, `YYYY-MM-DD HH:MM:SS` |
 | `state.<key>` | Shared state, for example `{{state.house/mode}}` |
 | `result` | The answer of the route's `call` |
-| `answers.<name>` | The answer to the route's question of that name (`ask`) |
+| `answers.<name>` | The answer to the route's question of that name |
+| `output` | What the route's `run` printed |
 
-A value that is exactly one `{{path}}` keeps its type (a number stays a number); inside longer
-text, objects become JSON and missing values become empty.
+A value that is exactly one `{{path}}` keeps its type; inside longer text, objects become JSON and
+missing values become empty.
 
 ### Filters
 
@@ -198,7 +183,7 @@ optional `flags`).
 
 ### The cheapest handler that is enough
 
-A full agent turn costs seconds of model time. Most events do not need one.
+A full agent turn costs seconds of model time; most events do not need one.
 
 ```json
 [
@@ -218,17 +203,15 @@ A full agent turn costs seconds of model time. Most events do not need one.
 ]
 ```
 
-The first route never calls the model. The second makes one call per burst of images (a `call`
-receives the event's images if the model accepts them). Only a person or a vehicle while nobody
-is home reaches an agent.
+The first route never calls a model, the second makes one call per burst of images, and only a
+person or a vehicle while nobody is home reaches an agent.
 
 ### Typed questions
 
-`call` answers with text, and a second route can only match it with a pattern. `ask` puts named
+`call` answers with text, which a second route can only match with a pattern. `ask` puts named
 questions about the event to a decision model ([configuration.md](configuration.md), "Decision
-models": one Pinecone serves on your Mac, TypeSafe's Jev) and gets back values a filter or a
-script reads as they are: how likely yes is, which of your options fits, which of your levels. In
-a fraction of a second, so it can run on every event.
+models": Pinecone on your computer, TypeSafe's Jev) and gets back values a filter or a script
+reads as they are, in a fraction of a second.
 
 ```json
 [
@@ -251,38 +234,33 @@ a fraction of a second, so it can run on every event.
 
 | Question `type` | Takes | Answered as |
 |---|---|---|
-| `yesno` | `question` | `{ "yes": 0.87 }`: the probability that the answer is yes, from 0 to 1 |
-| `choice` | `question`, `options`: two or more names, each with when it applies | `{ "choice": "invoice" }`: one of the names |
-| `score` | `question`, `levels`: two to ten, lowest first | `{ "level": "annoyed", "score": 1 }`: one of the levels, and its place (0 is the lowest) |
+| `yesno` | `question` | `{ "yes": 0.87 }`: the probability of yes, 0 to 1 |
+| `choice` | `question`, `options`: two or more names, each with when it applies | `{ "choice": "invoice" }` |
+| `score` | `question`, `levels`: two to ten, lowest first | `{ "level": "annoyed", "score": 1 }`: the level and its place (0 is the lowest) |
 
-A question's name is letters, digits, `-` and `_`; a filter reads its answer as
-`payload.answers.<name>`. The questions are your fixed text: a `{{...}}` in them is refused,
-because an event that filled them in could change what is asked. What the event carries goes into
-`data` (default: the whole payload), cut at `limits.maxEventChars`.
+At most 16 questions; a name is letters, digits, `-` and `_`, starting with a letter, and a filter
+reads its answer as `payload.answers.<name>`. The questions are fixed text: a `{{...}}` in them is
+refused. What the event carries goes into `data` (default: the whole payload), cut at
+`limits.maxEventChars`.
 
-All questions of a route go to the decision model `model` names, in one request; a chat model
-does not answer them (for a question in words, `call`). What it says is checked: every question
-answered, a number from 0 to 1, one of your option names, one of your levels. Anything else is no
-answer, and the route fails (`pine/route-failed`) and publishes nothing. It may also say how sure it
-is (`confidence`, 0 to 1, on a `choice` and a `score`) and give a score between two levels (`1.7`;
-`level` is then the nearest). So no text of the event reaches the published answers, and they keep
-the trust of the event they are about: answers about an untrusted mail are untrusted, and an agent
-a second route wakes for them works as for the mail itself. An event can still lean on the answer
-(a mail that says it is urgent): that decides which of your routes acts on it, never what they do
-or with what trust, which is no more than whoever can write to that topic can do.
+`model` names a decision model; a chat model does not answer these (use `call`). All questions
+of a route go in one request, and the answer is checked: every question answered, a number from 0
+to 1, one of your option names or levels. Anything else fails the route (`pine/route-failed`)
+and publishes nothing. A `choice` or `score` may also carry `confidence` (0 to 1), and a score
+may fall between levels (`1.7`, with `level` the nearest). So no text of the event reaches the
+answers, and they keep the event's trust: answers about an untrusted mail are untrusted. An
+event can lean on the answer (a mail that claims to be urgent), which decides which of your
+routes acts, never what they do. The `data` goes to wherever the decision model runs, which you
+are told when you confirm the route.
 
-What goes where: the `data` goes to where the decision model is (your Mac, TypeSafe), which you are
-told when you confirm the route.
-
-Text from untrusted events is prefixed for the agent with a line saying where it came from and
-that it is data, and is cut at `limits.maxEventChars`. That line is a courtesy; the protection
-is that the run has fewer tools (see [security.md](security.md)).
+Text from untrusted events is prefixed for the agent with a line that says where it came from and
+that it is data, and cut at `limits.maxEventChars`. The protection is that such a run has fewer
+tools ([security.md](security.md)).
 
 ## Schedules
 
-A schedule is something that happens because of the time: again and again, or once. It is the
-fourth thing an agent can be given by asking, next to event sources, MCP servers and skills,
-and it has the same three scopes ([setup.md](setup.md)).
+A schedule is something that happens because of the time, again and again or once. It has the
+same three scopes as sources, MCP servers and skills ([setup.md](setup.md), "Three scopes").
 
 ### Ask the agent
 
@@ -292,36 +270,32 @@ and it has the same three scopes ([setup.md](setup.md)).
 
 > In twenty minutes, look whether the build is through.
 
-The agent calls its `add_schedule` tool with a name, the time and the task in its own words:
-`cron` for set times ("every weekday at six in the evening" is `"0 18 * * 1-5"`), `every` for an
-interval, `at` or `in` for a reminder that happens once. When it is time, it is woken with that
-task, also when you are not there, and does it. What it starts
-counts as your wish: the agent has its usual tools, and nothing is marked as outside content.
+The agent calls `add_schedule` with a name, the task in its own words, and one of:
 
-| Said | Who is woken | You are asked |
-|---|---|---|
-| in a side conversation | That conversation; the schedule goes when the conversation is removed | No |
-| in the agent's main conversation, or "as an agent" | The agent's main conversation | Only from a side conversation |
-| "all agents" | Every agent, each in its main conversation. Only the main agent can do this | Yes |
-
-In a conversation that has read outside content you are asked in every case, and the dialog
-shows the task: what a web page says must not become something that is done every hour.
-
-| Tool | |
+| Option | When |
 |---|---|
-| `schedules` | What is scheduled for this agent, in which conversation, and when each is next due. |
-| `add_schedule` `name` `task` + one of `cron`, `every`, `at`, `in` [`scope`] | Schedules it. `cron`: set times; `every`: an interval, at least a minute; `at`: once, at a local time (`2026-12-24 17:00`); `in`: once, after this long (`10s`, `20m`). |
-| `remove_schedule` `name` | Ends one. This conversation's own goes without a question. |
+| `cron` | Set times, five fields in local time: "every weekday at six in the evening" is `"0 18 * * 1-5"` |
+| `every` | An interval, at least a minute (`15m`, `2h`) |
+| `at` | Once, at a local time (`2026-12-24 17:00`); not in the past |
+| `in` | Once, after this long (`10s`, `20m`) |
 
-A schedule that happens once removes itself when it has fired. A one-off, or a `cron` schedule
-with a task, that was due while pine was not running is done once when pine starts again (a
-`cron` time only if it lies no more than seven days back), and the agent is told that it comes
-late. An `every` schedule simply starts counting again. `pine
-schedules` lists everything that is scheduled.
+When it is time, the agent is woken with the task, also when you are not there. It counts as
+your wish: the agent has its usual tools and nothing is marked as outside content.
 
-A name is unique among all schedules; a task has at most 4000 characters; an interval an agent
-sets (`every`) is at least a minute, while a one-off (`in`, `at`) can be seconds away; a time in the past is refused. In manual mode you are asked for
-every `add_schedule` and `remove_schedule`.
+| Said | Who is woken |
+|---|---|
+| in a side conversation | That conversation; the schedule goes when the conversation is removed |
+| in the agent's main conversation, or "as an agent" | The agent's main conversation |
+| "all agents" (main agent only) | Every agent, each in its main conversation |
+
+What you are asked: [setup.md](setup.md), "What you are asked". After outside content you are
+asked in every case, with the task shown. `schedules` lists what is scheduled and when it is next
+due; `remove_schedule` ends one; `pine schedules` lists everything.
+
+A name is unique among all schedules; a task has at most 4000 characters. A one-off removes
+itself once it has fired. A one-off, or a `cron` schedule with a task, that was due while pine
+was not running is done once when pine starts again (a `cron` time only up to seven days back),
+and the agent is told it comes late. An `every` schedule starts counting again.
 
 ### In the files
 
@@ -333,34 +307,32 @@ every `add_schedule` and `remove_schedule`.
 ]
 ```
 
-In an `agent.json` this is that agent's schedule (add `"session": "<conversation>"` for one
-conversation, otherwise its main one). In `pine.json` a schedule with a task wakes every
-agent; one without a task only publishes an event.
+In an `agent.json` this is that agent's schedule (its main conversation, or the one `session`
+names). In `pine.json` a schedule with a task wakes every agent; one without a task only
+publishes an event.
 
 | Key | Meaning |
 |---|---|
-| `name` | Required. Starts with a lowercase letter, then lowercase letters, digits, `-` and `_`; 40 characters at most. The event is published on `timer/<name>` (`timer/<name>@<agent>` for an agent's own) unless `topic` says otherwise. |
+| `name` | Required. A lowercase letter, then lowercase letters, digits, `-` and `_`; 40 characters at most. |
 | `cron` | Five fields, local time: minute, hour, day of month, month, day of week (0 or 7 is Sunday). Lists, ranges and steps work: `*/15 8-18 * * 1-5`. |
 | `every` | A fixed interval instead. |
-| `at` | Once, at this local time. The entry is removed when it has fired. If pine was not running at that time, it fires when pine starts again, and the agent is told that it comes late. |
+| `at` | Once, at this local time. Removed when it has fired; if pine was down then, it fires late at the next start. |
 | `task` | What the agent is to do. Required in an `agent.json`. |
-| `topic` | The topic the event is published on, instead of `timer/<name>`. |
+| `topic` | The topic of its event, instead of `timer/<name>` (`timer/<name>@<agent>` for an agent's own). |
 | `session` | In an `agent.json`: the conversation that is woken. Default: the main one. |
 | `payload` | Fields added to the event's payload (`name` and `scheduled` are always there; `late` when it comes late, `task` when it has one). |
-| `catchUp` | For `cron`: fire once at startup if a time passed while the daemon was down (in the last seven days), marked as late. Default: `true` with a task, `false` without. (`at` always catches up; `every` never does.) |
+| `catchUp` | For `cron`: fire once at startup for a time missed in the last seven days, marked late. Default: `true` with a task, `false` without. `at` always catches up; `every` never does. |
 
 ### Schedules and routes
 
-Every schedule also publishes an event, trusted as yours, so a route can act on it. For a
-schedule without a task that is all it does:
+Every schedule also publishes an event, trusted as yours, so a route can act on it. A schedule
+without a task does only that:
 
 ```json
 { "on": "timer/printer-check", "call": { "prompt": "..." } }
 ```
 
-A route is the way to do something other than an agent's turn at a time: set state, publish,
-or one model call without tools. For "wake the agent and let it do this", give the schedule a
-task instead; no route is needed.
+For "wake the agent and let it do this", give the schedule a task; no route is needed.
 
 ## Webhooks
 
@@ -372,27 +344,27 @@ task instead; no route is needed.
 as payload (parsed JSON, or `{ "text": ... }`). The caller proves itself with either
 
 - `Authorization: Bearer <secret>`, or
-- an HMAC-SHA256 of the body with the secret, hex-encoded, in `X-Hub-Signature-256: sha256=<hex>`
-  (the GitHub convention) or `X-Signature`.
+- an HMAC-SHA256 of the body with the secret, hex, in `X-Hub-Signature-256: sha256=<hex>`
+  (GitHub's way) or `X-Signature`.
 
-A hook needs a secret; `"open": true` instead of a secret accepts anyone who can reach the port
-and is reported by `pine check`. Unknown hook names get 404. Each hook accepts at most 120
-requests a minute and bodies up to 1 MB. Webhook events are untrusted even when the signature
-is right: the signature says who sent it, not that its content is safe to obey.
+A hook needs a secret; `"open": true` instead accepts anyone who can reach the port and is
+reported by `pine check`. Unknown names get 404. Each hook takes at most 120 requests a minute
+and bodies up to 1 MB. Webhook events are untrusted even with a right signature: it says who
+sent it, not that its content is safe to obey. From outside your network, put a tunnel or
+reverse proxy in front and forward only `/hook/`.
 
-To receive webhooks from outside your network, put a tunnel or reverse proxy in front and
-forward only `/hook/`.
-
-A hook here only publishes an event; a route decides what happens. For a webhook that wakes an
-agent directly, use a source of type `webhook` ([source-types.md](source-types.md)): it answers under
-`/hook/` too, while an agent is subscribed. A hook in `http.hooks` with the same name comes
-first.
+A hook here only publishes an event; a route decides what happens. For a webhook that wakes a
+subscribed agent, use a source of type `webhook` ([source-types.md](source-types.md)), which
+answers under `/hook/` too; a hook in `http.hooks` with the same name comes first.
 
 ## When nothing happens
 
 1. `pine events --topic "<pattern>"`: did the event arrive, and on which topic?
 2. `pine tasks`: was a task created? `pine task <id>` shows its prompt, result and error.
-3. `pine events --topic "pine/#"`: `pine/route-failed` carries the reason a route could not act,
-   for example an agent that refuses untrusted events or a full queue.
-4. Daemon log (stderr): a line `dropped ... after N hops` means a loop was cut.
-5. A filter that never matches is usually a wrong path: look at the real payload in step 1.
+3. `pine events --topic "pine/#"`: `pine/route-failed` says why a route could not act.
+4. The daemon log: `dropped ... after N hops` means a loop was cut.
+5. A filter that never matches usually has a wrong path: compare with the real payload from
+   step 1.
+
+For sources that report nothing, see [sources.md](sources.md), "When nothing happens"; for
+everything else, [operations.md](operations.md), "Problems".

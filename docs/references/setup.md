@@ -1,130 +1,104 @@
 # Changing the setup: tool calls, not files
 
-pine's configuration is a few small JSON files, and they stay small because agents never write
-them. In every mode, bypass included, pine's home folder is closed to an agent's shell and file
-tools. What an agent may set up, it sets up by calling a tool. The tool checks what it is given,
-asks you where that matters, and writes exactly the lines that are needed; when the thing is
-removed, those lines go again and nothing is left behind (no empty lists, no stale access).
+Agents never write pine's configuration. In every mode, bypass included, pine's home folder is
+closed to an agent's shell and file tools. What an agent may set up, it sets up by calling a
+tool: the tool checks what it is given, asks you where that matters, and writes exactly the
+entries needed. Removing the thing takes those entries out again and leaves nothing behind.
 
-Four things reach an agent from outside its conversation, and all four are set up the same
-way, with the same three scopes:
+Four things reach an agent from outside its conversation, all set up the same way with the same
+three scopes:
 
 - **Events**: what happens elsewhere wakes the agent ([sources.md](sources.md)).
-- **Schedules**: the time wakes the agent, with a task ([events.md](events.md)).
+- **Schedules**: the time wakes the agent, with a task ([events.md](events.md), "Schedules").
 - **MCP servers**: tools the agent can call ([mcp.md](mcp.md)).
-- **Skills**: how something is done, written down once ([agents.md](agents.md)).
+- **Skills**: how something is done, written down once ([agents.md](agents.md), "Skills").
 
-The main agent can set each of them up for one conversation, for itself, or for all agents.
-Every other agent can do so for one conversation or for itself.
-
-You can still edit the files yourself, and the `pine` command changes them for you. This page
-is about what agents can do.
+You can still edit the files yourself, or use the `pine` command ([operations.md](operations.md)).
 
 ## Who can set up what
 
 | What | For one conversation | For the agent | For all agents |
 |---|---|---|---|
-| An event source (folder, MQTT, web address, command, webhook, FTP, Telegram) | any agent (`add_source`) | any agent, when you say so | **only the main agent** |
+| An event source | any agent (`add_source`) | any agent, when you say so | **only the main agent** |
 | A subscription to a source | any agent (`subscribe`) | any agent, when you say so | **only the main agent** |
 | A schedule | any agent (`add_schedule`) | any agent, when you say so | **only the main agent** |
 | An MCP server, remote or local | any agent (`add_mcp_server`) | any agent, when you say so | **only the main agent** |
 | A skill | any agent (`add_skill`) | any agent, when you say so | **only the main agent** |
-| A new agent | | | **only the main agent** (`create_agent`) |
-| Changing, renaming or removing an agent | | | **only the main agent** (`update_agent`, `rename_agent`, `remove_agent`), you confirm every time |
-| pine's settings | | | **only the main agent** (`set_setting`), you confirm every time |
-| A route (a rule of your own) | | any agent, on its own sources' events and acting within itself (`add_route`, `remove_route`), you confirm every time | **only the main agent**, you confirm every time |
-| Any of the first five rows, for another agent | | **only the main agent** (the same tools, with `agent`) | |
-| A new type of event source (a program) | | | **only the main agent** (`add_source_type`), you confirm every time |
-| A model server of your own (llama.cpp, vLLM, LM Studio, ...) | | | **only the main agent** (`add_model_server`), you confirm every time |
-| One model of such a server: added, set up (context, longest answer, pictures, reasoning), removed; how many run on any model at once | | | **only the main agent** (`add_model`, `configure_model`, `remove_model`), you confirm every time |
+| Any of the five rows above, for another agent | | **only the main agent** (the same tools, with `agent`) | |
+| A route (a rule of your own) | | any agent, on its own sources' events and acting within itself (`add_route`) | **only the main agent** |
+| A new agent; changing, renaming or removing one | | | **only the main agent** (`create_agent`, `update_agent`, `rename_agent`, `remove_agent`) |
+| pine's settings | | | **only the main agent** (`set_setting`) |
+| A new type of event source (a program) | | | **only the main agent** (`add_source_type`) |
+| A model server of your own, or one of its models | | | **only the main agent** (`add_model_server`, `add_model`, `configure_model`, `remove_model`) |
 
-The main agent is the one `pine.json` names with `"main"`; without that entry it is the agent
-called `main`, or else the first one. It is pine's administrator: what you want changed about
-pine, you ask it for, and it does it with tools that check what they are given, instead of
-you or an agent editing files. See "The main agent administers pine" below. The other agents do not have `create_agent`,
-`update_agent`, `rename_agent`, `remove_agent`, `agents`, `settings`, `set_setting`, `routes`, `add_route`,
-`remove_route`, `add_source_type`, `remove_source_type`, `add_model_server`, `remove_model_server`,
-`add_model`, `configure_model`, `remove_model`,
-`conversations`, `read_conversation`, `set_conversation`, `remove_conversation`, `rename_group`,
-`remove_group`, `sign_in`, `sign_out` or `sign_in_mcp_server`, and they are refused when they
-ask for the global scope. Their instructions tell them who can do it, so an agent you ask for something that is not its to do sends you to the main agent instead of
-trying.
+The main agent is the one `pine.json` names with `"main"`; without that entry, the agent called
+`main`, or else the first one. It is pine's administrator: ask it for what you want changed
+("The main agent administers pine" below). Other agents have none of its tools (apart from routes
+of their own) and are refused the global scope; they send you to the main agent.
 
 ## Three scopes
 
 | Scope | Who gets it | It lasts |
 |---|---|---|
-| **conversation** (`local`, the default) | The conversation it was asked for in, and the sub-agents that conversation starts. Other conversations of the same agent do not see it. | Until that conversation is removed (by you, or by itself when unused; see [tui.md](tui.md)). Subscriptions also end when its tab is closed or it is reset. |
-| **agent** | Every conversation of that agent. A subscription wakes its main conversation. | Until it is removed. |
+| **conversation** (`local`, the default) | That conversation and the sub-agents it starts. Other conversations of the agent do not see it. | Until the conversation is removed. A subscription also ends when its tab is closed or it is reset. |
+| **agent** | Every conversation of the agent. A subscription wakes its main conversation. | Until it is removed. |
 | **global** | Every agent. | Until the main agent or you remove it. |
 
-When a conversation is removed, everything that was set up for it alone is removed with it:
-its event sources and subscriptions, its schedules, its MCP servers and its skills. When it is
-renamed, all of that follows it to the new name. What was set up for the agent or for all
-agents is not touched by either.
+"Connect this server", "watch that folder", "remind me at five", "make a skill for this" mean
+the conversation it is said in. An agent passes a wider scope only when you say so ("for you as
+an agent", "always", "for all agents"). In an agent's main conversation the first two are the
+same.
 
-"Connect this server", "watch that folder", "subscribe to it", "remind me at five", "make a
-skill for this", said in any conversation, means that conversation. An agent passes a wider scope only when you say so in so many words ("for
-you as an agent", "always"; "for all agents"). In an agent's main conversation there is no
-difference between the first two: the main conversation is the agent.
+When a conversation is removed, what was set up for that one conversation alone (sources,
+subscriptions, schedules, MCP servers, skills) is removed with it; when it is renamed, all of
+that follows. What is for the agent or for all agents is not touched.
 
 ## What you are asked
 
 | An agent wants to | You are asked |
 |---|---|
-| Add an MCP server | Always, in every mode. The dialog names the server, its URL or its command, and who gets it. For a command it also says what the program will reach. |
-| Add a source that opens something new (a folder outside its workspace, a broker, a port), is to be trusted as yours, or is for all agents | Yes, with what it will do in plain words. A folder inside its own workspace is not asked about. |
+| Add an MCP server | Always, in every mode: the server, its URL or command, who gets it, and for a command what it will reach. |
+| Add a source that opens something new (a folder outside its workspace, a broker, a port), needs a secret, is to be trusted as yours, or is for all agents | Yes, with what it will do. A folder inside its own workspace is not asked about. |
 | Subscribe the conversation it is in | No. |
-| Subscribe the agent as such from another conversation, or all agents | Yes. Deny it if you meant this conversation only. |
+| Subscribe the agent from another conversation, or all agents | Yes. Deny it if you meant this conversation only. |
 | End a subscription of its own agent | No. |
-| Schedule something for the conversation it is in, or for itself from its main conversation | No. |
-| Schedule something for the agent from another conversation, or for all agents | Yes, with the times and the task. |
-| Add or replace a skill for the conversation it is in, or for itself from its main conversation | No. Its instructions are its own to write, as its `AGENTS.md` is. |
-| Add or replace a skill for the agent from another conversation, or for all agents | Yes. The dialog shows the description and the instructions. |
-| Remove a server, a source, a schedule or a skill that is the conversation's own | No. |
-| Remove a server, a source, a schedule or a skill of the agent (from another conversation than its main one) or of all agents | Yes. |
-| Create an agent | Always. The dialog shows its id, what it is for (the first paragraph of its instructions), model, tools and instructions. |
-| Register a new type of event source | Always, in every mode. The dialog says that it is a program, how long it is, what it imports and where the file is. |
-| Take a source type out again | Yes. |
-| End a subscription for all agents | No (the main agent only). |
-| Add a model server | Always, in every mode: the address before any request goes there, and in a second dialog its key if it wants one. See "Adding a model server". |
-| Remove a model server | Yes. |
+| Add a schedule or a skill for this conversation, or for itself from its main conversation | No. |
+| Add a schedule or a skill for the agent from another conversation, or for all agents | Yes, with the times and the task, or the skill's instructions. |
+| Remove a server, source, schedule or skill that is this conversation's own | No. |
+| Remove one of the agent's (from another conversation) or of all agents | Yes. |
+| Create an agent | Always: its id, purpose, model, tools and instructions. |
+| Register or remove a source type | Always. The dialog says it is a program, its size, its imports and where the file is. |
+| Add a model server | Always: the address before any request goes there, and in a second dialog its key if it wants one. |
+| Remove a model server; add, change or remove a model | Always. |
+| A route, a setting, a change to an agent | Always ("The main agent administers pine"). |
 
-In manual mode, and in a conversation that has read outside content, the questions that are
-otherwise skipped are asked too (ending a subscription: in manual mode only).
+In manual mode, and after the conversation has read outside content, the questions marked "No"
+are asked too (ending a subscription: in manual mode only). In plan mode nothing is set up: the
+agent only says what it would do. The listing tools (`sources`, `schedules`, `mcp_servers`,
+`skills`, `models`) are never asked about. How modes and approvals work in general:
+[security.md](security.md), "What asks you".
 
-In plan mode nothing is set up: every tool that adds, removes, subscribes or sends is refused
-there without a question, and the agent says what it would set up. The tools that only list
-(`sources`, `schedules`, `mcp_servers`, `skills`, `models`) work in every mode and are never asked about.
+After outside content, `add_skill` is always put to you with its instructions, and the tools under
+"Not from a conversation that has read outside content" below are refused, as are
+`add_source_type`, `add_model_server`, `add_model` and `configure_model`: start a new
+conversation for them.
 
-In a conversation that has read outside content two things are stricter, because what they
-write is read back as instructions or runs as a program. `add_skill` is put to you first,
-with its instructions ([security.md](security.md), "Skills are instructions").
-`add_source_type` and `add_model_server` are refused, and so are the main agent's tools listed
-under "Not from a conversation that has read outside content" below: start a new conversation
-for it.
-
-Runs with the reduced tool set, which outside events start through a route or a subscription
-marked `separate`, have none of these tools, and neither have sub-agents.
+Runs that an outside event started (a route, or a subscription marked `separate`) and sub-agents
+have none of these tools.
 
 ## What an agent has
 
-An agent cannot read pine's configuration: the files are closed to it. What it has been given
-it asks a tool, one for each kind of thing. Each of these lists what the conversation has, whom
-each thing is for (this conversation, the agent, all agents), and what only another
-conversation of the same agent has. So "which MCP servers do you have", "which skills do you
-have", "what are you subscribed to" and "what is scheduled" are answered by a tool call, never
-by a guess and never by looking for a file.
+An agent cannot read pine's configuration. What it has been given, it asks a tool: each lists what the
+conversation has, whom each thing is for (this conversation, the agent, all agents), and what
+only another conversation of the agent has.
 
 | What you ask about | The tool that lists it |
 |---|---|
-| MCP servers: which are connected, which the agent has | `mcp_servers` |
-| Skills: what the agent knows how to do | `skills` |
-| Models: which are set up, and which one the agent runs on | `models` |
-| Events: sources, and who is subscribed and woken | `sources` |
-| Schedules: what happens at set times | `schedules` |
-
-Which model the agent runs on is told to it with your message, so it needs no tool for that.
+| MCP servers, and whether their tools are there | `mcp_servers` |
+| Skills | `skills` |
+| Models, and which one the agent runs on | `models` |
+| Event sources, and who is subscribed | `sources` |
+| Schedules | `schedules` |
 
 ## The tools
 
@@ -132,397 +106,291 @@ Which model the agent runs on is told to it with your message, so it needs no to
 |---|---|
 | **Events** | |
 | `sources` | Lists the event sources this conversation can use and who is subscribed. |
-| `add_source` `name` `type` `description` [`options`] [`scope`] [`note`] [`throttle`] [`own`] [`ask`] | Sets up a source; with a note it subscribes at once. `options` is an object with the options of the chosen type ([source-types.md](source-types.md)). `own: true` marks it as your own device or folder, whose events are trusted. `ask` names secret options that you are to type into the dialog. |
-| `subscribe` `source` [`scope`] [`note`] [`when`] [`throttle`] [`fresh`], `unsubscribe` `source` [`scope`] | Starts or ends being woken by a source. `fresh`: every event is handled in a conversation of its own, started empty, for a source that reports all day ([sources.md](sources.md), "A fresh conversation for every event"). For `unsubscribe` the scope can also be `all`: everything the agent has on that source. |
-| `send` `source` [`text`] [`file`] [`data`] | Sends something out through a source that can send (Telegram, MQTT). `file`: a picture, video or sound file of the agent's workspace to go with a Telegram message. A message to you through Telegram is never held back for approval. |
-| `read_source` `source` [`data`] | Looks something up through a source that can be asked: what was written earlier in a Slack channel, a direct conversation or a thread. `data` says what, as JSON (`{"channel": "C0123", "thread": "1712345678.000100"}`). It only reads, so it is not asked about; what it returns is outside content, and the conversation is marked as having read some. The `sources` tool says which sources can be read. |
-| `remove_source` `name` | Stops a source, unsubscribes everyone from it and deletes it. For a watched folder, the read access that came with it goes too. |
-| `add_source_type` `name` `file`, `remove_source_type` `name` | Main agent only. Registers a module the agent wrote as a new type of source, or takes one out. |
+| `add_source` `name` `type` `description` [`options`] [`scope`] [`note`] [`throttle`] [`own`] [`ask`] | Sets up a source; with a `note` it subscribes at once. `options`: the type's options ([source-types.md](source-types.md)). `own: true`: your own device or folder, whose events are trusted. `ask`: secret options you type into the dialog. |
+| `subscribe` `source` [`scope`] [`note`] [`when`] [`throttle`] [`fresh`] | Starts being woken by a source. `fresh`: each event in a new, empty conversation ([sources.md](sources.md), "A fresh conversation for every event"). |
+| `unsubscribe` `source` [`scope`] | Ends it. Scope `all`: everything of the agent on that source. |
+| `send` `source` [`text`] [`file`] [`data`] | Sends through a source that can send (Telegram, MQTT, ...). `file`: a picture, video or sound file of the workspace, with a Telegram message. A message to you on Telegram is never held for approval. |
+| `read_source` `source` [`data`] | Reads through a source that can be asked: earlier messages of a Slack channel or thread (`data`: `{"channel": "C0123", "thread": "..."}`). Not asked about; what it returns is outside content. |
+| `remove_source` `name` | Stops a source, unsubscribes everyone and deletes it, with any folder access that came with it. |
+| `add_source_type` `name` `file`, `remove_source_type` `name` | Main agent only. Registers a module it wrote as a new source type, or takes one out ([sources.md](sources.md)). |
 | **Schedules** | |
 | `schedules` | Lists what is scheduled for the agent and when each is next due. |
-| `add_schedule` `name` `task` + one of `cron`, `every`, `at`, `in` [`scope`] | Does the task at set times, every so often, or once. One that happens once removes itself. |
+| `add_schedule` `name` `task` + one of `cron`, `every`, `at`, `in` [`scope`] | Does the task at set times, every so often, or once ([events.md](events.md), "Schedules"). |
 | `remove_schedule` `name` | Ends a schedule. |
 | **MCP servers** | |
-| `mcp_servers` | Lists the MCP servers this conversation has: whom each is for (this conversation, the agent, all agents) and whether its tools are in the agent's tool list (connected) or missing (it did not start, or it needs a sign-in). It also names servers that only another conversation of the agent has, which this one cannot use. This is how an agent answers "which MCP servers do you have": the configuration files are closed to it. |
-| `add_mcp_server` `name` `url` or `command` [`secrets`] [`description`] [`scope`] | Proposes an MCP server: a remote one by its https `url`, or a local one by the line that starts it (one program with its arguments, nothing else). A local one runs inside the sandbox of the agent that uses it. `secrets` names the keys it needs; you type them into the dialog. A name can be used once. One exception: a server that only one conversation of the agent has is made the agent's by adding it again under its name with `scope: "agent"`, from that conversation or from another; you are asked, the new entry takes the place of the old one, and then all the agent's conversations have it. See [mcp.md](mcp.md). |
-| `remove_mcp_server` `name` | Takes a server out again. A server that belongs to another conversation is removed there, or with that conversation. |
-| **Asking, and keeping track** | |
-| `question` `question` [`header`] [`options`] [`multiSelect`] | Asks your owner one question when you cannot go on without their decision. `options` are two to six answers to pick from, each `{ label, description? }`: a short label and a line that says what it means or costs, the one you recommend first. `header` is a few words over the question, 12 characters at most ("Database"). With `multiSelect: true` several may be picked, and you get their labels joined by ", ". The old `choices` (plain labels) still works, as options without descriptions. In the Pine app they pick on a card above the input of the conversation, on Telegram with a button, or answer in their own words; you get the answer back as the tool's result. An answer in their own words says so ("Your owner answered in their own words: ..."): it may ask something back, so respond to what they said, and ask again if you still need the decision. No answer is said plainly: go on with a reasonable assumption and say which. It changes nothing, so it also works in plan mode. Not for permission to act (that is asked by itself), and not there in a run your owner did not start |
-| `todo` `items` | Your own list of the steps of a task that has several. Send the whole list every time, each step with a status: `pending`, `in_progress` (one at a time) or `done`. Your owner sees it in the conversation and in the status line ("step 2 of 5"), and with their next message you are shown what is still open, so you can pick the work up where it stood. Send it again each time a step is done and once more before your final answer; when it has not changed for six tool calls while steps are open, a line in a tool's answer reminds you. It belongs to the conversation and goes when that is reset. An empty list clears it. At most 30 steps. Not there in a run your owner did not start |
-| **Programs** | |
-| `stop_program` [`id`] | Stops a program that one of the conversation's commands left running, such as a development server, or one the agent started in the background (`background: true`). Without `id` it lists them. Never asks: it only ends what the agent started. Only an agent with `bash` has it. See [coding.md](coding.md). |
+| `mcp_servers` | Lists the servers this conversation has, whom each is for, and whether its tools are there or missing (did not start, or needs a sign-in). |
+| `add_mcp_server` `name` `url` or `command` [`secrets`] [`description`] [`scope`] | Proposes a server: remote by its https `url`, or local by the line that starts it (one program and its arguments), which runs where the agent's commands run (its sandbox, or none in auto and bypass mode). `secrets`, local servers only: key names you type into the dialog. A server one conversation has becomes the agent's when added again with `scope: "agent"` ([mcp.md](mcp.md)). |
+| `remove_mcp_server` `name` | Takes a server out. One that belongs to another conversation is removed there. |
 | **Skills** | |
-| `skills` | Lists the skills this conversation has and whom each is for (this conversation, the agent, all agents), and names skills that only another conversation of the agent has. This is how an agent answers "which skills do you have". |
-| `add_skill` `name` `description` `instructions` [`files`] [`scope`] | Writes a skill; the same name in the same place replaces it. `files` is a folder in the agent's workspace whose contents go along. |
-| `remove_skill` `name` | Deletes a skill in pine's own skill folders (`skills/`, `agents/<id>/skills/`, a conversation's), also one you put there by hand. A skill in a folder named under `skills` in a configuration file is yours to remove. |
+| `skills` | Lists the skills this conversation has and whom each is for. |
+| `add_skill` `name` `description` `instructions` [`files`] [`scope`] | Writes a skill; the same name in the same place replaces it. `files`: a workspace folder whose files go along ([agents.md](agents.md), "Skills"). |
+| `remove_skill` `name` | Deletes a skill in pine's skill folders. A skill named under `skills` in a configuration file is yours to remove. |
+| **Asking, and keeping track** | |
+| `question` `question` [`header`] [`options`] [`multiSelect`] | Asks the owner one question the agent cannot go on without: two to six `options` (`{ label, description? }`, recommended first), a `header` of at most 12 characters, `multiSelect` for several. An answer in the owner's own words, or none, is said plainly. Works in plan mode; not in a run the owner did not start. |
+| `todo` `items` | The agent's list of steps, sent whole each time; each step `pending`, `in_progress` (one at a time) or `done`, at most 30. The owner sees it; after six tool calls without a change the agent is reminded. Not in a run the owner did not start. |
+| **Programs** | |
+| `stop_program` [`id`] | Stops a program the conversation's commands left running or started with `background: true`; without `id` it lists them. Never asks. Only for an agent with `bash` ([coding.md](coding.md)). |
 | **Agents** | |
-| `create_agent` `id` `instructions` [`model`] [`tools`] [`color`] | Main agent only. See below. Changing and removing one, and pine's settings: "The main agent administers pine". |
-| **Model servers** | |
-| `add_model_server` `name` `url` [`context`] | Main agent only. Adds a model server of your own by its address; pine asks the server for its models. See "Adding a model server". |
-| `remove_model_server` `name` | Main agent only. Takes one out again, with the key pine keeps for it. Refused while an agent, the default, the judge of goals (`defaults.judge`), the check of a swarm's answer (`defaults.checker`) or a route's model call uses one of its models. You are asked. |
-| **Models** | |
-| `add_model` `model` [`context`] | Main agent only. Adds one more model of a server that is there already, as `server/model`: one the server serves and pine does not have yet (pine takes a server's models when it is added; a model loaded there since is not in pine). pine asks the server for it. You are asked. See "Setting up a model". |
-| `configure_model` `model` [`context`] [`max_output`] [`pictures`] [`reasoning`] [`runs`] | Main agent only. Changes how one model is set up; only what is given changes. `context`, `max_output`, `pictures` and `reasoning` are for a model of a server of your own; `runs` (how many conversations and sub-agents use it at the same time, `limits.models`; `0` gives it back to `limits.maxConcurrentRuns`) is for any model. You see old and new, and are asked. See "Setting up a model". |
-| `remove_model` `model` | Main agent only. Takes one model of a server of your own out of pine; the server and its other models stay, and so does the model on the server. Refused while it is used (as for `remove_model_server`) and for a server's last model. You are asked. |
+| `create_agent` `id` `instructions` [`model`] [`tools`] [`color`] | Main agent only. See "Creating an agent". |
+| **Model servers and models** | |
+| `add_model_server` `name` `url` [`context`] | Main agent only. See "Adding a model server". |
+| `remove_model_server` `name` | Main agent only. Takes a server out with its key. Refused while an agent, the default, `defaults.judge`, `defaults.checker` or a route's `call` uses one of its models. |
+| `add_model` `model` [`context`] | Main agent only. Adds a model a server serves that pine does not have yet, as `server/model`. See "Setting up a model". |
+| `configure_model` `model` [`context`] [`max_output`] [`pictures`] [`reasoning`] [`runs`] | Main agent only. Changes only what is given. See "Setting up a model". |
+| `remove_model` `model` | Main agent only. Takes one model of a server out of pine. Refused while it is used, and for a server's last model. |
+| `models` | Lists the models (`provider/model`), what each can do, and the agent's own. For the main agent it also asks each of your model servers what it serves, and names what pine lacks or the server no longer serves. |
 | **Signing in** | |
-| `sign_in` `provider` [`way`] | Main agent only. Signs (logs) pine in to a model provider, such as a Claude or ChatGPT subscription: `way` is `browser` (an account or subscription: Claude, ChatGPT, GitHub Copilot) or `key` (an API key); left out, the provider's usual way. You confirm it, then pine's own dialog asks you for what the sign-in needs: the page to open (with its address and, for some providers, a code), the key in a hidden field, a code to paste back, or a choice among the ways the provider offers (in the Pine app a question card above the input). What you type goes to pine and never to the agent; the credential is kept in `auth.json`, which no agent can read. Say no to the page's question to stop the sign-in. When the agents had no model that answers, pine chooses one of the new ones. Refused in a conversation that has read outside content. The same as Settings > Models in the Pine app and `pine login`. `typesafe` signs pine in to TypeSafe, for its decision model Jev: a key in pine's dialog, checked with TypeSafe and kept in `.env`. |
-| `sign_out` `provider` | Main agent only. Removes pine's sign-in to a model provider; you are told which agents use its models, and asked. |
-| `sign_in_mcp_server` `name` [`agent`] | Main agent only. Signs in to a remote MCP server that needs one: you confirm it, and the server's page opens in the browser of the computer pine runs on, where you sign in. pine keeps the token. The same as Sign in under Settings > MCP servers and `pine mcp login <name>`. |
+| `sign_in` `provider` [`way`] | Main agent only. Signs (logs) pine in to a model provider, such as a Claude or ChatGPT subscription (`way`: `browser`) or an API key (`key`). You confirm; then pine's own dialog asks you for the page, key or code, which never reaches the agent. The credential is kept in `auth.json`. `typesafe` signs in to TypeSafe for its decision model Jev. Same as Settings > Models and `pine login`. |
+| `sign_out` `provider` | Main agent only. Removes a sign-in; you are told which agents use its models. |
+| `sign_in_mcp_server` `name` [`agent`] | Main agent only. Signs in to a remote MCP server: you confirm, and its page opens in the browser of the computer pine runs on. pine keeps the token. Same as Sign in under Settings > MCP servers and `pine mcp login <name>`. |
 | **Not setup: the other tools pine gives an agent** | |
-| `request_access` [`path`] [`write`] [`network`] `reason` | Asks you for access the conversation does not have: a file or folder outside the workspace (`path`; with `write: true` also to change it), or the network from the shell (`network: true`). You decide; a yes holds for the conversation until it is reset or pine restarts. pine's home is never granted. An agent does not have to call it: when a file tool or a shell command needs something outside, pine asks you the same question itself. See "When a call needs something outside" and "Modes" in [security.md](security.md). |
-| `delegate` `agent` `task` [`wait`] [`thread`] [`worktree`] | Hands a task to another agent and gets its answer. Only there when the agent's `delegates` list is not empty, which by default names every agent but the main one. The other agent works in its own mode or the caller's, whichever is stricter. See [agents.md](agents.md). |
-| `subagent` `tasks` [`stages`] [`model`] [`thinking`] [`worktree`] [`pool`] [`ids`] [`note`] [`check`] [`verify`] | Runs several copies of the agent side by side, one task each, and returns their answers. With `pool` there can be many more tasks than run at once: they are worked through on the conversation's board ([boards.md](boards.md)). With `ids` the copies work tasks that are on a board already and settle them there. With `model` the copies run on another model than the agent's, with `thinking` at another reasoning level. They never ask you anything. See [agents.md](agents.md), "Sub-agents". |
-| `models` | Lists the models that are set up, as `provider/model`, with what each can do (see pictures, reason) and which one is the agent's own; for a model of a server of your own also its context and longest answer, and for any model its own number of runs at a time. This is how an agent answers "which models are there", and where it finds what `subagent` takes as `model`. For the main agent it also asks each model server of your own what it serves (its `/v1/models`, with the key pine has for it, three seconds at most) and names what the server serves that pine does not have yet, with the server's own title and whether it is loaded where the server says so, and what pine has that the server no longer serves. A server that does not answer is named as such. |
-| `download` `url` `path` | Fetches a file from a web address into the workspace, byte for byte. It is how an agent gets a file that a remote MCP server made: by the link in the tool's answer, never by a file path from it. See "Downloads" in [security.md](security.md) and "Files and pictures from a remote server" in [mcp.md](mcp.md). |
-| `boards`, `board_read`, `board_post`, `board_claim`, `board_done`, `board_answer`, `board_remove` | The tasks of a job that several work on: a conversation and its sub-agents, or several agents. A task is taken by one at a time, its result stays on the board, and one that cannot be done without a decision asks and is answered. A board whose work is finished is removed with `board_remove`; one that others use only after your yes. See [boards.md](boards.md). |
-| `publish_event` `topic` [`text`] [`data`] | Publishes an event on a topic of the agent's `publish` list. Without that list the tool is not there. See [events.md](events.md). |
-| `state_get` `key`, `state_set` `key` `value` | Read and write shared state, within `state.read` and `state.write`. See "Shared state" in [agents.md](agents.md). |
-| `manual` [`search`] [`read`] | Searches and reads this manual. See "The manual tool" in [agents.md](agents.md). |
+| `request_access` [`path`] [`write`] [`network`] `reason` | Asks you for a path outside the workspace (`write: true` to change it) or the network, for the conversation until reset or restart. pine also asks by itself when a call needs it ([security.md](security.md), "When a call needs something outside: pine asks you"). |
+| `delegate` `agent` `task` [`wait`] [`thread`] [`worktree`] | Hands a task to another agent ([agents.md](agents.md), "Handing work to another agent"). |
+| `subagent` `tasks` [`stages`] [`model`] [`thinking`] [`worktree`] [`pool`] [`ids`] [`note`] [`check`] [`verify`] | Runs copies of the agent side by side, one task each ([agents.md](agents.md), "Sub-agents"; [boards.md](boards.md) for `pool`). |
+| `download` `url` `path` | Fetches a file from a web address into the workspace ([mcp.md](mcp.md), "Files and pictures from a remote server"). |
+| `boards`, `board_read`, `board_post`, `board_claim`, `board_done`, `board_answer`, `board_remove` | The tasks and notes of a job several work on ([boards.md](boards.md)). |
+| `publish_event` `topic` [`text`] [`data`] | Publishes on a topic of the agent's `publish` list; without the list the tool is not there ([events.md](events.md)). |
+| `state_get` `key`, `state_set` `key` `value` | Shared state, within `state.read` and `state.write` ([agents.md](agents.md), "Shared state"). |
+| `manual` [`search`] [`read`] | Searches and reads this manual ([agents.md](agents.md), "The manual tool"). |
 
 The built-in tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`) are chosen with
-`tools` in `agent.json`; the shell tool's `background` is described in [coding.md](coding.md).
-The tools of MCP servers are in [mcp.md](mcp.md). A run that an outside event started has
-`state_get` and what its `untrusted` profile lists, and none of the others.
+`tools` in `agent.json`; `background` on the shell tool is in [coding.md](coding.md).
 
-Everything takes effect without a restart. An agent has new MCP tools and new skills from its
-next message on, in the same conversation. After `add_mcp_server` that next message is pine's
-own: the agent is called again at once and goes on with the new tools.
+Everything takes effect without a restart. New MCP tools and skills are there from the agent's
+next message on; after `add_mcp_server`, pine calls the agent again at once in the same
+conversation with the new tools.
 
 ## Adding a model server
 
 Tell the main agent: "add my llama server at http://100.64.0.7:8080 as studio". It calls
-`add_model_server` with the name and the address, and then:
+`add_model_server`, and then:
 
-1. You are shown the address and confirm it. This is asked every time, in every mode: an agent
-   that is given one of the server's models sends its whole conversation there. Until you say
-   yes, no request goes to that address.
-2. pine asks the server which models it has, how much context one request gets, whether it
-   reads pictures and, for a model that thinks, which thinking levels it knows (from
-   llama.cpp's `/props`; other servers say less).
-3. If the server wants a key, a second dialog asks you to type it. It goes into `.env` as
-   `PINE_MODEL_<NAME>_API_KEY`; the agent and its model never see it. A key the server does not
-   accept is not kept.
-4. The entry is written to `models.json`, and the models are there at once: choose one with
-   `/model studio/<model>`, or have the main agent give it to a new agent.
+1. You confirm the address, every time, in every mode: an agent on one of its models sends its
+   whole conversation there. No request goes there before your yes.
+2. pine asks the server for its models, their context, whether they read pictures and which
+   thinking levels they know (llama.cpp's `/props`; other servers say less).
+3. If the server wants a key, a second dialog asks for it. It goes into `.env` as
+   `PINE_MODEL_<NAME>_API_KEY`; no agent sees it. A key the server refuses is not kept.
+4. The entry is written to `models.json`; choose a model with `/model studio/<model>`, or have
+   the main agent give it to an agent.
 
-Where a server does not say how much context its models get, the agent is told so and asks you
-for the number. The name cannot be one a provider already has (`anthropic`, `openai`, ...), so
-no stored key can be pointed at another address. You can do the same yourself with
-`pine model add <name> <address>` ([operations.md](operations.md)); what is written is described
-in [configuration.md](configuration.md), "models.json".
+Where the server does not say its context, the agent asks you for the number. The name cannot
+be one a provider has (`anthropic`, `openai`, ...). From a shell: `pine model add <name>
+<address>`. What is written: [configuration.md](configuration.md), "models.json".
 
 ### A model server on this computer
 
-Before any model answers, the Pine app's **Setup Pine** offers **A model on this computer**
-([desktop.md](desktop.md)): pine looks for model servers on this computer and offers what it
-finds, so that you type no address. It asks the control API's `GET /models/local`, which asks the
-usual ports of this computer, and only those, what they serve:
+The Pine app's **Setup Pine** offers **A model on this computer** ([desktop.md](desktop.md)):
+pine looks for model servers running on this computer and offers what it finds, so that you type
+no address. It asks only the usual ports on `127.0.0.1` (`GET /models/local`), never another
+address and never pine's own port:
 
 | Port | Offered as |
 |---|---|
-| 8080 | **llama.cpp**, or **Pinecone** when Pinecone's MCP server answers on 8090 too (`http://127.0.0.1:8090/mcp`) |
+| 8080 | **llama.cpp**, or **Pinecone** when Pinecone's MCP server answers on 8090 too |
 | 11434 | **Ollama** |
 | 1234 | **LM Studio** |
 
-Only `127.0.0.1` on those ports is asked, never an address somebody gave and never pine's own
-control port; nothing is added by looking. Picking a server adds it as above (its key, if it
-wants one, typed into a secret field of the card, which goes into `.env`). Picking **Pinecone**
-adds its model server as `pinecone` and its MCP server, also named `pinecone`, for all agents.
-Nothing is installed: Pinecone is set up by you, or by the main agent once a model answers.
+Nothing is added by looking. Picking one adds it as above (a key, if wanted, typed into a secret
+field of the card). **Pinecone** also adds its MCP server, named `pinecone`, for all agents.
+Nothing is installed.
 
 ## Setting up a model
 
-What pine knows about a model of a server of your own, it took from the server when the server
-was added. A model the server loaded later does not show up in pine until it is added, and a
-server restarted with another context still has the old one in pine. When that is not right,
-tell the main agent; it never edits `models.json` itself, and you do not have to either.
-
-Which models a server has that pine does not know about, the main agent sees in its `models`
-list: it asks each of your model servers for its models every time (the server's
-`/v1/models`), so "which models does studio have that pine doesn't" is answered from the
-server itself, and so is a model pine still has that the server no longer serves.
+pine takes what it knows about a model from the server when the server is added. A model loaded
+later, or a server restarted with another context, needs telling the main agent. Its `models`
+list shows what each server serves that pine lacks.
 
 | You say | The main agent calls |
 |---|---|
-| "studio serves gemma now too, add it" | `add_model` `studio/gemma`: pine asks the server whether it serves `gemma` and how much context it gets, and writes the entry. A model the server does not list is set up on the server first (loaded, or named with `--alias` for llama-server). |
-| "I restarted the server with 64k context" | `configure_model` `studio/qwen3-coder` `context: 65536`. The context is what one request gets: for llama-server, `-c` divided by `-np`. A context larger than the server's makes a long conversation fail; a smaller one makes it compact early. A smaller context also shortens the longest answer to half of it, unless `max_output` is given. |
-| "let it write longer answers" | `configure_model` with `max_output`: the most tokens one answer may have, below the context. |
-| "it can see pictures" / "it cannot" | `configure_model` with `pictures`. Only for a model that reads them: agents are then sent the pictures that come in. |
-| "turn thinking off for it" / "it reasons" | `configure_model` with `reasoning`. Off takes the level map away too, so no level is sent; on marks the model as one that thinks and is sent a level (the levels of a llama.cpp template are mapped when the server is added: [configuration.md](configuration.md), "Thinking levels"). |
-| "only one at a time on the laptop's model" | `configure_model` with `runs: 1`. For any model, a provider's too: how many conversations and sub-agents use it at the same time (`limits.models`). For a server of your own, the number of parallel slots (`-np`). `runs: 0` gives the model back to pine's own limit, `limits.maxConcurrentRuns`. |
-| "take the old model out" | `remove_model` `studio/old`: only from pine; the server is not touched. Not while an agent, a default or a route uses it, and not the server's last model (`remove_model_server` takes the whole server). |
+| "studio serves gemma now too, add it" | `add_model` `studio/gemma`. pine asks the server for it. A model the server does not list is set up on the server first (loaded, or named with `--alias` for llama-server). |
+| "I restarted the server with 64k context" | `configure_model` `studio/qwen3-coder` `context: 65536`. The context of one request: for llama-server, `-c` divided by `-np`. Too large makes long conversations fail; too small compacts early. A smaller context also caps the longest answer at half of it, unless `max_output` is given. |
+| "let it write longer answers" | `configure_model` with `max_output`: the most tokens of one answer, below the context. |
+| "it can see pictures" / "it cannot" | `configure_model` with `pictures`. |
+| "turn thinking off for it" / "it reasons" | `configure_model` with `reasoning` ([configuration.md](configuration.md), "Thinking levels"). |
+| "only one at a time on the laptop's model" | `configure_model` with `runs: 1`: how many conversations and sub-agents use the model at once (`limits.models`), for any model, a provider's too. For your own server, its parallel slots (`-np`). `runs: 0` goes back to `limits.maxConcurrentRuns`. |
+| "take the old model out" | `remove_model` `studio/old`: only from pine. Not while something uses it, nor the server's last model. |
 
-You are shown each change with what was there before, and asked, in every mode. None of the
-three is done in a conversation that has read outside content, except a removal, which you are
-told about. The models of a provider pine signs in to (Claude, ChatGPT, OpenAI, ...) come with
-pine as they are: of those, only `runs` can be set. Which model an agent runs on is not set
-here: `update_agent` with `model` for one agent, `set_setting` with `defaults.model` for all
-("The main agent administers pine"). `models` lists every model with what pine sends it now.
-Through the control API the same is `POST /models/model`, `/models/model/set` and
-`/models/model/remove` ([operations.md](operations.md)).
+You see each change with what was there before, and confirm. Of a provider's models (Claude,
+ChatGPT, OpenAI, ...) only `runs` can be set. Which model an agent runs on is `update_agent` with
+`model`, or `set_setting` with `defaults.model` for all. Control API: `POST /models/model`,
+`/models/model/set`, `/models/model/remove` ([operations.md](operations.md)).
 
 ## Creating an agent
 
-Sub-agents are no new agents. Asked to "create new sub-agents", any agent starts them itself
-with `subagent`, copies of itself for one task each, and needs nobody for it: no agent is made,
-and the main agent is not asked ([agents.md](agents.md), "Sub-agents").
+Sub-agents are not new agents: any agent starts them itself with `subagent`
+([agents.md](agents.md), "Sub-agents").
 
-Ask the main agent: "create an agent that keeps my books". It calls `create_agent` with an id,
-its instructions, whose first paragraph says what the agent is for (other agents read that
-line when they choose whom to hand work to), and optionally a model, a list of
-built-in tools (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`; all of them by default)
-and its color in the Pine app (`color`, `#rrggbb`: "make it coral" gives it `#e0805a`;
-you see the color in what you confirm). What cannot work (a bad id, a name that is taken, an
-unknown tool or model, a color that is not `#rrggbb`) is said before you are asked anything. After your yes:
-
-```
-agents/books/
-  agent.json     { "tools": [...] }  and "model" and "color" if named
-  workspace/
-    AGENTS.md    the instructions; the new agent can change them itself from then on
-    SOUL.md      a stub
-    TOOLS.md     a stub
-    MEMORY.md    a stub
-```
-
-Nothing else is written into `agent.json`; every other setting is pine's default. The agent
-exists at once: it is in the terminal UI's agent list (`/agent books`), `pine send books ...`
-reaches it, and the main agent can hand it work with `delegate`. It starts with no MCP servers
-and no event sources of its own, and sets those up itself when you ask it to.
+Ask the main agent: "create an agent that keeps my books". It calls `create_agent` with an id
+(lowercase letters, digits, `-`, `_`), instructions written to the agent whose first paragraph
+says what it is for (others read it when choosing whom to hand work to), and optionally a model,
+its built-in tools (all by default) and a `color` (`#rrggbb`). What cannot work is said before you
+are asked. After your yes the agent exists at once with `agent.json` and its workspace files
+([agents.md](agents.md), "Creating an agent"), its conversation opens in a tab, and it starts with
+no MCP servers or sources of its own.
 
 ## The main agent administers pine
 
-The point of pine is that nobody has to edit its configuration, you included. The main agent
-is the administrator: it has tools for everything that can be set up, each tool takes a few
-named values and checks them, what it writes is read back through the same loader pine starts
-with, and a change that does not load is undone. So a wrong value is an error message to the
-agent, not a pine that does not start.
+Nobody has to edit pine's configuration, you included. Each tool of the main agent takes a few
+named values and checks them; what it writes is read back through pine's own loader, and a
+change that does not load is undone.
 
-| What | Tools of the main agent |
-|---|---|
-| Agents | `agents` (list), `create_agent`, `update_agent`, `rename_agent`, `remove_agent` |
-| What an agent has: event sources, subscriptions, MCP servers, skills, schedules | The tools every agent has for itself, with `agent` for another agent, and with `scope: "global"` for all agents |
-| Types of event source, model servers, models | `add_source_type`, `remove_source_type`, `add_model_server`, `remove_model_server`, `add_model`, `configure_model`, `remove_model` |
-| pine's settings | `settings` (list), `set_setting` |
-| Routes: rules of your own in pine.json | `routes` (list), `add_route`, `remove_route` |
-| Conversations: your tabs, and each agent's list of them | `conversations` (list), `read_conversation`, `set_conversation`, `remove_conversation`, `rename_group`, `remove_group` |
-| Sign-ins: model providers, remote MCP servers | `sign_in`, `sign_out`, `sign_in_mcp_server` |
-
-The ones only it has:
+Besides the tools every agent has, it has those for agents, settings, source types, model
+servers and models, sign-ins (above), routes ("Routes") and conversations ("Conversations and
+tabs"):
 
 | Tool | Does |
 |---|---|
-| `agents` [`id`] | Lists the agents: what each is for, its model, reasoning, mode and reach, and what it has (conversations, event sources, MCP servers, schedules, skills, files in its workspace). With `id`, one agent in full, with its workspace and its instructions. Asks nobody. |
-| `update_agent` `id` [`color`] [`scroll`] [`instructions`] [`soul`] [`tooling`] [`model`] [`thinking`] [`mode`] [`tools`] [`delegates`] [`network`] [`read`] [`write`] [`forget`] | Changes an agent's settings; only what is given changes. You see the change line by line and confirm it. See "Changing and removing an agent". |
-| `rename_agent` `id` `to` | Gives an agent another id, and everything that names it follows. You see what follows and confirm it. Not the main agent itself. See "Renaming an agent". |
-| `remove_agent` `id` [`keep_files`] | Removes an agent for good, with everything it has. You see what goes and confirm it. See "Changing and removing an agent". |
-| `settings` | Lists the settings it can change, with what is in force and what each means. Asks nobody. |
-| `set_setting` `key` `value` | Changes one setting in `pine.json`; `"default"` takes the entry out. You see the old and the new value and confirm. See "pine's settings". |
-| `agent`, `conversation` (parameters) | Every tool that lists, adds, removes or subscribes under event sources, MCP servers, skills and schedules above (not `send`, `read_source` or the source types) takes `agent`: the call is then done for that agent, as if it had made it in its main conversation. With `conversation`, for one of its conversations. See "The main agent administers pine". |
+| `agents` [`id`] | Lists the agents: purpose, model, reasoning, mode, reach, and what each has. With `id`, one agent in full with its instructions. |
+| `update_agent` `id` [`color`] [`scroll`] [`instructions`] [`soul`] [`tooling`] [`model`] [`thinking`] [`mode`] [`tools`] [`delegates`] [`network`] [`read`] [`write`] [`forget`] | Changes only what is given. You see it line by line and confirm. See "Changing and removing an agent". |
+| `rename_agent` `id` `to` | Gives an agent another id. See "Renaming an agent". |
+| `remove_agent` `id` [`keep_files`] | Deletes an agent for good, together with its folder and everything it has; `keep_files` keeps the folder. See "Changing and removing an agent". |
+| `settings` | Lists what `set_setting` can change, with the value in force. |
+| `set_setting` `key` `value` | Changes one setting in `pine.json`; `"default"` takes the entry out. See "pine's settings". |
+| `agent`, `conversation` (parameters) | The listing, adding, removing and subscribing tools for sources, MCP servers, skills and schedules take `agent`: done for that agent as if in its main conversation. `conversation` reaches one of its conversations. |
 
 **For another agent.** "Add a schedule for books: every Monday at eight, sum up the week" is
-one call of the main agent: `add_schedule` with `agent: "books"`. It is carried out by that
-agent's own tool, under that agent's own rules, as if the agent had been asked in its main
-conversation: the same checks, the same questions to you, the same entry in its `agent.json`.
-The listing tools (`sources`, `mcp_servers`, `skills`, `schedules`) take `agent` too, which is
-how the main agent sees what another agent has. Something that only one conversation of an
-agent has is reached with `conversation` and its name. Taking something away from another
-agent (`remove_source`, `remove_mcp_server`, `remove_skill`, `remove_schedule`, `unsubscribe`)
-asks you every time, and the question says that the main agent asks.
+`add_schedule` with `agent: "books"`, carried out by that agent's own tool under its rules. Taking
+something away from another agent (`remove_*`, `unsubscribe`) asks you every time.
 
-**Not from a conversation that has read outside content.** `update_agent`, `rename_agent`, `remove_agent`,
-`set_setting`, `set_conversation`, `remove_conversation`, `rename_group`,
-`remove_group`, `sign_in`, `sign_out` and `sign_in_mcp_server` are refused there without a question to you: a web page that says "remove the
-agent" must not get as far as your approval dialog. A new
-conversation, or `/reset`, does it. Routes and decision models are the exception: wiring events up
-is often what such a conversation is doing (a page the agent made and looked at, a source it
-read). `add_route`, `remove_route`, `add_decision_model` and `remove_decision_model` are put to you
-there as everywhere, and the question says that the conversation has read outside content and
-from where, so that you check it is what you asked for. A route whose events would count as your
-own words (`trust: "owner"`) is still refused there.
+**Not from a conversation that has read outside content.** `update_agent`, `rename_agent`,
+`remove_agent`, `set_setting`, `set_conversation`, `remove_conversation`, `rename_group`,
+`remove_group`, `sign_in`, `sign_out` and `sign_in_mcp_server` are refused there without a
+question, so a web page that says "remove the agent" never reaches your dialog. A new
+conversation, or `/reset`, can do it. `add_route`, `remove_route`, `add_decision_model` and
+`remove_decision_model` are put to you there, with a note that the conversation read outside
+content and from where; a route with `trust: "owner"` stays refused.
 
 ## Changing and removing an agent
 
-Tell the main agent what to change about another agent ("give the books agent another model",
-"let it read my Documents folder"): `update_agent` changes what is given and leaves the rest:
+`update_agent` changes what is given and leaves the rest:
 
 | Value | What it is |
 |---|---|
-| `color` | Its own color in the Pine app, `#rrggbb` (its avatar is drawn in it); `"none"` takes it away. "Make scout blue" is a `color` change, which you confirm like any other; anything that is not `#rrggbb` is refused before you are asked |
-| `scroll` | Where its conversations go in the Pine app when you send a message: `top` (your message moves to the top of the window and the answer is written below it; the default) or `follow` (your message stays at the end, at the bottom of the window, and the answer is followed as it is written, as a terminal does); `default` is `top`. "Keep my message at the bottom when I write to scout" is a `scroll` change |
-| `instructions` | The whole new text of its `AGENTS.md`, whose first paragraph says what it is for. It replaces the file, so the main agent reads the present text first (`agents` with `id`) |
-| `soul` | The whole new text of its `SOUL.md`: who it is, its character and tone. It replaces the file the same way. This is what the main agent uses when you speak of an agent's personality or how it should sound |
-| `tooling` | The whole new text of its own `TOOLS.md`: tooling defaults and preferences for it alone. It replaces the file the same way; empty takes them back |
+| `color` | Its color in the Pine app, `#rrggbb`; `"none"` takes it away. Anything else is refused before you are asked |
+| `scroll` | Where its conversations go in the Pine app when you send a message: `top` (your message moves to the top, the answer below; the default) or `follow` (your message stays at the bottom and the answer is followed, as in a terminal) |
+| `instructions` | The whole new `AGENTS.md`, whose first paragraph says what the agent is for. It replaces the file, so the main agent reads it first (`agents` with `id`) |
+| `soul` | The whole new `SOUL.md`: its character and tone. Used when you speak of its personality |
+| `tooling` | The whole new `TOOLS.md` of its own: tool defaults for it alone; empty clears it |
 | `model`, `thinking` | Its model (`"default"` for pine's default) and how much it reasons |
-| `mode` | `auto` (no sandbox: its shell and file tools reach your whole account and the network), `safe` (in the sandbox: its own folders), `manual` (in the sandbox, every action waits), `bypass`, `plan`, or `default` for what pine gives an agent that names none. This is also how far its shell and file tools reach |
-| `tools` | Its built-in tools, all of them: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls` |
-| `delegates` | The agents it may hand work to, all of them; `*` is every agent but the main one |
-| `network` | Whether its shell may use the network when it works in the sandbox |
-| `read`, `write`, `forget` | Folders outside its workspace that it may read, or read and change, from now on; and folders to take away again. This is how a folder is opened for an agent for good |
+| `mode` | `auto`, `safe`, `manual`, `bypass`, `plan`, or `default` ([security.md](security.md), "Modes: how much an agent does without asking") |
+| `tools` | Its built-in tools, the whole list: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls` |
+| `delegates` | The agents it may hand work to, the whole list; `*` is every agent but the main one |
+| `network` | Whether its shell may use the network in the sandbox |
+| `read`, `write`, `forget` | Folders outside its workspace it may read, or read and change, from now on; and folders to take away |
 
-You see every line of the change before it is made, with a note where it gives the agent more
-(the account, the network, bypass mode). It holds from the agent's next message on. pine's own
-folder, pine's code and another agent's workspace are refused as folders. `pine agent update
-<id>` does the same from a shell, each value a flag (`--model`, `--tools`, `--mode`, ...); a
-model change needs a running daemon, which checks the model exists ([operations.md](operations.md)).
+The dialog notes where a change gives more (the whole account, the network, bypass). It holds
+from the agent's next message. pine's home, pine's code and another agent's workspace are
+refused as folders. From a shell: `pine agent update <id>` with a flag per value
+([operations.md](operations.md)).
 
-`remove_agent` takes an agent out of pine, and nothing of it is left. You are shown what goes
-with it: its conversations, event sources, MCP servers, schedules, skills, the routes that wake
-it, and how many files lie in its workspace. After your yes:
-
-- its work is stopped, and each conversation, source, schedule, server and skill is removed the
-  way it would be removed one by one (a source stops, its secrets leave `.env`);
-- the routes in `pine.json` that wake it are taken out, and they stop at once;
-- the lists that name it are corrected: other agents' `delegates`, a server or source of all
-  agents that was only for some;
-- what pine stored under its name goes: its tasks, the outside-content marks and answers of
-  its conversations, pins and open tabs, the recorded states of its folders, what its sources
-  kept;
-- its folder `agents/<id>` (workspace, conversations, skills) and its private home
-  `sandbox/<id>` are deleted.
-
-An agent of the same name made later starts from nothing. With `keep_files` the folder alone
-is not deleted but moved to `removed/<id>-<time>` in pine's home, where nothing reads it. One
-thing is left as it is: a workspace that you put outside pine's home, which is your folder.
-What stays in any case is the past: the event log and pine's log name the agent where it
-acted. The main agent cannot remove itself. `pine agent remove <id>` does the same from a
-shell, with or without a running daemon ([operations.md](operations.md)).
+`remove_agent` shows what goes (conversations, sources, MCP servers, schedules, skills, the
+routes that wake it, the number of files in its workspace). After your yes its work stops,
+each of those is removed as it would be one by one (a source's secrets leave `.env`), the routes
+that wake it go, other agents' `delegates` and lists of all-agent servers and sources are
+corrected, what pine stored under its name is deleted, and its folder `agents/<id>` (workspace,
+conversations, skills) and private home `sandbox/<id>` are deleted. With `keep_files` the folder is moved to `removed/<id>-<time>` instead. A
+workspace you put outside pine's home stays. The event log keeps its past. The main agent cannot
+remove itself. From a shell: `pine agent remove <id>`.
 
 ## Renaming an agent
 
-An agent's id is its name everywhere: its folder `agents/<id>`, its conversations, the routes
-that wake it, other agents' `delegates`. To give it another one, click its name at the top of
-its page in the Pine app (Settings > Agents) or choose Rename in the side bar's menu on it, ask
-the main agent ("call the books agent ledger": `rename_agent`, which you confirm), or run
-`pine agent rename <id> <new-id>`. An id is lowercase letters, digits, `-` and `_`, starting
-with a letter.
+Click its name in Settings > Agents in the Pine app, choose Rename in the side bar's menu, ask the
+main agent ("call the books agent ledger": `rename_agent`, which you confirm), or run
+`pine agent rename <id> <new-id>`. An id is lowercase letters, digits, `-` and `_`, starting with
+a letter.
 
-Everything that carries the old id follows, and nothing is left under it:
+Everything that carries the id follows: `agents/<id>` and `sandbox/<id>` with its workspace,
+skills and conversations; routes that wake it and topics of its own sources and schedules
+(`source/papers@<new-id>/...`); other agents' `delegates`; the agent lists of all-agent servers
+and sources; `main` in `pine.json`; its secrets' names in `.env`; and what pine stored under its
+name. Its conversations and sources restart under the new name. A webhook source of its own moves
+to `/hook/<name>@<new-id>` (you are told). Its instructions are not changed: fix its old name in
+`AGENTS.md` yourself. The event log keeps the old name.
 
-- its folder and its private home move (`agents/<new-id>`, `sandbox/<new-id>`), with its
-  workspace, skills, conversations and their history;
-- the routes in `pine.json` that wake it name the new id, and so do topics of its own sources
-  and schedules in a route (`source/papers@<new-id>/...`); other agents' `delegates`, the list
-  of agents of a server or source of all agents, and `main` when it is the main agent;
-- the secrets pine kept for its sources and servers in `.env` get names with the new id, with
-  the same values;
-- what pine stored under its name moves: its tasks, the outside-content marks, folders, goals
-  and undo steps of its conversations, pins and open tabs, what its sources kept, the recorded
-  states of its folders, and what you allowed its conversations.
-
-Its conversations end and start again with its next message, under the new name; its sources
-and schedules stop and start again. Two things change for the outside: a webhook source of its
-own is reached at `/hook/<name>@<new-id>` from then on (you are told the new address), and its
-instructions are left as they are, so if `AGENTS.md` says its old name, change that too. The
-past is not rewritten: the event log names it as it was called then.
-
-It is refused while the agent works, while another agent works on something for it, and while
-a program it started still runs in one of its conversations: stop that first. The main agent
-cannot rename itself (its conversation would end in the middle); you rename it in the app or
-from a shell, and it stays the main agent.
+Refused while the agent works, while another agent works for it, and while a program it started
+still runs. The main agent cannot rename itself: do it in the app or from a shell.
 
 ## Routes
 
-A route is a rule of your own in `pine.json`: when an event arrives, and a condition holds,
-write shared state, ask a model once, publish another event, or wake an agent
-([events.md](events.md)). Most wishes need none, because a subscription is a route pine makes
-for you. The main agent has three tools for the ones you do want:
+A route is a rule in `pine.json` that acts on events: write shared state, ask a model once,
+publish another event, run a script, or wake an agent ([events.md](events.md), "Routes"). Most
+wishes need none: a subscription is a route pine makes for you.
 
 | Tool | Does |
 |---|---|
-| `routes` | Lists the routes: what each listens to, its condition, and what it does. Asks nobody. |
-| `add_route` `name` `on` [`when`] [`agent` `prompt` `session`] [`set`] [`publish_topic` `publish_payload`] [`call_prompt` `call_system` `call_model`] [`ask_questions` `ask_data` `ask_model`] [`run_command` `run_agent`] [`throttle`] [`debounce`] [`trust`] | Adds a route. Each value is checked (a name that is free, an agent and a model that exist, JSON where JSON is wanted, a time, at least one thing to do, no topic that only pine publishes on, typed questions of the three types without `{{...}}` in them). With `ask_questions` you are also told who answers and where what it is asked about goes. You see it line by line and confirm, and it acts from then on, without a restart. |
-| `add_decision_model` `name` (`server` [`model`] or `url` `model` [`local`] [`key`]) | Adds a decision model, which a route asks by its name (`ask_model`): one a model server pine has also serves (`server`, such as Pinecone; asks for nothing more), TypeSafe's Jev (`server: "typesafe"`, after `sign_in` with `typesafe`), or another server that speaks TypeSafe's API (`url`; with `key`, pine's dialog asks you for it). You see where what a route asks it goes, and confirm. See "Decision models" in [configuration.md](configuration.md). |
+| `routes` | Lists the routes: what each listens to, its condition and what it does. |
+| `add_route` `name` `on` [`when`] [`agent` `prompt` `session`] [`set`] [`publish_topic` `publish_payload`] [`call_prompt` `call_system` `call_model`] [`ask_questions` `ask_data` `ask_model`] [`run_command` `run_agent`] [`throttle`] [`debounce`] [`trust`] | Adds a route. Each value is checked (a free name, existing agents and models, JSON where JSON is wanted, a time, something to do, no topic only pine publishes on, typed questions without `{{...}}`). You see it line by line and confirm; it works at once. |
+| `remove_route` `name` | Takes one out; you confirm. To change a route, remove it and add it again. |
+| `add_decision_model` `name` (`server` [`model`] or `url` `model` [`local`] [`key`]) | Adds a decision model that routes ask by name: one a model server of pine's serves (`server`, such as Pinecone), TypeSafe's Jev (`server: "typesafe"`, after `sign_in` `typesafe`), or another server with TypeSafe's API (`url`; with `key`, pine's dialog asks for it). You confirm ([configuration.md](configuration.md), "Decision models"). |
 | `remove_decision_model` `name` | Takes one out, not while a route asks it. You confirm. |
-| `remove_route` `name` | Takes one out. You confirm; it stops at once. To change a route, remove it and add it again. |
 
-`trust: "owner"` makes every event on the route count as your own words, which gives whoever
-can cause such an event the agent's full tools. The question to you says so. Where a reply is
-to go (`reply`), `whenBusy`, `priority` and `key` are not offered by the tool: write those in
-`pine.json`. After outside content the two that change something are put to you with that said,
-and a route with `trust: "owner"` is refused there (above, "Not from a conversation that has read
-outside content").
+The main agent has these for every route. Any other agent has them in your own conversations for
+routes of its own: on its own sources' events or its own shared state, acting only within itself,
+never with `trust` ([events.md](events.md), "Routes").
+
+`trust: "owner"` makes every event on the route count as your words, giving whoever can cause
+one the agent's full tools; the question says so. `reply`, `whenBusy`, `priority`, `key` and
+`label` are not offered by the tool: write them into `pine.json`.
 
 ## Conversations and tabs
 
-"Which conversations are there?", "what did the books agent say about the invoice?", "pin
-that one", "open it in a tab", "close the tab", "remove the old ones", "put the okapi
-conversations into a group Okapi": the main agent does these with the tools below. They work on your own conversations with it and on those of every other
-agent, and they do what the list of conversations in the terminal UI does for your own hand
-([tui.md](tui.md)): the same pin, the same rename, the same removal. To open a tab for your
-owner on a conversation, or to close one, the tool is `set_conversation` with `tab`.
+"Which conversations are there?", "what did the books agent say about the invoice?", "pin that
+one", "open it in a tab", "close the tab", "put the okapi conversations into a group Okapi": the
+main agent does these, for its own conversations and every other agent's, with the same pin,
+rename and removal as your own hand in the list of conversations ([tui.md](tui.md)). To open a tab
+for your owner on a conversation, or to close one, the tool is `set_conversation` with `tab`.
 
 | Tool | Does |
 |---|---|
-| `conversations` [`agent`] | Lists the conversations of every agent, or of one, and each agent's groups with how many conversations each holds: for each conversation whether it is pinned, in a group, open in a tab, working, how many messages it has, when it was last used, when it is removed by itself, and whether it has read outside content. Asks nobody. |
-| `read_conversation` `name` [`agent`] [`last`] [`before`] | What was said in a conversation: the messages it was given and the answers, numbered, the newest last. `last` is how many (10, at most 30), `before` a number to read further back from. Of the tools an answer used it shows which and on what, never what they returned. Asks nobody. |
-| `set_conversation` `name` [`agent`] [`pinned`] [`tab`] [`rename`] [`group`] | Changes only what is given. `pinned`: keep it however long it is unused, or take the pin off. `tab`: open a tab on it, or close its tab. `rename`: its new name; history, pin, tab, group and subscriptions go with it. `group`: put it into that group of the agent's conversations, made if there is none, with its branches; `""` takes it out. A branch alone is not moved. A name that is new with `tab: true` opens a new, empty conversation. |
-| `remove_conversation` `name` [`agent`] | Removes a conversation for good: what was said in it, its tab, its pin, and what was set up for it alone (subscriptions, event sources, MCP servers, schedules, skills). You see what goes and confirm it, every time. |
-| `rename_group` `name` `to` [`agent`] | Gives a group of conversations another name; they stay in it. Asks only in manual mode. |
-| `remove_group` `name` [`agent`] | Removes a group and every conversation in it for good, each as `remove_conversation` does. An agent's main conversation in it stays, in no group. You see the conversations that go, and confirm it, every time. See [agents.md](agents.md#groups-of-conversations). |
+| `conversations` [`agent`] | Lists the conversations of every agent, or one, with their groups: pinned, group, open in a tab, working, messages, last used, when removed by itself, whether it read outside content. |
+| `read_conversation` `name` [`agent`] [`last`] [`before`] | The messages and answers, numbered, newest last. `last`: how many (10, at most 30); `before`: read further back. Of the tools an answer used it shows which and on what, never what they returned. |
+| `set_conversation` `name` [`agent`] [`pinned`] [`tab`] [`rename`] [`group`] | Changes only what is given: the pin, a tab opened or closed, a new name (history, pin, tab, group and what was set up for it follow the renamed conversation), a group (made if missing, with its branches; `""` takes it out). A new name with `tab: true` opens a new, empty conversation. |
+| `remove_conversation` `name` [`agent`] | Removes a conversation for good, with the sources, subscriptions, schedules, MCP servers and skills set up for that conversation alone. You confirm every time. |
+| `rename_group` `name` `to` [`agent`] | Renames a group of conversations. Asks only in manual mode. |
+| `remove_group` `name` [`agent`] | Removes a group and its conversations for good; an agent's main conversation in it stays. You confirm every time ([agents.md](agents.md), "Groups of conversations"). |
 
-What holds for them:
-
-- **A tab the agent opens never takes your place.** It appears behind the tab you are in,
-  marked as new. A terminal UI that is running follows at once; one that is started later
-  opens with it.
-- **Closing a tab does what closing it yourself does.** What that conversation was subscribed
-  to on its own ends, and the conversation stays in the list. Where a subscription would end,
-  you are asked first.
-- **Reading is not a way around another agent's sandbox.** What another agent's tools returned
-  (its files, the pages it read) is not shown, only that a tool was used and on what.
-- **Outside content stays outside content.** If the conversation that is read has read
-  outside content, or is the one outside content started (its name ends in `~u`), the
-  conversation that reads it counts as having read outside content from then on
-  ([security.md](security.md)). The list says which ones these are.
-- **Not for the conversation the agent is in, and not for `main`.** The main agent cannot
-  close, rename or remove the conversation it is working in, and no agent's `main` conversation
-  is removed or renamed: `/close`, `/rename` and `/reset` are yours.
-- **A conversation's folder and its goal stay yours.** No tool sets them.
-- **Putting work into a conversation is not done here.** `set_conversation` opens an empty
-  tab; what is to be done in it you say there.
+- A tab the agent opens appears behind yours, marked as new. Closing one is what closing it
+  yourself does: its own subscriptions end (you are asked first), the conversation stays.
+- Reading shows no tool results, so it is no way around another agent's sandbox. Reading a
+  conversation that read outside content (or one outside content started, ending in `~u`) marks
+  the reader too.
+- The conversation the agent is in, and any agent's `main`, cannot be removed or renamed by tool.
+- No tool sets a conversation's folder or goal, or puts work into a conversation.
 
 ## pine's settings
 
-`settings` lists what `set_setting` can change, with what is in force:
+`settings` lists what `set_setting` can change:
 
 | Setting | What it is |
 |---|---|
-| `defaults.model` | Model: the model every agent runs on, unless the agent has one of its own |
-| `defaults.thinking` | Reasoning: how much a model thinks before it answers, for every agent that does not set its own |
-| `defaults.mode` | Mode: how freely agents work, and with that how far they reach, for every agent that does not set its own. A rule or a preference for all agents (how to behave, a default for a tool) is not a setting: the main agent writes it into `AGENTS.md` or `TOOLS.md` in pine's home ([agents.md](agents.md), "What holds for all agents") |
-| `defaults.introduce` | Every agent introduces itself in its answer to the first message its owner writes to it, once |
-| `defaults.judge` | Judge of goal mode: the model that says after each round whether a goal is met. Not set: the agent's own |
-| `defaults.checker` | Check of a swarm's answer: the model the sub-agent runs on that checks the answer before a swarm is done. Not set: the agent's own |
+| `defaults.model` | The model every agent runs on, unless it has its own |
+| `defaults.thinking` | How much a model reasons, for agents that set nothing |
+| `defaults.mode` | The mode of agents that set none. A rule or preference for all agents is not a setting: it goes into `AGENTS.md` or `TOOLS.md` in pine's home ([agents.md](agents.md), "What holds for all agents") |
+| `defaults.introduce` | Agents introduce themselves in their first answer to you, once each |
+| `defaults.judge` | The model that judges whether a goal is met ([agents.md](agents.md), "Goal mode"). Not set: the agent's own |
+| `defaults.checker` | The model of the sub-agent that checks a swarm's answer ([boards.md](boards.md), "A swarm"). Not set: the agent's own |
 | `defaults.bashTimeoutSec` | Longest shell command, in seconds. From the next start |
-| `defaults.taskTimeoutSec` | Longest task, in seconds: how long an agent may work on one message or event. From the next start |
-| `limits.maxConcurrentRuns` | Agents at work at once: how many agents and sub-agents can work at the same time, all conversations together; the others wait their turn. 8 unless you changed it. From the next start |
-| `limits.maxSubagents` | Sub-agents at a time: how many sub-agents one conversation runs at once, for every agent that does not set its own. 4 unless you changed it |
-| `limits.maxPoolTasks` | Largest batch of sub-agent tasks: the most tasks one batch (a pool) takes. 100 unless you changed it |
+| `defaults.taskTimeoutSec` | Longest task (one message or event), in seconds. From the next start |
+| `limits.maxConcurrentRuns` | How many agents and sub-agents work at once, all conversations together; 8 by default. From the next start |
+| `limits.maxSubagents` | Sub-agents one conversation runs at once, for agents that set nothing; 4 by default |
+| `limits.maxPoolTasks` | Largest batch of sub-agent tasks: the most tasks one job split into a pool takes; 100 by default |
 | `limits.maxDownloadMb` | Largest download, in megabytes |
-| `security.askAccess` | Ask when an agent needs more: whether pine asks you when an agent in the sandbox needs a file or folder outside it, or the network |
-| `security.approvalTimeout` | How long a question waits for your answer before it counts as a no. From the next start |
-| `security.taint` | Outside content: how long pine asks before an agent sends something out, after its conversation has read something from outside |
-| `security.bypassWhenTainted` | Bypass after outside content: whether bypass mode stays in force in such a conversation |
-| `ui.theme` | Theme: the colors of the Pine app, a theme in the `themes` folder of pine's home by its name (`dracula`, `github-light`). Any VS Code color theme file put there can be chosen |
-| `ui.view` | View: what the Pine app's panel draws, a view in the `views` folder of pine's home by its name (`office` for `office.ts`); `off`: no panel. Not set: the view whose name comes first |
+| `security.askAccess` | Whether pine asks you when an agent in the sandbox needs a path outside it, or the network |
+| `security.approvalTimeout` | How long a question waits before it counts as a no. From the next start |
+| `security.taint` | How long pine asks before an agent sends something out after its conversation read outside content: `session`, `run` or `off` |
+| `security.bypassWhenTainted` | Whether bypass mode stays in force after outside content |
+| `ui.theme` | The Pine app's colors: a theme in `themes/` of pine's home by name (`dracula`, `github-light`) |
+| `ui.view` | What the Pine app's panel draws: a view in `views/` of pine's home by name (`office`); `off`: no panel. Not set: the first by name |
 
-A value is checked for what it has to be (a model that exists, one of a few words, a number in
-a range, a time), you see the old and the new value, and where the new one gives something up
-the question says so. `"default"` as the value takes the entry out of `pine.json`. Most
-settings hold at once; the ones marked hold from the next start of pine, and the agent tells
-you so. Not settable by any agent: the control API (address, port, token) and secrets.
-
-These are the settings an owner decides. The other keys of `pine.json` tune pine to a model
-server or guard against a loop (`limits.warmSlots`, `limits.slotPages`,
-`limits.maxDelegationDepth` and the rest of `limits`). Their defaults are right for nearly
-everybody; they are no settings, no agent changes them, and the settings page of the app does
-not show them. Who needs another value writes it into `pine.json` by hand and restarts pine
-([configuration.md](configuration.md)).
+Each value is checked, you see old and new, and where the new one gives something up the
+question says so. `"default"` takes the entry out of `pine.json`. Settings hold at once unless
+marked. No agent can set the control API or secrets. The other keys of `pine.json` (the rest of
+`limits`) are no settings: change them by hand and restart ([configuration.md](configuration.md)).
 
 ## What is written
 
-These are the only entries the tools make. A thing made for one conversation carries that
+The tools make only these entries. A thing set up for one conversation carries that
 conversation's name as `session`, which is how pine knows whose it is and when to remove it.
 
 ```jsonc
@@ -536,28 +404,24 @@ conversation's name as `session`, which is how pine knows whose it is and when t
 }
 ```
 
-Remove the conversation "taxes" and the source, the subscription and the read access are gone;
-the file is as it was before, with the server and the schedule left. Rename the conversation and the entries
-follow its new name.
+Remove the conversation "taxes" and the source, the subscription and the read access go; the
+server and the schedule stay. Rename the conversation and the entries follow its new name.
 
-A skill needs no entry at all. Where its folder lies says whom it is for:
+A skill needs no entry: where its folder lies says whom it is for.
 
 ```
 ~/.pine/
-  skills/<name>/                                   all agents
-  agents/<id>/skills/<name>/                       that agent
+  skills/<name>/                                       all agents
+  agents/<id>/skills/<name>/                           that agent
   agents/<id>/conversations/<session>/skills/<name>/   that one conversation
 ```
 
 Each holds a `SKILL.md` and the files that went along. Agents read these folders and cannot
-write them; pine writes them when `add_skill` is called. Removing a skill deletes its folder,
-and the folders above it that it leaves empty. `pine skills` lists every skill with whom it is
-for.
+write them. `pine skills` lists every skill.
 
 ## What stays yours
 
-The control API and its token, secrets in `.env`, a route's `reply`, local MCP servers that are to run
-outside an agent's sandbox, the options of a server once it is added, and source types you
-write yourself: these are changed in the files or with the `pine` command, and most need a
-restart. Everything else the main agent changes for you. See [configuration.md](configuration.md),
-[agents.md](agents.md), [mcp.md](mcp.md) and [sources.md](sources.md).
+The control API and its token, secrets in `.env`, a route's `reply`, local MCP servers that are
+to run outside an agent's sandbox, a server's options once it is added, and source types you
+write yourself: change these in the files or with the `pine` command; most need a restart
+([configuration.md](configuration.md)).

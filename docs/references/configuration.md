@@ -1,155 +1,142 @@
 # Configuration
 
-Everything pine needs is in its home directory: `~/.pine` by default, or `$PINE_HOME`, or
-`--home <dir>` on the command line.
+Everything pine needs is in its home directory: `~/.pine`, or `$PINE_HOME`, or `--home <dir>`.
+Most of it you never edit: agents change it through tool calls ([setup.md](setup.md)), the Pine
+app through Settings.
 
 ```
 ~/.pine/
   pine.json            global settings, routes, schedules, global MCP servers and event sources
-  models.json          optional: your own model servers, in pi's format
+  models.json          your own model servers, in pi's format
   .env                 secrets, referenced from the JSON files as ${NAME}
   auth.json            provider credentials, written by `pine login`
-  AGENTS.md            traits and behaviour for all agents  ┐ in every agent's prompt,
-  TOOLS.md             tooling defaults and preferences     │ kept by the main agent
-  USER.md              what all agents know about you       ┘ (agents.md)
-  agents/
-    main/
-      agent.json       this agent's settings
-      workspace/       its working folder, unless agent.json points elsewhere
-        AGENTS.md      its purpose and how it works  ┐ read into its prompt,
-        SOUL.md        who it is                     │ written by the agent itself
-        TOOLS.md       how it uses its tools         │ (agents.md)
-        MEMORY.md      what should outlive a talk    ┘
-      AGENTS.md        optional: rules of yours the agent cannot change
-      SYSTEM.md        optional: replaces pine's base prompt for this agent
-      skills/          skills only this agent has
-      conversations/   what was set up for one conversation alone (its skills); made when needed
-      extensions/      pi extensions only this agent loads
-      sessions/        conversation history (written by pine)
-  skills/              skills for all agents; no entry needed (the main agent adds them with add_skill)
+  AGENTS.md            traits and behaviour     ┐
+  TOOLS.md             tooling defaults         │ for all agents (agents.md)
+  USER.md              what agents know of you  ┘
+  agents/<id>/
+    agent.json         this agent's settings
+    workspace/         its working folder (unless agent.json points elsewhere), with its own
+                       AGENTS.md, SOUL.md, TOOLS.md, MEMORY.md
+    AGENTS.md          optional: rules of yours the agent cannot change
+    SYSTEM.md          optional: replaces pine's base prompt for this agent
+    skills/            skills only this agent has
+    conversations/     what was set up for one conversation alone
+    extensions/        pi extensions only this agent loads
+    sessions/          conversation history
+  skills/              skills for all agents
   sources/             source types the main agent registered (pine's own copies)
-  themes/              VS Code color themes for the Pine app; ui.theme picks one
-  views/               views of the Pine app's panel; ui.view picks one (views.md)
-  removed/             folders of agents removed with keep_files (nothing reads them)
-  sandbox/             per-agent private home and generated sandbox profiles (written by pine)
-  data/                event log, task queue, media, control token, files of event sources, the folder
-                       states kept for undo, what is known of commands in the background, the
-                       helper of app control (written by pine; closed to agents)
+  themes/              color themes of the Pine app (ui.theme)
+  views/               views of the Pine app's panel (ui.view, views.md)
+  removed/             folders of agents removed with keep_files
+  sandbox/             each agent's private home and sandbox profiles
+  data/                event log, tasks, media, control token, files of sources, undo states
+                       (written by pine; closed to agents)
 ```
 
-`pine check` validates names, references, paths, models and the entries of sources and
-schedules, prints what each agent ends up with, and lists anything that
-weakens the defences. Problems are reported together, each with the file it is in.
+The files read as instructions are listed in [agents.md](agents.md), "Every file that is read as
+instructions".
 
-Paths in `pine.json` are relative to the home directory; paths in `agent.json` are relative to
-that agent's folder. `~` works in both.
+`pine check` validates names, references, paths, models, sources and schedules, prints what each
+agent ends up with, and lists what weakens the defences. Keys that pine no longer has are
+reported there with what to write instead.
+
+Paths in `pine.json` are relative to the home; paths in `agent.json` to the agent's folder. `~`
+works in both. Durations are milliseconds or a string: `"90s"`, `"15m"`, `"2h"`, `"1d"`.
 
 ## Secrets
 
-Write `${NAME}` or `${NAME:-fallback}` anywhere in a string in `pine.json` or `agent.json`.
-Values come from `<home>/.env` first, then from the environment of the daemon. A missing
-variable without a fallback is a configuration error.
+Write `${NAME}` or `${NAME:-fallback}` in any string of `pine.json` or `agent.json`. The value
+comes from `<home>/.env`, else the daemon's environment; a missing name without a fallback is a
+configuration error.
 
-`.env` is read by pine only. Its values are not exported to the daemon's environment, so
-agent shells and MCP servers do not inherit them; they are also removed from events, messages
-and log lines if they ever appear there (values of 8 characters or more). Keep the file at
-mode 600 (`pine init` sets that).
+`.env` is read by pine only. Its values are not put into the daemon's environment, so agent
+shells and MCP servers do not inherit them, and values of 8 characters or more are removed from
+events, messages and logs. Keep it at mode 600 (`pine init` does).
 
-pine writes to `.env` itself in three cases. When an agent sets up an event source that has a
-password or secret, the value is stored there as `PINE_SOURCE_<NAME>_<AGENT>_<OPTION>` (without
-the agent for a source of all agents); when it adds a local MCP server with a key, as
-`PINE_MCP_<NAME>_<AGENT>_<OPTION>`; and a model server's key (below). The configuration holds
-only the `${...}` reference, and removing the source or the server removes the entry. See
-[sources.md](sources.md) and [mcp.md](mcp.md).
+pine writes `.env` itself, and the configuration names the entry; removing the thing removes it:
 
-The key of a model server of your own goes there too, as `PINE_MODEL_<NAME>_API_KEY` when pine
-asked you for it (`pine model add`, `add_model_server`); `models.json` names it as `"apiKey":
-"$NAME"`, see [models.json](#modelsjson).
+| Entry | Written for |
+|---|---|
+| `PINE_SOURCE_<NAME>_<AGENT>_<OPTION>` | A secret of an event source an agent set up (no `<AGENT>` for one of all agents). See [sources.md](sources.md), "Secrets" |
+| `PINE_MCP_<NAME>_<AGENT>_<OPTION>` | A key of a local MCP server an agent added ([mcp.md](mcp.md)) |
+| `PINE_MODEL_<NAME>_API_KEY` | The key of a model server of yours (`pine model add`, `add_model_server`); see "A server that wants a key" |
+| `PINE_DECISION_<NAME>_KEY` | The key of a decision model at another server; see "Decision models" |
+| `TYPESAFE_API_KEY` | pine's sign-in at TypeSafe |
 
 ## pine.json
 
 ```json
 {
   "main": "main",
-  "logLevel": "info",
-  "defaults": { "model": "local/deepseek-v4.1-flash", "thinking": "off" },
+  "defaults": { "model": "studio/deepseek-v4.1-flash", "thinking": "off" },
   "limits": { "maxConcurrentRuns": 2 },
   "security": { "approvalTimeout": "5m" },
   "http": { "host": "127.0.0.1", "port": 7463, "hooks": {} },
   "mcp": {},
   "sources": {},
-  "sourceTypes": {},
-  "subscribe": [],
-  "extensions": [],
-  "skills": [],
   "routes": [],
   "schedules": []
 }
 ```
 
+Many of these keys are pine's settings, which the main agent changes with `set_setting` and the
+Pine app in Settings ([setup.md](setup.md), "pine's settings").
+
 | Key | Default | Meaning |
 |---|---|---|
-| `main` | none | Id of the main agent. It is the only one that can create agents and set things up for all agents ([setup.md](setup.md)), and the one agent that `*` in another agent's `delegates` leaves out. Without this key, the agent called `main` (or else the first one) is the main agent. A new home names `main`; a home made while a new one's was called `prime` keeps `prime`. |
-| `logLevel` | `info` | `debug`, `info`, `warn`, `error`, `silent`. Logs go to stderr; a daemon started inside the terminal UI logs to `data/pine.log`. |
+| `main` | none | Id of the main agent, the only one that creates agents and sets things up for all agents ([setup.md](setup.md)). Without it: the agent called `main`, else the first one. |
+| `logLevel` | `info` | `debug`, `info`, `warn`, `error`, `silent`. Logs go to stderr; a daemon inside the terminal UI or started by `pine service` logs to `data/pine.log`. |
 | `dataDir` | `data` | Where the database, media and control token live. |
-| `defaults.model` | none | `provider/model-id` from `models.json`: the model of every agent whose `agent.json` names none. There is no built-in fallback. A new home has no default model: the first model you connect (`pine login`, `pine model add`, Settings > Models) becomes it, and until then an agent with no model named says so instead of answering. |
-| `defaults.judge` | not set | The model of the judge of goal mode (`/goal`), as `provider/model-id`. Not set: the agent's own model. A second, small model keeps the judge's call from pushing the agent's conversation out of a model server's cache. See "Goal mode" in [agents.md](agents.md). |
-| `defaults.checker` | not set | The model on which the answer of a swarm (`/swarm`) is checked, as `provider/model-id`. Not set: the agent's own model. A check on the same model shares the misreadings of whoever wrote the answer; one on another model does not. `/swarm` is refused while this names a model that is not there. See "A swarm" in [boards.md](boards.md). |
-| `defaults.introduce` | `true` | Every agent introduces itself once, in its answer to your first message to it. `false`: none does. See "Meeting an agent" in [agents.md](agents.md). |
-| `defaults.thinking` | `medium` | Reasoning level for models that can reason: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. A model that cannot reason ignores it. |
-| `defaults.mode` | not set | The mode of every agent that names none: `auto`, `safe`, `manual`, `bypass` or `plan` (see `mode` below). Not set: `auto` for the main agent, `safe` for all others. Set it to `safe` to keep every agent, the main one too, in its sandbox. See "Modes" in [security.md](security.md). |
-| `defaults.bashTimeoutSec` | `900` | Longest a shell command may run (15 minutes: a build, an install). The model cannot raise it. A server or another program that should keep running, and whatever needs longer, is started in the background, which is not held to it ([coding.md](coding.md)). |
-| `defaults.taskTimeoutSec` | `7200` | Longest a task may run before it is aborted (two hours). |
-| `defaults.idleMs` | `15m` | A live session without work is closed after this (and resumed from disk later). |
-| `defaults.settings` | `{}` | pi settings applied to every agent, for example `{ "compaction": { "reserveTokens": 8000 } }`. They are put on top of pi's own settings files and stay in force when pi reads those files again. |
-| `limits.maxConcurrentRuns` | `8` | Model slots: how many runs talk to the model server at once; the others wait their turn. A run that only waits (for sub-agents, a delegated task, your approval) gives its slot back meanwhile. With a hosted model 8 is fine; with a model server of your own (llama.cpp, LM Studio, Ollama) set it to the number of requests the server answers side by side (`-np` for llama.cpp): more only makes each slower. Settings > General > Limits: Agents at work at once. |
-| `limits.models` | none | Runs at a time on one model, by its whole name: `{ "local/qwen3-coder": 2, "local/gemma-vision": 1 }`. A whole number from 1 to 64. Such a model has a queue of its own, apart from `limits.maxConcurrentRuns`, which holds for every model without a number: a model on your own computer takes one or two requests at once where a hosted one takes many, and one endpoint can serve models that are set up differently. An agent that waits for its sub-agents gives its place up meanwhile, so a model held to 1 still gets a job with sub-agents done, one after the other. Set it in Settings > Models, on the model's line, ask the main agent (`configure_model` with `runs`), or set it here; it holds from the next run on, and goes when the model's server is removed. |
-| `limits.maxSubagents` | `4` | Sub-agents one conversation runs at a time: the default of `subagents.maxParallel` for every agent whose `agent.json` names none. More tasks wait for a free place; they count towards `limits.maxConcurrentRuns` too. Settings > General > Limits: Sub-agents at a time. |
-| `limits.maxPoolTasks` | `100` | The most tasks one call of `subagent` takes as a pool, worked through a few at a time ([boards.md](boards.md), "A pool of sub-agents"). Settings > General > Limits: Largest batch of sub-agent tasks. |
-| `limits.warmSlots` | `true` | Whether pine has the idle slots of a llama.cpp model server read, in the background, what a conversation of the agent that used it last begins with, so that a new conversation or a sub-agent starts at once. See [agents.md](agents.md), "What the model server keeps". |
-| `limits.warmAfterMs` | `3000` | How long the model server has to have been left alone before an idle slot is filled, in milliseconds. |
-| `limits.slotPages` | `6` | How many conversations that had to leave their slot on a llama.cpp model server are kept in files there and read back when they come again. Needs a server started with `--slot-save-path`. `0`: none. See [agents.md](agents.md), "What the model server keeps". |
+| `defaults.model` | none | `provider/model-id`: the model of every agent whose `agent.json` names no model. There is no built-in fallback. A new home has none: the first model you connect becomes it, and until then an agent with no model named says so instead of answering ([operations.md](operations.md), "Choosing a model"). |
+| `defaults.judge` | not set | The model of goal mode's judge. Not set: the agent's own. A small second model keeps the judge from pushing the conversation out of a model server's cache. See [agents.md](agents.md), "Goal mode". |
+| `defaults.checker` | not set | The model that checks a swarm's answer. Not set: the agent's own; another model does not share its misreadings. `/swarm` is refused while it names a model that is not there. See [boards.md](boards.md), "A swarm". |
+| `defaults.introduce` | `true` | Each agent introduces itself in its answer to your first message. `false`: none does ([agents.md](agents.md), "Meeting an agent"). |
+| `defaults.thinking` | `medium` | Reasoning level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Ignored by a model that cannot reason. |
+| `defaults.mode` | not set | The mode of every agent that names none: `auto`, `safe`, `manual`, `bypass` or `plan`. Not set: `auto` for the main agent, `safe` for the others. `safe` keeps every agent in its sandbox. See [security.md](security.md), "Modes: how much an agent does without asking". |
+| `defaults.bashTimeoutSec` | `900` | Longest a shell command may run (15 minutes); the model cannot raise it. What runs longer is started in the background ([coding.md](coding.md), "Commands in the background"). |
+| `defaults.taskTimeoutSec` | `7200` | Longest a task may run (two hours). |
+| `defaults.idleMs` | `15m` | A live session without work is closed after this, and resumed from disk later. |
+| `defaults.settings` | `{}` | pi settings for every agent, e.g. `{ "compaction": { "reserveTokens": 8000 } }`, on top of pi's own settings files. |
+| `limits.maxConcurrentRuns` | `8` | How many agents work at the same time: runs that talk to a model at once; the others wait their turn. A run that only waits (for sub-agents, a delegated task, your approval) gives its place back. For a model server of your own, set the number of requests it serves side by side (`-np` on llama.cpp), or use `limits.models`. Settings > General > Limits: Agents at work at once. |
+| `limits.models` | none | Runs at a time for one model, by its whole name: `{ "local/qwen3-coder": 2 }`, 1 to 64. Such a model has a queue of its own, apart from `limits.maxConcurrentRuns`: a model on your own computer takes one or two requests at once where a hosted one takes many. Set it in Settings > Models, with `configure_model` (`runs`), or here; it goes when the model's server is removed. |
+| `limits.maxSubagents` | `4` | Sub-agents one conversation runs at a time, unless an `agent.json` sets `subagents.maxParallel`. More tasks wait. Settings > General > Limits: Sub-agents at a time. |
+| `limits.maxPoolTasks` | `100` | The most tasks one `subagent` call takes as a pool, worked through a few at a time ([boards.md](boards.md), "A pool of sub-agents"). Settings > General > Limits: Largest batch of sub-agent tasks. |
+| `limits.warmSlots` | `true` | Idle llama.cpp slots read a conversation's beginning ahead of time. See [agents.md](agents.md), "What the model server keeps". |
+| `limits.warmAfterMs` | `3000` | How long a model server has to be idle before a slot is filled. |
+| `limits.slotPages` | `6` | Conversations kept in files of a llama.cpp server (started with `--slot-save-path`) when they leave their slot. `0`: none. |
 | `limits.maxDelegationDepth` | `3` | How deep a chain of delegations may go. |
 | `limits.maxDownloadMb` | `200` | Largest file the `download` tool fetches. |
 | `limits.maxEventHops` | `8` | Events further than this from an outside trigger are not routed. |
 | `limits.maxQueuedPerAgent` | `50` | New tasks are refused when an agent has this many waiting. |
-| `limits.maxEventChars` | `20000` | Longest text of an untrusted event in a prompt (at least 1000). Your own messages and delegated tasks are cut at ten times this. |
-| `limits.modelHeadersTimeoutMs` | `10m` | How long the model server may take to start answering. |
+| `limits.maxEventChars` | `20000` | Longest text of an untrusted event in a prompt (at least 1000). Your own messages and delegated tasks may be ten times as long. |
+| `limits.modelHeadersTimeoutMs` | `10m` | How long a model server may take to start answering. |
 | `limits.modelStreamIdleMs` | `5m` | How long a started answer may go silent before the request is dropped. |
-| `limits.eventRetentionDays` | `30` | Older events are deleted, and so are the copies kept of conversations that were reset. |
-| `limits.conversationDays` | `7` | A conversation in which nothing was said for this long is removed with its history, unless it is an agent's main conversation, pinned, in a group, open in a tab, subscribed to an event source, or has a schedule of its own. `0`: never. |
-| `limits.goalRounds` | `20` | Goal mode (`/goal`): how many rounds a goal gets before it stops and waits for `/goal resume`, which gives it as many again. A round is a whole turn of the agent with all its tool calls, so twenty are hours on a local model. See "Goal mode" in [agents.md](agents.md). |
-| `limits.goalIdleRounds` | `3` | Goal mode: after this many rounds in a row that the judge called "not met" and in which the agent made no tool call, the goal is paused: the agent is going in circles. `0`: never. |
-| `limits.swarmRounds` | `8` | A swarm (`/swarm`): how many turns its lead gets before the swarm stops with work left and waits for `/swarm resume`, which gives it as many again. A turn is a whole task of the lead with the sub-agents it starts ([boards.md](boards.md), "A swarm"). |
-| `limits.goalJudgeTimeout` | `90s` | Goal mode: how long the judge may take to answer. When it takes longer, that counts as no verdict, and the goal is paused. |
-| `security.approvalTimeout` | `5m` | An unanswered approval request counts as "no" after this. |
-| `security.taint` | `session` | How long a session stays tainted: until reset (`session`), until the task ends (`run`), or never (`off`). See [security.md](security.md). |
+| `limits.eventRetentionDays` | `30` | Older events, and copies of reset conversations, are deleted. |
+| `limits.conversationDays` | `7` | A conversation unused this long is removed, unless it is an agent's main one, pinned, in a group, open in a tab, subscribed to a source or has a schedule. `0`: never. |
+| `limits.goalRounds` | `20` | Goal mode: rounds before a goal stops and waits for `/goal resume`, which gives as many again. A round is a whole turn of the agent. See [agents.md](agents.md), "Goal mode". |
+| `limits.goalIdleRounds` | `3` | Goal mode: a goal is paused after this many rounds in a row judged "not met" without a tool call. `0`: never. |
+| `limits.goalJudgeTimeout` | `90s` | Goal mode: how long the judge may take; longer counts as no verdict, and the goal is paused. |
+| `limits.swarmRounds` | `8` | A swarm: turns its lead gets before it stops and waits for `/swarm resume` ([boards.md](boards.md), "A swarm"). |
+| `security.approvalTimeout` | `5m` | An unanswered approval counts as "no" after this. |
+| `security.taint` | `session` | How long a conversation counts as having read outside content: until reset (`session`), until the task ends (`run`), or never (`off`). See [security.md](security.md). |
 | `security.taintTools` | `[]` | Tool name globs whose results count as outside content, besides MCP servers marked `taints`. |
-| `security.bypassWhenTainted` | `false` | Keep bypass mode in force in a session that has read outside content. Off, bypass is paused in such a session, and the agent works as in `auto` mode. |
-| `security.askAccess` | `true` | pine asks you itself when a call of an agent in the sandbox (`safe` or `manual` mode) needs a file or folder outside it, or the network: before a file tool or a shell command that names it, and on macOS after a command the sandbox refused something. `false` turns that question off: you are only asked when the agent calls `request_access`. See "When a call needs something outside" in [security.md](security.md). |
-| `ui.theme` | `pmndre` | The theme of the Pine app: a VS Code color theme in the `themes` folder of the home, by its file name without `.json` (`dracula` for `themes/dracula.json`). Chosen in Settings > General. See "Themes" in [desktop.md](desktop.md). |
+| `security.bypassWhenTainted` | `false` | Keep `bypass` mode after outside content. Off: such a conversation works as in `auto`. |
+| `security.askAccess` | `true` | pine asks you itself when a call in the sandbox needs a file, folder or the network outside it. `false`: only the agent's `request_access` asks. See [security.md](security.md), "When a call needs something outside: pine asks you". |
+| `ui.theme` | `pmndre` | The Pine app's theme: a file in the home's `themes` folder, without `.json`. See [desktop.md](desktop.md), "Themes". |
 | `ui.view` | a view in the folder | The view of the Pine app's panel: a file in the home's `views` folder, without `.ts`, or `off`. See [views.md](views.md). |
-| `http` | on, loopback, port 7463 | Control API and webhooks. `false` turns it off (the CLI's client commands then do not work). |
-| `http.host`, `http.port` | `127.0.0.1`, `7463` | Where the control API listens. Anything but loopback is reported by `pine check`. |
-| `http.token` | generated | Bearer token of the control API. When unset, pine generates one into `data/http-token`. |
-| `http.hooks.<name>` | none | A webhook at `POST /hook/<name>`: `{ "secret": "...", "topic": "hook/<name>" }`, or `"open": true` instead of a secret to accept anyone who can reach the port. See [events.md](events.md). For a webhook an agent subscribes to, use a `webhook` source instead. |
-| `mcp` | `{}` | Global MCP servers. See [mcp.md](mcp.md). |
-| `sources` | `{}` | Event sources every agent can subscribe to. See [sources.md](sources.md). |
-| `sourceTypes` | `{}` | Source types of your own: a name and the module that implements it, e.g. `{ "doorbell": "./sources/doorbell.ts" }`. The module says which options it takes, and agents can then set up sources of that type by tool call. The main agent adds entries here with `add_source_type`, pointing at the copy pine keeps in `sources/` of its home. |
-| `subscribe` | `[]` | Subscriptions for all agents: every agent that can use the source is woken in its main conversation. |
-| `extensions` | `[]` | Paths of pi extensions loaded into every agent's sessions. |
-| `skills` | `[]` | Further folders of skills for every agent, for skills that lie outside pine's home. Not needed for `skills/` in pine's home: what is there is for every agent without an entry, and so is what the main agent adds with `add_skill`. Agents cannot replace or remove a skill that is named here. |
-| `routes` | `[]` | See [events.md](events.md). |
-| `decisions` | `{}` | Decision models by name, which a route's `ask` names in `model`. See "Decision models" below. |
-| `schedules` | `[]` | What happens at a time. One with a `task` wakes every agent with it; one without only publishes an event. The main agent adds entries with `add_schedule`. See [events.md](events.md). |
-
-Three things that older setups had are configuration errors now, each reported with what to
-write instead: a `plugins` list that is not empty, an event source of `"type": "timer"`
-(that is a schedule), and one of `security.review`, `security.reviewer`,
-`security.reviewTimeout` or `security.rules` (pine has no reviewer any more: take the entry
-out).
-
-Durations are a number of milliseconds or a string such as `"90s"`, `"15m"`, `"2h"`, `"1d"`.
+| `http` | on | Control API and webhooks. `false` turns it off, and with it the CLI's commands for a running daemon. |
+| `http.host`, `http.port` | `127.0.0.1`, `7463` | Where the control API listens. `pine check` reports anything but loopback. |
+| `http.token` | generated | The control API's bearer token. Unset: pine writes one to `data/http-token`. |
+| `http.hooks.<name>` | none | A webhook at `POST /hook/<name>`: `{ "secret": "...", "topic": "hook/<name>" }`, or `"open": true` to accept anyone who reaches the port. See [events.md](events.md), "Webhooks". For a webhook an agent subscribes to, use a `webhook` source. |
+| `mcp` | `{}` | MCP servers for all agents ([mcp.md](mcp.md)). |
+| `sources` | `{}` | Event sources every agent can subscribe to ([sources.md](sources.md)). |
+| `sourceTypes` | `{}` | Source types of your own: a name and its module, e.g. `{ "doorbell": "./sources/doorbell.ts" }`. The main agent adds entries with `add_source_type`, pointing at pine's copy in `sources/`. |
+| `subscribe` | `[]` | Subscriptions for all agents: each agent that can use the source is woken in its main conversation. |
+| `extensions` | `[]` | pi extensions loaded into every agent's sessions. |
+| `skills` | `[]` | Further skill folders for every agent, outside pine's home. Agents cannot replace or remove these. `skills/` in the home needs no entry. |
+| `routes` | `[]` | See [events.md](events.md), "Routes". |
+| `decisions` | `{}` | Decision models by name, for routes' typed questions. See "Decision models". |
+| `schedules` | `[]` | What happens at a time; one with a `task` wakes every agent with it. See [events.md](events.md), "Schedules". |
 
 ## agent.json
 
@@ -158,7 +145,7 @@ Every key is optional; `{}` is a valid agent.
 ```json
 {
   "workspace": "~/dev/gonzo",
-  "model": "local/deepseek-v4.1-flash",
+  "model": "studio/deepseek-v4.1-flash",
   "tools": ["read", "bash", "edit", "write", "grep", "find", "ls"],
   "mcp": { "library": { "command": "library-mcp" } },
   "globalMcp": ["web"],
@@ -168,40 +155,43 @@ Every key is optional; `{}` is a valid agent.
 }
 ```
 
+The main agent changes these with `update_agent` ([setup.md](setup.md), "Changing and removing an
+agent"), and so does `pine agent update`.
+
 ### Identity and model
 
 | Key | Default | Meaning |
 |---|---|---|
-| `description` | empty | Only for a home from before: what the agent is for, where its `AGENTS.md` does not say it. What an agent is for is the first paragraph of the `AGENTS.md` in its workspace (a heading above it aside), as one line of at most 240 characters: other agents read it when they choose whom to delegate to, and the Pine app and `pine agent list` show it beside its name. Write that paragraph for them ("You are gonzo. Contract law; you know the case files"). Nothing writes `description` any more. |
-| `color` | none | The agent's own color in the Pine app, written `#rrggbb` (kept in lower case): its avatar is drawn in it, and nothing else: the window keeps the theme's colors. Display only; the terminal UI does not use it. Set it on the agent's avatar in the app (at the top of its page in Settings > Agents, or Color in the side bar's menu on it), with `pine agent update <id> --color #e0805a` (`--color none` takes it away), or ask the main agent ("make scout blue"): `color` of `create_agent` and `update_agent`, which you confirm. Anything that is not `#rrggbb` is a configuration problem. |
-| `scroll` | `top` | Where a conversation with the agent goes in the Pine app when you send a message. `top`: your message moves to the top of the window and the answer is written below it. `follow`: your message is added at the end, at the bottom of the window, and the conversation follows the answer as it is written, as a terminal does. Either way the view glides there rather than jumping, and comes down from wherever you had scrolled to. Display only; the terminal UI does not use it. Set it on the agent's page in Settings > Agents (Conversation, When you send a message), with `pine agent update <id> --scroll follow`, or by telling the main agent (`update_agent` `scroll`). |
-| `workspace` | `agents/<id>/workspace` | The agent's working folder. `AGENTS.md`, `SOUL.md`, `TOOLS.md` and `MEMORY.md` at its top are the agent's instructions and are loaded into its prompt. Must exist when you set it. |
-| `context` | `[]` | Further instruction files to load into the system prompt. |
-| `model`, `thinking` | from `defaults` | Per-agent model and thinking level. |
-| `settings` | from `defaults.settings` | pi settings for this agent, key by key on top of `defaults.settings`. `agents/<id>/settings.json` is honoured as well; where both set a key, the one here counts. |
+| `description` | empty | Read only where the agent's `AGENTS.md` does not begin with a paragraph saying what it is for, which is where pine takes that from ([agents.md](agents.md), "Handing work to another agent"). Nothing writes it. |
+| `color` | none | Give an agent its own color in the Pine app, `#rrggbb`: its avatar is drawn in it, nothing else. Set it on the agent's avatar in the app, with `pine agent update <id> --color #e0805a` (`none` removes it), or ask the main agent. |
+| `scroll` | `top` | Where a conversation goes in the Pine app when you send: `top` puts your message at the top of the window with the answer below; `follow` adds it at the bottom and follows the answer, as a terminal does. Set it in Settings > Agents, with `pine agent update <id> --scroll follow`, or ask the main agent. |
+| `workspace` | `agents/<id>/workspace` | The agent's working folder. Must exist when you set it. |
+| `context` | `[]` | Further instruction files read into its prompt. |
+| `model`, `thinking` | from `defaults` | The agent's model and reasoning level. |
+| `settings` | from `defaults.settings` | pi settings for this agent, key by key on top of `defaults.settings`. `agents/<id>/settings.json` is read too; this key wins. |
 | `taskTimeoutSec`, `idleMs` | from `defaults` | Per-agent overrides. |
 
 ### Tools and extensions
 
 | Key | Default | Meaning |
 |---|---|---|
-| `tools` | `read`, `bash`, `edit`, `write` | Which of pi's built-in tools the agent gets: any of `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`. |
-| `mcp` | `{}` | MCP servers only this agent has. An entry with the name of a global server replaces it for this agent. An entry with `"session": "<conversation>"` was added for that conversation alone and is removed with it ([setup.md](setup.md)). |
-| `globalMcp` | `true` | `true`: every global server that includes this agent. `false`: none. A list of names: exactly those. |
-| `sources` | `{}` | Event sources only this agent can subscribe to. An entry with `"session": "<conversation>"` was set up for that conversation alone and is removed with it. See [sources.md](sources.md). |
-| `subscribe` | `[]` | What this agent is subscribed to: a list of names, an object with `note`, `when`, `throttle`, `debounce`, `separate`, `prompt` per source, or a list of entries with `source` and, for one conversation only, `session`. The agent's `subscribe` tool and `pine subscribe` write here. Every key is in [sources.md](sources.md), "In the configuration". |
-| `schedules` | `[]` | What this agent does at set times: `{ "name", "cron" or "every" or "at", "task" }`, with `"session": "<conversation>"` for one conversation. The agent adds entries with `add_schedule`. See [events.md](events.md). |
-| `extensions`, `skills` | `[]` | Further pi extension files and skill folders for this agent. Its own `skills/` folder needs no entry. |
+| `tools` | `read`, `bash`, `edit`, `write` | Which of pi's built-in tools the agent gets: any of `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`. `pine init` and `create_agent` give all seven. |
+| `mcp` | `{}` | MCP servers only this agent has. One named like a global server replaces it for this agent. One with `"session": "<conversation>"` is that conversation's alone and goes with it. |
+| `globalMcp` | `true` | Which global servers it gets: `true` all that include it, `false` none, or a list of names. |
+| `sources` | `{}` | Event sources only this agent can subscribe to; with `"session"`, one conversation's. See [sources.md](sources.md). |
+| `subscribe` | `[]` | What it is subscribed to: names, an object per source with `note`, `when`, `throttle`, `debounce`, `separate`, `prompt`, or entries with `source` and `session`. See [sources.md](sources.md), "In the configuration". |
+| `schedules` | `[]` | Its schedules: `{ "name", "cron" or "every" or "at", "task" }`, with `"session"` for one conversation. See [events.md](events.md), "Schedules". |
+| `extensions`, `skills` | `[]` | Further pi extension files and skill folders. Its own `skills/` needs no entry. |
 | `bashTimeoutSec` | from `defaults` | Longest shell command. |
-| `bashDeny` | `[]` | Regular expressions; a shell command matching one is refused. A convenience, not a boundary: the sandbox is the boundary. |
+| `bashDeny` | `[]` | Regular expressions; a matching shell command is refused. A convenience, not a boundary. |
 
 ### Working with other agents
 
 | Key | Default | Meaning |
 |---|---|---|
-| `delegates` | `["*"]` | Agents this one may hand tasks to. `*` is every other agent but the main one; name the main agent to include it. `[]`: none, and no `delegate` tool. A task it hands on runs in the other agent's mode or this one's, whichever is stricter. |
-| `subagents` | on, `limits.maxSubagents` (4) in parallel | `false`, or `{ "maxParallel": 4, "tools": [...], "mcp": true }`; without `maxParallel`, pine's `limits.maxSubagents` holds. `tools` narrows what sub-agents get. Which model they run on, the agent says call by call (`model` of `subagent`); without it, the agent's own. |
-| `publish` | `[]` | Topic patterns the `publish_event` tool may publish on. Empty: the agent has no such tool. |
+| `delegates` | `["*"]` | Agents it may hand tasks to. `*` is every other agent but the main one; name the main agent to include it. `[]`: none, and no `delegate` tool. The task runs in the stricter of the two agents' modes. |
+| `subagents` | on, `limits.maxSubagents` (4) at a time | `false`, or `{ "maxParallel": 4, "tools": [...], "mcp": true }`. `tools` narrows what sub-agents get; `mcp: false` takes the MCP servers away. |
+| `publish` | `[]` | Topic patterns the `publish_event` tool may publish on. Empty: no such tool. |
 | `state.read` | `["#"]` | State keys the agent may read. |
 | `state.write` | `["agent/<id>/#"]` | State keys the agent may write. |
 | `state.inject` | `[]` | State keys shown to the agent in every turn. |
@@ -210,35 +200,29 @@ Every key is optional; `{}` is a valid agent.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `mode` | `auto` for the main agent, `safe` for others (or `defaults.mode`) | How much the agent does without asking, and whether its shell and file tools run in a sandbox. `auto`: no sandbox; your whole user account and the network, like you at your terminal, with your home folder and environment; a critical action asks you, and after outside content so does sending something out. `safe`: in the sandbox; its own folders and what you grant, and the same questions. `manual`: in the sandbox, and every action waits for approval. `bypass`: no sandbox, and never asks. `plan`: looks, reads and asks, changes nothing, and answers with a plan. pine's home stays closed in every mode. See "Modes" and "The whole account" in [security.md](security.md). |
-| `sandbox.network` | `false` | Shell commands may use the network: the internet and your local network, ports of this machine included. See [security.md](security.md), "On Linux", for what that means for socket files. |
-| `sandbox.read`, `sandbox.write` | `[]` | Further folders the agent may read / write, besides its workspace. |
+| `mode` | `auto` for the main agent, `safe` for others (or `defaults.mode`) | How much the agent does without asking, and whether it works in a sandbox: `auto` (your account, no sandbox), `safe` (sandbox), `manual` (sandbox, every action asks), `bypass` (no sandbox, never asks), `plan` (only looks, answers with a plan). pine's home stays closed in every mode. See [security.md](security.md), "Modes: how much an agent does without asking". |
+| `sandbox.network` | `false` | Shell commands in the sandbox may use the network, local network and this machine's ports included. See [security.md](security.md), "On Linux". |
+| `sandbox.read`, `sandbox.write` | `[]` | Further folders the agent may read / write in the sandbox. |
 | `sandbox.sharedTmp` | `true` | Allow `/tmp` and the user's temp folder. |
-| `sandbox.env` | `{}` | Extra environment variables for the agent's shell. Do not put secrets here; the agent can read them. |
-| `trustWorkspace` | `false` | `true` lets pi load `.pi/extensions`, `.pi/settings.json` and skills from the workspace. That is code execution inside the daemon for whoever can write there, the agent included. |
-| `approve` | `[]` | Tool calls that always need your approval: `"tool"` or `"tool:argument-glob"`, for example `"bash:*git push*"`. |
-| `approveWhenTainted` | `["publish_event", "send"]` | Tool calls that count as sending something out. Once the session has seen outside content they need your approval. A `send` through a source that reaches only you (Telegram) is a message to you and is never asked about this way; to see those first, name it in `approve` (`"send:telegram"`). |
-| `untrusted` | read-only profile | What a run started by an untrusted event may use: `{ "tools": ["read","grep","find","ls"], "mcp": [], "delegates": [], "publish": [], "stateWrite": false, "subagents": false, "board": false }`. `board`: whether such a run has the board tools; what it posts counts as coming from outside ([boards.md](boards.md)). `false` in place of the whole profile refuses such runs. |
+| `sandbox.env` | `{}` | Extra environment variables for the agent's shell. No secrets: the agent can read them. |
+| `trustWorkspace` | `false` | `true` lets pi load `.pi/extensions`, `.pi/settings.json` and skills from the workspace: code run inside the daemon for whoever can write there, the agent included. |
+| `approve` | `[]` | Tool calls that always ask you: `"tool"` or `"tool:argument-glob"`, e.g. `"bash:*git push*"`. |
+| `approveWhenTainted` | `["publish_event", "send"]` | Tool calls that count as sending something out, asked after outside content. A `send` that reaches only you (Telegram) is not asked this way; put `"send:telegram"` in `approve` to see those first. |
+| `untrusted` | read-only profile | What a run started by an untrusted event may use: `{ "tools": ["read","grep","find","ls"], "mcp": [], "delegates": [], "publish": [], "stateWrite": false, "subagents": false, "board": false }`. `false` refuses such runs. See [security.md](security.md). |
 
 ## models.json
 
-This is pi's own file; pine passes it through. It is only needed for model servers of your own:
-pi already knows the hosted providers (OpenCode, Anthropic, OpenAI and many more), and
-`pine login <provider>` supplies their credentials. `pine init` writes it with no provider in
-it, and `pine.json` with no `defaults.model`: the first model you connect becomes the default.
-
-You do not have to write an entry yourself: `pine model add <name> <address>` asks the server
-what it serves and writes it ([operations.md](operations.md), "With a model server of your
-own"), and the main agent does the same with `add_model_server` ([setup.md](setup.md)). The
-main agent also adds one more model of a server (`add_model`), changes a model's context,
-longest answer, pictures and reasoning (`configure_model`) and takes one out (`remove_model`):
-[setup.md](setup.md), "Setting up a model". What they write looks like the `local` entry:
+pi's own file, which pine passes on. Only model servers of your own need it: hosted providers are
+known to pi, and `pine login` supplies their credentials. You rarely write it: `pine model add`
+and the main agent's `add_model_server` ask the server and write the entry, and `add_model`,
+`configure_model`, `remove_model` change it ([setup.md](setup.md), "Setting up a model"). What
+they write looks like this:
 
 ```json
 {
   "providers": {
-    "local": {
-      "name": "llama-server",
+    "studio": {
+      "name": "studio (127.0.0.1:8080)",
       "baseUrl": "http://127.0.0.1:8080/v1",
       "api": "openai-completions",
       "apiKey": "none",
@@ -250,7 +234,7 @@ longest answer, pictures and reasoning (`configure_model`) and takes one out (`r
           "input": ["text"],
           "reasoning": true,
           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-          "compat": { "supportsStore": false, "supportsDeveloperRole": false, "maxTokensField": "max_tokens", "thinkingFormat": "deepseek" }
+          "compat": { "supportsStore": false, "supportsDeveloperRole": false, "supportsReasoningEffort": true, "maxTokensField": "max_tokens" }
         }
       ]
     }
@@ -258,27 +242,23 @@ longest answer, pictures and reasoning (`configure_model`) and takes one out (`r
 }
 ```
 
-- Refer to a model as `provider/id`, here `local/deepseek-v4.1-flash`.
-- `contextWindow` must match what the server was started with (`-c`), or compaction triggers at
-  the wrong time.
-- Add `"image"` to `input` only for a model that accepts images; agents then receive the
-  pictures that Telegram and watched folders deliver.
-- The `compat` flags stop pi from sending fields a plain llama-server may reject. They have not
-  been verified against a real llama-server yet; see [stack.md](stack.md).
-- pi's documentation for this file is in
+- A model is named `provider/id`, here `studio/deepseek-v4.1-flash`.
+- `contextWindow` must match what the server was started with (`-c`, divided by its slots), or
+  compaction comes at the wrong time.
+- `"image"` in `input` only for a model that reads pictures; then agents receive the pictures
+  Telegram and watched folders deliver.
+- The `compat` flags keep pi from sending fields a plain llama-server may reject.
+- pi's documentation of the file:
   `node_modules/@earendil-works/pi-coding-agent/docs/models-configuration.md`.
 
 ### Thinking levels
 
-pine's reasoning levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh` and `max`
-(`/reasoning` in the terminal UI, `thinking` in `agent.json`). A model on a server of your own
-rarely knows all of them. A chat template answers a level it does not know with its own
-default, which is often its highest, and without an entry for `off` nothing is sent at all, so
-thinking stays on.
+pine's levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` (`thinking`,
+`/reasoning` in the terminal UI). A chat template answers a level it does not know with its own
+default, often its highest, and sends nothing for `off`, so thinking stays on.
 
-For llama.cpp, `pine model add` and `add_model_server` settle this from what the server
-reports (`chat_template_caps` in `/props`: whether the template takes a level, and which levels
-it tells apart). They write, for a model whose template knows `low` and `medium`:
+For llama.cpp, `pine model add` and `add_model_server` read which levels the template knows
+(`chat_template_caps` in `/props`) and write a map. For a template that knows `low` and `medium`:
 
 ```json
 "reasoning": true,
@@ -286,26 +266,21 @@ it tells apart). They write, for a model whose template knows `low` and `medium`
 "compat": { "thinkingFormat": "openai", "supportsReasoningEffort": true, ... }
 ```
 
-- `"thinkingFormat": "openai"` makes pi send the level as `reasoning_effort`, which is the
-  field llama.cpp hands to the chat template. Formats that only send thinking on or off (such
-  as `qwen-chat-template`) lose the level.
-- `off` is sent as `none`, which is how llama.cpp turns thinking off.
-- A level the template knows is sent as it is. One it does not know is sent as the next level
-  up that it does know, so you never get less thinking than you asked for: with `low`,
-  `medium` and `xhigh`, pine's `high` is sent as `xhigh`.
-- A level above everything the template knows has no entry. pi lowers `xhigh` and `max` to
-  the highest level there is; `high` is sent as it is, and the template answers with its own
-  default.
+- `"thinkingFormat": "openai"` sends the level as `reasoning_effort`, which llama.cpp hands to
+  the template.
+- `off` is sent as `none`, which turns thinking off.
+- A level the template does not know is sent as the next one up that it knows: with `low`,
+  `medium` and `xhigh`, `high` is sent as `xhigh`.
+- A level above all it knows has no entry: pi lowers `xhigh` and `max` to the highest there is,
+  and `high` goes as it is, to the template's default.
 
-For a server that does not report this (vLLM, LM Studio), `--reasoning` only marks the model as
-thinking; write a `thinkingLevelMap` by hand if its levels differ.
+For a server that does not report levels (vLLM, LM Studio), `--reasoning` only marks the model as
+thinking; write a `thinkingLevelMap` by hand if needed.
 
 ### A server that wants a key
 
-A model server that was started with a key (llama-server with `--api-key`, a server behind a
-proxy) gets it from `.env`. `pine model add` and `add_model_server` do this themselves: they
-ask you for the key and store it as `PINE_MODEL_<NAME>_API_KEY`. By hand, name it in
-`models.json` and put the value into `<home>/.env`:
+`pine model add` and `add_model_server` ask you for the key and keep it in `.env` as
+`PINE_MODEL_<NAME>_API_KEY`. By hand, name it in `models.json` and put it into `.env`:
 
 ```json
 "studio": {
@@ -320,27 +295,23 @@ ask you for the key and store it as `PINE_MODEL_<NAME>_API_KEY`. By hand, name i
 STUDIO_API_KEY=...
 ```
 
-- `$NAME` and `${NAME}` both work; `$$` is a dollar sign. This is pi's way of writing it, which
-  is why there is no `${NAME:-fallback}` here.
-- pine fills the key in when it starts and gives it to pi in memory. It is not written to a
-  file and not put into the daemon's environment, so agent shells and MCP servers never see it.
-  A change to `.env` takes effect with the next start.
-- A name that is neither in `.env` nor in the daemon's environment does not stop pine: the
-  provider's models are missing from `/model`, the log says which name is missing when pine
-  starts, and `pine check` lists it under "Model notes".
-- Only `apiKey` is filled in from `.env`. A `$NAME` in `headers` is read by pi from the
-  daemon's environment; `pine check` says so when a header names an `.env` entry.
-- `"apiKey": "none"` (or any text without a `$`) is sent as it is, for a server without a key.
+- `$NAME` and `${NAME}` both work; `$$` is a dollar sign. There is no `${NAME:-fallback}` here
+  (this is pi's syntax).
+- pine fills the key in at start and hands it to pi in memory: no file, not the daemon's
+  environment, so shells and MCP servers never see it. A change to `.env` holds from the next
+  start.
+- A name that is missing does not stop pine: that provider's models are missing from `/model`,
+  and `pine check` lists the name under "Model notes".
+- Only `apiKey` is filled in from `.env`. A `$NAME` in `headers` is read by pi from the daemon's
+  environment; `pine check` says so when a header names an `.env` entry.
+- `"apiKey": "none"` (any text without `$`) is sent as it is.
 
 ## Decision models
 
-A decision model answers typed questions about a text, not with text: how likely yes is, which
-of named options fits, which of several levels. It does that in a fraction of a second, with
-probabilities it works out rather than numbers a chat model states, which is what a route needs
-that acts on every event ([events.md](events.md), "Typed questions"). No agent runs on one.
-
-pine keeps them by name under `decisions` in `pine.json`, beside the chat models of
-`models.json`. Each speaks TypeSafe's API (`POST /v1/systemone`), and each is one of three:
+A decision model answers typed questions about a text (how likely yes is, which named option
+fits, which level) in a fraction of a second, with computed probabilities. Routes use them to act
+on every event ([events.md](events.md), "Typed questions"); no agent runs on one. They speak
+TypeSafe's API (`POST /v1/systemone`) and are kept by name under `decisions` in `pine.json`:
 
 ```json
 "decisions": {
@@ -352,22 +323,19 @@ pine keeps them by name under `decisions` in `pine.json`, beside the chat models
 
 | Key | |
 |---|---|
-| `server` | A model server pine has (`models.json`) that also serves the decision model, such as Pinecone on your Mac: pine uses that server's address and key, read at each request, so a new address or key for it covers the decision model too. Or `"typesafe"`: TypeSafe's own service, Jev, with the key pine is signed in with. |
-| `model` | The server's name for the decision model (for Pinecone, the resource's name). At TypeSafe: `jev-latest` unless given. |
-| `url` | Instead of `server`: another server that speaks the same API, without `/v1`. Over `http://` only on your own network. |
-| `key` | With `url`: its key, from `.env` (`add_decision_model` and Settings ask you for it and keep it as `PINE_DECISION_<NAME>_KEY`). |
+| `server` | A model server in `models.json` that also serves the decision model (such as Pinecone on your Mac): its address and key are used, read at each request. Or `"typesafe"`: TypeSafe's service, Jev, with pine's TypeSafe key. |
+| `model` | The server's name for the decision model (for Pinecone, the resource's name). At TypeSafe `jev-latest` unless given. |
+| `url` | Instead of `server`: another server with the same API, without `/v1`. `http://` only on your own network. |
+| `key` | With `url`: its key, from `.env` (kept as `PINE_DECISION_<NAME>_KEY` when pine asked for it). |
 | `local` | With `url`: the server is on your network under a name that does not say so (a Tailscale name). |
-| `timeout` | How long one request may take, loading the model included: `20s` at TypeSafe, `120s` elsewhere. |
+| `timeout` | One request, loading the model included: `20s` at TypeSafe, `120s` elsewhere. |
 
-**TypeSafe.** Sign in with a key from [console.typesafe.ai](https://console.typesafe.ai): under
-Settings > Models, Decision models, with `pine login typesafe`, or by asking the main agent
-(`sign_in` with `typesafe`, a key you type into pine's own dialog). The key is checked with TypeSafe
-and kept in `.env` as `TYPESAFE_API_KEY`; `pine logout typesafe` takes it out. Then add Jev as a
-decision model: `{ "server": "typesafe" }`.
+- **TypeSafe:** sign in with a key from [console.typesafe.ai](https://console.typesafe.ai) under
+  Settings > Models, Decision models, with `pine login typesafe`, or by asking the main agent
+  (`sign_in` with `typesafe`; you type the key into pine's dialog). It is checked and kept as
+  `TYPESAFE_API_KEY`; `pine logout typesafe` removes it. Then add `{ "server": "typesafe" }`.
+- **Adding one:** Settings > Models, Decision models, or ask the main agent (`add_decision_model`).
+  You are told, when you confirm it and each route that asks it, where the text goes.
 
-**Adding one.** Settings > Models, Decision models, or ask the main agent ("add the decider model
-my studio serves as a decision model": `add_decision_model`). One on a model server pine has asks
-for nothing more. What a route asks a decision model about goes to that server, which you are
-told when you confirm it and each route that asks it.
-
-Only a decision model answers a route's typed questions; a chat model is asked in words with `call`.
+A chat model is asked in words with a route's `call`; only a decision model answers typed
+questions.

@@ -157,7 +157,6 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["how do I install pine on my iPhone", /^mobile#(getting-it|on-an-iphone)/],
 		["the app on my iphone stopped opening after a week", /^mobile#on-an-iphone/],
 		["I reinstalled the app with another Apple ID and my server refuses me", /^mobile#the-phone-s-key/],
-		["try the iOS app on the simulator", /^mobile#ios/],
 		["the phone app shows a key, where do I add it on my server", /^mobile#the-phone-s-key/],
 		["the app on my phone says the host key of my server changed", /^mobile#the-machine-s-host-key/],
 		["how do I reach the computer at home from my mobile when I am out", /^mobile#making-a-machine-reachable/],
@@ -183,7 +182,6 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["the app says the browser for the web tools is not on this Mac", /^(desktop#the-first-start|desktop#settings|operations#problems)/],
 		["my agent says its model cannot answer because the claude command is missing", /^(desktop#the-first-start|operations#problems)/],
 		["try the beta before it is released", /^operations#trying-a-version-before-it-is-released/],
-		["code sign the mac app with my apple developer certificate and notarize it", /^desktop#packing-and-signing/],
 		["use the app with pine running on my server over ssh", /^desktop#environments/],
 		["switch the window between the pine on my laptop and the one on a remote machine", /^desktop#environments/],
 		["open the terminal ui on the pine running on my server, from my laptop", /^(tui#the-pine-of-another-machine|operations#commands\/pine---ssh)/],
@@ -410,7 +408,6 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["reach my pine from a work laptop where I cannot install anything", /^web/],
 		["the browser shows a fingerprint SHA256 what do I do with it", /^web#/],
 		["where is the key of the browser kept and can a web page steal it", /^web#/],
-		["try the browser version of a pull request before it is merged", /^web#(previews|web-preview)/],
 		["use the web client with a machine on my tailscale network", /^web#a-machine-on-a-tailnet/],
 		["the browser cannot reach my mac that is only on tailscale", /^web#a-machine-on-a-tailnet/],
 		// The first screen's link to the SSH view: in "The first screen" (Using it), and the official service's row of the paired section.

