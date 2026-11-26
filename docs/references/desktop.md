@@ -130,13 +130,22 @@ drawn from what pine knows (which providers you are signed in to, your model ser
 main agent has a model). Nothing of them is written into the conversation, and they are no model's:
 reload the page and they are drawn again, the steps that are done shown as done.
 
+Typing works there before any model does: what you type in the input and send picks the option of
+the open card whose name it is, in any case ("a subscription", "claude"). Anything else is answered
+by one line of pine's, "There is no model yet to answer that. Pick one of the options, or type its
+name: what each one means is in its description.", and goes nowhere: no model reads it and it is not
+kept in the conversation. Once a model answers, what you type there is an ordinary message again.
+
 | Step | What it asks |
 |---|---|
-| How should your agents run? | **A subscription** (recommended: Claude, ChatGPT or GitHub Copilot, signed in to in your browser, no key to copy), **An API key**, or **A model on this computer**. An API key leads to Settings > Models for now |
+| How should your agents run? | **A subscription** (recommended: Claude, ChatGPT or GitHub Copilot, signed in to in your browser, no key to copy), **An API key**, or **A model on this computer** |
 | Which subscription? | Claude, ChatGPT or GitHub Copilot. **Back** returns to the first question |
 | Which server? | After **A model on this computer**: what pine found on this computer's usual ports (llama.cpp, Ollama, LM Studio; **Pinecone**, which adds its models and its tools for all your agents), and **Another address**. With nothing found, the card says so and asks for the address of your server. A server that wants a key asks for it in a secret field of the card; one that does not say how much context its models get asks for that. The key goes into pine's `.env` and is never shown. See [setup.md](setup.md), "A model server on this computer" |
 | The sign-in | A card: the provider's page is opened in your browser once, with **Open the sign-in page again**; a code to enter there, with **Copy**, when the provider gives one; a choice the provider asks is a question card, something to type a field of the card. **Cancel** ends the sign-in and brings the first question back. Nothing typed there reaches a model |
+| Which provider? | With **An API key**: Anthropic, OpenAI, Google Gemini, OpenRouter and xAI, and **Another…**, a list of every provider with a search, by its name or by what people call it ("kimi", "grok"). **Back** returns to the first question |
+| Your API key for … | A card with a field of its own for the key: what is typed there is not shown, goes straight to the sign-in with **Save**, and is stored with pine's other keys (`auth.json` in pine's home), where no agent reads it. The conversation says only **Key saved for …**, never the key. A provider that asks a choice first asks it as a question card. **Cancel** brings the first question back; a key the sign-in refused says why, with **Try again** |
 | Your agents run on … | Once signed in, pine says which model your agents now run on (it chose the provider's usual one, as Settings > Models does). **Keep this model?**: **Go on**, or **Choose another model** among the models you can use now |
+| What would you like to set up now? | Once the model is kept, the card **Next**, where you tick what to set up today, every item optional: **The mode**, **A working folder**, **Telegram**, **A first agent** (for example the welcome letter's "Make an agent that tells me about each new file in Downloads."), **The theme**, and on a Mac **Pinecone**, to install it. **Send** sends an ordinary message of yours in Setup Pine, one line for each item ticked, and the main agent answers it there: it introduces itself and takes each item in turn, with its own tools and question cards. **Nothing for now** opens the main conversation; the card comes back once the app is opened again, until something is said in Setup Pine |
 
 ### `pine` in a terminal
 
@@ -752,6 +761,13 @@ and may ask again. A `/command` stays a command. Once answered, the card folds i
 conversation that says what was asked and what you answered. An approval (a permission) still opens
 its dialog. With no question open, the input sends as before (into the work, or after it).
 
+A sign-in that asks you to choose (the main agent's `sign_in`, when a provider's flow offers ways to
+sign in, such as Amazon Bedrock's "Bearer token" or "AWS profile") is the same card, with the flow's
+choices as its answers, picked by a click, a digit or the arrow keys and `↩`. **No answer** stops the
+sign-in. It takes no answer in your own words: what you send from the input while it is open goes to
+the conversation as usual. What the sign-in then asks you to type (a key, a profile name) opens the
+approval dialog with its field, as before.
+
 ### What the app adds
 
 | | |
@@ -1279,9 +1295,10 @@ desktop/
     sign-in.ts     a sign-in to a model provider as the page follows it (`SignInRun`), for Settings > Models
                    and Setup Pine; components/sign-in-card.tsx is its card in Setup Pine
     setup/         Setup Pine's own steps: engine.tsx walks them (the welcome, "How should your agents
-                   run?", the model kept), types.ts is what a step is, branches.ts lists the ways to a
-                   model (`BRANCHES`, one module each: subscription.tsx, local.tsx; soon.tsx for a way not built yet)
-                   and the steps after one (`AFTER`). A new way is a module and one line there
+                   run?", the model kept, and what is typed before a model answers), types.ts is
+                   what a step is, branches.ts lists the ways to a model (`BRANCHES`, one module
+                   each: subscription.tsx, api-key.tsx, local.tsx) and the steps after one
+                   (`AFTER`: handoff.tsx, the card "Next"). A new way is a module and one line there
     BrowserAccess.tsx, machines.ts  Settings > Browser access; how the page names a machine and draws a
                    pairing on the first screen
     DevicePairing.tsx  the Add a device dialog (its QR code, components/qr-code.tsx), the toast when a

@@ -27,7 +27,7 @@ import { TabMenu, type TabMenuAction } from "@/components/tab-menu";
 import { contextMenu } from "@/components/page-menu";
 import { Conversation } from "./Conversation.tsx";
 import { Events } from "./Events.tsx";
-import { type Beside, PANE, paneOf, ROOM, store, type Tab, type UpdatePhase, useModel, useSignal } from "./model.ts";
+import { type Beside, isPick, PANE, paneOf, ROOM, store, type Tab, type UpdatePhase, useModel, useSignal } from "./model.ts";
 import * as dock from "./dock.ts";
 import { ViewAside } from "./View.tsx";
 import { Breakable, MachineList, NewAgent, Settings } from "./Settings.tsx";
@@ -1511,8 +1511,8 @@ function Asking() {
 	if (!s.asking) return null;
 	const req = s.tabs.map((t) => t.approvals.get(s.asking!)).find(Boolean)?.req;
 	if (!req) return null;
-	// A question has no dialog: its card is above the composer of its conversation.
-	return req.tool === "question" ? null : <ApprovalDialog key={req.id} req={req} />;
+	// A question, and a sign-in's choice, has no dialog: its card is above the composer of its conversation.
+	return isPick(req) ? null : <ApprovalDialog key={req.id} req={req} />;
 }
 
 function Help({ close }: { close: () => void }) {

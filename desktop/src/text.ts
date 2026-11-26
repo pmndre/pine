@@ -153,14 +153,18 @@ export function fuzzy(query: string, text: string): number {
  * What a picker lists for what was typed: the items whose label fits, then those whose line beside it
  * fits, each in the order `fuzzy` ranks them. An item that fits neither is left out; a line that does not
  * fit is a miss, not a rank (a miss of -1 counted after the labels came out as 9 and kept every item).
+ * Then those found by the words they are known by and that are not shown (`words`: "grok" finds xAI),
+ * matched only where a word begins.
  */
-export function narrow<T extends { label: string; about?: string }>(query: string, items: T[]): T[] {
+export function narrow<T extends { label: string; about?: string; words?: string }>(query: string, items: T[]): T[] {
 	if (!query) return items;
+	const q = query.toLowerCase();
 	const rank = (i: T) => {
 		const label = fuzzy(query, i.label);
 		if (label >= 0) return label;
 		const about = i.about ? fuzzy(query, i.about) : -1;
-		return about >= 0 ? 10 + about : -1;
+		if (about >= 0) return 10 + about;
+		return i.words?.toLowerCase().split(/\s+/).some((w) => w.startsWith(q)) ? 20 : -1;
 	};
 	return items.map((i) => ({ i, rank: rank(i) })).filter((x) => x.rank >= 0).sort((a, b) => a.rank - b.rank).map((x) => x.i);
 }

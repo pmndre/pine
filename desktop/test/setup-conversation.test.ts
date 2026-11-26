@@ -124,7 +124,8 @@ test("a reload draws the steps again from the daemon's state, and nothing of the
 	const history = (await api("GET", "/tasks?agent=main&session=setup&limit=40")) as any[];
 	assert.deepEqual(history, []);
 	await pick("Go on");
-	await page.waitForSelector(card, { state: "detached" });
+	// What comes next is setup-handoff.test.ts's.
+	await question("What would you like to set up now?");
 });
 
 test("a model that is gone opens Setup Pine again, and the no-model notice leads there", async () => {

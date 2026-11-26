@@ -129,6 +129,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["getting started with pine", /^desktop#setup-pine/],
 		["the app opened a setup conversation, what is it", /^desktop#setup-pine/],
 		["what is Setup Pine", /^desktop#setup-pine/],
+		["I typed in setup and it says there is no model yet to answer that", /^desktop#setup-pine/],
 		["how do I search my old sessions for something that was said", /^desktop#finding-a-conversation/],
 		["the Pine app keeps forgetting the ssh server I entered", /^desktop#environments/],
 		["how do I reply to one sentence of the agent's answer in the app", /^desktop#quoting-part-of-a-conversation/],

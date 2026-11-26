@@ -19,6 +19,7 @@ import { api } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { COMMANDS, runSlash } from "./commands.ts";
 import { type Attachment, REASONING_ABOUT, store, type Tab, useModel, useSignal } from "./model.ts";
+import { setup } from "./setup/engine.tsx";
 import { baseName, MODES, shortcut, size, tilde } from "./text.ts";
 
 const MAX_FILE = 20 * 1024 * 1024;
@@ -206,7 +207,9 @@ export function Composer({ tab }: { tab: Tab }) {
 		});
 	};
 
-	const asked = store.openQuestion(tab);
+	// A sign-in's choice is answered by its options alone: words of the owner's would mean nothing to its flow.
+	const open = store.openQuestion(tab);
+	const asked = open?.req.tool === "question" ? open : undefined;
 	const send = async (whenBusy: "steer" | "queue") => {
 		const value = text.trim();
 		const command = value.startsWith("/") && !value.startsWith("//");
@@ -224,6 +227,12 @@ export function Composer({ tab }: { tab: Tab }) {
 			tab.inputs.push(value);
 			set("");
 			return store.answerInWords(asked, value);
+		}
+		// In "Setup Pine" before any model answers, what is typed answers pine's own card, and is never sent.
+		if (value && setup.type(tab, value)) {
+			tab.inputs.push(value);
+			set("");
+			return;
 		}
 		await store.submit(tab, value, whenBusy);
 	};

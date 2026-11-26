@@ -161,6 +161,13 @@ export const ROOM = "(min-width: 64rem)";
 const MEDIA_KIND = (name: string): "image" | "video" | "audio" | undefined => (/\.(png|jpe?g|gif|webp)$/i.test(name) ? "image" : /\.(mp4|mov|webm|m4v)$/i.test(name) ? "video" : /\.(wav|mp3|m4a|ogg|flac|aiff?)$/i.test(name) ? "audio" : undefined);
 export const mediaKind = MEDIA_KIND;
 
+/**
+ * A request answered by picking one of its options, on the question card above the composer: an
+ * agent's question, or a request with choices (what a sign-in's flow asks to choose). Neither opens
+ * the approval dialog.
+ */
+export const isPick = (req: Approval): boolean => req.tool === "question" || Boolean(req.choices?.length);
+
 /** One tab: a conversation, the work of one task, or the event log. */
 export class Tab extends Model {
 	id = uid();
@@ -306,7 +313,7 @@ const worktreeNote = (made: WorktreeMade) =>
 export type UpdatePhase = { phase: "waiting" | "ready" | "downloading" | "link"; version: string; mine: string; url: string; reason?: string };
 
 /** `loading`: the dialog is open while what it lists is still asked for, and draws skeleton lines. */
-export type Picker = { title: string; loading?: boolean; items: Array<{ value: string; label: string; about?: string; tone?: Tone }>; current?: string; done: (value: string | undefined) => void; placeholder?: string; free?: boolean; /** With `free`: the text it starts with, and how much of it is selected (a file's name without its extension). */ initial?: string; selected?: number };
+export type Picker = { title: string; loading?: boolean; items: Array<{ value: string; label: string; about?: string; tone?: Tone; /** Not shown: more it is found by in the search (`narrow`). */ words?: string }>; current?: string; done: (value: string | undefined) => void; placeholder?: string; free?: boolean; /** With `free`: the text it starts with, and how much of it is selected (a file's name without its extension). */ initial?: string; selected?: number };
 
 /** The app as a whole. */
 export class Store extends Model {
@@ -2252,7 +2259,7 @@ export class Store extends Model {
 		tab.touch();
 		this.touch();
 		this.badge();
-		if (fresh && req.tool !== "question" ? tab === this.active && !this.asking && !this.picker && !this.publishing : false) this.ask(req.id);
+		if (fresh && !isPick(req) ? tab === this.active && !this.asking && !this.picker && !this.publishing : false) this.ask(req.id);
 		else if (tab === this.active) this.askNext();
 	}
 
@@ -2900,7 +2907,7 @@ export class Store extends Model {
 
 	/** The question of a conversation whose card is shown above its composer: the first that is open and not put off. */
 	openQuestion(tab: Tab): Of<"approval"> | undefined {
-		return [...tab.approvals.values()].find((a) => a.req.tool === "question" && !this.later.has(a.req.id));
+		return [...tab.approvals.values()].find((a) => isPick(a.req) && !this.later.has(a.req.id));
 	}
 
 	/**
@@ -2947,7 +2954,7 @@ export class Store extends Model {
 	askNext(): void {
 		if (this.asking || this.picker || this.publishing || !this.active) return;
 		// A question is answered from its card above the composer: it opens no dialog.
-		const next = [...this.active.approvals.values()].find((a) => a.req.tool !== "question" && !this.asked.has(a.req.id));
+		const next = [...this.active.approvals.values()].find((a) => !isPick(a.req) && !this.asked.has(a.req.id));
 		if (!next) return;
 		this.asking = next.req.id;
 		this.asked.add(next.req.id);
@@ -2957,7 +2964,8 @@ export class Store extends Model {
 	/** Bring what is asked to the owner: an approval's dialog, or a question's card above the composer. */
 	ask(id: string): void {
 		const tab = this.tabs.find((t) => t.approvals.has(id));
-		if (tab?.approvals.get(id)?.req.tool === "question") {
+		const item = tab?.approvals.get(id);
+		if (tab && item && isPick(item.req)) {
 			this.later.delete(id);
 			tab.touch();
 			return this.touch();
