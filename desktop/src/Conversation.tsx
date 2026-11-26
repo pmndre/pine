@@ -43,7 +43,7 @@ import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
 import { runs } from "./work-runs.ts";
-import { type Bookmark, type Item, type Part, type QuoteSource, quoteId, type SentQuote, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
+import { type Bookmark, isPick, type Item, type Part, type QuoteSource, quoteId, type SentQuote, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { childKind, clock, count, MODES, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
 import { sameSource } from "../../src/quotes.ts";
@@ -377,12 +377,12 @@ export function Entry({ entry, agent }: { entry: TranscriptEntry; agent: string 
 /**
  * A request of the agent's, in the conversation (Confirmation): while it is open, an Item with
  * what it wants and why and its buttons; once answered, a line again. What needs typing (a secret)
- * opens the dialog. A question is not drawn here while it is open: its card is above the composer
+ * opens the dialog. A question (or a sign-in's choice, `isPick`) is not drawn here while it is open: its card is above the composer
  * (`ComposerQuestion`), and it folds into a line here once answered.
  */
 function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
 	const { req, state } = item;
-	const question = req.tool === "question";
+	const question = isPick(req);
 	const typed = Boolean(req.inputs?.length);
 	if (question && (state === "allowed" || state === "denied")) return <QuestionTrace data-item="approval" data-state={state} question={req.summary} answer={item.answer} answered={state === "allowed"} by={item.by} />;
 	if (state !== "open") {
@@ -826,10 +826,10 @@ function StatusLine({ tab }: { tab: Tab }) {
 		</Marker>
 	);
 	// A question put off ("Later"), with no other card above the composer: this line brings it back, while the agent waits too.
-	const putOff = waiting.find((a) => a.req.tool === "question" && store.later.has(a.req.id));
+	const putOff = waiting.find((a) => isPick(a.req) && store.later.has(a.req.id));
 	if (putOff && !store.openQuestion(tab)) return line(<TriangleAlertIcon />, "A question waits for your answer.", <Button variant="outline" size="xs" onClick={() => store.ask(putOff.req.id)}>Open</Button>, true);
 	if (!tab.busy) {
-		if (waiting.length) return line(<TriangleAlertIcon />, waiting[0].req.tool === "question" ? "A question waits for your answer." : "A request waits for your approval.", <Button variant="outline" size="xs" onClick={() => store.ask(waiting[0].req.id)}>Open</Button>, true);
+		if (waiting.length) return line(<TriangleAlertIcon />, isPick(waiting[0].req) ? "A question waits for your answer." : "A request waits for your approval.", <Button variant="outline" size="xs" onClick={() => store.ask(waiting[0].req.id)}>Open</Button>, true);
 		if (swarm) return line(<UsersIcon />, `swarm · round ${swarm.round} of ${swarm.until} · ${swarm.checking ? "checking the answer" : "looking at the board"}`, <Button variant="outline" size="xs" onClick={() => void store.setSwarm(tab, "pause")}>Pause</Button>);
 		if (goal) return line(<TargetIcon />, `goal · round ${goal.round} of ${goal.until} · checking whether it is met`, <Button variant="outline" size="xs" onClick={() => void store.setGoal(tab, "pause")}>Pause</Button>);
 		if (elsewhere) return line(<TriangleAlertIcon />, `${elsewhere.agent} · ${elsewhere.session} waits for you.`, <Button variant="outline" size="xs" onClick={() => store.activate(elsewhere)}>Go there</Button>, true);
