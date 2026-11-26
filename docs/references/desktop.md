@@ -750,7 +750,9 @@ answers it offers, each with its number, its line that says what it means, and `
 first when one answer is asked for. A click, its digit or Space answers it at once, with no button to
 send it; the arrow keys move between the answers and `↩` gives the one they reached. A question with
 several answers (`multiSelect`) is answered by ticking (a click, a digit or Space) and **Send** (or
-`↩` on a ticked answer); none of its answers is marked `recommended`. The card takes
+`↩` on a ticked answer); none of its answers is marked `recommended`. In a short pane (a split
+view, a small window) the card takes what the conversation and the input leave and scrolls inside:
+the input stays in view and the conversation keeps a few lines above it. The card takes
 the keyboard when it appears only while the input is empty, so it never takes what you are typing.
 **No answer** tells the agent there is none, and it goes on with an assumption it names. **Later**
 puts the card away: the line above the input says that a question waits, and **Open** brings it

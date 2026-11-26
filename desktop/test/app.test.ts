@@ -1021,6 +1021,65 @@ test("a message typed while a question is open answers it in the owner's own wor
 	assert.equal(mock.state.requests.filter((q: any) => JSON.stringify(q.body.messages).includes("what is the difference?") && q.body.messages.at(-1)?.role === "user" && JSON.stringify(q.body.messages.at(-1)).includes("what is the difference?")).length, 0);
 });
 
+test("in a short pane a question card keeps the composer in view and typable: its options scroll inside it, and the thread above still has room", async () => {
+	const long = "A line that says at length what this option means, so that three of them take more room than a short pane has to give.";
+	const ask = { tools: [{ name: "question", args: { question: "Which plan?", options: [{ label: "small", description: long }, { label: "medium", description: long }, { label: "large", description: long }] } }] };
+	await page.fill("[data-slot=composer] textarea", mockMsg([ask, { text: "plan chosen" }], "pick a plan "));
+	await page.keyboard.press("Enter");
+	const card = "[data-slot=composer-question] [data-slot=question-card]";
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which plan?"), card, { timeout: 10_000 });
+	/** The pane's parts as the page lays them out: the thread's viewport, the card, its options' viewport, the composer's field. */
+	const measure = () => page.$eval(card, (el: Element) => {
+		const pane = el.closest("[data-slot=conversation]")!;
+		const rect = (e: Element | null | undefined) => (e ? e.getBoundingClientRect().toJSON() : null);
+		const field = pane.querySelector("[data-slot=composer] textarea")!;
+		const f = field.getBoundingClientRect();
+		const options = el.closest("[data-slot=composer-question]")?.querySelector("[data-slot=scroll-area-viewport]");
+		const thread = pane.querySelector("[data-slot=message-scroller-viewport]")!;
+		return {
+			pane: rect(pane), card: rect(el), field: rect(field), thread: thread.clientHeight,
+			options: options ? { rect: rect(options), scroll: options.scrollHeight, client: options.clientHeight } : null,
+			// What a click where one types reaches: the field, not a card laid over it.
+			hit: document.elementFromPoint(f.x + 16, f.y + f.height / 2) === field,
+		};
+	});
+	// A tall pane: the options are all there, nothing scrolls.
+	const tall = await measure();
+	assert.ok(tall.options && tall.options.scroll <= tall.options.client + 1, `the options scroll in a tall pane: ${JSON.stringify(tall)}`);
+	// A short pane, of about 300 pixels.
+	await page.setViewportSize({ width: 1280, height: 360 });
+	await page.waitForFunction((c: string) => (document.querySelector(c)?.closest("[data-slot=conversation]")?.getBoundingClientRect().height ?? 999) < 340, card, { timeout: 5000 });
+	try {
+		const short = await measure();
+		await shot("question-short-pane");
+		const p = short.pane!, f = short.field!;
+		assert.ok(f.top >= p.top && f.bottom <= p.bottom + 0.5 && f.height >= 16, `the composer is out of the pane: ${JSON.stringify(short)}`);
+		assert.ok(short.hit, `something lies over the composer: ${JSON.stringify(short)}`);
+		assert.ok(short.options && short.options.scroll > short.options.client, `the options do not scroll inside the card: ${JSON.stringify(short)}`);
+		assert.ok(short.thread >= 40, `the thread has no room left: ${JSON.stringify(short)}`);
+		// Keyboard focus on the last option brings it into view inside the card, which scrolls to it.
+		const last = () => page.$eval(card, (el: Element) => {
+			const viewport = el.closest("[data-slot=composer-question]")!.querySelector("[data-slot=scroll-area-viewport]")!;
+			const v = viewport.getBoundingClientRect();
+			const o = [...el.querySelectorAll("[data-slot=questionnaire-choice]")].at(-1)!.getBoundingClientRect();
+			return { shown: o.bottom > v.top + 1 && o.top < v.bottom - 1, top: viewport.scrollTop, v: v.toJSON(), o: o.toJSON() };
+		});
+		assert.equal((await last()).shown, false, "the last option is out of view at first");
+		await page.locator(card).getByRole("radio", { name: /large/ }).focus();
+		const seen = await last();
+		assert.ok(seen.shown && seen.top > 0, `the focused option is not in view: ${JSON.stringify(seen)}`);
+		// The composer takes what is typed while the card is open.
+		await page.click("[data-slot=composer] textarea");
+		await page.keyboard.type("hm");
+		assert.equal(await page.inputValue("[data-slot=composer] textarea"), "hm");
+		await page.fill("[data-slot=composer] textarea", "");
+	} finally {
+		await page.setViewportSize({ width: 1280, height: 820 });
+	}
+	await page.locator(card).getByRole("radio", { name: /medium/ }).click();
+	await sees("[data-slot=markdown] >> text=plan chosen");
+});
+
 test("a sign-in's choices are a question card answered by a pick; what it then asks to be typed opens the approval dialog", async () => {
 	// Amazon Bedrock's sign-in in pi asks first how to sign in (a select), then for a token (a secret).
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "sign_in", args: { provider: "amazon-bedrock", way: "key" } }] }, { text: "sign-in ended" }], "sign in to bedrock "));

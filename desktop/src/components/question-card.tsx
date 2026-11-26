@@ -41,6 +41,13 @@ export function QuestionTrace({ question, answer, answered, by, ...props }: Reac
 	);
 }
 
+/**
+ * Where a card above the composer sits: a stock `ScrollArea` with this class. In a short pane (a split
+ * view, a small window) it gets what the thread and the composer leave and scrolls inside, so that the
+ * composer is never pushed out of the pane; the column under the thread is a flex column down to it.
+ */
+export const COMPOSER_QUESTION = "mb-2 flex min-h-0 flex-col";
+
 /** One answer a question offers: a label, and a line that says what it means. */
 export interface QuestionCardOption {
 	label: string;

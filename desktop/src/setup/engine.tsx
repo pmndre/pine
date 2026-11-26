@@ -8,8 +8,9 @@
 // (`Setup.type`), and nothing is sent: there is nobody to send it to.
 import { CpuIcon } from "lucide-react";
 import { Fragment, useEffect } from "react";
-import { QuestionCard, QuestionCardHost, QuestionTrace, type ShownQuestionCard } from "@/components/question-card";
+import { COMPOSER_QUESTION, QuestionCard, QuestionCardHost, QuestionTrace, type ShownQuestionCard } from "@/components/question-card";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent } from "@/components/ui/message";
 import type { ModelServer, Provider } from "../api.ts";
@@ -256,9 +257,9 @@ export function SetupCard({ tab }: { tab: Tab }) {
 		);
 	}
 	return (
-		<div data-slot="composer-question" className="mb-2">
+		<ScrollArea data-slot="composer-question" className={COMPOSER_QUESTION}>
 			{/* Whichever step drew the card, what the owner types is matched against it (`setup.type`). */}
 			<QuestionCardHost.Provider value={setup.show}>{card}</QuestionCardHost.Provider>
-		</div>
+		</ScrollArea>
 	);
 }

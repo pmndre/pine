@@ -22,12 +22,13 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { Item as Card, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { QuestionCard, QuestionTrace } from "@/components/question-card";
+import { COMPOSER_QUESTION, QuestionCard, QuestionTrace } from "@/components/question-card";
 import { Kbd } from "@/components/ui/kbd";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller } from "@/components/ui/message-scroller";
 import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Toggle } from "@/components/ui/toggle";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { QuoteChip } from "@/components/quote-chip";
@@ -449,7 +450,7 @@ function ComposerQuestion({ tab }: { tab: Tab }) {
 	const field = document.activeElement;
 	const free = !field || field === document.body || (field instanceof HTMLTextAreaElement && Boolean(field.closest("[data-slot=composer]")) && !field.value.trim());
 	return (
-		<div data-slot="composer-question" className="mb-2">
+		<ScrollArea data-slot="composer-question" className={COMPOSER_QUESTION}>
 			<QuestionCard
 				key={req.id}
 				question={req.summary}
@@ -462,7 +463,7 @@ function ComposerQuestion({ tab }: { tab: Tab }) {
 				onNoAnswer={() => void store.decide(req.id, false)}
 				onLater={() => store.putOff(req.id)}
 			/>
-		</div>
+		</ScrollArea>
 	);
 }
 
@@ -1223,7 +1224,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 	const setupTab = chat && tab.session === SETUP && Boolean(store.agent(tab.agent)?.main);
 	const checkpoint = chat && !tab.busy ? lastOwnerMessage(tab.items) : -1;
 	return (
-		<div className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background text-sm">
+		<div data-slot="conversation" className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background text-sm">
 			<ConvHead tab={tab} />
 			{selected && chat && source ? (
 				<SelectionToolbar rect={selected.rect}>
@@ -1242,7 +1243,8 @@ export function Conversation({ tab }: { tab: Tab }) {
 					<QuoteJump tab={tab} root={scroller} />
 					<BookmarkJump tab={tab} root={scroller} />
 					<FollowSent sent={scroll === "follow" ? sent : undefined} />
-					<MessageScroller className="flex-1">
+					{/* However short the pane, the thread keeps a few lines of room above a card (`COMPOSER_QUESTION`). */}
+					<MessageScroller className="min-h-12 flex-1">
 						<MessageScrollerViewport ref={scroller} data-glide={glide ? "" : undefined} onScrollEnd={() => setGlide(false)} className="motion-safe:data-glide:scroll-smooth">
 							{/* The column of the conversation, under the head and above the input. */}
 							<MessageScrollerContent className={TRANSCRIPT} aria-busy={tab.busy}>
@@ -1291,8 +1293,8 @@ export function Conversation({ tab }: { tab: Tab }) {
 					</MessageScroller>
 				</MessageScrollerProvider>
 			)}
-			<div className="shrink-0 px-4 pb-4">
-				<div className="relative mx-auto max-w-3xl">
+			<div className="flex min-h-0 flex-col px-4 pb-4">
+				<div className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-col">
 					{/* An agent's question comes first; pine's own step in "Setup Pine" is there when none is open. */}
 					{chat ? store.openQuestion(tab) || !setupTab ? <ComposerQuestion tab={tab} /> : <SetupCard tab={tab} /> : null}
 					<StatusLine tab={tab} />
