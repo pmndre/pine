@@ -1,4 +1,4 @@
-# Configuration
+# Configuration files
 
 Everything pine needs is in its home directory: `~/.pine`, or `$PINE_HOME`, or `--home <dir>`.
 Most of it you never edit: agents change it through tool calls ([setup.md](setup.md)), the Pine

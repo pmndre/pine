@@ -1,4 +1,4 @@
-# The Android and iOS app
+# The phone app
 
 **Pine** for Android phones and tablets and for iPhones is the desktop app's page on a phone
 ([desktop.md](desktop.md)): the same agents, conversations, approvals, questions, code pane,

@@ -296,8 +296,7 @@ conversation can be undone.
 
 ## From a script
 
-The control API has all of it; the routes are listed in [operations.md](operations.md), "The
-control API". Those whose details are here:
+The control API has all of it; the routes are listed in [api.md](api.md). Those whose details are here:
 
 | Request | Purpose |
 |---|---|

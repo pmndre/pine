@@ -3,7 +3,7 @@ name: pine
 description: Run, configure and extend pine, the event-driven multi-agent daemon built on the pi coding agent SDK. Use when setting up agents and their workspaces, subscribing agents to event sources (Telegram, folders, MQTT, webhooks, FTP uploads, web addresses, commands, feeds, calendars, mail, Slack, Matrix, Discord, pushed streams, syslog, cameras, Modbus devices, serial ports, the computer itself), scheduling what happens at a time, adding MCP servers and skills, routing events to agents, reaching agents on Telegram, delegating between agents, letting sub-agents work through a board of tasks or an agent lead a job as a swarm, using pine from the Pine app (on a computer, a phone or in a web browser), reviewing what is protected against prompt injection, or changing pine's code.
 ---
 
-# pine
+# Introduction
 
 pine (PI neural engine) is one process that hosts several pi agent sessions and an event log.
 Event sources and schedules turn the outside world and the clock into events; subscriptions,
@@ -28,29 +28,61 @@ Three things to know first:
 
 ## Which file to read
 
-| You want to | Read |
+The manual in six parts. Each chapter is one file in `references/`.
+
+### Start here
+
+| Chapter | What it holds |
 |---|---|
-| See how events, tasks, sessions and what an agent is given fit together | [references/overview.md](references/overview.md) |
-| Chat in the terminal UI: tabs, slash commands, keys, modes, approvals | [references/tui.md](references/tui.md) |
-| Use the Pine app on a computer: window, code panel, settings, browser access for a phone or browser | [references/desktop.md](references/desktop.md) |
-| Write a view: your own script that draws pine in the Pine app's panel | [references/views.md](references/views.md) |
-| Use pine from an Android phone or an iPhone | [references/mobile.md](references/mobile.md) |
-| Use pine from a web browser with nothing installed; what the relay and the meeting service see, a deployment of your own | [references/web.md](references/web.md) |
-| Work on a project: a folder for a conversation, the code pane, programs left running, `/undo` | [references/coding.md](references/coding.md) |
-| Make a web page that works as a user interface for an agent | [references/interfaces.md](references/interfaces.md) |
-| Install, start, update, the CLI, the control API, problems | [references/operations.md](references/operations.md) |
-| Look up a key in `pine.json`, `agent.json`, `models.json` or `.env` | [references/configuration.md](references/configuration.md) |
-| Know what agents set up by tool call, for whom, and what you are asked | [references/setup.md](references/setup.md) |
-| Let sub-agents or several agents share one job on a board; a swarm | [references/boards.md](references/boards.md) |
-| Agents: workspace, persona, skills, sessions, delegation, sub-agents, goal mode | [references/agents.md](references/agents.md) |
-| Let an agent react to the outside world and reach out: sources and subscriptions | [references/sources.md](references/sources.md) |
-| Pick a source type for a service or device, with its options | [references/source-types.md](references/source-types.md) |
-| Schedules, routes, topics, typed questions, webhooks | [references/events.md](references/events.md) |
-| MCP servers; web search, page reading and the bundled browser | [references/mcp.md](references/mcp.md) |
-| Operate the apps on the computer: read a window, click, type | [references/computer.md](references/computer.md) |
-| The defences against prompt injection and their limits: sandbox, modes, approvals | [references/security.md](references/security.md) |
-| What pine runs on, which system programs it uses, what is not verified yet | [references/stack.md](references/stack.md) |
-| Change pine's code | [../AGENTS.md](../AGENTS.md) |
+| [How pine works](references/overview.md) | The picture: events, tasks, agents, conversations, trust |
+| [Install and run](references/operations.md) | Requirements, install, first start, choosing a model, updating, at login, in a container, problems |
+
+### Where you talk to pine
+
+| Chapter | What it holds |
+|---|---|
+| [The Pine app](references/desktop.md) | The app on a computer: window, tabs, code panel, settings, browser access for a phone or browser |
+| [Views for the Pine app](references/views.md) | A script of your own that draws all of pine in the app's panel |
+| [The terminal UI](references/tui.md) | Tabs, slash commands, keys, modes, approvals, pictures, dictation |
+| [The phone app](references/mobile.md) | pine on an Android phone or an iPhone, over SSH or paired with the Pine app |
+| [The web client](references/web.md) | pine in any browser with nothing installed; what the relay and the meeting service see |
+
+### Agents
+
+| Chapter | What it holds |
+|---|---|
+| [Agents](references/agents.md) | Workspace and files, persona, conversations, delegation, sub-agents, goal mode, skills |
+| [Teams of agents: boards and swarms](references/boards.md) | Sub-agents and agents sharing one job on a board; a swarm |
+| [Working on code](references/coding.md) | A folder or worktree for a conversation, the code pane, programs left running, `/undo` |
+| [MCP servers, web search and the browser](references/mcp.md) | Adding MCP servers; web search, page reading and the bundled browser |
+| [Operating apps on the computer](references/computer.md) | Read a window, click, type; who may, what is asked |
+
+### Reacting to the world
+
+| Chapter | What it holds |
+|---|---|
+| [Event sources and subscriptions](references/sources.md) | Watching something, subscribing, sending and reading through a source, secrets, trust |
+| [Source types](references/source-types.md) | Every type with its options and events, and which one fits a service or device |
+| [Schedules and routes](references/events.md) | Doing things at a time; rules on events, topics, typed questions, webhooks |
+| [Recipe: a page as an agent's control panel](references/interfaces.md) | A web page whose clicks wake an agent, and that the agent changes |
+
+### Setting pine up
+
+| Chapter | What it holds |
+|---|---|
+| [Setup by asking an agent](references/setup.md) | What agents set up by tool call, for whom, and what you are asked |
+| [Configuration files](references/configuration.md) | Every key of `pine.json`, `agent.json`, `models.json` and `.env` |
+| [Security and its limits](references/security.md) | The defences against prompt injection: sandbox, modes, approvals; what is not solved |
+
+### Reference
+
+| Chapter | What it holds |
+|---|---|
+| [Commands](references/commands.md) | Every `pine` command |
+| [Control API](references/api.md) | The HTTP API for scripts and programs of your own |
+| [Technology](references/stack.md) | What pine runs on, the system programs it uses, what is not verified yet |
+
+Changing pine's own code: [AGENTS.md](../AGENTS.md) and [docs/dev](dev/README.md).
 
 ## If you are an agent running inside pine
 

@@ -616,5 +616,4 @@ The description may have 1024 characters, the instructions 40 000. Files that go
 
 `pine status` shows what runs, `pine tasks --agent gonzo` an agent's tasks, `pine task <id>` one
 task in full (prompt, result, error, trust, turns, tokens, tools called, duration), and
-`pine events --topic "agent/#" -f` follows what agents do ([operations.md](operations.md),
-"Commands").
+`pine events --topic "agent/#" -f` follows what agents do ([commands.md](commands.md)).

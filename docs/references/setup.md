@@ -1,4 +1,4 @@
-# Changing the setup: tool calls, not files
+# Setup by asking an agent
 
 Agents never write pine's configuration. In every mode, bypass included, pine's home folder is
 closed to an agent's shell and file tools. What an agent may set up, it sets up by calling a

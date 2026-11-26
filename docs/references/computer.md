@@ -1,4 +1,4 @@
-# App control: operating the apps on the computer
+# Operating apps on the computer
 
 The bundled MCP server `computer` lets an agent use the apps on the computer pine runs on as a
 person does: open an app, read a window, press a button, fill in a field, pick from a menu,

@@ -1,4 +1,4 @@
-# MCP servers
+# MCP servers, web search and the browser
 
 pine decides which agent gets which MCP server.
 

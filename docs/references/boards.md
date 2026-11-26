@@ -1,4 +1,4 @@
-# Boards
+# Teams of agents: boards and swarms
 
 A board is a shared list of the tasks of one job that several work on: an agent and its
 sub-agents, or several agents. It is how agents on one project share what they found and avoid

@@ -1,4 +1,4 @@
-# Views
+# Views for the Pine app
 
 A view draws all of pine at a glance in the Pine app: the agents and what each works on, where
 work came from and who handed what to whom, sub-agents, the tools, MCP servers and skills in use,

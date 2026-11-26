@@ -96,12 +96,12 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["put my coding chats into folders so the list stays tidy", /^agents#groups-of-conversations/],
 		["group the okapi conversations together", /^(agents#groups-of-conversations|setup#conversations-and-tabs)/],
 		["delete a whole group with its conversations", /^(agents#groups-of-conversations|setup#conversations-and-tabs)/],
-		["start the daemon from a desktop app and get its token", /^operations#(a-ui-of-its-own|commands\/pine-service)/],
-		["how do I see which pine daemons are running on my computer", /^operations#commands($|\/pine-list)/],
-		["kill every pine process that is still running", /^operations#commands($|\/pine-killall)/],
-		["change a setting over the control api from a script", /^operations#(setting-pine-up-through-the-control-api|the-control-api)/],
-		["save a file from an editor through the daemon", /^(operations#setting-pine-up-through-the-control-api\/post-agents-id-view-write|security#3-the-sandbox|coding#from-a-script)/],
-		["sign in to a model provider from another program", /^operations#setting-pine-up-through-the-control-api/],
+		["start the daemon from a desktop app and get its token", /^commands($|#a-ui-of-its-own|#pine-service)/],
+		["how do I see which pine daemons are running on my computer", /^commands($|#pine-list)/],
+		["kill every pine process that is still running", /^commands($|#pine-killall)/],
+		["change a setting over the control api from a script", /^api($|#setting-pine-up-through-the-control-api)/],
+		["save a file from an editor through the daemon", /^(api#setting-pine-up-through-the-control-api\/post-agents-id-view-write|security#3-the-sandbox|coding#from-a-script)/],
+		["sign in to a model provider from another program", /^api#setting-pine-up-through-the-control-api/],
 		["I restarted my llama server with a bigger context window, how does pine know", /^setup#setting-up-a-model/],
 		["my server loaded another model but pine does not show it", /^(setup#setting-up-a-model|operations#problems)/],
 		["turn off thinking for one of my local models", /^(setup#setting-up-a-model|configuration#thinking-levels)/],
@@ -184,7 +184,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["try the beta before it is released", /^operations#trying-a-version-before-it-is-released/],
 		["use the app with pine running on my server over ssh", /^desktop#environments/],
 		["switch the window between the pine on my laptop and the one on a remote machine", /^desktop#environments/],
-		["open the terminal ui on the pine running on my server, from my laptop", /^(tui#the-pine-of-another-machine|operations#commands\/pine---ssh)/],
+		["open the terminal ui on the pine running on my server, from my laptop", /^(tui#the-pine-of-another-machine|commands#pine---ssh)/],
 		["voice input does not work on linux", /^tui#dictating-a-message/],
 		["how many tokens per second does my model make, and how fast does it process the prompt", /^tui#(how-fast-the-model-is|what-a-model-thinks)/],
 		["when I send a message the conversation jumps and my message goes to the top", /^(configuration#identity-and-model|setup#changing-and-removing-an-agent|desktop#)/],
@@ -198,7 +198,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["my owner wants to rename the books agent to ledger", /^setup#(renaming-an-agent|the-tools)/],
 		["what does an agent that delegates see about the other agent", /^agents#handing-work-to-another-agent/],
 		["change what an agent is for", /^setup#(changing-and-removing-an-agent|the-main-agent-administers-pine)/],
-		["update an agent's settings from the command line", /^(setup#(the-main-agent-administers-pine|changing-and-removing-an-agent)|operations#commands)/],
+		["update an agent's settings from the command line", /^(setup#(the-main-agent-administers-pine|changing-and-removing-an-agent)|commands)/],
 		["my owner was asked to let me read a folder although I never asked for it", /^(security#(when-a-call-needs-something-outside|modes-how-much-an-agent-does-without-asking)|operations#problems)/],
 		["ls says no such file for a folder in my owner's home that I wrote with ~", /^(security#when-a-call-needs-something-outside|operations#problems)/],
 		["a command was refused a file it did not name, what happens then", /^security#when-a-call-needs-something-outside/],
@@ -387,8 +387,8 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["skill single conversation location on disk", /^(setup#what-is-written|agents#)/],
 		["code pane open terminal columns beside conversation", /^coding#the-code-pane/],
 		["web address watch failed checks unreachable down up", /^source-types#http/],
-		["pine schedules list scheduled command", /^(operations#commands|events#ask-the-agent)/],
-		["shell command list every skill list scheduled tasks", /^operations#commands/],
+		["pine schedules list scheduled command", /^(commands|events#ask-the-agent)/],
+		["shell command list every skill list scheduled tasks", /^commands/],
 		["conversation removed renamed sources set up for one conversation", /^setup#(three-scopes|what-is-written|conversations-and-tabs)/],
 		["sub-agents helpers run at the same time default concurrency", /^(agents#sub-agents|configuration#working-with-other-agents)/],
 		["model runs agent no model named default model", /^configuration#/],
@@ -463,7 +463,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 	assert.match(showRead(long, ["long@2"]), /page 2 of 2\)[\s\S]*Paragraph 299 of a long part\.$/);
 	assert.match(showRead(manual, ["telegram"]), /^## source-types#telegram/, "the last piece of an id is enough when it is the only one");
 	assert.match(showRead(manual, ["source-types#telegramm"]), /"source-types#telegramm" is not a part of the manual\. Close to it: [^\n]*source-types#telegram/);
-	assert.match(manual.contents(), /^pine: pine\n[\s\S]*\nsources: Event sources and subscriptions\n    sources#a-first-example/);
+	assert.match(manual.contents(), /^pine: Introduction\n[\s\S]*\nsources: Event sources and subscriptions\n    sources#a-first-example/);
 });
 
 test("manual: every agent has it as a tool instead of a skill in its prompt, and pine manual is the same search in a shell", async () => {

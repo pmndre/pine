@@ -1,4 +1,4 @@
-# The desktop app
+# The Pine app
 
 **Pine** is pine's app with a window, for macOS, Linux and Windows. It does what the terminal UI
 does (conversations in tabs, the work of a turn, approvals, the code panel) and adds an editor for
@@ -135,7 +135,7 @@ the app made is ever removed or replaced.
 ## The daemon: started or reused
 
 The app starts pine itself: you do not have to start pine first. It asks `pine service`
-([operations.md](operations.md), "A UI of its own") for the daemon of your home:
+([commands.md](commands.md), "A UI of its own") for the daemon of your home:
 
 | What it finds | What happens |
 |---|---|
@@ -280,7 +280,7 @@ switch it on, the app contacts no service, announces nothing on the network and 
 | `Add a device` | Here, **Add a Device…** in the Pine menu (File elsewhere), `⇧⌘D`, the Dock's menu, or `device` in the palette. Shows a QR code, and Copy link for a computer without a camera. The code works once, for two minutes, until you close the dialog; New code makes another; five wrong codes close it |
 | `Allow` and `Refuse` | When a device asks, the app names it ("Chrome on Android") and shows four digits; the device shows the same four. Allow only if they match. The question is a toast at the top of the window wherever you are, and with the window behind others also a system notification. Refuse, two minutes without an answer, or a device that leaves keep nothing. A notification says each device that was added |
 | `Devices` | Each paired device, when it was paired and last connected, and "connected now" with how (same network, direct, or relayed through your relay server) |
-| `Remove` | Removes a paired phone, tablet or computer, so that it can no longer reach this computer: a connection it has is cut at once, and its key is refused from then on. To use it again, add it again |
+| `Remove` | Removes a paired phone, tablet or computer, so that it can no longer reach this Mac or PC: a connection it has is cut at once, and its key is refused from then on. To use it again, add it again |
 
 ### Without scanning a code
 
@@ -817,8 +817,8 @@ does, and the tools and boards they use ([views.md](views.md) says how it is lai
 
 ## Settings
 
-`⌘,` opens Settings in a tab (the same key puts it away). It is pine's configuration, changed by
-clicking. The daemon checks a change as it checks the main agent's (the same code), writes it,
+`⌘,` opens the settings panel in a tab (the same key puts it away). It is pine's configuration,
+changed by clicking. The daemon checks a change as it checks the main agent's (the same code), writes it,
 reads the configuration back, and undoes what does not load. Nothing asks you to confirm: the app
 is your own hand, like a `pine` command.
 

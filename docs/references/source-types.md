@@ -1,4 +1,4 @@
-# Source types: what each one watches, what it takes, what it is for
+# Source types
 
 The catalogue of source types: each type's options, events and fields, the services it reaches,
 and an entry to copy. What a source and a subscription are, the keys every source has, `when`,

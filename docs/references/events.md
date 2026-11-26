@@ -1,4 +1,4 @@
-# Events, routes and schedules
+# Schedules and routes
 
 > To let an agent react to a folder, a device or a web request, ask it, or configure a
 > [source](sources.md) and have the agent subscribe. To have it do something at a time, ask it

@@ -1,4 +1,4 @@
-# Security
+# Security and its limits
 
 pine runs models that read what strangers wrote and that can run commands. This page says what
 is defended, how, and what is left.
@@ -349,8 +349,9 @@ nothing else to set.
 | `bypass` | Off, like `auto` | Nothing |
 | `plan` | That of the mode the agent had before | Nothing, because nothing is done: a call that does not only look is refused ("Plan mode") |
 
-pine's home and program are closed in every mode. A run that an event from outside started
-works in the sandbox whatever the mode: it is never asked for more access, and what your
+pine's home and program are closed in every mode. A run that an event from outside started (a
+webhook, a message from a stranger, a source's report) works in the sandbox whatever the mode: you are
+never asked to give it more access, and what your
 `approve` list names, a critical action, or sending something out is still put to you.
 
 The same actions in each mode ("after outside content": after the conversation has read a web

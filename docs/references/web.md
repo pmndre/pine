@@ -1,4 +1,4 @@
-# The web client: pine from a browser
+# The web client
 
 The web client is the Pine app's page in a web browser, on any computer, with nothing to install:
 from a work laptop, a borrowed computer or a tablet. You open the address of a deployment and are

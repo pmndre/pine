@@ -207,27 +207,14 @@ pine will not transfer any information to other networked systems unless specifi
 
 ## Documentation
 
-Start at [docs/SKILL.md](docs/SKILL.md); it indexes everything.
+Start at [docs/SKILL.md](docs/SKILL.md), the manual's index. The Pine app shows the same manual in its Manual tab.
 
-| To do this                                                                              | Read                                                         |
-| --------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Understand how the pieces fit                                                           | [overview.md](docs/references/overview.md)                   |
-| Use the terminal UI                                                                     | [tui.md](docs/references/tui.md)                             |
-| Use the desktop app (macOS, Linux, Windows): conversations, an editor, and a settings panel in one window; browser access for a phone paired by QR code or found on the same network, with a relay server (TURN) of your own where mobile data cannot connect directly | [desktop.md](docs/references/desktop.md)                     |
-| Write a view: a script of your own that draws all of pine in the Pine app's panel, what it is told and what it cannot do | [views.md](docs/references/views.md) |
-| Use pine from an Android phone or an iPhone, over SSH or paired with the Pine app by QR code or on the same network | [mobile.md](docs/references/mobile.md)                       |
-| Use your pine from a web browser on any computer, over SSH or paired with the Pine app by QR code, with nothing installed | [web.md](docs/references/web.md)                             |
-| Work on a project: `pine .`, the code pane with git changes, files and tool output, `/undo` | [coding.md](docs/references/coding.md)                       |
-| Let an agent make a web page you click in, as its user interface, and be woken by what you press | [interfaces.md](docs/references/interfaces.md)               |
-| Install, run, use the CLI, run it as a service                                          | [operations.md](docs/references/operations.md)               |
-| Write `pine.json` and `agent.json`                                                      | [configuration.md](docs/references/configuration.md)         |
-| Let agents set things up by tool call instead of editing files                          | [setup.md](docs/references/setup.md)                         |
-| Set up agents, delegation and sub-agents; how tools are declared and what stays cached   | [agents.md](docs/references/agents.md)                       |
-| Let sub-agents and agents work through shared tasks on a board, run a pool of sub-agents, and lead a job as a swarm (`/swarm`) | [boards.md](docs/references/boards.md)                       |
-| Route events, schedules, model calls                                                    | [events.md](docs/references/events.md)                       |
-| Event sources: setting one up, subscribing, sending, secrets, trust                     | [sources.md](docs/references/sources.md)                     |
-| Every source type: Telegram, folders, MQTT, web addresses, feeds, mail, Slack, cameras  | [source-types.md](docs/references/source-types.md)           |
-| MCP servers, web search, command tools                                                  | [mcp.md](docs/references/mcp.md)                             |
-| Let an agent operate the apps on your Mac                                               | [computer.md](docs/references/computer.md)                   |
-| Know what is protected and what is not                                                  | [security.md](docs/references/security.md)                   |
-| Work on pine itself                                                                     | [AGENTS.md](AGENTS.md), [docs/dev](docs/dev/README.md)       |
+| Part | Chapters |
+| --- | --- |
+| Start here | [How pine works](docs/references/overview.md), [Install and run](docs/references/operations.md) |
+| Where you talk to pine | [The Pine app](docs/references/desktop.md), [Views for the Pine app](docs/references/views.md), [The terminal UI](docs/references/tui.md), [The phone app](docs/references/mobile.md), [The web client](docs/references/web.md) |
+| Agents | [Agents](docs/references/agents.md), [Teams of agents: boards and swarms](docs/references/boards.md), [Working on code](docs/references/coding.md), [MCP servers, web search and the browser](docs/references/mcp.md), [Operating apps on the computer](docs/references/computer.md) |
+| Reacting to the world | [Event sources and subscriptions](docs/references/sources.md), [Source types](docs/references/source-types.md), [Schedules and routes](docs/references/events.md), [Recipe: a page as an agent's control panel](docs/references/interfaces.md) |
+| Setting pine up | [Setup by asking an agent](docs/references/setup.md), [Configuration files](docs/references/configuration.md), [Security and its limits](docs/references/security.md) |
+| Reference | [Commands](docs/references/commands.md), [Control API](docs/references/api.md), [Technology](docs/references/stack.md) |
+| Working on pine itself | [AGENTS.md](AGENTS.md), [docs/dev](docs/dev/README.md) |

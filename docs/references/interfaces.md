@@ -1,4 +1,4 @@
-# A page as a user interface
+# Recipe: a page as an agent's control panel
 
 An agent can make a web page for its owner to use: a board to play on, buttons and switches
 for the lights, a form, a dashboard. The owner sees the page in the agent's browser and clicks
