@@ -417,6 +417,19 @@ export interface ModelServer {
 	runs?: number;
 }
 
+/** A model server that answered on one of the usual ports of this computer (`GET /models/local`). */
+export interface LocalServer {
+	/** The name it is added under. */
+	id: string;
+	title: string;
+	url: string;
+	/** It wants a key. */
+	locked: boolean;
+	models: string[];
+	/** Pinecone's MCP server, which answered beside it. */
+	mcp?: string;
+}
+
 export interface Provider {
 	id: string;
 	name?: string;
@@ -618,6 +631,8 @@ export const api = {
 	removeMcp: (name: string, agent?: string) => post<{ ok: boolean }>("/mcp", { name, agent, remove: true }),
 	mcpLogin: (name: string, agent?: string) => post<{ code: number; out: string }>("/mcp/login", { name, agent }),
 	modelServers: () => get<ModelServer[]>("/models/servers"),
+	/** The model servers on the usual ports of this computer, asked by the daemon. */
+	localServers: () => get<{ found: LocalServer[] }>("/models/local"),
 	addModelServer: (body: { name: string; url: string; key?: string; context?: number }) => post<{ models: string[]; chosen?: string }>("/models/servers", body),
 	/** How many runs a model takes at a time: a number, or `null` for pine's own limit. */
 	limitModel: (name: string, model: string, limit: number | null) => post<{ name: string; model: string; limit?: number; runs: number }>("/models/servers/limit", { name, model, limit }),

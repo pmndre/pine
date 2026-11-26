@@ -211,6 +211,25 @@ no stored key can be pointed at another address. You can do the same yourself wi
 `pine model add <name> <address>` ([operations.md](operations.md)); what is written is described
 in [configuration.md](configuration.md), "models.json".
 
+### A model server on this computer
+
+Before any model answers, the Pine app's **Setup Pine** offers **A model on this computer**
+([desktop.md](desktop.md)): pine looks for model servers on this computer and offers what it
+finds, so that you type no address. It asks the control API's `GET /models/local`, which asks the
+usual ports of this computer, and only those, what they serve:
+
+| Port | Offered as |
+|---|---|
+| 8080 | **llama.cpp**, or **Pinecone** when Pinecone's MCP server answers on 8090 too (`http://127.0.0.1:8090/mcp`) |
+| 11434 | **Ollama** |
+| 1234 | **LM Studio** |
+
+Only `127.0.0.1` on those ports is asked, never an address somebody gave and never pine's own
+control port; nothing is added by looking. Picking a server adds it as above (its key, if it
+wants one, typed into a secret field of the card, which goes into `.env`). Picking **Pinecone**
+adds its model server as `pinecone` and its MCP server, also named `pinecone`, for all agents.
+Nothing is installed: Pinecone is set up by you, or by the main agent once a model answers.
+
 ## Setting up a model
 
 What pine knows about a model of a server of your own, it took from the server when the server
