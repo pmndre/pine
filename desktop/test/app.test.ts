@@ -1020,6 +1020,36 @@ test("a message typed while a question is open answers it in the owner's own wor
 	assert.equal(mock.state.requests.filter((q: any) => JSON.stringify(q.body.messages).includes("what is the difference?") && q.body.messages.at(-1)?.role === "user" && JSON.stringify(q.body.messages.at(-1)).includes("what is the difference?")).length, 0);
 });
 
+test("a sign-in's choices are a question card answered by a pick; what it then asks to be typed opens the approval dialog", async () => {
+	// Amazon Bedrock's sign-in in pi asks first how to sign in (a select), then for a token (a secret).
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "sign_in", args: { provider: "amazon-bedrock", way: "key" } }] }, { text: "sign-in ended" }], "sign in to bedrock "));
+	await page.keyboard.press("Enter");
+	// The sign-in itself is put to the owner first, in the approval dialog as before.
+	const dialog = "role=dialog[name=/^Approval needed/]";
+	await sees(dialog);
+	await page.locator(dialog).getByRole("button", { name: /^Allow/ }).click();
+	// The flow's choice is a question card above the composer, with the flow's options, and no dialog opens.
+	const card = "[data-slot=composer-question] [data-slot=question-card]";
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Bedrock authentication method"), card, { timeout: 10_000 });
+	assert.equal(await page.locator(dialog).count(), 0, "no dialog opens for a sign-in's choice");
+	assert.match(await page.textContent(card), /Bearer token[\s\S]*AWS profile[\s\S]*Existing AWS credential chain/);
+	assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0, "the open choice is not drawn in the conversation as well");
+	await shot("03-sign-in-choice");
+	// A click answers it, and the card folds into a line that says what was picked.
+	await page.locator(card).getByRole("option", { name: /Bearer token/ }).click();
+	await page.waitForSelector(card, { state: "detached" });
+	await sees('[data-item="approval"][data-state="allowed"] >> text=/Bearer token/');
+	// The token the flow asks next is typed: that request has only a field, and opens the approval dialog.
+	const typed = "role=dialog[name=/^Approval needed, and something only you have/]";
+	await sees(typed);
+	assert.match(await page.textContent(typed), /bearer token/i);
+	assert.equal(await page.locator(card).count(), 0);
+	await page.locator(typed).getByRole("button", { name: "Deny" }).click();
+	await page.locator(dialog).waitFor({ state: "detached" });
+	await sees("[data-slot=markdown] >> text=sign-in ended");
+	assert.match(JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "tool")), /not signed in/);
+});
+
 test("a folder is opened for a conversation: changes, and a file edited and saved", async () => {
 	// As the system does it when a folder is dropped on the app's icon.
 	await app.evaluate(({ BrowserWindow }: any, dir: string) => BrowserWindow.getAllWindows()[0].webContents.send("pine:menu", `folder:${dir}`), folder);

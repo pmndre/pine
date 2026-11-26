@@ -206,7 +206,9 @@ export function Composer({ tab }: { tab: Tab }) {
 		});
 	};
 
-	const asked = store.openQuestion(tab);
+	// A sign-in's choice is answered by its options alone: words of the owner's would mean nothing to its flow.
+	const open = store.openQuestion(tab);
+	const asked = open?.req.tool === "question" ? open : undefined;
 	const send = async (whenBusy: "steer" | "queue") => {
 		const value = text.trim();
 		const command = value.startsWith("/") && !value.startsWith("//");

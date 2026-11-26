@@ -754,6 +754,13 @@ and may ask again. A `/command` stays a command. Once answered, the card folds i
 conversation that says what was asked and what you answered. An approval (a permission) still opens
 its dialog. With no question open, the input sends as before (into the work, or after it).
 
+A sign-in that asks you to choose (the main agent's `sign_in`, when a provider's flow offers ways to
+sign in, such as Amazon Bedrock's "Bearer token" or "AWS profile") is the same card, with the flow's
+choices as its answers, picked by a click, a digit or the arrow keys and `↩`. **No answer** stops the
+sign-in. It takes no answer in your own words: what you send from the input while it is open goes to
+the conversation as usual. What the sign-in then asks you to type (a key, a profile name) opens the
+approval dialog with its field, as before.
+
 ### What the app adds
 
 | | |
