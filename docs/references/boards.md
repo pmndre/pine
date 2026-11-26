@@ -1,5 +1,7 @@
 # Teams of agents: boards and swarms
 
+How sub-agents and agents share one job: boards, pools, checks and swarms.
+
 A board is a shared list of the tasks of one job that several work on: an agent and its
 sub-agents, or several agents. It is how agents on one project share what they found and avoid
 doing the same thing twice: who does what, what came of each task, what one could not decide.
@@ -14,7 +16,7 @@ Whoever gives out the work stays in charge. The agents on a board do not talk to
 does its task and reports; the conversation that started them (or you) answers questions and
 decides what comes next.
 
-## What a board is, and what it is not
+## When to use a board
 
 Plain `subagent` with a few clear tasks needs no board. A board is for what tasks written
 beforehand cannot do:
@@ -123,8 +125,8 @@ the task's result, whether or not it ever mentions the board.
 - A sub-agent that fails leaves its task `failed`; what waits for it is never started. One that is
   stopped leaves its task open.
 - A sub-agent the model server refused for now (rate limit, overload, dropped connection) did not
-  fail: the task is given out again after a few seconds, twice at most, without a turn of the
-  agent. An account limit (quota, balance) is not retried.
+  fail: the task is given out again (see "Limits"), without a turn of the agent. An account limit
+  (quota, balance) is not retried.
 - A task you add in the Board tab while the pool runs is worked like the others; one you take back
   goes to a new sub-agent; one you remove stops its sub-agent. Your answer to a question there
   counts like the agent's.
@@ -253,7 +255,7 @@ the board each time the lead ends a turn:
 | The check passed | The swarm is done. |
 | The check failed | Calls the lead with the check's number. The lead reads what was found, corrects it or hands work out again, and answers in full again; that answer is checked once more. If the second check fails too, the swarm ends, naming the task that says what was still found. |
 
-No model decides whether the job is done: the board does. The check reads the answer you get,
+Whether the job is done is decided by the board, not by a model. The check reads the answer you get,
 against what you asked and what was left (files, numbers), so it also catches a name left out or a
 number copied wrong while the pieces were put together. It fails only for what can be pointed at.
 It runs on the agent's own model unless `defaults.checker` in `pine.json` names another (the main
@@ -284,7 +286,7 @@ agree on) and do none of the pieces itself, and to answer in full. While a swarm
 
 Only you start a swarm: there is no tool for it, so an agent cannot start one or give itself more
 rounds. If your owner asks you, as an agent, to "swarm" something, tell them to type `/swarm` with
-the job. Other programs use `POST /agents/<id>/swarm` ([operations.md](operations.md)).
+the job. Other programs use `POST /agents/<id>/swarm` ([api.md](api.md)).
 
 ## When a pool pays, and what it costs
 
@@ -292,13 +294,7 @@ What boards cost when unused: about 1 000 tokens per request for the tools' decl
 sub-agent gets about 150 tokens with its task. A question costs the agent a turn; `check` one
 sub-agent per task; `verify` one sub-agent; a swarm's check one sub-agent (and a turn of the lead
 only when it found something). A swarm costs more than one agent doing the job: every sub-agent
-reads its task and the files anew.
-
-In pine's own tests on a small model, boards changed nothing on jobs one agent can do. On jobs
-with many pieces a pool got every piece right where calls of four missed some, in about half the
-time and a tenth of the calls, for no more money. A swarm's check caught most slips in answers;
-a check on the same model missed what that model misread every time, and another model as checker
-caught it.
+reads its task and the files anew. On a job one agent can do, a board adds nothing.
 
 So:
 
@@ -359,14 +355,14 @@ A route that wakes an agent when somebody posts a task ([events.md](events.md)):
   mode on any board, and on a shared board asks you in every mode.
 - **Files.** A board holds text and opens no folder.
 
-What is on a board is information, not instructions, and the tools say so. That is a sentence to a
-model, not a wall, which is why a task from a marked run marks whoever takes it.
+What is on a board is information, not instructions, and the tools say so. Since a model may still
+follow it, a task from a marked run marks whoever takes it.
 
 ## Limits
 
 | What | Limit |
 |---|---|
-| A task's text, a result | 4000 characters. A pool call with a longer task is refused (put what all share into `note`, long text into a file); a longer result is cut and says so. A swarm's check of the answer holds the answer whole up to 12 000 characters, else its first and last 6 000 |
+| A task's text, a result | 4000 characters. A pool call with a longer task is refused (put what all share into `note`, long text into a file); a longer result is cut and says so |
 | A note | 2000 characters. A pool call's `note`: 8000, shown whole; longer is refused |
 | Posts on one board | 500. Remove what is finished (`board_remove` with an `id`) or use a new board |
 | Boards | 200. Remove finished ones (`board_remove`, or the Board tab) |
@@ -379,7 +375,7 @@ model, not a wall, which is why a task from a marked run marks whoever takes it.
 
 ## From the control API
 
-The owner's own hand, with the token ([operations.md](operations.md)): every board is yours to read,
+The owner's own hand, with the token ([api.md](api.md)): every board is yours to read,
 and what you post is yours.
 
 | Endpoint | What it does |
@@ -391,8 +387,18 @@ and what you post is yours.
 | `POST /boards/<id>/post` `{ text, kind?, after?, on? }` | The same on a board by its number |
 | `POST /boards/items/<n>` `{ action, text? }` | `reopen` a task so it can be taken again; `answer` a blocked task with `text`; `done` with `text` settles it by hand; `remove` a task or note. A pool's sub-agent on that task is stopped |
 | `POST /boards/<id>/remove` | Removes a board with everything on it, stopping a pool's sub-agents on it |
-| `GET /agents/<id>/swarm?session=`, `POST /agents/<id>/swarm` `{ session, objective }` or `{ session, action }` | A swarm: where it stands, start one, or `pause`, `resume`, `clear` ([operations.md](operations.md)) |
+| `GET /agents/<id>/swarm?session=`, `POST /agents/<id>/swarm` `{ session, objective }` or `{ session, action }` | A swarm: where it stands, start one, or `pause`, `resume`, `clear` ([api.md](api.md)) |
 
 A running UI is told on `pine/board` which board and post changed (`board`, `scope`, `agent`,
 `session`, `name`, `change`, `item`, `kind`, a task's `state`), never what it says; that event is
 not kept.
+
+## Problems
+
+| What you see | What to do |
+|---|---|
+| A task is never started | It waits (`after`, or a later stage) for a task that failed. Reopen or remove the failed one, or post the work again |
+| A pool call is refused | A task is over 4000 characters, or the `note` over 8000. Put what all share into `note` and long text into a file |
+| An agent works on a board of its own instead of the shared one | The shared board was not there when it looked. Whoever hands out a board's tasks makes the board first ("Which boards there are") |
+| A board takes no more posts | It holds 500. Remove finished tasks (`board_remove` with an `id`) or use a new board |
+| A swarm stopped with work left | It used its `limits.swarmRounds`: `/swarm resume` |

@@ -1,41 +1,9 @@
 # MCP servers, web search and the browser
 
-pine decides which agent gets which MCP server.
-
-## How the agent sees a server
-
-In your own conversations a server is one tool
-named after it (`-` becomes `_`; a name of one of pine's own tools gets `mcp_` in front: `manual`
-is `mcp_manual`), and each of its tools is an action of it. The bundled `web` server's tools stay
-tools of their own (`mcp__web__search`, `mcp__web__fetch`). Every tool also has a full name,
-`mcp__<server>__<tool>`, which runs started from outside use and `approve` patterns match. The
-tool's description carries the usage notes (instructions) the server sends when it connects, the
-first 2048 characters, so the agent uses the server as its authors meant. Telegram and MQTT are not MCP servers but sources that send
-([sources.md](sources.md), "Sending through a source").
-
-## Global and per agent
-
-```json
-"mcp": {
-  "web":     { "pine": "web", "agents": ["scout"] },
-  "calendar": { "command": "npx", "args": ["-y", "some-calendar-mcp"], "env": { "TOKEN": "${CALENDAR_TOKEN}" } },
-  "docs":    { "url": "https://mcp.example.com/mcp", "headers": { "Authorization": "Bearer ${DOCS_TOKEN}" }, "agents": ["main", "gonzo"] }
-}
-```
-
-In `pine.json` for everyone; the same `mcp` key in an `agent.json` for that agent.
-
-| Setting | Effect |
-|---|---|
-| `agents` on a global server | Which agents get it. Default: all (`["*"]`). |
-| `globalMcp: true` in `agent.json` (default) | The agent gets every global server that includes it. |
-| `globalMcp: false` | No global servers. |
-| `globalMcp: ["web"]` | Exactly these global servers, whatever their `agents` list says. |
-| A server in `agent.json` with a global server's name | Replaces the global one for this agent (unless it has `"enabled": false`: then the global one stays). |
-| `"enabled": false` | Switches a server off without deleting it. |
-
-`pine check` prints each agent's list. Servers of your own interactive pi (its `mcp.json`) do not
-reach pine's agents.
+An MCP server gives agents the tools of another program or service. This chapter covers adding
+one, deciding which agent gets it, signing in, and the four servers pine brings: `web` (search
+and page reading), `commands` (fixed commands as tools), `browser` (a real browser) and
+`computer` (the apps on this computer).
 
 ## Adding a server
 
@@ -43,14 +11,14 @@ reach pine's agents.
 MCP server". The agent calls `add_mcp_server` with the URL, or for a local server the command
 (`npx -y @example/mcp@latest`), and you confirm in every mode. By default it is for this
 conversation only (removed with it); "for you as an agent" makes it the agent's; "all agents"
-only the main agent can add or remove. It works without a restart: pine calls the agent again by
-itself when the turn that added it ends, with the new tools.
+only the main agent can add or remove. It works without a restart: when the turn that added it
+ends, pine calls the agent again with the new tools.
 
-A server added in one conversation is missing in the others: `/mcp`, `pine mcp list` and the
-agent's `mcp_servers` tool say so, and `mcp_servers` says whether each server's tools are there
-(missing: it did not start, or needs a sign-in). "Add it for yourself as an agent" moves it to
-the agent scope (you confirm, and type any key again). `remove_mcp_server` takes one out; the main
-agent signs in to a remote server with `sign_in_mcp_server`. See [setup.md](setup.md).
+A server added in one conversation is missing in the others. `/mcp`, `pine mcp list` and the
+agent's `mcp_servers` tool say where each server is, and `mcp_servers` says whether its tools are
+there (missing: it did not start, or needs a sign-in). "Add it for yourself as an agent" moves it
+to the agent scope (you confirm, and type any key again). `remove_mcp_server` takes one out; the
+main agent signs in to a remote server with `sign_in_mcp_server`. See [setup.md](setup.md).
 
 A **local server an agent adds** runs where that agent's commands run (`"sandboxed": true`): in
 the sandbox in `safe` or `manual` mode (no local server at all where the machine has no sandbox),
@@ -78,7 +46,8 @@ Options of `add`: `--agent <id>`, `--taints`, `--approve always|tainted`, `--tim
 `--description "..."`, `--exposure direct|codemode|deferred|hidden`. A remote server needs https
 (http only on `localhost`, `127.0.0.1`, `[::1]`). A running daemon applies it at once.
 
-**By hand.** Edit the file, run `pine check`, restart.
+**By hand.** Edit the file ([Global and per agent](#global-and-per-agent)), run `pine check`,
+restart.
 
 ## Signing in (OAuth)
 
@@ -89,6 +58,30 @@ tokens are kept in `data/pi/mcp-auth.json` (closed to agents) and refreshed. `pi
 (`clientId`, `clientSecret`, `callbackPort`, `clientName`, `clientRegistration`; pi's
 `docs/mcp.md`). A server with a fixed token needs no sign-in: `"headers": { "Authorization":
 "Bearer ${TOKEN}" }`.
+
+## Global and per agent
+
+```json
+"mcp": {
+  "web":     { "pine": "web", "agents": ["scout"] },
+  "calendar": { "command": "npx", "args": ["-y", "some-calendar-mcp"], "env": { "TOKEN": "${CALENDAR_TOKEN}" } },
+  "docs":    { "url": "https://mcp.example.com/mcp", "headers": { "Authorization": "Bearer ${DOCS_TOKEN}" }, "agents": ["main", "gonzo"] }
+}
+```
+
+In `pine.json` for everyone; the same `mcp` key in an `agent.json` for that agent.
+
+| Setting | Effect |
+|---|---|
+| `agents` on a global server | Which agents get it. Default: all (`["*"]`). |
+| `globalMcp: true` in `agent.json` (default) | The agent gets every global server that includes it. |
+| `globalMcp: false` | No global servers. |
+| `globalMcp: ["web"]` | Exactly these global servers, whatever their `agents` list says. |
+| A server in `agent.json` with a global server's name | Replaces the global one for this agent (unless it has `"enabled": false`: then the global one stays). |
+| `"enabled": false` | Switches a server off without deleting it. |
+
+`pine check` prints each agent's list. The servers in your own pi's `mcp.json` do not reach
+pine's agents.
 
 ## Server entries
 
@@ -109,6 +102,19 @@ tokens are kept in `data/pi/mcp-auth.json` (closed to agents) and refreshed. `pi
 A tool the server declares read-only (`readOnlyHint`) is never asked about (unless `"approve":
 "always"`) and is the only MCP tool that runs in plan mode. How approvals work:
 [security.md](security.md), "4. Taint and approvals".
+
+## How the agent sees a server
+
+In your own conversations a server is one tool named after it (`-` becomes `_`; a name of one of
+pine's own tools gets `mcp_` in front: `manual` is `mcp_manual`), and each of its tools is an
+action of it. The bundled `web` server's tools stay tools of their own (`mcp__web__search`,
+`mcp__web__fetch`). Every tool also has a full name, `mcp__<server>__<tool>`, which runs started
+from outside use and `approve` patterns match. The tool's description carries the usage notes
+(instructions) the server sends when it connects, up to 2048 characters, so the agent uses the
+server as its authors meant.
+
+Telegram and MQTT are not MCP servers but sources that send ([sources.md](sources.md), "Sending
+through a source").
 
 ## Files and pictures from a remote server
 
@@ -148,8 +154,8 @@ Search and page reading without a browser.
 | `userAgent` | a desktop Safari | What it says it is. |
 
 Only http and https; every redirect is checked; loopback, private and link-local addresses are
-refused when it connects. Give `web` and `browser` to an agent with nothing private and let the
-others delegate ([security.md](security.md)).
+refused. Give `web` and `browser` to an agent with nothing private and let the others delegate
+([security.md](security.md)).
 
 ## Bundled: commands
 
@@ -193,6 +199,24 @@ A real browser for JavaScript, clicks, forms and logins: Playwright's MCP server
 `..._console_messages`. A snapshot is a text outline whose references the click and type tools
 take (cut at 24,000 characters; `browser_find` searches longer pages).
 
+| Option | Default | Meaning |
+|---|---|---|
+| `headed` | `false` | A window from the start, in every conversation. |
+| `profile` | none | A folder that keeps cookies and logins. Treat it like a password. |
+| `images` | `true` | `false`: screenshots without the picture, for a model that cannot see. |
+| `tools` | `"core"` | The sixteen tools above; `"all"`: everything not blocked; or a list. |
+| `block` | `[]` | Further tools to withhold. |
+| `allowHosts`, `denyHosts` | none | Where it may go, subdomains included. |
+| `allowPrivate` | `false` | Every local address without asking. Leave it off ("Local addresses"). |
+| `browser` | `chromium` | `chrome` or `msedge`: an installed browser. |
+| `executablePath`, `viewport`, `caps`, `extraArgs` | | Passed to Playwright MCP. `"caps": "storage"` with `"tools": "all"` adds the cookie tools. |
+
+The guard sends every request through a proxy that refuses loopback, private and link-local
+addresses (except one you allowed), switches off WebRTC and QUIC outside it, blocks `file:`,
+runs parallel calls one after another, and always withholds `browser_run_code_unsafe`,
+`browser_file_upload`, `browser_drop`, `browser_install`, `browser_storage_state` and
+`browser_set_storage_state`.
+
 ### Seeing the browser, and logging in yourself
 
 The browser has no window. When you want to watch, or a page needs you (a login, a captcha, a
@@ -212,24 +236,6 @@ payment), ask the agent to show it:
 - Your logins are the agent's too: until a restart or reset, or kept with `profile`.
 - Not for a run started from outside; no window without a screen.
 - `"block": ["browser_show", "browser_hide"]` removes them; `"headed": true` always has a window.
-
-| Option | Default | Meaning |
-|---|---|---|
-| `headed` | `false` | A window from the start, in every conversation. |
-| `profile` | none | A folder that keeps cookies and logins. Treat it like a password. |
-| `images` | `true` | `false`: screenshots without the picture, for a model that cannot see. |
-| `tools` | `"core"` | The sixteen tools above; `"all"`: everything not blocked; or a list. |
-| `block` | `[]` | Further tools to withhold. |
-| `allowHosts`, `denyHosts` | none | Where it may go, subdomains included. |
-| `allowPrivate` | `false` | Every local address without asking. Leave it off ("Local addresses"). |
-| `browser` | `chromium` | `chrome` or `msedge`: an installed browser. |
-| `executablePath`, `viewport`, `caps`, `extraArgs` | | Passed to Playwright MCP. `"caps": "storage"` with `"tools": "all"` adds the cookie tools. |
-
-The guard sends every request through a proxy that refuses loopback, private and link-local
-addresses (except one you allowed), switches off WebRTC and QUIC outside it, blocks `file:`,
-runs parallel calls one after another, and always withholds `browser_run_code_unsafe`,
-`browser_file_upload`, `browser_drop`, `browser_install`, `browser_storage_state` and
-`browser_set_storage_state`.
 
 ### Local addresses
 

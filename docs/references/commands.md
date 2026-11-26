@@ -1,6 +1,7 @@
 # Commands
 
-Every `pine` command. How to install and start pine: [operations.md](operations.md).
+Every `pine` command, which of them need a running daemon, and how a program of its own gets one.
+How to install and start pine: [operations.md](operations.md).
 
 Every command takes `--home <dir>` (default `$PINE_HOME` or `~/.pine`).
 
@@ -10,10 +11,10 @@ Every command takes `--home <dir>` (default `$PINE_HOME` or `~/.pine`).
 | `pine .`, `pine <folder>` | The terminal UI with a tab for a conversation of the main agent in that folder (the one from last time, if any). A word that is a command stays a command. See [coding.md](coding.md) |
 | `pine --ssh <host> [folder]` | The terminal UI on another machine's pine, over SSH; the folder is one there. See [tui.md](tui.md#the-pine-of-another-machine) |
 | `pine <folder> --worktree [name]` | A new conversation in a worktree of that folder's git repository, on a branch `pine/<name>`. See [coding.md](coding.md#a-worktree-for-a-conversation) |
-| `pine login <provider>`, `pine logout <provider>` | Sign in to a model provider, or out. `--api-key` or `--oauth` choose the kind. `pine login typesafe` is for decision models ([configuration.md](configuration.md), "Decision models") |
-| `pine model add <name> <address>`, `pine model list`, `pine model remove <name>` | Model servers of your own. `--context <tokens>`, `--reasoning`, `--no-reasoning`. See "With a model server of your own" |
 | `pine init [dir] [--yes]` | Set up a home, the browser and, on Linux, the sandbox. Safe to run again |
-| `pine update [--check] [--next \| --release]` | Bring pine up to date. See "Updating" |
+| `pine login <provider>`, `pine logout <provider>` | Sign in to a model provider, or out. `--api-key` or `--oauth` choose the kind. `pine login typesafe` is for decision models ([configuration.md](configuration.md), "Decision models") |
+| `pine model add <name> <address>`, `pine model list`, `pine model remove <name>` | Model servers of your own. `--context <tokens>`, `--reasoning`, `--no-reasoning`. See [operations.md](operations.md), "With a model server of your own" |
+| `pine update [--check] [--next \| --release]` | Bring pine up to date; `--check` only looks, `--next` and `--release` choose what it follows. See [operations.md](operations.md), "Updating" |
 | `pine version`, `pine --version` | The version and how it is installed |
 | `pine help`, `pine --help` | The list of commands |
 | `pine browser-install` | Fetch the browser again |
@@ -23,7 +24,7 @@ Every command takes `--home <dir>` (default `$PINE_HOME` or `~/.pine`).
 | `pine list [--json] [--home dir]` | The pine daemons running on this computer, of every home: process number, how it was started (`pine start`, the Pine app's `pine service`, a terminal UI with the daemon inside), home, control API address, uptime. Not one in WSL or on another machine |
 | `pine killall [--home dir]` | Stop every daemon `pine list` shows (SIGTERM; killed after 12 seconds; at once on Windows) |
 | `pine kill <pid>` | Stop one of them, by its number. A number that is not a pine daemon is refused |
-| `pine dev-model [--port 7464] [--model haiku]` | A model server backed by `claude -p`, for development |
+| `pine dev-model [--port 7464] [--model haiku]` | A model server backed by `claude -p`, for working on pine ([docs/dev/operations.md](../dev/operations.md)) |
 | `pine status` | Running tasks, live sessions (and whether tainted), model slots |
 | `pine agents` | The agents as the daemon has them (JSON) |
 | `pine agent list` | The agents, readable: purpose, model, reasoning, mode, reach, and what each has. Needs no daemon |
@@ -52,10 +53,14 @@ Every command takes `--home <dir>` (default `$PINE_HOME` or `~/.pine`).
 | `pine schedules` | What is scheduled: for whom, when, the task |
 | `pine manual <words>`, `pine manual --read <id>` | Search this manual as agents do, or read parts by id (commas). Without words: the list of parts |
 
-From `pine status` to `pine mode` the commands talk to the running daemon (control API on
-`127.0.0.1:7463`, token in `data/http-token`); `pine agent` uses a daemon when one runs and the
-files when not. `pine mcp` and `pine model` change the files and tell a running daemon.
-`pine check`, `pine skills`, `pine schedules` and `pine manual` read the files.
+## Which commands need a daemon
+
+| Commands | Work on |
+|---|---|
+| From `pine status` to `pine mode` | The running daemon, through the control API on `127.0.0.1:7463` ([api.md](api.md)). Without one they say so |
+| `pine agent` | The daemon when one runs, else the files |
+| `pine mcp`, `pine model` | The files; a running daemon is told |
+| `pine check`, `pine skills`, `pine schedules`, `pine manual` | The files |
 
 ## A UI of its own
 

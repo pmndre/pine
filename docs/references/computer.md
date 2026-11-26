@@ -2,8 +2,8 @@
 
 The bundled MCP server `computer` lets an agent use the apps on the computer pine runs on as a
 person does: open an app, read a window, press a button, fill in a field, pick from a menu,
-click, type. For what has no command line or web page: a note in Notes, a setting, a document in
-TextEdit, an app you built.
+click, type. It is for what has no command line or web page: a note in Notes, a setting, a
+document in TextEdit, an app you built.
 
 It works on macOS, Windows, and Linux with X11. Under Wayland or without a screen the tools are
 not there; `pine check` says so on the agent's `apps` line. `pine init` writes the entry
@@ -44,8 +44,10 @@ A reference stays while its control exists; take a new snapshot after something 
 them to the screen wherever the window is now. A window's picture shows it also while covered;
 when the app has a menu or sheet open, the app comes to the front and the picture holds that too.
 
-Use the outline wherever it works; take a picture for drawings, maps, custom views, apps that
-describe their windows poorly, or to check how something looks.
+Use the outline wherever it works. Take a picture for drawings, maps, custom views, apps that
+describe their windows poorly, or to check how something looks. An app that draws its own window
+(some games) describes little: use pictures. Apps built on a browser (Slack, Visual Studio Code)
+describe more from the second snapshot on.
 
 ## The tools
 
@@ -82,12 +84,44 @@ over at any time.
 - Bypass mode asks nothing; manual mode asks each action but not looking; plan mode only looks
   (after the yes per app). `"approve": "always"` on the server asks every call.
 
-A window's content is outside content: the conversation is marked as after the browser
+A window's content is outside content: it marks the conversation as the browser does
 ([security.md](security.md), "4. Taint and approvals"). An action lands in the named app or
 nowhere: a reference must belong to it, a position must lie in its window, keys go to it alone.
-pine never clicks, types or presses in the app it runs in (the Pine app, or the terminal it was
-started from), nor in the Pine app; it may look at them. There is no list of forbidden apps: a yes
-for a terminal or the Finder reaches everything you reach.
+pine never clicks, types or presses in the app it runs in (the terminal it was started from) nor
+in the Pine app, where you answer its questions; it may look at them. There is no list of
+forbidden apps: a yes for a terminal or the Finder reaches everything you reach.
+
+## Options
+
+| Option | Default | Meaning |
+|---|---|---|
+| `images` | `true` | `false`: no picture tools (`app_screenshot`, `app_click`, `app_drag`, `app_scroll`), for a model that cannot see |
+| `imageSize` | `1280` | Longer side of a picture in pixels (at most about 1.15 million pixels) |
+| `block` | none | Tools to leave out: `["app_type", "app_key"]` |
+
+`description`, `enabled`, `agents`, `approve` and `timeout` work as for every MCP server
+([mcp.md](mcp.md)).
+
+## What macOS has to be told, once
+
+The app pine runs in (the Pine app, or the terminal the daemon was started from) needs two grants:
+
+| Grant | Needed for | Where |
+|---|---|---|
+| Accessibility | Everything but `apps` and `app_open` | System Settings > Privacy & Security > Accessibility |
+| Screen Recording | `app_screenshot` | System Settings > Privacy & Security > Screen & System Audio Recording (on some versions: Screen Recording). Then quit and reopen that app, and start pine again |
+
+A missing grant is named in the tool's answer, and macOS shows its own window to the switch.
+
+## The helper, and what it needs
+
+A small helper program does the reading and the input. On a Mac pine builds it with `swiftc` on
+first use (about half a minute; meanwhile "try again in a moment"); the Pine app carries it
+built. Without Apple's command line developer tools the answer says to run:
+
+```bash
+xcode-select --install
+```
 
 ## Windows
 
@@ -118,38 +152,6 @@ sudo apt install python3-pyatspi python3-xlib xdotool imagemagick
   true`, then log out and in.
 - Many GNOME apps have no menu bar: `app_menu` lists nothing; the menu button is in the outline.
 
-## What macOS has to be told, once
-
-The app pine runs in (the Pine app, or the terminal the daemon was started from) needs two grants:
-
-| Grant | Needed for | Where |
-|---|---|---|
-| Accessibility | Everything but `apps` and `app_open` | System Settings > Privacy & Security > Accessibility |
-| Screen Recording | `app_screenshot` | System Settings > Privacy & Security > Screen & System Audio Recording (older: Screen Recording). Then quit and reopen that app, and start pine again |
-
-A missing grant is named in the tool's answer, and macOS shows its own window to the switch.
-
-## The helper, and what it needs
-
-A small helper per system does the reading and input. On a Mac pine builds it with `swiftc` on
-first use (about half a minute; meanwhile "try again in a moment"); the Pine app carries it built.
-Without Apple's command line developer tools the answer says to run:
-
-```bash
-xcode-select --install
-```
-
-## Options
-
-| Option | Default | Meaning |
-|---|---|---|
-| `images` | `true` | `false`: no picture tools (`app_screenshot`, `app_click`, `app_drag`, `app_scroll`), for a model that cannot see |
-| `imageSize` | `1280` | Longer side of a picture in pixels (at most about 1.15 million pixels) |
-| `block` | none | Tools to leave out: `["app_type", "app_key"]` |
-
-`description`, `enabled`, `agents`, `approve` and `timeout` work as for every MCP server
-([mcp.md](mcp.md)).
-
 ## When something does not work
 
 | What the agent is told | What it means |
@@ -171,6 +173,3 @@ xcode-select --install
 | "Not done: you are in plan mode" | Plan mode only looks |
 | "Operating apps uses your owner's whole account, which this conversation does not have" | `safe` or `manual` mode; switch to `auto` |
 | The tools are not in the list | `safe` or `manual` mode, a run from outside, no usable desktop, or no server entry |
-
-An app that draws its own window (some games) describes little: use pictures. Apps built on a
-browser (Slack, Visual Studio Code) describe more from the second snapshot on.

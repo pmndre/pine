@@ -1,5 +1,8 @@
 # Agents
 
+What an agent is, the files it keeps, what it sees, its conversations, and how it hands work to
+other agents and to sub-agents. Teams of agents on one job are in [boards.md](boards.md).
+
 An agent is a folder under `agents/` in pine's home. The folder name is its id: lowercase
 letters, digits, `-` and `_`, starting with a letter or digit (`create_agent` wants a letter
 first and 2 to 31 characters).
@@ -31,20 +34,18 @@ By hand: make the folder with an `agent.json` (`{}` is enough) and a `workspace/
 
 ## Meeting an agent
 
-A new agent introduces itself once, before answering your first message. The first time you
-write to an agent (the main agent too), a note in front of your message tells it to begin its
-answer by introducing itself in two or three sentences: its name, what it is for, what it
-can do for you. This happens once per agent, after a turn that ended well; events, tasks from
-other agents and sub-agents do not count. An agent that has answered you before does not do it.
-No agent starts a conversation by itself.
+A new agent says hello once, before answering your first message: the first time you write to an
+agent (the main agent too), it begins its answer by introducing itself in two or three sentences:
+its name, what it is for, what it can do for you. Events, tasks from other agents and sub-agents
+do not count. No agent starts a conversation by itself.
 
 | Key | Meaning |
 |---|---|
 | `defaults.introduce` | `false` in `pine.json` (or `set_setting`): no agent introduces itself |
 
 The main agent's main conversation begins with pine's welcome: what the main agent is for, what
-pine is for (chatting, code, acting on events), a prompt to try, and where pine's home is. pine
-wrote it; the model does not read it ([desktop.md](desktop.md), "The first start").
+pine is for (chatting, code, acting on events), a prompt to try, and where pine's home is. The
+model does not read it ([desktop.md](desktop.md), "The first start").
 
 ## The files an agent keeps itself
 
@@ -61,9 +62,9 @@ They are read into its prompt in every conversation; a change counts from its ne
 
 To change another agent's files, tell the main agent how that agent should work, be or sound: it
 replaces them with `update_agent` (`instructions`, `soul`, `tooling`). The four start empty; an
-empty or missing file is left out. Anything else in the workspace is the agent's own notes. The
-agent is told to write what matters into `MEMORY.md` at once, and pine reminds it to tidy the file
-when it passes about 6 000 characters, since all of it is read with every message.
+empty or missing file is left out. Anything else in the workspace is the agent's own notes. All of
+`MEMORY.md` is read with every message, so pine reminds the agent to tidy it when it passes about
+6 000 characters.
 
 A conversation that has read outside content (a web page, somebody else's message) changes these
 files in `safe` mode only after your yes, asked once for the conversation; a sub-agent goes by its
@@ -101,6 +102,25 @@ Say whom it is for when it is not for everybody; the main agent picks the file:
 
 Any other agent writes what you tell it into its own files.
 
+## Workspaces
+
+Point `workspace` in `agent.json` at the folder the agent should work in, often a repository:
+
+```json
+{ "workspace": "~/dev/house" }
+```
+
+In `safe` and `manual` mode its shell and file tools read and write there and nowhere else in your
+home; in `auto` and `bypass` they reach your whole account ([security.md](security.md), "Modes:
+how much an agent does without asking"). Each agent also has a private home (`sandbox/<id>/`),
+which is `~` in its sandboxed shell. Agents cannot open each other's workspaces; they work
+together through `delegate`. Two agents given the same path share it and can overwrite each
+other's files.
+
+To have one conversation work in another folder, open the folder for it (`pine <folder>`, or the
+folder in the terminal UI's bottom bar). Its `AGENTS.md` or `CLAUDE.md` then applies beside the
+agent's own ([coding.md](coding.md)).
+
 ## What an agent sees
 
 1. pine's base prompt: that it works for its owner in pine; how to use its tools (web tools, not
@@ -112,26 +132,22 @@ Any other agent writes what you tell it into its own files.
 4. A `<pine>` block: who the agent is and which MCP servers it has.
 5. In front of each message, a `<pine-note>` with what holds now (below).
 
-In your own conversations the instruction files open the conversation as its first message
-instead of standing in the system prompt ("What the model server keeps"). How pine works is not in
-the prompt: the agent searches this manual with its `manual` tool.
+How pine works is not in the prompt: the agent searches this manual with its `manual` tool.
 
 **The note.** The system prompt never changes from turn to turn, so the model server can keep
 what it has read. What changes goes into a `<pine-note>` in front of your message: time and date,
-the mode, the model the agent runs on (`provider/id` with its name, so it does not guess), the
-agents it can hand work to, the folder opened for the conversation, whether its shell has network
-access, programs its commands left running, open steps of its `todo` list, that its browser is a
-window you use too, a reminder when `MEMORY.md` has grown long, the shared state in
-`state.inject`, and whether it has read outside content. A note is only added when something
-besides the time changed. Text from elsewhere cannot fake a note: the tag is rewritten on the way
-in.
+the mode, the model the agent runs on (`provider/id` with its name), the agents it can hand work
+to, the folder opened for the conversation, whether its shell has network access, programs its
+commands left running, open steps of its `todo` list, that its browser is a window you use too, a
+reminder when `MEMORY.md` has grown long, the shared state in `state.inject`, and whether it has
+read outside content. A note is only added when something besides the time changed. Text from
+elsewhere cannot fake a note.
 
 **Pictures, sound and folded text in an answer.** pine's base prompt tells every agent:
 
 - `![caption](path)` with a workspace file shows a picture or video, and plays a sound (wav, mp3,
   m4a, ogg, flac) with play and pause ([tui.md](tui.md); [desktop.md](desktop.md), "A sound in an
-  answer"). A picture from the web is downloaded first. The agent never plays sound with a command
-  (`afplay`), and does not show again a picture a tool returned.
+  answer"). A picture from the web is downloaded first; sound is never played with a command.
 - `<details><summary>what it is</summary>` ... `</details>` folds away something long (a log, a
   full message) into one line you open with a click ([tui.md](tui.md), "Folded parts of an
   answer").
@@ -158,14 +174,13 @@ In the order they enter the prompt. A file that is missing or empty is left out.
 
 No other file is read by itself: `IDENTITY.md`, `HEARTBEAT.md`, daily notes and the like are the
 agent's own files. Instruction files and skills in your home folder or in folders above the
-workspace are not picked up.
+workspace are not picked up. In your own conversations the instruction files are the
+conversation's first message, as they were when it began; a line added later is told in the note.
 
 ### How tools are declared
 
-Every tool an agent has is declared to the model with each request. Declared one by one, the
-tools take many tokens of the prompt, which a local model reads before the first word of a new
-conversation. So in your own conversations pine declares them in **families**, about half as
-large. There is no setting for it.
+In your own conversations pine declares tools in **families**, which take about half the tokens
+of declaring each tool alone. There is no setting for it.
 
 - Tools nearly every task uses are declared by themselves: `read`, `bash`, `edit`, `write`,
   `grep`, `find`, `ls`, `download`, `delegate`, `subagent`, `todo`, `question`, `manual`,
@@ -202,45 +217,6 @@ by one. `SYSTEM.md` and a `tools` list work for both kinds of run.
 |---|---|
 | `find_tools` | Every agent has it in your conversations. `names`: actions or a whole family. Answers with everything about them: each argument, its limits, examples. For when the family's line is not enough. |
 
-### What the model server keeps
-
-A model server keeps what it has read (the prompt cache) and reads only what is new, as long as
-the next request begins the same. On a local model that decides whether an answer starts at once
-or after the whole conversation was read again. In your own conversations every request begins
-the same: the tools, pine's text, the instruction files as they were when the conversation began.
-So these cost nothing: a line written into `MEMORY.md`, a new agent, a new
-schedule, an MCP server added to another conversation, a restart of pine. A line added to an
-instruction file is told in the note; a rule that was changed or removed, or a `MEMORY.md` that
-was rewritten and is longer than 8 000 characters, has that one conversation read again once.
-
-What still costs a full reading: the first conversation after the model was loaded, a tool added
-to this conversation, a compacted conversation, and a conversation that lost its place on the
-server.
-
-**llama.cpp slots.** A llama.cpp server keeps one conversation per slot (`-np`). pine sends each
-request to a slot (`id_slot`): a conversation goes back to its own slot, also after a restart; a
-new one takes a slot pine filled for it, else an empty or the cheapest one. When you switch tabs
-between more conversations than the server has slots, one is pushed out and read again, unless
-`limits.slotPages` keeps it in a file. Another program on the same server keeps its slots, but the
-two still push each other out. Other servers are never sent a slot.
-
-| Setting | Default | Meaning |
-|---|---|---|
-| `limits.warmSlots` | `true` | Filling idle slots: when a llama.cpp server is idle, pine has each empty slot read what a new conversation of the last agent begins with, so the next new conversation or sub-agent reads only its own message. Never while an agent works with that model, never when the model is not loaded. `false` turns it off (in `pine.json`; from the next start). |
-| `limits.warmAfterMs` | `3000` | How long the server must be idle before a slot is filled, in milliseconds. |
-| `limits.slotPages` | `6` | More conversations than slots: a conversation that loses its slot is saved to a file of the server and read back when it returns, about as fast as copying the file. Needs a server started with `--slot-save-path <folder>`. This many files per server (`pine-<id>-<n>.bin`), reused; 10 000 tokens are about a gigabyte on a large model. `0` turns it off. |
-
-What helps:
-
-- Give the server at least as many slots as pine lets that model work at once (its number in
-  `limits.models`, Settings > Models, else `limits.maxConcurrentRuns`), and one more if sub-agents
-  are used a lot.
-- A server that is stopped and started (a scheduler that swaps models) has read nothing, unless
-  the scheduler saves and restores its slots (`--slot-save-path`).
-
-The terminal UI's bottom bar shows `cache N%` after an answer: the share of input the server took
-from its cache. In a running conversation it should be above 90%.
-
 ### The manual tool
 
 Every agent has a `manual` tool (not in a run started by an outside event). It holds this manual
@@ -259,25 +235,6 @@ installation are found too, with their options. When nothing matches it suggests
 
 `pine manual <words>` is the same search in a shell (without the installation's own source
 types); `pine manual --read <id>` reads a part.
-
-## Workspaces
-
-Point `workspace` in `agent.json` at the folder the agent should work in, often a repository:
-
-```json
-{ "workspace": "~/dev/house" }
-```
-
-In `safe` and `manual` mode its shell and file tools read and write there and nowhere else in your
-home; in `auto` and `bypass` they reach your whole account ([security.md](security.md), "Modes:
-how much an agent does without asking"). Each agent also has a private home (`sandbox/<id>/`),
-which is `~` in its sandboxed shell. Agents cannot open each other's workspaces; they work
-together through `delegate`. Two agents given the same path share it and can overwrite each
-other's files.
-
-To have one conversation work in another folder, open the folder for it (`pine <folder>`, or the
-folder in the terminal UI's bottom bar). Its `AGENTS.md` or `CLAUDE.md` then applies beside the
-agent's own ([coding.md](coding.md)).
 
 ## Sessions
 
@@ -308,8 +265,8 @@ sources, subscriptions, schedules, MCP servers, skills ([setup.md](setup.md)).
 ### A message while the agent works
 
 A message or event for a conversation that is working is steered into the work: the agent reads
-it at its next step, and one answer covers both. A Slack message and a Jira update about the same
-issue seconds apart make one run. An event whose answer goes elsewhere (a Telegram message while
+it at its next step, and one answer covers both (a Slack message and a Jira update about the same
+issue seconds apart make one run). An event whose answer goes elsewhere (a Telegram message while
 the agent works on something else) waits its turn, and so do events of a route with
 `"whenBusy": "queue"`. In the terminal UI `alt+enter` makes your message wait its turn. A steered
 message the work never read (it ended or was stopped) is answered next on its own.
@@ -318,7 +275,7 @@ Your steered message comes with a word from pine to answer it first, briefly. Th
 only at its next step, which a long command can delay for minutes. The Pine app shows under it
 "not read yet" or "read 14:03", and offers "send now": the step under way is stopped and the work
 goes on with your message. Reading is not answering: stop the work if the answer does not come.
-Other programs use `POST /tasks/<id>/now` ([operations.md](operations.md)).
+Other programs use `POST /tasks/<id>/now` ([api.md](api.md)).
 
 When the agent waits for your answer to its `question` ([setup.md](setup.md)), what you type
 instead of picking an option answers it: the agent is told "Your owner answered in their own
@@ -342,7 +299,7 @@ coding agent may have one per customer, each with a conversation per project).
 | Pine app | Drag a conversation onto a group in the side bar, or Move to Group… in its right click; New Group…, Sort by Last Used and Sort by Name in the agent's menu; Rename… and Remove Group… in the group's ([desktop.md](desktop.md)) |
 | Terminal UI | `/group <name>` (made if new), `/group -` takes it out; `/sessions` shows each one's group ([tui.md](tui.md)) |
 | Main agent | `set_conversation` with `group`, `rename_group`, `remove_group`; `conversations` lists them ([setup.md](setup.md#conversations-and-tabs)) |
-| Control API | `GET /agents/<id>/groups`, `POST /agents/<id>/group`, `POST /agents/<id>/groups` ([operations.md](operations.md)) |
+| Control API | `GET /agents/<id>/groups`, `POST /agents/<id>/group`, `POST /agents/<id>/groups` ([api.md](api.md)) |
 
 ## Branching a conversation
 
@@ -354,7 +311,7 @@ the message you branched from; from then on the two are separate, and the origin
 |---|---|
 | Pine app | "Branch from here" in the right-click menu of one of your messages; Branch in a conversation's menu in the side bar, or the command Branch conversation, for all of it. "Branch from here into a worktree" and "Branch into a Worktree" do the same in a worktree |
 | Terminal UI | `/branch`: pick one of your messages, or all of it; `/branch <name>`: all of it, under that name; `--worktree` with either |
-| Control API | `POST /agents/<id>/branch` `{ session, at?, to?, worktree? }` ([operations.md](operations.md)) |
+| Control API | `POST /agents/<id>/branch` `{ session, at?, to?, worktree? }` ([api.md](api.md)) |
 
 A branch is named after its original (`notes-branch`, `notes-branch-2`) unless you name it. It
 shares the original's folder, so both write the same files; branched into a worktree it works on
@@ -365,59 +322,6 @@ A branch takes the history, the opened folder, and the outside-content mark as i
 point; not what you allowed the original, what was set up for it alone, its goal or its pin.
 `/undo` in a branch restores files only for messages said in the branch. Only you branch; agents
 have no tool for it.
-
-## Goal mode
-
-Normally an agent ends its turn and waits for you, also when the work is not finished ("shall I go
-on?"). With a goal it keeps working by itself until the objective is met. Type in the conversation
-(terminal UI or Pine app):
-
-```
-/goal all tests in ~/dev/shop pass and the README says how to run them
-```
-
-The objective goes out as your message. Each time the agent ends a turn (a **round**), a **judge**
-(a short model call without tools) reads your objective and the agent's last answer and says
-`CONTINUE` (the agent is called again), `MET` (done) or `BLOCKED` (it needs something only you can
-give: answer it, then `/goal resume`). The conversation shows each verdict with its reason; the
-status line shows the round.
-
-| Command | What it does |
-|---|---|
-| `/goal <objective>` | Sets the conversation's goal and starts, replacing one that was there. At most 2000 characters: put details into a file and name it. |
-| `/goal` | Shows the goal, the round, the last verdict and its reason. |
-| `/goal pause` | No further rounds. A running round ends by itself; `esc` stops it at once. |
-| `/goal resume` | Goes on after a pause, a block, the round limit, or a "met" you disagree with. |
-| `/goal clear` | Takes the goal off. |
-
-| What happened | What the goal does |
-|---|---|
-| The judge says "met" or "blocked" | Stops. |
-| No verdict (no answer in time, or not one of the three words) | Paused. No verdict never counts as "go on". |
-| `limits.goalRounds` rounds (20) | Stops. `/goal resume` gives as many again. |
-| `limits.goalIdleRounds` rounds in a row (3) "not met" without a tool call | Paused: the agent is going in circles. |
-| You wrote a message of your own (typed or through Telegram) | Paused, so the next round does not overrule you. |
-| You stopped the agent (esc, `/stop`), a round failed, or pine restarted | Paused; the goal is kept. |
-| The conversation was reset or removed | Gone with it. |
-
-Only you set a goal: there is no tool for it, so an agent cannot give itself one or more rounds.
-If your owner asks you, as an agent, to "keep going until it is done", tell them to type `/goal`
-with what should be reached. Other programs use `POST /agents/<id>/goal` ([operations.md](operations.md)).
-
-The judge runs on `defaults.judge` if set, else the agent's own model, within
-`limits.goalJudgeTimeout`. It only decides whether the agent is called again; what the agent may
-do is decided by its mode and approvals as always ([security.md](security.md), "A goal goes on in
-your name"). The judge sees only the answer, not the files: say in the objective how to tell it is
-reached ("the tests pass", "the file has all twelve entries"). Each round costs a full turn. On a
-llama.cpp server with one slot the judge pushes the conversation out of it, unless
-`defaults.judge` names another model.
-
-## A swarm
-
-`/swarm <what is to be done>` makes the conversation's agent the lead of a job: sub-agents work it
-through on the conversation's board, pine calls the lead again while tasks are open, and a
-sub-agent that did none of the work checks the answer. `/swarm pause`, `resume`, `clear`. Like a
-goal, only you start one. See [boards.md](boards.md), "A swarm".
 
 ## Handing work to another agent
 
@@ -440,7 +344,7 @@ delegate(agent, task, wait?, thread?, worktree?)
 - The caller waits for the answer. Several `delegate` calls in one message run side by side.
   `wait: false` returns at once; the answer arrives later as a message.
 - An agent already waiting further up the chain cannot be called again; chains stop at
-  `limits.maxDelegationDepth`.
+  `limits.maxDelegationDepth` (3).
 - `worktree: true` (your conversations with a folder): the other agent works in its own worktree
   of that folder, and its work comes back as a branch to merge. Not with `thread` or `wait: false`.
 - Without `thread`, the task works on the board of the conversation it came from
@@ -450,7 +354,8 @@ delegate(agent, task, wait?, thread?, worktree?)
 first: `manual`, `safe`, `auto`, `bypass`), so handing work on never reaches further than the
 caller could. A `safe` agent handing to a `bypass` one gets it done in `safe`, in the other agent's
 sandbox; a `bypass` caller that has read outside content hands on `auto`. A `thread` held to a
-stricter mode is kept apart (`thread-okapi~safe`) and shares no history or MCP servers.
+stricter mode is a conversation of its own (`thread-okapi~safe`) and shares no history or MCP
+servers.
 
 **Outside content.** Once the caller has read outside content, every delegation is put to you
 ([security.md](security.md), "What asks you"), and the other agent's run is marked too.
@@ -504,12 +409,64 @@ for a tool. It has the agent's MCP servers (unless `subagents.mcp` is `false`) a
 those in `subagents.tools`.
 
 Sub-agents count against the model slots and queue when there are too few; the waiting parent
-lends its own slot, so nothing deadlocks.
+lends them its own slot.
 
 **Looking at a sub-agent's work.** Each is a task with its own number, like a delegated one. In the
 terminal UI a click on the line where it starts or answers (or `/task <id>`) opens its steps;
 `pine task <id>` and `GET /tasks/<id>/transcript` show them too. Its session file is in
 `agents/<id>/sessions/_tasks/<task id>/`.
+
+## A swarm
+
+`/swarm <what is to be done>` makes the conversation's agent the lead of a job that sub-agents
+work through on the conversation's board, with a check of the answer at the end. Only you start
+one: [boards.md](boards.md), "A swarm".
+
+## Goal mode
+
+Normally an agent ends its turn and waits for you, also when the work is not finished ("shall I go
+on?"). With a goal it keeps working by itself until the objective is met. Type in the conversation
+(terminal UI or Pine app):
+
+```
+/goal all tests in ~/dev/shop pass and the README says how to run them
+```
+
+The objective goes out as your message. Each time the agent ends a turn (a **round**), a **judge**
+(a short model call without tools) reads your objective and the agent's last answer and says
+`CONTINUE` (the agent is called again), `MET` (done) or `BLOCKED` (it needs something only you can
+give: answer it, then `/goal resume`). The conversation shows each verdict with its reason; the
+status line shows the round.
+
+| Command | What it does |
+|---|---|
+| `/goal <objective>` | Sets the conversation's goal and starts, replacing one that was there. At most 2000 characters: put details into a file and name it. |
+| `/goal` | Shows the goal, the round, the last verdict and its reason. |
+| `/goal pause` | No further rounds. A running round ends by itself; `esc` stops it at once. |
+| `/goal resume` | Goes on after a pause, a block, the round limit, or a "met" you disagree with. |
+| `/goal clear` | Takes the goal off. |
+
+| What happened | What the goal does |
+|---|---|
+| The judge says "met" or "blocked" | Stops. |
+| No verdict (no answer in time, or not one of the three words) | Paused. No verdict never counts as "go on". |
+| `limits.goalRounds` rounds (20) | Stops. `/goal resume` gives as many again. |
+| `limits.goalIdleRounds` rounds in a row (3) "not met" without a tool call | Paused: the agent is going in circles. |
+| You wrote a message of your own (typed or through Telegram) | Paused, so the next round does not overrule you. |
+| You stopped the agent (esc, `/stop`), a round failed, or pine restarted | Paused; the goal is kept. |
+| The conversation was reset or removed | Gone with it. |
+
+The judge runs on `defaults.judge` if set, else the agent's own model, within
+`limits.goalJudgeTimeout`. It sees only the answer, not the files: say in the objective how to tell
+it is reached ("the tests pass", "the file has all twelve entries"). Each round costs a full turn.
+On a llama.cpp server with one slot the judge pushes the conversation out of it, unless
+`defaults.judge` names another model. The judge only decides whether the agent is called again;
+what the agent may do is decided by its mode and approvals as always ([security.md](security.md),
+"A goal goes on in your name").
+
+Only you set a goal: there is no tool for it, so an agent cannot give itself one or more rounds.
+If your owner asks you, as an agent, to "keep going until it is done", tell them to type `/goal`
+with what should be reached. Other programs use `POST /agents/<id>/goal` ([api.md](api.md)).
 
 ## Shared state
 
@@ -535,22 +492,6 @@ into a key agents see.
   no answer, such as a notice about something already said.
 - A failed task (model error, timeout) sends "`<agent>` could not finish: ..." to the reply
   target. A cancelled task sends nothing.
-
-## pi extensions
-
-Any pi extension works in pine sessions. One that adds a line to every system prompt:
-
-```ts
-// ~/.pine/agents/gonzo/extensions/citations.ts
-export default function (pi) {
-	pi.on("before_agent_start", async (event) => ({ systemPrompt: `${event.systemPrompt}\n\nCite the paragraph for every legal claim.` }));
-}
-```
-
-Files in `agents/<id>/extensions/` are found automatically; list others under `extensions`. pi's
-guide is `node_modules/@earendil-works/pi-coding-agent/docs/extensions.md`. Terminal UI features
-(dialogs, widgets) do nothing in the daemon. `.pi/extensions/` in a workspace is not loaded; see
-`trustWorkspace` in [configuration.md](configuration.md).
 
 ## Skills
 
@@ -612,8 +553,72 @@ The description may have 1024 characters, the instructions 40 000. Files that go
 `pine skills` lists every skill, whom it is for and where it lies. An agent lists its own with
 `skills` ([setup.md](setup.md), "What an agent has").
 
+## pi extensions
+
+Any pi extension works in pine sessions. One that adds a line to every system prompt:
+
+```ts
+// ~/.pine/agents/gonzo/extensions/citations.ts
+export default function (pi) {
+	pi.on("before_agent_start", async (event) => ({ systemPrompt: `${event.systemPrompt}\n\nCite the paragraph for every legal claim.` }));
+}
+```
+
+Files in `agents/<id>/extensions/` are found automatically; list others under `extensions`. pi's
+guide is `node_modules/@earendil-works/pi-coding-agent/docs/extensions.md`. Terminal UI features
+(dialogs, widgets) do nothing in the daemon. `.pi/extensions/` in a workspace is not loaded; see
+`trustWorkspace` in [configuration.md](configuration.md).
+
+## What the model server keeps
+
+A model server keeps what it has read (the prompt cache) and reads only what is new, as long as
+the next request begins the same. On a local model that decides whether an answer starts at once
+or after the whole conversation was read again. In your own conversations every request begins
+the same: the tools, pine's text, the instruction files as they were when the conversation began.
+
+| Costs nothing | Has the conversation read again |
+|---|---|
+| A line written into `MEMORY.md` or another instruction file (told in the note) | A rule changed or removed, or a `MEMORY.md` rewritten to more than 8 000 characters: that one conversation, once |
+| A new agent, a new schedule, an MCP server added to another conversation | A tool added to this conversation |
+| A restart of pine | The first conversation after the model was loaded; a compacted conversation; a conversation that lost its place on the server |
+
+**llama.cpp slots.** A llama.cpp server keeps one conversation per slot (`-np`). pine sends each
+request to a slot (`id_slot`): a conversation goes back to its own slot, also after a restart; a
+new one takes a slot pine filled for it, else an empty or the cheapest one. When you switch tabs
+between more conversations than the server has slots, one is pushed out and read again, unless
+`limits.slotPages` keeps it in a file. Another program on the same server keeps its slots, but the
+two still push each other out.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `limits.warmSlots` | `true` | Filling idle slots: when a llama.cpp server is idle, pine has each empty slot read what a new conversation of the last agent begins with, so the next new conversation or sub-agent reads only its own message. Never while an agent works with that model, never when the model is not loaded. `false` turns it off (in `pine.json`; from the next start). |
+| `limits.warmAfterMs` | `3000` | How long the server must be idle before a slot is filled, in milliseconds. |
+| `limits.slotPages` | `6` | More conversations than slots: a conversation that loses its slot is saved to a file of the server and read back when it returns. Needs a server started with `--slot-save-path <folder>`. This many files per server (`pine-<id>-<n>.bin`), reused; 10 000 tokens are about a gigabyte on a large model. `0` turns it off. |
+
+What helps:
+
+- Give the server at least as many slots as pine lets that model work at once (its number in
+  `limits.models`, Settings > Models, else `limits.maxConcurrentRuns`), and one more if sub-agents
+  are used a lot.
+- A server that is stopped and started (a scheduler that swaps models) has read nothing, unless
+  the scheduler saves and restores its slots (`--slot-save-path`).
+
+The terminal UI's bottom bar shows `cache N%` after an answer: the share of input the server took
+from its cache. In a running conversation it should be above 90%.
+
 ## Checking on agents
 
 `pine status` shows what runs, `pine tasks --agent gonzo` an agent's tasks, `pine task <id>` one
 task in full (prompt, result, error, trust, turns, tokens, tools called, duration), and
 `pine events --topic "agent/#" -f` follows what agents do ([commands.md](commands.md)).
+
+## Problems
+
+| What you see | What to do |
+|---|---|
+| A named conversation is gone | It was unused for `limits.conversationDays` ("Sessions"). Pin or group what you keep |
+| The agent has not answered the message you sent while it works | It reads it at its next step: "send now" in the Pine app, or stop the work ("A message while the agent works") |
+| `delegate` will not reach an agent | It is not in `delegates`, it is the main agent (left out by `*`), or it already waits further up the chain ("Handing work to another agent") |
+| A sub-agent says it was refused | Sub-agents never ask you: allow it first with `request_access`, or let the conversation do that step ("Sub-agents") |
+| `add_skill` is refused | A skill of that name exists in another scope, or is one you listed under `skills`: pick another name ("Ask the agent") |
+| Every new conversation starts slowly | See "What the model server keeps" |

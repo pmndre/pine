@@ -1,9 +1,11 @@
 # The web client
 
 The web client is the Pine app's page in a web browser, on any computer, with nothing to install:
-from a work laptop, a borrowed computer or a tablet. You open the address of a deployment and are
-in your conversations, tabs, settings and theme, as in the desktop app ([desktop.md](desktop.md)).
-It reaches your pine two ways:
+from a work laptop, a borrowed computer or a tablet. This chapter covers using it, reaching a
+machine with it, and what the service behind it sees.
+
+You open the address of a deployment and are in your conversations, tabs, settings and theme, as
+in the desktop app ([desktop.md](desktop.md)). It reaches your pine two ways:
 
 - **Over SSH**: a pine on a server, a Mac mini at home or a VPS that you reach with `ssh` from the
   internet, or a machine on your tailnet published by Tailscale Funnel (see "A machine on a
@@ -20,9 +22,9 @@ the meeting service, and the address the Pine app uses by default. You can also 
 
 | What | How |
 |---|---|
-| The first screen | Two views, never shown together. First, how to pair a computer, with "Found through" and the deployment's address, and under it the link "Or connect to a server over SSH". That link shows the SSH view: "Back to pairing", the list of machines, this device's key, the field to add a `user@host` machine, and the line "Connections go through the relay at" the deployment's address, which "carries SSH only and cannot read it". A browser that has a `user@host` machine already starts on the SSH view. A deployment without the meeting service shows the SSH view alone; one whose relay is off shows pairing alone |
-| Open it | The deployment's address, in Chrome 137 or later, Firefox 130 or later, or Safari 17 or later. Another browser lacks Ed25519 in WebCrypto: it is told which browsers work, and nothing starts |
-| This device's key | On first use the browser makes an SSH key of its own (Ed25519). The start screen shows its public half as a line of `authorized_keys`, with Copy and Share: add it to `~/.ssh/authorized_keys` of the user you sign in as. The key is kept in the browser's storage for this site, where the page cannot reach it: its private half cannot be read or exported by you or by any script, so a web page an answer shows cannot steal it. No other key can be used (no pasted key, no ssh-agent, no security key) |
+| Open it | The deployment's address, in Chrome 137 or later, Firefox 130 or later, or Safari 17 or later. Another browser is told which browsers work, and nothing starts |
+| The first screen | How to pair a computer, and under it the link "Or connect to a server over SSH" to the SSH view: your machines, this device's key, the field to add a `user@host` machine, and the relay it goes through. A browser that has a `user@host` machine already starts on the SSH view. A deployment without the meeting service shows the SSH view alone; one whose relay is off shows pairing alone |
+| This device's key | On first use the browser makes an SSH key of its own (Ed25519). The start screen shows its public half as a line of `authorized_keys`, with Copy and Share: add it to `~/.ssh/authorized_keys` of the user you sign in as. The key is kept in the browser's storage for this site; its private half cannot be read or exported by you or by any script, so a web page an answer shows cannot steal it. No other key can be used (no pasted key, no ssh-agent, no security key) |
 | Add a machine | Type `user@host`, or `user@host:port`, and Add. The host must have a public name or address: the relay refuses private, loopback and link-local addresses. A server on your home network is reached from the desktop app instead, or through Tailscale Funnel |
 | The host key | The first time, the machine's host key fingerprint (`SHA256:...`) is shown before anything of yours is sent. Compare it with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server, and trust it. From then on only that key is accepted: a changed key is refused with the old and the new fingerprint, until you forget the machine and add it again |
 | Disconnect | Lets go of the machine in use and goes back to the list. The machine and its trusted host key stay (unlike Forget); Use connects again. In the title bar's machines menu and on the machine's line in Settings > Environments |
@@ -71,9 +73,9 @@ computer then talk directly, peer to peer, from anywhere; the service only intro
 
 | What | How |
 |---|---|
-| `https://pine-main.drcmda.workers.dev` | The official service. Its start screen says how to pair ("On your computer: Pine > Add a device", then scan the code), offers "Get the Pine app", "Open Pine on this computer" in a browser on a computer, and SSH behind a link. At the free plan's limits it says so: try again later |
+| `https://pine-main.drcmda.workers.dev` | The official service. Its start screen says how to pair ("On your computer: Pine > Add a device", then scan the code), offers "Get the Pine app", "Open Pine on this computer" in a browser on a computer, and SSH behind a link. When the service is over its limits it says so: try again later |
 | Pair | Scan the QR code with the phone's camera, or open the link Copy link gave on the device. The page shows four digits and "Confirm on" the computer's name; the computer shows the same four and asks. Press Allow only if they match. The link works once and for two minutes, and leaves the address bar at once, so no history entry or bookmark keeps it |
-| `Open Pine on this computer` | On the start screen in a browser on a computer (not a phone or tablet): pairs this browser with the Pine app on the same computer, with no camera and no link to copy. The browser asks first whether to open Pine; with Browser access on, Pine opens a pairing and sends its link to your default browser. The Add a device dialog shows the same code, for another browser. Without the Pine app, or with Browser access off, nothing happens. The web client cannot look for computers on the network: only the mobile app does ([mobile.md](mobile.md#a-computer-on-this-network)) |
+| `Open Pine on this computer` | On the start screen in a browser on a computer (not a phone or tablet): pairs this browser with the Pine app on the same computer, with no camera and no link to copy. The browser asks first whether to open Pine; with Browser access on, Pine opens a pairing and sends its link to your default browser. Without the Pine app, or with Browser access off, nothing happens. The web client cannot look for computers on the network: only the mobile app does ([mobile.md](mobile.md#a-computer-on-this-network)) |
 | `Open in the Pine app` | On an iPhone or iPad only, where a scanned link always opens the browser: before it uses the code, the page asks "Pair with your computer". "Open in the Pine app" opens the app by its `pine:` address and uses nothing in the browser; the choice stays on screen, so you can still go on without the app. `Continue in this browser` pairs this browser. The code works once: whichever pairs first uses it, and the other is told the link expired |
 | The computer's identity | The link carries the fingerprint of the computer's host key: the web client trusts it for that computer alone, without asking you, and refuses a computer that answers with another key. A fingerprint it keeps already is never replaced by a link |
 | Its name | The name the computer gave when paired; "your computer" until then. Rename in Settings > Environments gives it another; Forget there drops it from this browser's list. Only Remove in the Pine app shuts the device out |

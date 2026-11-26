@@ -169,6 +169,23 @@ and one without a code does not hide pine's. A report goes to `POST /agents/<id>
 written in the app sends `"via": "app"`, which the agent's note turns into "read in the Pine app".
 Test stand-ins: `PINE_DESKTOP_SHELL`, `PINE_DESKTOP_STILL_RUNNING_MS`.
 
+## Browser access
+
+What an owner sees of it is in [references/desktop.md](../references/desktop.md), "Browser access:
+a browser with no SSH to set up"; why it is built so, in [ADR 0004](../adr/0004-browser-access.md)
+and [ADR 0005](../adr/0005-pairing-from-nearby-devices.md). The code is `electron/access/`.
+
+- The access server is an SSH server on `ssh2` with two permissions (rule 10 in `AGENTS.md`): at
+  most 8 connections (`MAX_CONNECTIONS`), 20 seconds to authenticate (`AUTH_TIMEOUT_MS`), a device
+  name of at most 60 characters.
+- The host key, the paired devices and a relay's password are in `access.bin`, sealed with
+  Electron's safe storage; the switches, the service address and the relay's address and user name
+  are in `prefs.json` (`access`).
+- The announcement on the local network (`nearby.ts`) is a Bonjour record `_pine._tcp` named
+  "Pine", carrying the start of the host key's fingerprint, the service's address and a word that
+  changes every five minutes, which a request without a code has to name. Nothing listens behind
+  it: a phone still goes through the meeting service and checks the key.
+
 ## Layout
 
 ```

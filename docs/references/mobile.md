@@ -2,8 +2,10 @@
 
 **Pine** for Android phones and tablets and for iPhones is the desktop app's page on a phone
 ([desktop.md](desktop.md)): the same agents, conversations, approvals, questions, code pane,
-browser panel and settings, at the phone's width, in light and dark. It shows the pine of another
-machine:
+browser panel and settings, at the phone's width, in light and dark. This chapter covers getting
+it, connecting it to a pine, and what it does not do.
+
+The app shows the pine of another machine:
 
 - a computer that runs the Pine app, paired by the QR code that app shows, or found on the same
   network (see "Pairing with a computer that runs the Pine app");
@@ -15,9 +17,8 @@ the two devices.
 
 ## Getting it
 
-The Android app is attached to every release of pine:
-<https://github.com/pmndre/pine/releases/latest>. The iPhone app is not attached for now; a release
-that has one lists it there.
+Releases of pine are at <https://github.com/pmndre/pine/releases/latest>. Every release carries
+the Android app; a release that carries the iPhone app lists it there too.
 
 | File | For |
 |---|---|
@@ -101,9 +102,9 @@ app's first screen; a machine over SSH is behind its link "Or connect to a serve
 
 ### A computer on this network
 
-While the pairing view is shown, the app looks for computers that run the Pine app on the same
-network and lists them under "On this network". The computer needs Browser access and "Visible
-on this network" on ([desktop.md](desktop.md#without-scanning-a-code)).
+While the pairing view is on screen, the app looks for computers that run the Pine app on the
+same network and lists them under "On this network". The computer needs Browser access and
+"Visible on this network" on ([desktop.md](desktop.md#without-scanning-a-code)).
 
 | What | How |
 |---|---|
@@ -111,7 +112,6 @@ on this network" on ([desktop.md](desktop.md#without-scanning-a-code)).
 | A tap | Asks that computer without a code. The app shows "Confirm on" and the computer's name and four digits; the computer shows the same four. Press Allow only if they match and the question is on your own computer's screen: any computer on the network can call itself "Pine" |
 | The computer's identity | What the network announces is not trusted: the app reaches the computer through the meeting service and checks its key against the announced fingerprint |
 | `Local Network` | On an iPhone, iOS asks once, the first time the pairing view is shown. Refused, the list says "Pine cannot look on this network": turn on Settings > Pine > Local Network. On Android nothing is asked |
-| When it looks | Only while the pairing view is on screen |
 | No computer is listed | Pine must be open on the computer with Browser access and Visible on this network on, and the phone on the same Wi-Fi. A Wi-Fi that keeps devices apart (guests, offices) lists nothing. After three requests without a yes within ten minutes, the computer stops showing itself for an hour. Pair with the code meanwhile |
 
 ### How the link reaches the app
@@ -121,8 +121,8 @@ system decides what the link opens.
 
 | What | How |
 |---|---|
-| `App Links` | On Android. The app declares Pine's own service, `https://pine-main.drcmda.workers.dev/`, as an address it opens, but Android lets it only once the service serves a statement naming the key pine's releases are signed with (`/.well-known/assetlinks.json`). The official service does not serve one yet, so for now a scanned link opens the browser, which can pair itself; or use Copy link and the `Pairing link` field. Other services (`pine-next`, a pull request's, your own) and an APK built from a checkout always open the browser |
-| `Open in the Pine app` | On an iPhone or iPad the link always opens Safari: iOS cannot hand a web address to an app each owner signs. The web client there asks before it uses the code: "Open in the Pine app" or "Continue in this browser" ([web.md](web.md#a-computer-paired-by-qr-code-a-browser-with-no-ssh-to-set-up)). If the app does not open, it is not installed: continue in the browser. The code works once; whichever pairs first uses it |
+| `App Links` | On Android. The app declares Pine's own service, `https://pine-main.drcmda.workers.dev/`, as an address it opens, but Android lets it only where the service serves a statement naming the key pine's releases are signed with (`/.well-known/assetlinks.json`). The official service serves none, so a scanned link opens the browser, which can pair itself; or use Copy link and the `Pairing link` field. Other services and an APK built from a checkout always open the browser |
+| `Open in the Pine app` | On an iPhone or iPad a scanned link always opens Safari. The web client there asks before it uses the code: "Open in the Pine app" or "Continue in this browser" ([web.md](web.md#a-computer-paired-by-qr-code-a-browser-with-no-ssh-to-set-up)). If the app does not open, it is not installed: continue in the browser. The code works once; whichever pairs first uses it |
 | `pine:` | The app's own address on iOS, which "Open in the Pine app" opens: `pine://pair?service=<service>&id=<fingerprint>&code=<code>`. Read like a pasted link; any app or page can open one, and nothing happens without your Pair |
 
 ### A paired computer
@@ -153,17 +153,13 @@ has no user name of its own. Anything that is not a plain `user@host[:port]` is 
 |---|---|
 | The phone's key | In `~/.ssh/authorized_keys` there (see "The phone's key") |
 | A pine home there | `pine init` on that machine first |
-| A pine with `pine service` | An older pine is not reached: `pine update` there |
-| A way from the phone to the machine | See "Making a machine reachable" |
+| A pine with `pine service` | Else it is not reached: `pine update` there |
+| A way from the phone to the machine | See "Making a machine reachable". On an iPhone, allow Pine on the local network when iOS asks (Settings > Privacy & Security > Local Network), or a machine on your Wi-Fi is not reached |
 | A model | A pine with no model opens **Setup Pine** ([desktop.md](desktop.md#setup-pine-getting-started)); it looks for model servers on that machine, not on the phone |
 
 The app runs `pine service` there, as the desktop app does: it attaches to the pine that runs, or
 starts one. Pick another machine at the foot of the side bar. The app opens on the machine in use
 next time. Forget on a machine's line removes it with its host key.
-
-On an iPhone, iOS asks once whether Pine may find and connect to devices on your local network.
-Allow it, or a machine on your Wi-Fi is not reached (Settings > Privacy & Security > Local
-Network).
 
 When a machine is not reached, the first screen says why: it does not answer, pine is not
 installed there or is too old, there is no pine home, or the key was refused.
@@ -180,9 +176,9 @@ ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 If it is the same, press **Trust this key**: the app trusts exactly that key, for that host and
 port. If not, do not: something else answers in the machine's place. Try again never trusts a key.
 
-When the host key of a known server changed, the app on the phone refuses to connect and says
-so: another machine may stand in for it. If you reinstalled the machine or gave its SSH server new
-keys, forget the machine and add it again; the app then asks about the new key.
+When the host key of a known server changed, the app refuses to connect and says so: another
+machine may stand in for it. If you reinstalled the machine or gave its SSH server new keys,
+forget the machine and add it again; the app then asks about the new key.
 
 A paired computer has no fingerprint to compare: the pairing link carries it. If it ever
 presents another key, the app refuses it for good: forget it and add this device again at the
@@ -191,7 +187,7 @@ computer.
 ## Making a machine reachable
 
 To reach the computer at home, or a server, from the phone when you are out, the phone has to
-reach that machine's SSH port. How is your network's business:
+reach that machine's SSH port:
 
 | Where you are | How |
 |---|---|
@@ -225,12 +221,12 @@ about"). On the phone:
 | | |
 |---|---|
 | The page has no token | The daemon's token stays in the app's native part, which makes every call for the page |
-| No port on the phone | Every request goes through the SSH connection; nothing listens on the phone's loopback, where another app could use it |
+| No port on the phone | Every request goes through the SSH connection; nothing listens on the phone, where another app could use it |
 | A paired computer | The direct connection lives in the native part too, encrypted end to end: the meeting service passes the few messages that set it up and sees neither key nor token |
 | A link opened in it | Handed to the page as text; nothing is used before you press Pair |
-| `ACCESS_NETWORK_STATE` | On Android the app asks for two permissions: the network, and this one, to read which networks the phone has. The library of the direct connection (Google's libwebrtc) needs it to find a way to a paired computer. Android grants it at install without asking; it reads and changes nothing. No camera, no microphone, nothing else |
+| `ACCESS_NETWORK_STATE` | On Android the app asks for two permissions: the network, and this one, to read which networks the phone has. The direct connection needs it to find a way to a paired computer. Android grants it at install without asking; it reads and changes nothing. No camera, no microphone, nothing else |
 | What the network announces | Only a fingerprint, an `https` meeting service and a random word that changes every five minutes are read. None of it is trusted: the key is checked against the fingerprint and you compare the four digits |
 | The page stays the app | It loads nothing from the web, goes to no other address, opens no window and gets no permission. Links open in your browser (`http`, `https` only). A photo is attached through the system's file chooser |
-| Pictures, video and sound | Served by the native part under the desktop app's rules: fixed addresses only, never SVG |
+| Pictures, video and sound | Served by the native part under the desktop app's rules |
 
 Building the apps, their tests and releases: [docs/dev/mobile.md](../dev/mobile.md).

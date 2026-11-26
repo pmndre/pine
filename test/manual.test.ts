@@ -391,7 +391,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["shell command list every skill list scheduled tasks", /^commands/],
 		["conversation removed renamed sources set up for one conversation", /^setup#(three-scopes|what-is-written|conversations-and-tabs)/],
 		["sub-agents helpers run at the same time default concurrency", /^(agents#sub-agents|configuration#working-with-other-agents)/],
-		["model runs agent no model named default model", /^configuration#/],
+		["model runs agent no model named default model", /^(configuration#|setup#setting-up-a-model)/],
 		["notify owner phone message away push", /^(source-types#telegram|sources#sending-through-a-source)/],
 		["autonomy levels without asking", /^(security#modes|tui#modes)/],
 		["drag folder onto terminal window drop", /^(coding#a-folder-for-a-conversation|tui#attachments)/],

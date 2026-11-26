@@ -1,9 +1,9 @@
 # Recipe: a page as an agent's control panel
 
-An agent can make a web page for its owner to use: a board to play on, buttons and switches
-for the lights, a form, a dashboard. The owner sees the page in the agent's browser and clicks
-in it. Each click on a button is told to the agent: what was clicked reaches it as an event,
-in the conversation where the page was made, and the agent answers by changing the page.
+How an agent makes a web page for its owner to use (a board to play on, switches for the lights,
+a form, a dashboard), and how each click reaches the agent. The owner clicks in the page in the
+agent's browser; what was clicked arrives as an event in the conversation where the page was
+made, and the agent answers by changing the page.
 
 > Make tic tac toe in your browser. You are X, I am O. Tell me when I have won.
 

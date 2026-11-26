@@ -2,10 +2,13 @@
 
 A **source** reports what happens elsewhere: a file in a folder, an MQTT message, a webhook call,
 a camera upload, a changed web page, your Telegram message. An agent **subscribes** to a source,
-and each event then arrives in its conversation as a message and wakes it, whether or not you
-are there. A source is a named entry in `pine.json` (any agent may subscribe) or in one agent's
-`agent.json` (only that agent). It runs only while somebody is subscribed. Something at a time is
-a schedule, and a rule that does more than wake an agent is a route ([events.md](events.md)).
+and each event then wakes it in its conversation, whether or not you are there. This chapter
+covers setting sources up, subscribing, what the agent is woken with, sending and reading
+through a source, secrets and trust; each type with its options is in
+[source-types.md](source-types.md).
+
+A source runs only while somebody is subscribed. Something at a time is a schedule, and a rule
+that does more than wake an agent is a route ([events.md](events.md)).
 
 ## A first example
 
@@ -23,13 +26,16 @@ ask: the agent sets the source up itself ("Ask the agent").
 
 ## Configuring sources
 
+A source is a named entry under `sources` in `pine.json` (any agent may subscribe) or in one
+agent's `agent.json` (only that agent).
+
 | Key | Default | Meaning |
 |---|---|---|
 | `type` | | A built-in type ([source-types.md](source-types.md)): `folder`, `mqtt`, `webhook`, `ftp`, `telegram`, `http`, `command`, `feed`, `calendar`, `stream`, `mail`, `slack`, `matrix`, `discord`, `zulip`, `smtp`, `syslog`, `onvif`, `modbus`, `serial`, `presence`, `system`; or one registered under `sourceTypes`. Or `use` instead: the path of a module, for a one-off. |
 | `description` | | What it reports. Agents choose by this line. |
 | `agents` | all | In `pine.json` only: who may subscribe, e.g. `["house"]`. |
 | `trust` | `"untrusted"` | `"owner"`: its events count as your words. See "Trust". |
-| `start` | `"subscribed"` | `"always"`: runs without a subscriber. A route on `source/<name>/...` starts it by itself; `always` is for sending through it from a route or a route that matches by a wildcard. |
+| `start` | `"subscribed"` | `"always"`: runs without a subscriber, for example to send through it. A route on `source/<name>/...` keeps it running too; a wider pattern (`source/#`) does not. |
 | `enabled` | `true` | `false` keeps the entry; nobody can subscribe. |
 | `session` | | Written by `add_source` in an `agent.json`: the one conversation it belongs to; removed with it. |
 
@@ -50,52 +56,6 @@ own source), are in the event log (`pine events --topic 'source/#'`), and routes
 - How it is doing is shown by `pine sources`, `/sources` and the agent's `sources` tool.
 
 What keeps sources safe is in [security.md](security.md), "Event sources".
-
-## Sending through a source
-
-An agent sends with the `send` tool; its `sources` tool says which sources can and what each takes.
-
-| Type | Sending does | The agent passes |
-|---|---|---|
-| `telegram` | A message to you in your chat with the bot | `text`, optionally `file` |
-| `mqtt` | A message to a topic on the `publish` list | `data`: `{ "topic": "lamp/set", "message": "on" }`, optionally `retain`, `qos` |
-
-`mail`, `slack`, `matrix`, `discord` and `zulip` send to their `sendTo` list
-([source-types.md](source-types.md)). An answer to a message that came in through Telegram goes
-back by itself; `send` is for what the agent says unasked.
-
-A [route](events.md) sends too: `"reply": { "topic": "out/source/telegram@main" }` puts an
-agent's answer on Telegram, and an event on `out/source/<name>` goes out through that source
-(`<name>@<agent>` for an agent's own; `pine sources` shows which). The source must be running:
-`"start": "always"` if nothing is subscribed.
-
-### A picture or a video with the message
-
-> When the camera sees somebody at the door, send me the picture on Telegram.
-
-`file` is a picture (jpg, png, webp, gif, up to 20 MB), a video (mp4, mov, webm, up to 100 MB) or
-a sound file in the agent's workspace. Telegram shows it with the text as caption (a text over
-1024 characters goes first, by itself), a picture over 10 MB as a file, and takes nothing over
-50 MB: the agent scales a clip down first (`ffmpeg -i clip.mp4 -vf scale=960:-2 -an small.mp4`). A
-file a source received lies outside the workspace: the agent copies it, or a frame of it, in
-first.
-
-### Telling you needs no approval
-
-A message to you through Telegram is not held for your approval, also after outside content and
-in a run an event woke with nobody there: that is how an agent alerts you unattended. Only manual
-mode asks. It is safe because the Telegram source writes to your chat alone. `send` through MQTT
-does ask after outside content. To approve every Telegram message, put `"send:telegram"` (the
-source's name) on the agent's `approve` list ([security.md](security.md), "What asks you").
-
-## Reading through a source
-
-> Rainer answered in a thread. Read the thread and tell me what he means.
-
-`read_source` reads earlier messages through a source that can be asked (Slack: a channel, a
-direct conversation, a thread; [source-types.md](source-types.md), "Reading what was written
-before"). It reads only where the source listens, is never asked about, and what it returns is
-outside content. Only in your own conversations: not in a run started from outside or a sub-agent.
 
 ## Subscribing
 
@@ -132,18 +92,16 @@ in its instructions). Events run side by side up to `limits.maxConcurrentRuns`.
 | `remove_source` | Deletes a source, its subscriptions, and the read access and secrets that came with it. |
 | `add_source_type`, `remove_source_type` | Main agent only: a new kind of source ("A source type of your own"). |
 
-Only in your own conversations, not for a run from outside or a sub-agent. "Subscribe to X"
-means this conversation and is not asked (except in manual mode or after outside content). The
-agent and global scopes only when you say so ("as an agent", "all agents"), and you confirm them.
-
-Who may set up what: a source or watcher for all agents only the main agent may set up.
+Only in your own conversations, not for a run from outside or a sub-agent. "Subscribe to X" means this conversation and is not asked (except in manual mode or after outside
+content). The agent and global scopes only when you say so ("as an agent", "all agents"), and you
+confirm them.
 
 | An agent can | From |
 |---|---|
 | Subscribe a conversation, and end that | That conversation |
 | End anything of its own agent (`unsubscribe` with `agent` or `all`) | Any of its conversations |
 | Subscribe the agent as such | Any of its conversations, after you confirm |
-| Set up, subscribe or end anything for **all agents** | Only the main agent (`main` in `pine.json`); setting up, subscribing and removing ask you. Another agent is told to send you to the main agent |
+| Set up, subscribe or end a source or watcher for **all agents** | Only the main agent (`main` in `pine.json`); setting up, subscribing and removing ask you. Another agent is told to send you to the main agent |
 | Add or remove a source type | Only the main agent, asked every time, refused after outside content |
 
 `add_source`:
@@ -158,6 +116,7 @@ events count as your messages, and you are asked) and `ask` (optional secret opt
 you for). Name, description, and a type that `dir`, `run`, `topics` or an `http(s)` `url` implies
 may be left out. The agent knows `folder`, `mqtt`, `webhook`, `ftp`, `telegram`, `http` and
 `command` with their options; for the others it searches the manual ("source type" and the name).
+
 The type checks the options first. A folder in the agent's own workspace is set up without a
 question (except in manual mode or after outside content); anything else that opens something
 new, is for all agents or is trusted shows you a dialog with what it will do. A folder outside
@@ -249,10 +208,9 @@ Event source/door/upload:
 { "file": "/2026/11/10/Front_001.jpg", "size": 48211, ... }
 ```
 
-plus the picture, if any, as the next message of the subscribed conversation; it waits while the
-agent is busy there. The terminal UI shows `⚡ door: source/door/upload`, or a line `⚡ an event
-woke main in the conversation ... ▸ open` when no tab shows that conversation. To reach you when
-you are away the agent uses `send`: say so in the note.
+This comes, with the picture if there is one, as the next message of the subscribed
+conversation, and waits while the agent is busy there. The terminal UI marks it with `⚡`. To
+reach you when you are away the agent uses `send`: say so in the note.
 
 ### What an event looks like
 
@@ -267,28 +225,81 @@ you are away the agent uses `send`: say so in the note.
 
 A camera uploads a picture or a video clip, a scanner a PDF, you send a photo through Telegram.
 `ftp`, `telegram`, `mail`, `smtp` and `slack` keep received files in `data/sources/<name>/`, and
-the event gives the file's `path`: the agent opens the file from there. An agent reads the files of its own sources and those it is
-subscribed to (`read`, `cp`, `ffmpeg`), and cannot change them; pine deletes them after
-`keepDays`. Other uploads in pine's data folder are blocked, and access ends with the
-subscription. Only a picture (jpg, png, webp, gif, under 10 MB) is shown to the model with the event; a video
-clip, a sound or a PDF is not. To look at a video the agent takes frames into its workspace (`ffmpeg -i <path> -vf fps=1 frames/%03d.jpg`) and
-reads those.
+the event gives the file's `path`: the agent opens the file from there. An agent reads the files
+of its own sources and those it is subscribed to (`read`, `cp`, `ffmpeg`), and cannot change
+them; pine deletes them after `keepDays`. Other uploads in pine's data folder are blocked, and
+access ends with the subscription.
+
+Only a picture (jpg, png, webp, gif, under 10 MB) is shown to the model with the event; a video
+clip, a sound or a PDF is not. To look at a video the agent takes frames into its workspace
+(`ffmpeg -i <path> -vf fps=1 frames/%03d.jpg`) and reads those.
+
+## Sending through a source
+
+An agent sends with the `send` tool; its `sources` tool says which sources can and what each takes.
+
+| Type | Sending does | The agent passes |
+|---|---|---|
+| `telegram` | A message to you in your chat with the bot | `text`, optionally `file` |
+| `mqtt` | A message to a topic on the `publish` list | `data`: `{ "topic": "lamp/set", "message": "on" }`, optionally `retain`, `qos` |
+| `mail`, `slack`, `matrix`, `discord`, `zulip` | A message to an address, channel or room on the `sendTo` list | As the type's section in [source-types.md](source-types.md) says |
+
+An answer to a message that came in through Telegram goes back by itself; `send` is for what the
+agent says unasked.
+
+A [route](events.md) sends too: `"reply": { "topic": "out/source/telegram@main" }` puts an
+agent's answer on Telegram, and an event on `out/source/<name>` goes out through that source
+(`<name>@<agent>` for an agent's own; `pine sources` shows which). The source must be running:
+`"start": "always"` if nothing is subscribed.
+
+### A picture or a video with the message
+
+> When the camera sees somebody at the door, send me the picture on Telegram.
+
+`file` is a picture (jpg, png, webp, gif, up to 20 MB), a video (mp4, mov, webm, up to 100 MB) or
+a sound file in the agent's workspace. Telegram shows it with the text as caption (a text over
+1024 characters goes first, by itself), a picture over 10 MB as a file, and takes nothing over
+50 MB: the agent scales a clip down first (`ffmpeg -i clip.mp4 -vf scale=960:-2 -an small.mp4`). A
+file a source received lies outside the workspace: the agent copies it, or a frame of it, in
+first.
+
+### Telling you needs no approval
+
+A message to you through Telegram is not held for your approval, also after outside content and
+in a run an event woke with nobody there: that is how an agent alerts you unattended. Only manual
+mode asks. The Telegram source writes to your chat and nowhere else. `send` through MQTT, mail or
+a chat type does ask after outside content. To approve every Telegram message, put
+`"send:telegram"` (the source's name) on the agent's `approve` list ([security.md](security.md),
+"What asks you").
+
+## Reading through a source
+
+> Rainer answered in a thread. Read the thread and tell me what he means.
+
+`read_source` reads earlier messages through a source that can be asked (Slack: a channel, a
+direct conversation, a thread; [source-types.md](source-types.md), "Reading what was written
+before"). It reads only where the source listens, is never asked about, and what it returns is
+outside content. Only in your own conversations: not in a run started from outside or a sub-agent.
 
 ## Trust
 
 An event from a source that is not yours is outside content: framed as data, and it marks the
 conversation, after which sending something out asks you ([security.md](security.md), "Event
-sources"). `"trust": "owner"` on a source says nobody else can make it say things (a printer on
-your network, a broker with a password; never a webhook carrying others' text): its events leave
-no mark. `"separate": true` on a subscription wakes the agent in a conversation of its own
-(`on-<source>`) with the reduced `untrusted` tool set, for sources that carry strangers' text.
+sources").
+
+- `"trust": "owner"` on a source says nobody else can make it say things (a printer on your
+  network, a broker with a password; never a webhook carrying others' text): its events leave no
+  mark.
+- `"separate": true` on a subscription wakes the agent in a conversation of its own
+  (`on-<source>`) with the reduced `untrusted` tool set, for sources that carry strangers' text.
+
 Only a conversation with you, a shell or a file can subscribe.
 
 ## A source type of your own
 
-Try `http`, `command`, `mqtt`, `webhook`, `folder` or `ftp` first. A type of your own is for a
-device or service with a protocol of its own: a module whose default export starts a source and
-whose `type` export says what it is and which options it takes. Registered, it is offered in
+Try `http`, `command`, `mqtt`, `webhook`, `folder` or `ftp` first. A type of your own is
+for a device or service with a protocol of its own: a module whose default export starts a source
+and whose `type` export says what it is and which options it takes. Registered, it is offered in
 `add_source` like a built-in type. It runs inside pine with your rights
 ([security.md](security.md), "A new kind of source is a program").
 
@@ -299,11 +310,14 @@ whose `type` export says what it is and which options it takes. Registered, it i
 The main agent writes the module into its workspace and calls `add_source_type` with the file.
 Read the file before you say yes (the code pane's Files view). pine then copies it to
 `~/.pine/sources/<name>.<hash>.ts`, registers that copy under `sourceTypes`, and checks it loads;
-later changes to the workspace file change nothing. Refused in a conversation that has read
-outside content (a main conversation that events arrive in is one: open a new tab). A name is
-taken once: `remove_source_type` first, which refuses while a source of that type exists. The
-module uses only Node's own modules, `fetch` and the `source` object, is a `.ts` file of at most
-200 KB in the main agent's workspace, and is not named like a built-in type.
+later changes to the workspace file change nothing.
+
+- Refused in a conversation that has read outside content. A main conversation that events
+  arrive in is one: open a new tab.
+- A name is taken once: `remove_source_type` first, which refuses while a source of that type
+  exists. Not the name of a built-in type.
+- The module is a `.ts` file of at most 200 KB in the main agent's workspace, and uses only
+  Node's own modules, `fetch` and the `source` object.
 
 ### Write it yourself
 
@@ -348,7 +362,8 @@ export default function (source: SourceApi) {
 
 Register it in `pine.json`: `"sourceTypes": { "doorbell": "./sources/doorbell.ts" }`. Without a
 `type` export a module still works in the configuration but not through `add_source`;
-`"use": "./sources/doorbell.ts"` on one source points at a module directly.
+`"use": "./sources/doorbell.ts"` on one source points at a module directly. The start function
+may be `async`; if it throws, the source shows "not running" with the message.
 
 | `type` | |
 |---|---|
@@ -384,8 +399,6 @@ Register it in `pine.json`: `"sourceTypes": { "doorbell": "./sources/doorbell.ts
 | `onStop(fn)` | When the last subscriber leaves or the daemon stops: close everything. |
 | `log` | `debug`, `info`, `warn`, `error`. |
 
-The start function may be `async`; if it throws, the source shows "not running" with the message.
-
 ## When nothing happens
 
 1. `pine sources`: running? subscribed? last event? "not running: ..." gives the reason; for
@@ -394,3 +407,4 @@ The start function may be `async`; if it throws, the source shows "not running" 
 3. `pine tasks --agent <id>`: was the agent woken? If not, check `when` and `throttle`.
 4. Woken, but nothing reached you: it answered in the conversation it subscribed in (`pine
    sources` says which). Tell it in the note how to reach you.
+5. A source type of your own shows "not running" with the message its start function threw.

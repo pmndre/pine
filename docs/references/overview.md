@@ -1,5 +1,8 @@
 # How pine works
 
+pine on one page: what wakes an agent, how an event becomes work, how agents work together, and
+what content from outside may do. Each section links to the chapter with the details.
+
 ## The picture
 
 pine is a daemon that runs agents. You talk to an agent in the terminal UI ([tui.md](tui.md)), the
@@ -36,8 +39,8 @@ Each is set up for the conversation it was asked in, for the agent, or (by the m
 for all agents; an agent lists what it has with `sources`, `schedules`, `mcp_servers`, `skills`
 ([setup.md](setup.md)). Only the main agent creates agents and administers pine.
 
-How pine works is not in an agent's prompt: an agent looks it up with its `manual` tool, which
-searches these pages ([agents.md](agents.md), "The manual tool").
+An agent looks up how pine works with its `manual` tool, which searches these pages
+([agents.md](agents.md), "The manual tool").
 
 ## Events
 
@@ -63,8 +66,8 @@ A task is a prompt for one agent in one conversation (session). Tasks of one con
 after another, except a message you send while it works, which goes into that work
 ([agents.md](agents.md), "A message while the agent works"). Different conversations run side by
 side, up to `limits.maxConcurrentRuns`, and a model can have a limit of its own (`limits.models`);
-a run that only waits gives its place up. Conversations are kept on disk and survive restarts
-([agents.md](agents.md), "Sessions"). After a restart queued tasks run, and a task that was
+a run that waits for a sub-agent or another agent gives its place up. Conversations are kept on
+disk and survive restarts ([agents.md](agents.md), "Sessions"). After a restart queued tasks run, and a task that was
 running is marked failed, since its tool calls may already have had effects.
 
 When a task ends, its answer goes to where the task came from (a Telegram chat, your UI). An

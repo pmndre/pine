@@ -1,8 +1,10 @@
 # Configuration files
 
-Everything pine needs is in its home directory: `~/.pine`, or `$PINE_HOME`, or `--home <dir>`.
-Most of it you never edit: agents change it through tool calls ([setup.md](setup.md)), the Pine
-app through Settings.
+Every key of `pine.json`, `agent.json`, `models.json` and `.env`, with its default. You rarely
+edit these files: the main agent changes them through tool calls ([setup.md](setup.md)), and the
+Pine app through Settings.
+
+Everything pine needs is in its home folder: `~/.pine`, or `$PINE_HOME`, or `--home <dir>`.
 
 ```
 ~/.pine/
@@ -36,12 +38,12 @@ app through Settings.
 The files read as instructions are listed in [agents.md](agents.md), "Every file that is read as
 instructions".
 
-`pine check` validates names, references, paths, models, sources and schedules, prints what each
-agent ends up with, and lists what weakens the defences. Keys that pine no longer has are
-reported there with what to write instead.
-
 Paths in `pine.json` are relative to the home; paths in `agent.json` to the agent's folder. `~`
 works in both. Durations are milliseconds or a string: `"90s"`, `"15m"`, `"2h"`, `"1d"`.
+
+After editing a file by hand, run `pine check`. It validates names, references, paths, models,
+sources and schedules, prints what each agent ends up with, and lists what weakens the defences.
+A key pine does not take is reported with what to write instead.
 
 ## Secrets
 
@@ -88,8 +90,8 @@ Pine app in Settings ([setup.md](setup.md), "pine's settings").
 | `logLevel` | `info` | `debug`, `info`, `warn`, `error`, `silent`. Logs go to stderr; a daemon inside the terminal UI or started by `pine service` logs to `data/pine.log`. |
 | `dataDir` | `data` | Where the database, media and control token live. |
 | `defaults.model` | none | `provider/model-id`: the model of every agent whose `agent.json` names no model. There is no built-in fallback. A new home has none: the first model you connect becomes it, and until then an agent with no model named says so instead of answering ([operations.md](operations.md), "Choosing a model"). |
-| `defaults.judge` | not set | The model of goal mode's judge. Not set: the agent's own. A small second model keeps the judge from pushing the conversation out of a model server's cache. See [agents.md](agents.md), "Goal mode". |
-| `defaults.checker` | not set | The model that checks a swarm's answer. Not set: the agent's own; another model does not share its misreadings. `/swarm` is refused while it names a model that is not there. See [boards.md](boards.md), "A swarm". |
+| `defaults.judge` | not set | The model of goal mode's judge. Not set: the agent's own. A second, small model keeps the judge from pushing the conversation out of a model server's cache. See [agents.md](agents.md), "Goal mode". |
+| `defaults.checker` | not set | The model that checks a swarm's answer. Not set: the agent's own. `/swarm` is refused while it names a model that is not there. See [boards.md](boards.md), "A swarm". |
 | `defaults.introduce` | `true` | Each agent introduces itself in its answer to your first message. `false`: none does ([agents.md](agents.md), "Meeting an agent"). |
 | `defaults.thinking` | `medium` | Reasoning level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Ignored by a model that cannot reason. |
 | `defaults.mode` | not set | The mode of every agent that names none: `auto`, `safe`, `manual`, `bypass` or `plan`. Not set: `auto` for the main agent, `safe` for the others. `safe` keeps every agent in its sandbox. See [security.md](security.md), "Modes: how much an agent does without asking". |
@@ -97,8 +99,8 @@ Pine app in Settings ([setup.md](setup.md), "pine's settings").
 | `defaults.taskTimeoutSec` | `7200` | Longest a task may run (two hours). |
 | `defaults.idleMs` | `15m` | A live session without work is closed after this, and resumed from disk later. |
 | `defaults.settings` | `{}` | pi settings for every agent, e.g. `{ "compaction": { "reserveTokens": 8000 } }`, on top of pi's own settings files. |
-| `limits.maxConcurrentRuns` | `8` | How many agents work at the same time: runs that talk to a model at once; the others wait their turn. A run that only waits (for sub-agents, a delegated task, your approval) gives its place back. For a model server of your own, set the number of requests it serves side by side (`-np` on llama.cpp), or use `limits.models`. Settings > General > Limits: Agents at work at once. |
-| `limits.models` | none | Runs at a time for one model, by its whole name: `{ "local/qwen3-coder": 2 }`, 1 to 64. Such a model has a queue of its own, apart from `limits.maxConcurrentRuns`: a model on your own computer takes one or two requests at once where a hosted one takes many. Set it in Settings > Models, with `configure_model` (`runs`), or here; it goes when the model's server is removed. |
+| `limits.maxConcurrentRuns` | `8` | How many agents work at the same time: runs that talk to a model at once; the others wait their turn. A run that only waits (for sub-agents, a delegated task, your approval) gives its place back. For a model server of your own, use the number of requests it serves side by side (`-np` on llama.cpp), or set `limits.models`. Settings > General > Limits: Agents at work at once. |
+| `limits.models` | none | Runs at a time for one model, by its whole name: `{ "local/qwen3-coder": 2 }`, 1 to 64. Such a model has a queue of its own, apart from `limits.maxConcurrentRuns`: a model on your own computer takes one or two requests at once where a hosted one takes many. Set it in Settings > Models, with `configure_model` (`runs`), or here. It goes when the model's server is removed. |
 | `limits.maxSubagents` | `4` | Sub-agents one conversation runs at a time, unless an `agent.json` sets `subagents.maxParallel`. More tasks wait. Settings > General > Limits: Sub-agents at a time. |
 | `limits.maxPoolTasks` | `100` | The most tasks one `subagent` call takes as a pool, worked through a few at a time ([boards.md](boards.md), "A pool of sub-agents"). Settings > General > Limits: Largest batch of sub-agent tasks. |
 | `limits.warmSlots` | `true` | Idle llama.cpp slots read a conversation's beginning ahead of time. See [agents.md](agents.md), "What the model server keeps". |
@@ -162,7 +164,7 @@ agent"), and so does `pine agent update`.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `description` | empty | Read only where the agent's `AGENTS.md` does not begin with a paragraph saying what it is for, which is where pine takes that from ([agents.md](agents.md), "Handing work to another agent"). Nothing writes it. |
+| `description` | empty | What other agents read about this one when its `AGENTS.md` does not begin with a paragraph saying what it is for ([agents.md](agents.md), "Handing work to another agent"). Nothing writes it. |
 | `color` | none | Give an agent its own color in the Pine app, `#rrggbb`: its avatar is drawn in it, nothing else. Set it on the agent's avatar in the app, with `pine agent update <id> --color #e0805a` (`none` removes it), or ask the main agent. |
 | `scroll` | `top` | Where a conversation goes in the Pine app when you send: `top` puts your message at the top of the window with the answer below; `follow` adds it at the bottom and follows the answer, as a terminal does. Set it in Settings > Agents, with `pine agent update <id> --scroll follow`, or ask the main agent. |
 | `workspace` | `agents/<id>/workspace` | The agent's working folder. Must exist when you set it. |
@@ -274,8 +276,8 @@ For llama.cpp, `pine model add` and `add_model_server` read which levels the tem
 - A level above all it knows has no entry: pi lowers `xhigh` and `max` to the highest there is,
   and `high` goes as it is, to the template's default.
 
-For a server that does not report levels (vLLM, LM Studio), `--reasoning` only marks the model as
-thinking; write a `thinkingLevelMap` by hand if needed.
+For a server that does not report levels (vLLM, LM Studio), `pine model add --reasoning` only
+marks the model as thinking; write a `thinkingLevelMap` by hand if needed.
 
 ### A server that wants a key
 

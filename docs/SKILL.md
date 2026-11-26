@@ -5,6 +5,9 @@ description: Run, configure and extend pine, the event-driven multi-agent daemon
 
 # Introduction
 
+This is pine's manual. This page says what pine is, where each topic is, what an agent running
+inside pine should know first, and the shortest working setup.
+
 pine (PI neural engine) is one process that hosts several pi agent sessions and an event log.
 Event sources and schedules turn the outside world and the clock into events; subscriptions,
 schedules and routes turn events into work; agents answer, act, hand tasks to each other, and
@@ -153,10 +156,10 @@ pine
 ```
 
 One agent, `main` (the main agent), with web search and a browser, and the terminal UI to talk
-to it (or the Pine app: [references/desktop.md](references/desktop.md)). `pine init` writes
-`~/.pine/pine.json` with the control API and the web, browser and app control servers; the
-default model is written when you first sign in to a provider (`pine login <provider>`) or add a
-server of your own ([references/operations.md](references/operations.md), "Choosing a model").
+to it (or the Pine app: [references/desktop.md](references/desktop.md)). A new home has no model:
+sign in to a provider (`pine login <provider>`) or add a server of your own (`pine model add`); the
+first one becomes the default ([references/operations.md](references/operations.md), "Choosing a
+model").
 
 Telegram as a second way in: ask the main agent to "watch Telegram". The dialog asks for the
 bot's token; then you write to the bot and type the six-digit code it sends you into pine

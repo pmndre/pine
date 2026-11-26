@@ -1,13 +1,20 @@
 # The terminal UI
 
+The terminal UI is a full-screen chat with your agents in a terminal. This chapter covers its
+screen, tabs, keys and commands, what it shows of an agent's work, and dictation.
+
 ```bash
 pine
 ```
 
-opens a full-screen chat with your agents (`pine tui` is the same). It attaches to a running
-daemon, or starts one inside the same process (log in `data/pine.log`) and stops it when you
-quit. A new home has no model: the main conversation's welcome says how to connect one
-([operations.md](operations.md), "Choosing a model").
+opens it (`pine tui` is the same). It attaches to a running daemon, which goes on when you quit,
+or starts one inside the same process (log in `data/pine.log`) and stops it when you quit; queued
+tasks then run at the next start. `pine .` or `pine <folder>` adds a tab with a conversation that
+works in that folder (folders, worktrees and the code pane: [coding.md](coding.md)).
+
+The UI is a client of the daemon through the control API (`http` in `pine.json`). What you do in
+it goes through the same events, tasks and approvals as Telegram or `pine send`. The Pine app
+shows the same conversations in a window ([desktop.md](desktop.md)).
 
 ```
  pine  1 ★ main ×  2 main·notes × ⠹  3 events ×  +                 ▤ code  ← tabs, and the code pane's button
@@ -31,29 +38,71 @@ quit. A new home has no model: the main conversation's welcome says how to conne
  main · main · no folder · opencode-go/deepseek-v4.1-flash · reasoning off · auto · context 12% · ↑ 1.4k t/s ↓ 42 t/s      /help
 ```
 
-`pine .` or `pine <folder>` adds a tab with a conversation that works in that folder. Folders,
-worktrees and the code pane beside a conversation are in [coding.md](coding.md).
+## Models to try it with
 
-## The pine of another machine
+A new home has no model: the main conversation's welcome says how to connect one. The first model
+you connect becomes the default, and the bottom bar shows the model of the tab's agent.
+`pine login <provider>` or `pine model add` connects one, `/model` picks it
+([operations.md](operations.md), "Choosing a model"). Every agent introduces itself in its first
+answer to you ([agents.md](agents.md), "Meeting an agent").
 
-```bash
-pine --ssh you@server
-```
+## Tabs
 
-opens the same UI on the pine of another machine. Write the machine as you would after `ssh`
-(`server`, `user@server`, a name from `~/.ssh/config`); anything else, such as an ssh option, is
-refused. No pine home is needed on this computer. One ssh connection runs `pine service` there
-and forwards a port of this computer to that pine's loopback only, as the Pine app does
-([desktop.md](desktop.md)). A pine the connection started stops when you quit; one that was
-running goes on.
+A tab is one conversation: an agent and a session. The first tab is the main agent's `main`.
 
-| | |
+| In the tab bar | Means |
 |---|---|
-| Needs | ssh that signs in without a password (a key in `ssh-agent`, or Tailscale SSH), a host ssh already knows (connect once with `ssh`), and a pine with a home there (`pine init`; `pine update` for one without `pine service`) |
-| Folders | Paths on that machine: `pine --ssh you@server ~/projects/site`, `/folder <path>` (`~` is the home there). The folder chooser and a folder dropped on the terminal are not offered |
-| Attachments, dictation, links, pictures, sound | This computer's files, microphone, browser and player |
-| `/mcp` | That pine's servers. A browser sign-in happens there: `ssh you@server pine mcp login <name>` |
-| Commands | `--ssh` is for the UI only. Run a command there: `ssh you@server pine status` |
+| `★` | A conversation kept for good: an agent's main one, or a pinned one |
+| `•` | Something arrived while you were elsewhere |
+| A spinner | The agent works |
+| `!` | It waits for your approval |
+
+`ctrl+t` opens a new conversation with the same agent, `ctrl+w` closes the tab (the last one
+stays), `tab` (input empty) and `alt+1` ... `alt+9` switch.
+
+When you quit and start again the same conversation tabs open, in the same order, with the same
+one in front (not the events tab or task tabs). Closing a tab does not end its conversation.
+Messages that reach the conversation from elsewhere (Telegram, `pine send`, a route) show in its
+tab too. The main agent can open, close, rename, pin and remove conversations when you ask
+([setup.md](setup.md#conversations-and-tabs)); a tab it opens appears behind yours, marked new.
+
+A conversation nobody wrote in for `limits.conversationDays` (7; `0` keeps all) is removed with
+its history, unless it is an agent's main one, pinned, in a group, open in a tab, subscribed to
+a source or has a schedule of its own ([agents.md](agents.md#sessions)). The list (`/sessions`,
+or a click on the conversation's name) says for each: `the agent's own, always kept`, `pinned`,
+`kept in a group`, `open in a tab`, `kept`, or when it goes (`goes in 5 days`, `goes soon`).
+A conversation nothing was said in is not listed.
+
+| In the list | Does |
+|---|---|
+| `enter`, or a click on a name | Opens it in a tab |
+| `▸ name` after a name | The group it is in. Conversations in no group come first, then each group's; typing a group's name finds its conversations |
+| `pin` / `unpin`, or `ctrl+p` | Pins it or takes the pin off. Pinned ones have `★` and come first |
+| `×`, or `ctrl+x` | Removes it for good, after a second click or key (`remove? ×`). Not while it works |
+| `reset` on the agent's `main`, or `ctrl+x` on it | Starts it over like `/reset`, after a second click (`reset? ×`). The main conversation cannot be removed |
+
+Removing cannot be undone: the history, what it was allowed, what it listens to and whatever was
+set up for it alone (sources, schedules, MCP servers, skills, its folder) go.
+
+## Keys
+
+| Key | Does |
+|---|---|
+| `enter` | Send. While the agent works, the message goes into that work and is read at its next step; the agent answers it briefly first, then goes on ([agents.md](agents.md), "A message while the agent works"). If the work ends first, it is answered next. On an empty line with a request waiting: opens the approval dialog again |
+| `alt+enter` | Send, but let the message wait until the agent is done |
+| `shift+enter` | New line |
+| `up` / `down` | Earlier inputs |
+| `esc` | Stop the agent (`■ stopped`), and pause a goal or a swarm. A message you typed while it worked is answered next; for three seconds a second `esc` leaves it alone. While a list or dialog is open, `esc` only closes that |
+| `shift+tab` | Next mode: auto, plan, safe, manual, bypass (input empty) |
+| `tab` | Next tab (input empty) |
+| `alt+1` ... `alt+9` | Go to that tab |
+| `ctrl+t`, `ctrl+w` | New conversation; close the tab |
+| `ctrl+g` | Open or close the code pane |
+| `ctrl+r` | Dictate: start listening, and end it |
+| `ctrl+v` | Attach the picture on the clipboard (where the terminal passes the key on) |
+| `pgup` / `pgdn`, mouse wheel | Scroll |
+| `ctrl+c` | Clear the input; twice on an empty input quits |
+| `ctrl+d` | Quit (input empty) |
 
 ## Mouse
 
@@ -92,12 +141,65 @@ The bottom bar also shows:
 | `↑ 1.4k t/s ↓ 42 t/s` | How fast the model was over the last task. See "How fast the model is" |
 | `outside content` (yellow) | The conversation has read something from outside ([security.md](security.md)) |
 
-In a narrow terminal `/help` goes first, then the speed, `cache`, `context`, then the end of the
-names. The mode and `outside content` go last.
+In a narrow terminal the bottom bar leaves out `/help` first, then the speed, `cache`, `context`
+and the end of the names; the mode and `outside content` stay longest.
 
 Web addresses are printed in full, also behind a link's text, and a wrapped address opens whole.
 Dragging selects text through the UI; hold Option (Terminal, iTerm) or Shift (most others) to use
 the terminal's own selection.
+
+## Commands
+
+Type `/` for the list; keep typing to narrow it, `enter` runs the command.
+
+| Command | What it does |
+|---|---|
+| `/help` | Commands and keys |
+| `/new [name]` | New conversation in a new tab |
+| `/new --worktree [name]` | A new conversation in a worktree of the folder of the one in front ([coding.md](coding.md#a-worktree-for-a-conversation)) |
+| `/agent [id] [session]` | Open a tab with an agent; without an id, a list |
+| `/sessions [name]` | Open one of this agent's conversations; without a name, the list |
+| `/tab <n>`, `/close` | Switch to, or close, a tab |
+| `/rename <name>` | Rename this conversation and its tab; history, pin and subscriptions go along, running work goes on. Not for an agent's main conversation |
+| `/branch [--worktree] [name]` | A new conversation that goes on from one of your messages; this one stays as it is. Without a name, pick the message (or "all of it") from a list; with a name, all of it. `--worktree` (`-w`): in a worktree of its own ([agents.md](agents.md#branching-a-conversation)) |
+| `/pin`, `/unpin` | Keep this conversation however long it is unused, or let it go again |
+| `/group [name\|-]` | Put this conversation (with its branches) into a group, made if new; `-` takes it out, alone it says which ([agents.md](agents.md#groups-of-conversations)) |
+| `/reset` | Forget this conversation and start fresh (also clears "outside content") |
+| `/undo` | Take back your last message: its work is stopped, the files it changed are restored, its text is back in the input. Again for the one before ([coding.md](coding.md), "Taking a message back") |
+| `/redo` | Bring back what the last `/undo` took, one message at a time, until you send a new message |
+| `/compact` | Shorten this conversation: the earlier part becomes a summary, the recent part stays. Frees the model's context; useful with a small local model. Waits its turn like a message |
+| `/notify [on\|off]` | A bell and a notification when the agent is done, fails, needs your approval or asks you something while the terminal is not in front. On by default, remembered. Terminal.app only rings; Ghostty, iTerm, Kitty and others show a system notification |
+| `/copy` | Copy the agent's last answer to the clipboard, as Markdown |
+| `/export [copy] [full]` | Save this conversation as `pine-<agent>-<conversation>-<date>.md` in the folder pine was started in. `copy`: to the clipboard instead; `full`: with thoughts and tool calls |
+| `/folder [path\|none]` | Open a folder of yours for this conversation; `none` (or `off`, `-`) closes it; alone, a list ([coding.md](coding.md#a-folder-for-a-conversation)) |
+| `/worktree [name]` | Move this conversation into a worktree of its folder's repository; in one, a list: merge, squash, update, ask the agent to commit, discard ([coding.md](coding.md#a-worktree-for-a-conversation)) |
+| `/code [changes\|turn\|files\|output\|running\|board\|off]` | The code pane on that view; alone it opens and closes it. `turn`: what your last message changed |
+| `/board` | The tasks of the conversation's boards, shown in the code pane (`/code board`): each task with its state (`○` to do, `●` in progress, `?` waiting for an answer, `✓` done, `✗` failed) and the notes; a click shows a task in full. Only shows: to answer or take back a task, tell the agent or use the Pine app ([boards.md](boards.md)) |
+| `/stop` | Stop what the agent is doing |
+| `/goal [objective\|pause\|resume\|clear]` | Goal mode: the agent works round after round until a judge says the objective is met. Alone it shows where the goal stands. See "Goals" |
+| `/swarm [what is to be done\|pause\|resume\|clear]` | The agent leads a job worked through by sub-agents on the board, and its answer is checked. Alone it shows where the swarm stands. See "Swarms" |
+| `/model [provider/id]` | Switch the agent's model; alone, a list to search (`/model deepseek` narrows it). Saved in its `agent.json` |
+| `/reasoning [level]` | How much the model thinks before answering; alone, a list. Saved like the model. A model that cannot reason ignores it |
+| `/mode [auto\|safe\|manual\|bypass\|plan]` | How much this agent does without asking; alone, a list. See "Modes" |
+| `/voice [language]` | Dictate the message (`ctrl+r`). With a language (`/voice de-DE`) it listens for that one from then on. See "Dictating a message" |
+| `/attach <path>`, `/detach [n]` | Attach files to the next message, or remove them |
+| `/paste` | Attach the picture on the clipboard. Text is pasted with the terminal's own paste |
+| `/mcp`, `/mcp login [name]` | The MCP servers, their state and whom each is for (all agents, one agent, `only this conversation`, or another conversation: [mcp.md](mcp.md)). `login` signs in to a remote one through the browser |
+| `/status` | Model slots, running tasks, live sessions |
+| `/sources` | Event sources: what can wake an agent, whether it runs, who is subscribed |
+| `/subscribe [local\|agent\|global] <source> [what to do]`, `/unsubscribe [local\|agent\|global] <source>` | Wake on a source's events, or stop that. Without a scope: this conversation, ending when its tab is closed; in the main conversation, the agent ([sources.md](sources.md)) |
+| `/tasks` | Recent tasks of this tab's agent |
+| `/task <id>` | A tab with one task's work, step by step: for sub-agents and delegated tasks |
+| `/events` | The live event log in its own tab |
+| `/approve [id] [always]`, `/deny [id]` | Answer an approval request; `always` stops the question for the rest of the conversation |
+| `/state [pattern]` | Shared state |
+| `/emit <topic> [json]` | Publish an event as yourself |
+| `/clear` | Clear the view (the conversation is kept) |
+| `/quit`, `/exit` | Leave. The tabs open again at the next start |
+
+A model or reasoning level you pick is saved in the agent's `agent.json`. So is a mode when it is
+`auto`, `safe` or `manual`; `bypass` and `plan` last until pine restarts, so an agent never
+comes back up in bypass unless its `agent.json` says so.
 
 ## Pointing at a file
 
@@ -130,161 +232,6 @@ The files are saved into `inbox/` in the agent's workspace and the message names
 of at most 10 MB are also shown to a model that takes images. A folder dropped on the terminal
 is not attached: it is opened for the conversation ([coding.md](coding.md)).
 
-## Tabs
-
-A tab is one conversation: an agent and a session. The first tab is the main agent's `main`.
-In the tab bar `★` marks a conversation kept for good (an agent's main one, or a pinned one),
-`•` that something arrived while you were elsewhere, a spinner that the agent works, `!` that
-it waits for your approval. `ctrl+t` opens a new conversation with the same agent, `ctrl+w`
-closes the tab (the last one stays), `tab` (input empty) and `alt+1` ... `alt+9` switch;
-`/agent`, `/sessions`, `/rename`, `/branch`, `/pin`, `/group` and `/events` are under "Commands".
-
-When you quit and start again the same conversation tabs open, in the same order, with the same
-one in front (not the events tab or task tabs). Closing a tab does not end its conversation.
-Messages that reach the conversation from elsewhere (Telegram, `pine send`, a route) show in its
-tab too. The main agent can open, close, rename, pin and remove conversations when you ask
-([setup.md](setup.md#conversations-and-tabs)); a tab it opens appears behind yours, marked new.
-
-A conversation nobody wrote in for `limits.conversationDays` (7; `0` keeps all) is removed with
-its history, unless it is an agent's main one, pinned, in a group, open in a tab, subscribed to
-a source or has a schedule of its own ([agents.md](agents.md#sessions)). The list (`/sessions`,
-or a click on the conversation's name) says for each: `the agent's own, always kept`, `pinned`,
-`kept in a group`, `open in a tab`, `kept`, or when it goes (`goes in 5 days`, `goes soon`).
-A conversation nothing was said in is not listed.
-
-| In the list | Does |
-|---|---|
-| `enter`, or a click on a name | Opens it in a tab |
-| `▸ name` after a name | The group it is in. Conversations in no group come first, then each group's; typing a group's name finds its conversations |
-| `pin` / `unpin`, or `ctrl+p` | Pins it or takes the pin off. Pinned ones have `★` and come first |
-| `×`, or `ctrl+x` | Removes it for good, after a second click or key (`remove? ×`). Not while it works |
-| `reset` on the agent's `main`, or `ctrl+x` on it | Starts it over like `/reset`, after a second click (`reset? ×`). The main conversation cannot be removed |
-
-Removing cannot be undone: the history, what it was allowed, what it listens to and whatever was
-set up for it alone (sources, schedules, MCP servers, skills, its folder) go.
-
-## Commands
-
-Type `/` for the list; keep typing to narrow it, `enter` runs the command.
-
-| Command | What it does |
-|---|---|
-| `/help` | Commands and keys |
-| `/new [name]` | New conversation in a new tab |
-| `/new --worktree [name]` | A new conversation in a worktree of the folder of the one in front ([coding.md](coding.md#a-worktree-for-a-conversation)) |
-| `/agent [id] [session]` | Open a tab with an agent; without an id, a list |
-| `/sessions [name]` | Open one of this agent's conversations; without a name, the list |
-| `/tab <n>`, `/close` | Switch to, or close, a tab |
-| `/rename <name>` | Rename this conversation and its tab; history, pin and subscriptions go along, running work goes on. Not for an agent's main conversation |
-| `/branch [--worktree] [name]` | A new conversation that goes on from one of your messages; this one stays as it is. Without a name, pick the message (or "all of it") from a list; with a name, all of it. `--worktree` (`-w`): in a worktree of its own ([agents.md](agents.md#branching-a-conversation)) |
-| `/pin`, `/unpin` | Keep this conversation however long it is unused, or let it go again |
-| `/group [name\|-]` | Put this conversation (with its branches) into a group, made if new; `-` takes it out, alone it says which ([agents.md](agents.md#groups-of-conversations)) |
-| `/reset` | Forget this conversation and start fresh (also clears "outside content") |
-| `/undo` | Take back your last message: its work is stopped, the files it changed are restored, its text is back in the input. Again for the one before ([coding.md](coding.md), "Taking a message back") |
-| `/redo` | Bring back what the last `/undo` took, one message at a time, until you send a new message |
-| `/compact` | Shorten this conversation: the earlier part becomes a summary, the recent part stays. Frees the model's context; useful with a small local model. Waits its turn like a message |
-| `/notify [on\|off]` | A bell and a notification when the agent is done, fails, needs your approval or asks you something while the terminal is not in front. On by default, remembered. Terminal.app only rings; Ghostty, iTerm, Kitty and others show a system notification. Its text is pine's, never the agent's |
-| `/copy` | Copy the agent's last answer to the clipboard, as Markdown |
-| `/export [copy] [full]` | Save this conversation as `pine-<agent>-<conversation>-<date>.md` in the folder pine was started in. `copy`: to the clipboard instead; `full`: with thoughts and tool calls |
-| `/folder [path\|none]` | Open a folder of yours for this conversation; `none` (or `off`, `-`) closes it; alone, a list ([coding.md](coding.md#a-folder-for-a-conversation)) |
-| `/worktree [name]` | Move this conversation into a worktree of its folder's repository; in one, a list: merge, squash, update, ask the agent to commit, discard ([coding.md](coding.md#a-worktree-for-a-conversation)) |
-| `/code [changes\|turn\|files\|output\|running\|board\|off]` | The code pane on that view; alone it opens and closes it. `turn`: what your last message changed |
-| `/board` | The tasks of the conversation's boards, shown in the terminal's code pane (`/code board`): each task with its state (`○` to do, `●` in progress, `?` waiting for an answer, `✓` done, `✗` failed) and the notes; a click shows a task in full. Only shows: to answer or take back a task, tell the agent or use the Pine app ([boards.md](boards.md)) |
-| `/stop` | Stop what the agent is doing |
-| `/goal [objective\|pause\|resume\|clear]` | Goal mode: the agent works round after round until a judge says the objective is met. Alone it shows where the goal stands. See "Goals" |
-| `/swarm [what is to be done\|pause\|resume\|clear]` | The agent leads a job worked through by sub-agents on the board, and its answer is checked. Alone it shows where the swarm stands. See "Swarms" |
-| `/model [provider/id]` | Switch the agent's model; alone, a list to search (`/model deepseek` narrows it). Saved in its `agent.json` |
-| `/reasoning [level]` | How much the model thinks before answering; alone, a list. Saved like the model. A model that cannot reason ignores it |
-| `/mode [auto\|safe\|manual\|bypass\|plan]` | How much this agent does without asking; alone, a list. See "Modes" |
-| `/voice [language]` | Dictate the message (`ctrl+r`). With a language (`/voice de-DE`) it listens for that one from then on. See "Dictating a message" |
-| `/attach <path>`, `/detach [n]` | Attach files to the next message, or remove them |
-| `/paste` | Attach the picture on the clipboard. Text is pasted with the terminal's own paste |
-| `/mcp`, `/mcp login [name]` | The MCP servers, their state and whom each is for (all agents, one agent, `only this conversation`, or another conversation: [mcp.md](mcp.md)). `login` signs in to a remote one through the browser |
-| `/status` | Model slots, running tasks, live sessions |
-| `/sources` | Event sources: what can wake an agent, whether it runs, who is subscribed |
-| `/subscribe [local\|agent\|global] <source> [what to do]`, `/unsubscribe [local\|agent\|global] <source>` | Wake on a source's events, or stop that. Without a scope: this conversation, ending when its tab is closed; in the main conversation, the agent ([sources.md](sources.md)) |
-| `/tasks` | Recent tasks of this tab's agent |
-| `/task <id>` | A tab with one task's work, step by step: for sub-agents and delegated tasks |
-| `/events` | The live event log in its own tab |
-| `/approve [id] [always]`, `/deny [id]` | Answer an approval request; `always` stops the question for the rest of the conversation |
-| `/state [pattern]` | Shared state |
-| `/emit <topic> [json]` | Publish an event as yourself |
-| `/clear` | Clear the view (the conversation is kept) |
-| `/quit`, `/exit` | Leave. The tabs open again at the next start |
-
-A model or reasoning level you pick is saved in the agent's `agent.json`. So is a mode when it is
-`auto`, `safe` or `manual`; `bypass` and `plan` last until pine restarts, so an agent never
-comes back up in bypass unless its `agent.json` says so.
-
-## Goals
-
-`/goal <objective>` sends the objective as your message, and each time the agent ends a turn a
-judge says whether it is met; if not, the agent is called again. How it works and when it stops:
-[agents.md](agents.md), "Goal mode".
-
-The status line starts with the goal, and the conversation gets a line for each verdict with the
-judge's reason under it:
-
-```
- ⠹ goal · round 3 of 20 · working · 41s · 6 tool calls · esc to stop
- ◎ goal · round 3 of 20 · checking whether it is met · esc to pause
-
- ◎ goal set: main works on it until it is met, for at most 20 rounds
- ◎ goal not met yet: round 2 of 20 starts
-   the tests were not run
- ‖ goal stopped after 2 rounds: main needs something from you. Answer it, then /goal resume
-   it needs to know which of the two databases to migrate
- ✓ goal met after 4 rounds
-   all tests pass and the README has the command
-```
-
-`‖` is a goal that waits for you: paused, blocked, or at its limit. `/goal resume` goes on,
-`/goal clear` takes it off. `esc`, or a message you type, pauses it (`esc` also stops the round
-that runs). The judge's reason is shown to you, never to the agent. Every UI on the same daemon
-shows the same goal.
-
-## Swarms
-
-`/swarm <what is to be done>` sends the job as your message; the agent leads it, coordinating
-sub-agents on the conversation's board instead of doing the work itself (a small job it does itself), pine calls it again while
-tasks are not done, and then has its answer checked by a sub-agent that did none of the work.
-All of it: [boards.md](boards.md), "A swarm".
-
-```
- ⠹ swarm · round 2 of 8 · working · 38s · 2 tool calls · 4 sub-tasks running · esc to stop
- ◎ swarm · round 2 of 8 · looking at the board · esc to pause
- ◎ swarm · round 2 of 8 · checking the answer · esc to pause
-
- ◎ swarm started: main leads it
- ◎ swarm the answer is being checked by a sub-agent that did none of the work
- ✓ swarm done after 2 rounds: 16 tasks, and the answer was checked
-```
-
-`‖` is a swarm that waits for you: paused, at its limit, or its lead asked you something (your
-answer is its next turn). `/swarm resume` goes on, `/swarm clear` takes it off; the board stays.
-`esc` pauses it and stops the round that runs; a check under way ends by itself. `/board` shows
-the tasks beside the conversation.
-
-## Keys
-
-| Key | Does |
-|---|---|
-| `enter` | Send. While the agent works, the message goes into that work and is read at its next step; the agent answers it briefly first, then goes on ([agents.md](agents.md), "A message while the agent works"). If the work ends first, it is answered next. On an empty line with a request waiting: opens the approval dialog again |
-| `alt+enter` | Send, but let the message wait until the agent is done |
-| `shift+enter` | New line |
-| `up` / `down` | Earlier inputs |
-| `esc` | Stop the agent (`■ stopped`), and pause a goal or a swarm. A message you typed while it worked is answered next; for three seconds a second `esc` leaves it alone. While a list or dialog is open, `esc` only closes that |
-| `shift+tab` | Next mode: auto, plan, safe, manual, bypass (input empty) |
-| `tab` | Next tab (input empty) |
-| `alt+1` ... `alt+9` | Go to that tab |
-| `ctrl+t`, `ctrl+w` | New conversation; close the tab |
-| `ctrl+g` | Open or close the code pane |
-| `ctrl+r` | Dictate: start listening, and end it |
-| `ctrl+v` | Attach the picture on the clipboard (where the terminal passes the key on) |
-| `pgup` / `pgdn`, mouse wheel | Scroll |
-| `ctrl+c` | Clear the input; twice on an empty input quits |
-| `ctrl+d` | Quit (input empty) |
-
 ## Dictating a message
 
 Click the `🎤` at the right of the input, press `ctrl+r` or type `/voice`, speak, and press
@@ -310,22 +257,18 @@ happens on this computer only; nothing that is heard is sent to a server.
 
 | System | What recognises | What it needs |
 |---|---|---|
-| macOS | The speech recognition macOS has on the device | Nothing on macOS 26 and later (a new language is fetched once, which needs the network). Before: Dictation on in System Settings > Keyboard, with the language |
-| Windows | Windows' desktop speech recogniser (System.Speech) | Speech recognition installed for the language (Settings > Time & language > Language & region > the language's options), and "Let desktop apps access your microphone" on |
+| macOS | The speech recognition macOS has on the device | Apple's command line developer tools (`xcode-select --install`), with which pine builds its helper **pine voice**. On macOS 26 and later nothing else (a new language is fetched once, which needs the network). Before: Dictation on in System Settings > Keyboard, with the language |
+| Windows | Windows' desktop speech recogniser (System.Speech) | Speech recognition installed for the language (Settings > Time & language > Language & region > the language's options), "Let desktop apps access your microphone" on, and the C# compiler of .NET Framework 4 that Windows carries, with which pine builds its helper once |
 | Linux | whisper.cpp's `whisper-cli` and a model, fed by a recorder | All three installed by you (below); pine installs and downloads none of it |
 | Anything else | Nothing | `ctrl+r` and `/voice` say so |
 
 Where a piece is missing (on Linux a recorder, `whisper-cli` or a model; on Windows the C#
 compiler), the input has no `🎤`, and `ctrl+r` and `/voice` answer with one line that names what
-to install (the table at the end of this section). On a Mac the `🎤` is always there; without
-the developer tools the first try says so.
+to install. On a Mac the `🎤` is always there; without the developer tools the first try says so.
 
-On a Mac, the first time, macOS asks whether **pine voice** may use the microphone: a small
-helper pine builds with Apple's command line developer tools (`xcode-select --install` if they
-are missing). Your terminal app is not given the microphone. After an update the helper is built
-anew and macOS may ask again. The Pine app carries it built. On Windows pine builds its helper
-once with the C# compiler of .NET Framework 4 that Windows carries
-(`%LOCALAPPDATA%\pine-voice`).
+On a Mac, the first time, macOS asks whether **pine voice** may use the microphone; your terminal
+app is not given it. After a pine update the helper is built anew and macOS may ask again. The
+Pine app carries the helper built.
 
 On Linux pine finds three things you install:
 
@@ -397,16 +340,7 @@ click.
 If Telegram is set up, the same request arrives there too; the first answer counts. A request
 with a field is not sent to Telegram.
 
-### The agent's list of steps
-
-For work with several steps an agent keeps a list (its `todo` tool), shown in the conversation
-and updated in place: `✓` done, `◐` in work, `☐` to do. The status line says `step 2 of 5`. The
-list belongs to the conversation: it survives a restart, the agent is reminded of open steps
-with your next message, and `/reset` clears it. An agent whose list stood still for six tool
-calls is reminded of it. While the code pane is open, the steps stand at its top (up to six,
-the one in work among them).
-
-### When the agent asks you something
+## When the agent asks you something
 
 An agent that needs your decision asks with its `question` tool. A dialog shows the question and
 the answers it offers, the recommended one first, each with a line on what it means. A digit,
@@ -416,6 +350,82 @@ numbers (`1,3`) or click to tick, then `enter`. `esc` leaves it for later (`/app
 again, `/deny` tells the agent there is no answer, and it goes on with an assumption it names).
 If Telegram is set up, a question with answers arrives there too, as buttons or numbered
 answers. The tool is there in every mode, `plan` too, and not in a run an outside event started.
+
+## The agent's list of steps
+
+For work with several steps an agent keeps a list (its `todo` tool), shown in the conversation
+and updated in place: `✓` done, `◐` in work, `☐` to do. The status line says `step 2 of 5`. The
+list belongs to the conversation: it survives a restart, the agent is reminded of open steps
+with your next message, and `/reset` clears it. An agent whose list stood still for six tool
+calls is reminded of it. While the code pane is open, the steps stand at its top (up to six,
+the one in work among them).
+
+## The tool calls of a turn
+
+Between your message and the answer the agent thinks, calls tools, writes a sentence about what
+it does next and hands work on. The conversation folds all of that into one line; once the
+answer came, only that line is left, and a click on it shows the tool calls again:
+
+| When | What is shown |
+|---|---|
+| While the agent works | `▸ 6 tool calls so far · bash ×4 · read ×2 · 1 thought · click to see all`, and under it the last six lines: the call that runs (`●`) and those that ended (`✓`, `✗`) |
+| When the turn is over | `▸ 12 tool calls · bash ×6 · read ×4 · edit · +1 more · 2 thoughts · 1 failed · 48s · click to open`, with the answer under it |
+| After a click on it | `▾` and everything in order: each call with its time, a failed one with the start of its error, thoughts, sub-tasks with `▸ open`, the words the agent wrote in between. Stays open when the turn ends |
+| A click on the line again, or on `▴ close` | The one line again |
+| A turn with a single call or thought | That call or thought alone |
+
+The line names the three tools called most (`+N more` for the rest). Words the agent writes and
+then goes on working are folded in; the text after which nothing more happens is the answer.
+
+Never folded away: an approval request, a question of the agent's, a message you typed while it
+worked, its list of steps, and a picture a tool returned. The calls before one become a line
+there, and those after it a block of their own.
+
+Tool calls are shown while pine runs. After a restart an earlier turn is your message and the
+answer; the calls of the last messages are in the code pane's Output view ([coding.md](coding.md),
+"The code pane"), and a task's tab (`/task <id>`) shows all its calls.
+
+## Sub-agents and delegated tasks
+
+A sub-agent or a task handed to another agent shows as a `↳` line, its tool calls (indented) and
+a line when it answers, among the tool calls of the turn. Its thoughts and words are in its own
+tab: click the line or use `/task <id>`. The tab shows the task in full, follows a running task
+live, and is read-only; `esc` there stops only that task, `ctrl+w` closes it.
+
+## What a model thinks
+
+A model that reasons (`/reasoning`) thinks before it answers and sends its thoughts ahead of the
+answer. The conversation shows them:
+
+| When | What is shown |
+|---|---|
+| While it thinks | `▸ thinking 4s` and the last four lines, moving on |
+| When it is done | `▸ thought for 12s`, and once the call ended its speed: `▸ thought for 12s · ↑ 1.4k t/s ↓ 42 t/s` |
+| After a click | `▾` and the whole thought. A click anywhere on it closes it |
+
+A thought is folded in with the tool calls of its turn. Thoughts are not kept: after a restart
+they are gone. A sub-agent's thoughts are in its own tab. A model that sends no thoughts (some
+hosted ones) shows `thinking` in the status line only. Since a click closes a thought, select
+text in it with Option or Shift held.
+
+### How fast the model is
+
+pine times every call of the model, with any model server:
+
+| Figure | What it is |
+|---|---|
+| `↑ 1.4k t/s` | Prompt processing: new tokens read (cached ones not counted), from the call going out to its first token. Left out below 200 new tokens |
+| `↓ 42 t/s` | Generation, thinking included: from the first token to the end. Left out for a few tokens or an answer in one piece |
+
+| Where | Which call |
+|---|---|
+| On a `▸ thought for` line | The call that thought was part of |
+| The status line, while it works | The call that ended last |
+| The bottom bar | The last task as a whole (tokens over time). Stays when the work is done |
+| A sub-task's tab, its last line (`── done · 12.3 s · 2 tool calls · 30205↑ 180↓ · ↑ 1.4k t/s ↓ 42 t/s ──`) | That task as a whole |
+
+pine's log has them with every task. They include the way to the server and back, so a server's
+own figures can differ a little.
 
 ## How answers are drawn
 
@@ -482,7 +492,7 @@ png, jpg, gif or webp file in its workspace or the conversation's folder.
 | Other terminals (Terminal, iTerm2, anything in tmux) | A thumbnail of colored half blocks, at most 44 characters by 14 lines |
 | Converting | Half blocks, jpg, gif and webp need macOS's `sips` or, on Linux, `ffmpeg`; without them only png shows, and only as a real picture |
 | A click | Enlarges it; another shrinks it |
-| Under a menu, or with the code pane open | Half blocks, since a real picture lies over all text and needs the left edge of a full line |
+| Under a menu, or with the code pane open | Half blocks |
 | After a restart | Pictures of messages and answers come back; a tool's are in the task's tab (`/task <id>`) |
 | At a web address | Fetched only on a click on `▸ load picture https://...`, since an address can carry information out |
 
@@ -514,86 +524,71 @@ The player and the converters run confined: no network, writing only to the temp
 remote MCP server made is fetched first ([mcp.md](mcp.md), "Files and pictures from a remote
 server"). All of this is display: the model gets the actual picture if it takes images.
 
-## The tool calls of a turn
+## Goals
 
-Between your message and the answer the agent thinks, calls tools, writes a sentence about what
-it does next and hands work on. The conversation folds all of that into one line, so that the
-tool calls do not clutter the conversation; once the answer came, only that line is left, and a
-click on it shows the tool calls again:
+`/goal <objective>` sends the objective as your message, and each time the agent ends a turn a
+judge says whether it is met; if not, the agent is called again. How it works and when it stops:
+[agents.md](agents.md), "Goal mode".
 
-| When | What is shown |
+The status line starts with the goal, and the conversation gets a line for each verdict with the
+judge's reason under it:
+
+```
+ ⠹ goal · round 3 of 20 · working · 41s · 6 tool calls · esc to stop
+ ◎ goal · round 3 of 20 · checking whether it is met · esc to pause
+
+ ◎ goal set: main works on it until it is met, for at most 20 rounds
+ ◎ goal not met yet: round 2 of 20 starts
+   the tests were not run
+ ‖ goal stopped after 2 rounds: main needs something from you. Answer it, then /goal resume
+   it needs to know which of the two databases to migrate
+ ✓ goal met after 4 rounds
+   all tests pass and the README has the command
+```
+
+`‖` is a goal that waits for you: paused, blocked, or at its limit. `/goal resume` goes on,
+`/goal clear` takes it off. `esc`, or a message you type, pauses it (`esc` also stops the round
+that runs). The judge's reason is shown to you, never to the agent. Every UI on the same daemon
+shows the same goal.
+
+## Swarms
+
+`/swarm <what is to be done>` sends the job as your message. The agent leads it: it coordinates
+sub-agents on the conversation's board instead of doing the work itself (a small job it does
+itself), pine calls it again while tasks are not done, and a sub-agent that did none of the work
+checks its answer. All of it: [boards.md](boards.md), "A swarm".
+
+```
+ ⠹ swarm · round 2 of 8 · working · 38s · 2 tool calls · 4 sub-tasks running · esc to stop
+ ◎ swarm · round 2 of 8 · looking at the board · esc to pause
+ ◎ swarm · round 2 of 8 · checking the answer · esc to pause
+
+ ◎ swarm started: main leads it
+ ◎ swarm the answer is being checked by a sub-agent that did none of the work
+ ✓ swarm done after 2 rounds: 16 tasks, and the answer was checked
+```
+
+`‖` is a swarm that waits for you: paused, at its limit, or its lead asked you something (your
+answer is its next turn). `/swarm resume` goes on, `/swarm clear` takes it off; the board stays.
+`esc` pauses it and stops the round that runs; a check under way ends by itself. `/board` shows
+the tasks beside the conversation.
+
+## The pine of another machine
+
+```bash
+pine --ssh you@server
+```
+
+opens the same UI on the pine of another machine. Write the machine as you would after `ssh`
+(`server`, `user@server`, a name from `~/.ssh/config`); anything else, such as an ssh option, is
+refused. No pine home is needed on this computer. One ssh connection runs `pine service` there
+and forwards a port of this computer to that pine's loopback only. A pine the connection started
+stops when you quit; one that was running goes on.
+
+| | |
 |---|---|
-| While the agent works | `▸ 6 tool calls so far · bash ×4 · read ×2 · 1 thought · click to see all`, and under it the last six lines: the call that runs (`●`) and those that ended (`✓`, `✗`) |
-| When the turn is over | `▸ 12 tool calls · bash ×6 · read ×4 · edit · +1 more · 2 thoughts · 1 failed · 48s · click to open`, with the answer under it |
-| After a click on it | `▾` and everything in order: each call with its time, a failed one with the start of its error, thoughts, sub-tasks with `▸ open`, the words the agent wrote in between. Stays open when the turn ends |
-| A click on the line again, or on `▴ close` | The one line again |
-| A turn with a single call or thought | That call or thought alone |
-
-The line names the three tools called most (`+N more` for the rest). Words the agent writes and
-then goes on working are folded in; the text after which nothing more happens is the answer.
-
-Never folded away: an approval request, a question of the agent's, a message you typed while it
-worked, its list of steps, and a picture a tool returned. The calls before one become a line
-there, and those after it a block of their own.
-
-Tool calls are shown while pine runs. After a restart an earlier turn is your message and the
-answer; the calls of the last messages are in the code pane's Output view ([coding.md](coding.md),
-"The code pane"), and a task's tab (`/task <id>`) shows all its calls.
-
-## What a model thinks
-
-A model that reasons (`/reasoning`) thinks before it answers and sends its thoughts ahead of the
-answer. The conversation shows what the model was thinking:
-
-| When | What is shown |
-|---|---|
-| While it thinks | `▸ thinking 4s` and the last four lines, moving on |
-| When it is done | `▸ thought for 12s`, and once the call ended its speed: `▸ thought for 12s · ↑ 1.4k t/s ↓ 42 t/s` |
-| After a click | `▾` and the whole thought. A click anywhere on it closes it |
-
-A thought is folded in with the tool calls of its turn. Thoughts are not kept: after a restart
-they are gone. A sub-agent's thoughts are in its own tab. A model that sends no thoughts (some
-hosted ones) shows `thinking` in the status line only. Since a click closes a thought, select
-text in it with Option or Shift held.
-
-### How fast the model is
-
-pine times every call of the model, with any model server:
-
-| Figure | What it is |
-|---|---|
-| `↑ 1.4k t/s` | Prompt processing: new tokens read (cached ones not counted), from the call going out to its first token. Left out below 200 new tokens |
-| `↓ 42 t/s` | Generation, thinking included: from the first token to the end. Left out for a few tokens or an answer in one piece |
-
-| Where | Which call |
-|---|---|
-| On a `▸ thought for` line | The call that thought was part of |
-| The status line, while it works | The call that ended last |
-| The bottom bar | The last task as a whole (tokens over time). Stays when the work is done |
-| A sub-task's tab, its last line (`── done · 12.3 s · 2 tool calls · 30205↑ 180↓ · ↑ 1.4k t/s ↓ 42 t/s ──`) | That task as a whole |
-
-pine's log has them with every task. They include the way to the server and back, so a server's
-own figures can differ a little.
-
-## Sub-agents and delegated tasks
-
-A sub-agent or a task handed to another agent shows as a `↳` line, its tool calls (indented) and
-a line when it answers, among the tool calls of the turn. Its thoughts and words are in its own
-tab: click the line or use `/task <id>`. The tab shows the task in full, follows a running task
-live, and is read-only; `esc` there stops only that task, `ctrl+w` closes it.
-
-## Models to try it with
-
-A new home has no model; the first one you connect becomes the default, and the bottom bar shows
-the model of the tab's agent. `pine login <provider>` or `pine model add` connects one, `/model`
-picks it: [operations.md](operations.md), "Choosing a model". The main conversation begins with
-pine's welcome until something is said in it, and every agent introduces itself in its first
-answer to you ([agents.md](agents.md), "Meeting an agent").
-
-## Notes
-
-- The UI is a client of the daemon and needs the control API (`http` in `pine.json`).
-- Quitting an attached UI leaves the daemon running; quitting one that started its own stops it,
-  and queued tasks run at the next start.
-- Everything it does goes through the same events, tasks and approvals as Telegram or `pine send`.
-- The Pine app shows the same conversations in a window of its own: [desktop.md](desktop.md).
+| Needs | ssh that signs in without a password (a key in `ssh-agent`, or Tailscale SSH), a host ssh already knows (connect once with `ssh`), and a pine with a home there (`pine init`; `pine update` for one without `pine service`) |
+| Folders | Paths on that machine: `pine --ssh you@server ~/projects/site`, `/folder <path>` (`~` is the home there). The folder chooser and a folder dropped on the terminal are not offered |
+| Attachments, dictation, links, pictures, sound | This computer's files, microphone, browser and player |
+| `/mcp` | That pine's servers. A browser sign-in happens there: `ssh you@server pine mcp login <name>` |
+| Commands | `--ssh` is for the UI only. Run a command there: `ssh you@server pine status` |

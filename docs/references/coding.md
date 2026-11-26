@@ -1,8 +1,8 @@
 # Working on code
 
-A conversation becomes a place to work on a project with a **folder** opened for it and the
-**code pane** beside it, which shows what changed, the files, and what the agent's tool calls
-printed. `/undo` takes back a message, files included.
+How to work on a project in a conversation: open a **folder** for it, give it a **worktree** of
+its own, watch what changes in the **code pane**, run long commands in the background, and take a
+message back with `/undo`, files included.
 
 ```bash
 cd ~/dev/shop
@@ -21,14 +21,14 @@ own workspace. From its next message on:
 - the folder's `AGENTS.md` or `CLAUDE.md` apply next to the agent's own,
 - the agent is told which folder it works in.
 
-Everything else stays: in the sandbox (`safe`, `manual`) the rest of your home and the network
-stay closed unless you open them, and the mode decides what is asked. The main agent works in
-`auto` and reaches your account anyway; a folder still makes its tools start there and applies
-the folder's instruction files.
+Nothing else changes: in the sandbox (`safe`, `manual`) the rest of your home and the network
+stay closed unless you open them, and the mode decides what is asked. An agent in `auto` (the
+main agent by default) reaches your account anyway; the folder makes its tools start there and
+applies the folder's instruction files.
 
 The folder belongs to that conversation alone. Its sub-agents have it, and so does another
-agent for one task handed to it from this conversation (`delegate` without a thread), but not
-another conversation. It stays across restarts and renames until you close it or remove the
+agent for one task handed over from this conversation (`delegate` without a thread); other
+conversations do not. It stays across restarts and renames until you close it or remove the
 conversation.
 
 | How | |
@@ -41,8 +41,8 @@ conversation.
 
 ![The folder menu over a conversation that works in a project folder](../images/folder.png)
 
-Only you open a folder: there is no tool for it, so no agent and nothing an agent reads can.
-A folder is refused when it is, contains or lies in pine's home (your home folder contains
+Only you open a folder: there is no tool for it, so no agent and nothing an agent reads can. A
+folder is refused when it is, contains or lies in pine's home (your home folder contains
 `~/.pine`), pine's own program, or another agent's workspace. It cannot be changed while the
 conversation is working, nor while it works in a worktree (merge or discard that first).
 
@@ -66,11 +66,13 @@ conversation then works in the same subfolder of the worktree.
 | `/new --worktree [name]` | A new conversation in a worktree of the folder of the one in front |
 | `/branch --worktree [name]` | Branches the conversation into a worktree ([agents.md](agents.md#branching-a-conversation)) |
 | `pine <folder> --worktree [name]` | The terminal UI with a new conversation in a worktree of that folder |
-| `.worktreeinclude` | A file at the top of the repository, in `.gitignore` patterns: the files it names that git ignores (`.env`, local settings) are copied into a new worktree. Never a tracked file or a link; at most 200 files of 1 MB each. The same file Claude Code reads |
+| `.worktreeinclude` | A file at the top of the repository, in `.gitignore` patterns (the same file Claude Code reads): the files it names that git ignores (`.env`, local settings) are copied into a new worktree. Never a tracked file or a link; at most 200 files of 1 MB each |
 | `worktree` of `subagent` and `delegate` | `true`: each sub-agent (or the agent the task goes to) works in a worktree of its own made from the conversation folder's last commit. When it is done its changes are committed on a branch (`pine/<conversation>-sub`, `-sub-2`, ...), its folder is removed, and the conversation is told the branch to `git merge`. One that changed nothing leaves nothing |
 
-The Pine app has the same: [desktop.md](desktop.md). A folder or worktree changed in one UI shows
+The Pine app has the same ([desktop.md](desktop.md)). A folder or worktree changed in one UI shows
 in the other by itself.
+
+Making, merging, updating and discarding are yours: no agent has a tool for them.
 
 ### Merging, updating, discarding
 
@@ -93,9 +95,6 @@ the daemon running) and `GET /worktrees` list it as nobody's: remove it with
 `git worktree remove --force` and `git branch -D`. pine forgets a worktree whose folder you
 removed by hand.
 
-Making, merging, updating and discarding are yours: no agent has a tool for them. A sub-agent's
-worktree is made from the folder you opened for its conversation.
-
 ### What a worktree does not do
 
 - Merging and updating run git with hooks, filters and merge drivers off: Git LFS files arrive
@@ -113,8 +112,8 @@ worktree is made from the folder you opened for its conversation.
 
 `▤ code` at the right of the tab bar, `ctrl+g` or `/code` opens and closes a pane beside the
 conversation. It shows the conversation's folder, or the agent's workspace. In a terminal of 100
-columns or more it takes half the width (44 to 96 columns); in a narrower one it takes the
-conversation's place until closed. Whether it was open is remembered.
+columns or more it takes half the width; in a narrower one it takes the conversation's place
+until closed.
 
 ```
  pine  1 ★ main ×  2 main·shop ×   +                                                ▤ code
@@ -135,46 +134,21 @@ conversation's place until closed. Whether it was open is remembered.
 | **Running** (`/code running`) | What the conversation's commands left running, with command, ports and how long; a background command with its output file | `■ stop` ends it |
 | **Board** (`/code board`, `/board`) | The conversation's board, then up to six named boards it can use: how their tasks stand, who has each, the notes ([boards.md](boards.md)) | on a task: it in full |
 
-The pane follows the agent: after each tool call what it shows is read again. `↻` reads again
-by hand, `×` closes, `/code off` closes too. The wheel scrolls the side the pointer is over.
-While the agent works, its list of steps stands at the top of the pane.
+The pane follows the agent: after each tool call it reads again. `↻` reads again by hand, `×`
+or `/code off` closes. The wheel scrolls the side the pointer is over. While the agent works,
+its list of steps stands at the top of the pane.
 
 Apart from `■ stop` the pane only shows: it changes no file, runs nothing of the project and
-sends nothing to a model. A file is shown up to 256 KB, a diff up to 200 000 characters, a
-tool's output up to 200 000 characters and 4000 lines; binary files are only named. Changes
-lists the first 300 files, Files up to 500 entries of a folder.
+sends nothing to a model. Limits: a file up to 256 KB, a diff up to 200 000 characters, a tool's
+output up to 200 000 characters and 4000 lines; binary files are only named. Changes lists the
+first 300 files, Files up to 500 entries of a folder.
 
-### What an agent left running
-
-An agent that starts a development server leaves it running (`npm run dev &`). pine notes every
-command's process group, so it knows what is still there when a command has ended, whatever the
-agent says.
-
-- **Running** in the code pane lists it; `■ stop` ends it (after a question; killed two
-  seconds later if it is still there).
-- The agent is told in its next message what it left running and on which ports, and ends one
-  with `stop_program`: ask it to "stop the servers you started".
-- While the agent's turn is over and something runs, the status line says so, so a long install
-  does not look like a hang.
-- Resetting or removing the conversation stops what it left running. Quitting pine does not:
-  they are listed again at the next start. `/undo` does not stop them either.
-
-A program that detaches itself completely (a daemon with a session of its own) is not found. On
-Linux in the sandbox nothing outlives its command: start a server in the background (below).
-
-A development server is best started as a command in the background (below) and ended with
-`stop_program`. In the sandbox (`safe`, `manual`) a command has no network: it cannot listen on
-a port, and on Linux it has a network of its own. For a server you or the browser must reach, the conversation needs network access:
-the agent asks with `request_access` and `network: true` (a yes holds for the conversation), or
-`sandbox.network: true` in its `agent.json` gives it always ([configuration.md](configuration.md)).
-In `auto` and `bypass` there is no sandbox and nothing is needed.
-
-### Commands in the background
+## Commands in the background
 
 A shell command is waited for and stopped at the time limit (`bashTimeoutSec`). For a long
-build, a test run, an install or a server the agent sets `background` on its shell tool: the
-command starts, the call returns at once, the agent goes on working, and pine tells the
-conversation when the command has ended.
+build, a test run, an install or a development server the agent sets `background` on its shell
+tool: the command starts, the call returns at once, the agent goes on working, and pine tells
+the conversation when the command has ended.
 
 | Name | What it does |
 |---|---|
@@ -188,9 +162,9 @@ conversation when the command has ended.
   with its file tools, also while it runs. pine does not delete these files.
 - When it ends, the conversation gets a message from pine, not from you: the id, the command,
   how it ended (exit code, signal, or that you stopped it), how long it ran, and its last lines,
-  each marked as output. Commands that end close together, or while the agent works, are told in
-  one message. If the conversation had read outside content when the command started, this
-  message counts as outside content too.
+  marked as output. Commands that end close together, or while the agent works, are told in one
+  message. If the conversation had read outside content when the command started, this message
+  counts as outside content too.
 - A command that ends but leaves a program running is told as ended, and the program is listed
   under Running.
 - `■ stop` in the code pane ends it, and the agent is told you stopped it.
@@ -198,11 +172,34 @@ conversation when the command has ended.
   Quitting pine does not: at the next start a running one is watched again, and one that ended
   meanwhile is told at once.
 
-At most 8 commands of a conversation run in the background at once. Not available to a run an
-outside event started, nor to a single run with no conversation of yours to tell (the session
-`new`, a task handed over without a thread); a sub-agent can, and its conversation is told. On
-Linux a conversation that has read outside content cannot either ([security.md](security.md),
-"On Linux").
+At most 8 commands of a conversation run in the background at once. A sub-agent can start them,
+and its conversation is told. Not available to a run an outside event started, nor to a single
+run with no conversation of yours to tell (the session `new`, a task handed over without a
+thread). On Linux a conversation that has read outside content cannot either
+([security.md](security.md), "On Linux").
+
+## What an agent left running
+
+An agent that starts a server with `npm run dev &` instead of `background` leaves it running.
+pine finds what is still running after a command has ended, whatever the agent says.
+
+- **Running** in the code pane lists it; `■ stop` ends it (after a question; killed two
+  seconds later if it is still there).
+- The agent is told in its next message what it left running and on which ports, and ends one
+  with `stop_program`: ask it to "stop the servers you started".
+- While the agent's turn is over and something runs, the status line says so, so a long install
+  does not look like a hang.
+- Resetting or removing the conversation stops what it left running. Quitting pine does not:
+  they are listed again at the next start. `/undo` does not stop them either.
+
+A program that detaches itself completely (a daemon with a session of its own) is not found. On
+Linux in the sandbox nothing outlives its command: start a server in the background.
+
+**A server that must be reached.** In the sandbox (`safe`, `manual`) a command has no network:
+it cannot listen on a port you or the browser can reach (on Linux it has a network of its own).
+The agent asks with `request_access` and `network: true` (a yes holds for the conversation), or
+`sandbox.network: true` in its `agent.json` gives it always ([configuration.md](configuration.md)).
+In `auto` and `bypass` nothing is needed.
 
 ## Taking a message back
 
@@ -215,8 +212,8 @@ Linux a conversation that has read outside content cannot either ([security.md](
 3. The conversation forgets the message and everything after it.
 4. The message's text is back in the input, to change and send again.
 
-`/undo` again takes back the one before. `/redo` brings back what the last `/undo` took, files
-and conversation, one message at a time, until a new message is sent.
+`/undo` again takes back the one before. `/redo` brings back what the
+last `/undo` took, files and conversation, one message at a time, until a new message is sent.
 
 | Command | What it does |
 |---|---|
@@ -240,7 +237,9 @@ pine records the folder before the first tool call of a message and when its wor
 message that is only answered records nothing; the first record of a large folder takes a
 moment). An undo sets back only the files that differ between the two, so what you changed
 elsewhere since stays. Whatever changed in the folder while the message was worked on counts as
-its work, whoever changed it.
+its work, whoever changed it. These snapshots are kept in pine's home (`data/snapshots`); your
+repository, its index and history are never touched, and a folder that is not a repository works
+the same.
 
 Not recorded, so never restored:
 
@@ -268,23 +267,20 @@ Only you undo, in a UI or through the control API; no agent has a tool for it. W
 event started is not your message and is not taken back. A message still waiting behind another
 is withdrawn.
 
-The records are git trees in a git directory of pine's own under `data/snapshots`; your
-repository, its index and history are never touched, and a folder that is no repository works
-the same. Recording needs git and pine's sandbox (macOS, or Linux with bubblewrap); without them
-an undo takes back the conversation and says no file was restored. The last 40 messages of a
+Recording needs git and pine's sandbox (macOS, or Linux with bubblewrap); without them an undo
+takes back the conversation and says no file was restored. The last 40 messages of a
 conversation can be undone.
 
 ## What it is safe against
 
 - **Looking runs nothing.** The pane runs git in a sandbox that writes nothing and has no
-  network, with diff drivers, text converters, hooks and file system monitors off, so a folder
-  you only look at cannot make anything run.
+  network, with diff drivers, text converters, hooks and file system monitors off.
 - **Nothing outside the folder.** Paths are resolved with their links and must stay inside; a
   link that leads out is neither listed nor opened.
 - **An undo writes the folder and nothing else.** git puts the files back in a sandbox that can
   write only the folder and pine's record, without network, reading neither the folder's git
-  settings nor yours, so no hook, filter or line-ending rule applies. A folder an agent swapped
-  for a link is made a folder again; nothing is written through a link.
+  settings nor yours, so no hook, filter or line-ending rule applies. Nothing is written through
+  a link.
 - **The folder is for your conversation.** A run an outside event started works in the agent's
   own workspace, not in the folder ([security.md](security.md)).
 - **Instruction files, hooks and git configuration.** `AGENTS.md` and `CLAUDE.md` of an opened
@@ -300,7 +296,7 @@ The control API has all of it; the routes are listed in [api.md](api.md). Those 
 
 | Request | Purpose |
 |---|---|
-| `POST /agents/<id>/view/write` `{ session?, path, text }` | Write a file of the conversation's folder: what an editor in a UI saves. Path from the conversation's folder, at most 2 MB of text; a missing file is made, a missing folder is not. The text goes into a new file that replaces the old one with its rights, inside a sandbox that can write that folder only, so a link left there changes nothing outside. A path that leads out is refused, and so is every write on a system without a sandbox |
+| `POST /agents/<id>/view/write` `{ session?, path, text }` | Write a file of the conversation's folder: what an editor in a UI saves. Path from the conversation's folder, at most 2 MB of text; a missing file is made, a missing folder is not. The new text replaces the old file with its rights, inside a sandbox that can write that folder only, so a link left there changes nothing outside. A path that leads out is refused, and so is every write on a system without a sandbox |
 | `POST /agents/<id>/view/files` `{ session?, op, path?, to?, paths?, into? }` | What the Pine app's file tree does: make (`folder`, `file`: `path`), rename (`path` to `to`), copy or move (`paths` into the folder `into`, `""` its top), delete (`paths`). Nothing is put where something is: a copy gets a free name. A link is acted on as itself. In an agent's workspace its `AGENTS.md`, `SOUL.md`, `TOOLS.md` and `MEMORY.md` are not deleted, moved or renamed |
 | `POST /agents/<id>/undo` `{ session }`, `POST /agents/<id>/redo` `{ session }` | Undo or redo. The answer has the message's text (`prompt`; with quotes also `quotes`, each `{ text, source, reply? }`, and `body`, the text without them), what was restored (`restored`: `root`, the counts `changed`, `removed`, `back`, the first `files`, and `left` for files too large to record), a `note` when no file was restored, `stopped`, how many messages a redo can bring back (`redo`), and whether there is another to take back (`more`) |
 | `GET /agents/<id>/view/find?session=&q=`, `/view/grep?session=&q=` | Files of the conversation's folder whose name fits a few letters (what `@` offers), or whose text holds some words (case ignored), each with its first matching line |

@@ -1,22 +1,21 @@
 # Views for the Pine app
 
-A view draws all of pine at a glance in the Pine app: the agents and what each works on, where
-work came from and who handed what to whom, sub-agents, the tools, MCP servers and skills in use,
-event sources and who listens, schedules, each agent's conversations with branches and worktrees,
-boards, and what waits for you. It is a script of yours, a `.ts` (or `.js`) file in the `views`
-folder of pine's home, shown in a panel at the right of the window (`⇧⌘O`, View > Toggle View, or
-the radar at the top right). The panel itself: [desktop.md](desktop.md), "The view".
+A view is a script of yours that draws all of pine at a glance in the Pine app's panel: the agents
+and what each works on, where work came from and who handed what to whom, sub-agents, the tools,
+MCP servers and skills in use, event sources and who listens, schedules, conversations, boards,
+and what waits for you. This chapter says which views pine comes with, how to choose one, and how to write your
+own. The panel itself is in [desktop.md](desktop.md), "The view".
 
-pine comes with three:
+## The views pine comes with
 
 | View | What it is |
 |---|---|
+| `overview` | The default. A page to read: what triggers agents, the agents and what each is doing, the tools they use, side by side (one under the other in a panel taller than wide), with a line between two while something happens there. An agent leading a swarm says so on its card ("swarm · round 2 of 8") |
 | `office` | pine as a little tower house in pixels: a room and a robot for each agent, main under the roof |
 | `workshop` | Santa's workshop at the North Pole: the main agent is Santa, the others elves in workshops of their own |
-| `overview` | A page to read: what triggers agents, the agents and what each is doing, the tools they use, side by side (one under the other in a panel taller than wide), with a line between two while something happens there. It lays itself out anew when the panel changes size. An agent leading a swarm says so on its card ("swarm · round 2 of 8"). The default |
 
-These three are pine's and kept up to date: a home gets them when pine starts without a `views`
-folder, and a newer version replaces the old one at the next start. Every other file is yours.
+These three are pine's and kept up to date: a newer version of pine replaces them at its next
+start. Every other file in the folder is yours.
 
 - To change one, copy it under a name of your own (`my-office.ts`) and change the copy.
 - If you change `office.ts`, `workshop.ts` or `overview.ts` itself, the next start puts pine's
@@ -25,9 +24,8 @@ folder, and a newer version replaces the old one at the next start. Every other 
 
 | | |
 |---|---|
-| Where | `~/.pine/views/<name>.ts` is the view `<name>`. A name is lowercase letters, digits, `.`, `-` and `_` |
-| Which one is shown | The one picked by name at the top of the panel, kept as `ui.view` in `pine.json` (the main agent's `set_setting` can set it, after asking you). Not set: `overview`, else the first. `off`: no panel |
-| No view | With no view in the folder, or `ui.view` `off`, the app shows no button for the panel |
+| Where | `~/.pine/views/<name>.ts` (or `.js`) is the view `<name>`. A name is lowercase letters, digits, `.`, `-` and `_`, starting with a letter or digit |
+| Which one is shown | The one picked by name at the top of the panel (`⇧⌘O`, View > Toggle View, or the radar at the top right), kept as `ui.view` in `pine.json`; the main agent's `set_setting` can set it, after asking you. Not set: `overview`, else the first. `off`: no panel |
 | Where it runs | Only in the Pine app on a computer; the mobile app and the web client show none |
 | A change to the file | Close and open the panel to run it again |
 
@@ -106,9 +104,15 @@ no picture from an address, no storage, no cookies, no other frame or window, no
 `pine/view`. It cannot tell anybody what it saw. What it asks the panel to show or open is
 checked against what the panel knows; anything else is ignored.
 
-A view that throws is stopped, and the panel says why. A file pine cannot hand on (capitals or
-spaces in its name, over a megabyte) is greyed out in the list with what is wrong; one whose
-TypeScript cannot be erased shows "cannot be shown" with the reason.
-
 The folder lies in pine's home, which no agent writes: no agent can put a view there or change
 one.
+
+## When a view does not show
+
+| What you see | Why |
+|---|---|
+| The panel says the view stopped, and why | The view threw an error. Fix the file, then close and open the panel |
+| The view is greyed out in the list, with what is wrong | pine cannot hand the file on: capitals or spaces in its name, or over a megabyte |
+| "cannot be shown", with the reason | Its TypeScript cannot be erased (an `enum`, a `namespace`, parameter properties) |
+| No button for the panel | No view in the folder, or `ui.view` is `off` |
+| Your change to `office.ts` is gone after an update | pine put its own back and kept yours as `office-mine.ts`. Copy a view under a name of your own before you change it |

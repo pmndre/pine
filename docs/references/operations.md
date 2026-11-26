@@ -1,5 +1,9 @@
 # Install and run
 
+How to install pine, start it, connect a model, keep it running and up to date, and what to do when
+something goes wrong. Every command in full: [commands.md](commands.md); the HTTP API for your own
+programs: [api.md](api.md).
+
 ## Requirements
 
 - macOS, Linux or Windows, with Node 24 or newer.
@@ -10,9 +14,8 @@
   an agent you set to `safe` has no shell, and `pine check` says so. Windows has no sandbox of
   pine's (see "On Windows"). Modes: [security.md](security.md), "Modes: how much an agent does
   without asking".
-- Optional, for the terminal UI: `ffmpeg` for videos (on Linux also for pictures other than png
-  and for sound, or `mpv`, `pw-play`, `paplay`, `aplay`); on Linux `xclip`, or `wl-copy` and
-  `wl-paste` on Wayland, for copy and paste.
+- Optional, for the terminal UI: on Linux `xclip`, or `wl-copy` and `wl-paste` on Wayland, for copy
+  and paste; `ffmpeg` and a sound player for video and sound ([stack.md](stack.md)).
 
 ## Install
 
@@ -61,8 +64,8 @@ pine init
 pine
 ```
 
-opens the terminal UI ([tui.md](tui.md)) and starts a daemon inside it. For a daemon that keeps
-running without a terminal:
+opens the terminal UI ([tui.md](tui.md)) and starts a daemon inside it, which stops when you quit.
+For a daemon that keeps running without a terminal:
 
 ```bash
 pine check
@@ -73,8 +76,10 @@ pine start
 ```
 
 Then `pine` in another terminal attaches to it, or `pine send main "Say hello."` gives it a task.
+Ctrl-C stops `pine start`; `pine list` shows every daemon on this computer and `pine killall` stops
+them.
 
-### Choosing a model
+## Choosing a model
 
 A new home has no model: until you connect one, every agent says so. Sign in to a provider:
 
@@ -137,6 +142,15 @@ llama-server -m /path/to/model.gguf --jinja -c 65536 -np 2 --port 8080
 - `--slot-save-path <folder>` lets pine keep conversations that leave their slot
   ([agents.md](agents.md), "What the model server keeps").
 
+## Running at login
+
+- macOS: [examples/launchd/com.pine.daemon.plist](../../examples/launchd/com.pine.daemon.plist), a
+  LaunchAgent; follow the steps at its top. Logs go to `~/.pine/data/pine.log`.
+- Linux: [examples/systemd/pine.service](../../examples/systemd/pine.service), a systemd user
+  service; follow the steps at its top. Logs: `journalctl --user -u pine`.
+
+Both run as you. To keep agents further from your files, run pine as a user of its own.
+
 ## In a container
 
 ```bash
@@ -144,7 +158,7 @@ docker run -it -v pine:/root/.pine node:24 bash
 ```
 
 Inside, `npm install -g @pmndre/pine` and `pine init`. The volume keeps pine's home when the
-container is replaced. Such a container cannot make a sandbox; the container is the wall instead:
+container is replaced. Such a container cannot make a sandbox, so the container is the wall:
 
 | In a container | Without the rights for a sandbox | With them |
 |---|---|---|
@@ -170,8 +184,9 @@ pine update
 ```
 
 brings pine up to date and fetches what the new version needs (the browser only when its version
-changed). `pine update --check` only says whether there is something newer. How it updates
-depends on how pine was installed, which `pine version` says:
+changed), then lists what changed, version by version. `pine update --check` only says whether
+there is something newer. How it updates depends on how pine was installed, which `pine version`
+says:
 
 | Installed | `pine update` |
 |---|---|
@@ -180,10 +195,9 @@ depends on how pine was installed, which `pine version` says:
 | as a dependency in a project | Says what to run there; the project decides the version |
 | with the Pine app | Says whether there is a newer version. The app updates itself, and its pine with it ([desktop.md](desktop.md), "A newer version") |
 
-Afterwards it lists what changed, version by version. A running pine keeps the old version until
-it is restarted: quit and reopen the terminal UI, or restart the daemon (as a LaunchAgent:
-`launchctl kickstart -k gui/$(id -u)/com.pine.daemon`). Your home is not touched; run `pine init`
-to get example files that are new.
+A running pine keeps the old version until it is restarted: quit and reopen the terminal UI, or
+restart the daemon (as a LaunchAgent: `launchctl kickstart -k gui/$(id -u)/com.pine.daemon`). Your
+home is not touched; run `pine init` to get example files that are new.
 
 ### Trying a version before it is released
 
@@ -197,18 +211,8 @@ Previews of the next release are published to npm under the tag `next`, as versi
 | `pine update --next` | Follow previews from now on: installs the newest preview, or the release when that is newer |
 | `pine update --release` | Follow releases again. An installed preview stays until the next release |
 
-The choice is kept in `data/update-channel`; a pine installed from `@next` follows previews by
-itself. `pine version` says "follows previews". A checkout follows its branch instead, and the
-Pine app has releases only.
-
-## Running at login
-
-- macOS: [examples/launchd/com.pine.daemon.plist](../../examples/launchd/com.pine.daemon.plist), a
-  LaunchAgent; follow the steps at its top. Logs go to `~/.pine/data/pine.log`.
-- Linux: [examples/systemd/pine.service](../../examples/systemd/pine.service), a systemd user
-  service; follow the steps at its top. Logs: `journalctl --user -u pine`.
-
-Both run as you. To keep agents further from your files, run pine as a user of its own.
+A pine installed from `@next` follows previews by itself, and `pine version` then says "follows
+previews". A checkout follows its branch instead, and the Pine app has releases only.
 
 ## Day to day
 
@@ -216,23 +220,38 @@ Both run as you. To keep agents further from your files, run pine as a user of i
   live on `agent/<id>/tool`.
 - **Why did it answer that?** `pine task <id>`: the prompt as received, the tool calls, the
   result. The full transcript is the newest `.jsonl` in `~/.pine/agents/<id>/sessions/<session>/`.
-- **Instructions:** tell the agent ("from now on ...") and it writes its `AGENTS.md`; for all
-  agents, tell the main agent ([agents.md](agents.md), "What holds for all agents").
-- **Configuration:** sources, MCP servers, schedules, subscriptions and agents need no file edit:
-  ask an agent ([setup.md](setup.md)). After editing `pine.json` or an `agent.json` by hand, run
-  `pine check` and restart; queued tasks survive.
 - **Stuck:** `pine status`, then `pine cancel <id>`.
+- **Changing things:** sources, MCP servers, schedules, subscriptions, agents and instructions
+  need no file edit: ask an agent ([setup.md](setup.md)). After editing `pine.json` or an
+  `agent.json` by hand, run `pine check` and restart; queued tasks survive.
 - **Back up** the home: `data/pine.db` holds events and tasks, `agents/*/sessions` the
   conversations. Workspaces are wherever you put them.
 
+## Coming from OpenClaw
+
+| OpenClaw | pine |
+|---|---|
+| Agents in `openclaw.json` with `workspace-*` folders | A folder per agent under `agents/`; `workspace` points at the repository |
+| Telegram `bindings` | A `telegram` source the agent sets up when asked, and subscribes to |
+| `SOUL.md`, `AGENTS.md`, `TOOLS.md`, `MEMORY.md` | The same names in the agent's workspace |
+| `USER.md`; a `TOOLS.md` or `AGENTS.md` copied into every workspace | One `USER.md`, `TOOLS.md` and `AGENTS.md` in pine's home for all agents, kept by the main agent |
+| `IDENTITY.md`, `HEARTBEAT.md`, daily memory files | Not read. Fold what matters into `SOUL.md`, `AGENTS.md` or `MEMORY.md` |
+| Cron jobs | A schedule: ask the agent ("every morning at seven ..."), or write it under `schedules` with a `task` |
+| Heartbeat | An event source that wakes the agent when something happens; polling (`http`, `command`) costs no model turn. Otherwise a schedule with `every` whose task ends in "reply NO_REPLY if nothing needs attention" |
+| `/hooks/*` mappings | A `webhook` source the agent subscribes to, or `http.hooks` plus a route |
+| Extensions that watch something and message Telegram | An event source the agent subscribes to, and the `send` tool |
+| Skills | Skills, same format |
+
 ## Problems
 
-General problems. For routes and schedules see [events.md](events.md), "When nothing happens";
-for sources, [sources.md](sources.md), "When nothing happens".
+For routes and schedules see [events.md](events.md), "When nothing happens"; for sources,
+[sources.md](sources.md), "When nothing happens".
 
 | Symptom | Cause and fix |
 |---|---|
 | `pine.json not found` | Wrong home. Pass `--home` or set `PINE_HOME`. |
+| `no daemon answers on http://127.0.0.1:7463` | The daemon is not running, or `http.port` in this home differs. |
+| The UI says "reconnecting…" | The daemon stopped. Start it again; the UI picks it up. |
 | `No model yet` on the first message | Connect a model: `pine login <provider>`, Settings > Models in the Pine app, or `pine model add`. The first becomes the default. |
 | `model "x/y" is not defined in models.json` | `defaults.model` or an agent's `model` is not a known `provider/id`. `/model` lists what there is. |
 | A task fails with 401 or "API key" | The credential is missing or expired: `pine login <provider>` again. |
@@ -242,7 +261,7 @@ for sources, [sources.md](sources.md), "When nothing happens".
 | A task fails with a connection error | The model server is down or `baseUrl` is wrong: `curl <baseUrl>/models`. |
 | A task fails after minutes with a timeout | The model stopped streaming (`limits.modelStreamIdleMs`) or was slow to start (`limits.modelHeadersTimeoutMs`); raise them for a slow model. |
 | An answer starts late: the model reads the whole conversation again after you switched tab or conversation, or after a restart | The model server kept nothing of it. On llama.cpp give the server enough slots (`-np`) and `--slot-save-path` (`limits.slotPages`); a scheduler that stops the model must save the slots. See [agents.md](agents.md), "What the model server keeps". |
-| The first answer in a new conversation takes long; the tools take many tokens of the prompt | The model reads every tool's declaration first. pine declares them grouped in families, which keeps that short, and `limits.warmSlots` has an idle llama.cpp slot read it ahead of time. See [agents.md](agents.md), "How tools are declared". |
+| The first answer in a new conversation takes long; the tools take many tokens of the prompt | The model reads every tool's declaration first. On llama.cpp `limits.warmSlots` has an idle slot read it ahead of time. See [agents.md](agents.md), "How tools are declared". |
 | The first answer after a pause is slow | The session was closed after `idleMs` and is resumed; MCP servers start again. |
 | The browser tools fail with "Executable doesn't exist", or the app says the browser is not there | Run `pine browser-install` (or `pine init`). `pine check` says so; the Pine app fetches it from Settings > General. |
 | The browser cannot open `localhost`, or a page says "not reachable from the browser" | A local address needs your yes: the agent opens it with `browser_navigate` and you are asked ([mcp.md](mcp.md), "Local addresses"). A server the agent started also needs network access for its shell. |
@@ -262,20 +281,3 @@ for sources, [sources.md](sources.md), "When nothing happens".
 | An event arrives but no task starts | See [events.md](events.md), "When nothing happens" (routes), and [sources.md](sources.md), "When nothing happens" (subscriptions). |
 | The agent stops after every step and asks whether to go on | That is how a turn ends. Give the conversation a goal: type `/goal <what should be reached>` in the terminal UI or the Pine app ([agents.md](agents.md), "Goal mode"). |
 | A goal is paused with "gave no verdict" | The judge did not answer in time (`limits.goalJudgeTimeout`) or not with MET, CONTINUE or BLOCKED. `/goal resume`; if it recurs, give the judge a model that keeps to a format (`defaults.judge`). |
-| The UI says "reconnecting…" | The daemon stopped. Start it again; the UI picks it up. |
-| `no daemon answers on http://127.0.0.1:7463` | The daemon is not running, or `http.port` in this home differs. |
-
-## Coming from OpenClaw
-
-| OpenClaw | pine |
-|---|---|
-| Agents in `openclaw.json` with `workspace-*` folders | A folder per agent under `agents/`; `workspace` points at the repository |
-| Telegram `bindings` | A `telegram` source the agent sets up when asked, and subscribes to |
-| `SOUL.md`, `AGENTS.md`, `TOOLS.md`, `MEMORY.md` | The same names in the agent's workspace, read into its prompt and written by the agent |
-| `USER.md`; a `TOOLS.md` or `AGENTS.md` copied into every workspace | One `USER.md`, `TOOLS.md` and `AGENTS.md` in pine's home for all agents, kept by the main agent |
-| `IDENTITY.md`, `HEARTBEAT.md`, daily memory files | Not read. Fold what matters into `SOUL.md`, `AGENTS.md` or `MEMORY.md` |
-| Cron jobs | A schedule: ask the agent ("every morning at seven ..."), or write it under `schedules` with a `task` |
-| Heartbeat | Usually not needed: an event source wakes the agent when something happens, and polling (`http`, `command`) costs no model turn. Otherwise a schedule with `every` whose task ends in "reply NO_REPLY if nothing needs attention" |
-| `/hooks/*` mappings | A `webhook` source the agent subscribes to, or `http.hooks` plus a route |
-| Extensions that watch something and message Telegram themselves | An event source the agent subscribes to, and the `send` tool for what it tells you |
-| Skills | Skills, same format |

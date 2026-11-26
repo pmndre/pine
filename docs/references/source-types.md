@@ -1,10 +1,8 @@
 # Source types
 
-The catalogue of source types: each type's options, events and fields, the services it reaches,
-and an entry to copy. What a source and a subscription are, the keys every source has, `when`,
-secrets, trust, and the rules every type follows (the first look is the starting point, texts and
-rates are capped, an address is the one you confirmed, a source sends only where you listed) are
-in [sources.md](sources.md), "What all types have in common".
+Every built-in source type: which one fits a service or device, its options, its events and
+their fields, and an entry to copy. What a source and a subscription are, the keys every source
+has, `when`, secrets and trust are in [sources.md](sources.md).
 
 Say what you want watched ("tell me on Telegram when pmndre/pine has a new release"): the agent
 picks the type and you confirm what the source will do. Or write the entry under `sources` in
@@ -40,9 +38,6 @@ again and reports what changed).
 | `command` | looks | a change in a command's output or exit code | disk space, a build, whether a machine answers |
 | `modbus` | looks | a changed value in a Modbus device | solar inverters, heat pumps, wall boxes, meters |
 | `presence` | looks | a device joining or leaving your network | a phone coming home, a TV switched on |
-
-What should happen at a time is a schedule ([events.md](events.md), "Schedules"), not a source:
-"ten minutes before an appointment" is a schedule the agent sets when `calendar` reports it.
 
 ### Looking again and again
 
@@ -87,6 +82,17 @@ word.
 | This computer | `system` | Nothing to set up. |
 | A log file, Docker, Kubernetes, journald, PostgreSQL, Redis, NATS, Kafka | `command` with `follow` | `tail -F`, `docker events`, `kubectl get -w`, `journalctl -f`, the client printing a line per message. |
 | Anything a command can print | `command` | Run again and again. |
+
+### What there is no type for
+
+| Wanted | Instead |
+|---|---|
+| Something at a time, like a calendar's "ten minutes before" | A schedule ([events.md](events.md), "Schedules"): the agent adds one when `calendar` reports the entry. |
+| Bluetooth sensors | A bridge to MQTT (Theengs Gateway, OpenMQTTGateway) and `mqtt`. |
+| iMessage, WhatsApp | No type. Signal through signal-cli and `stream`. |
+| KNX, Zigbee, Z-Wave, HomeKit, Matter | The hub (Home Assistant, zigbee2mqtt), by `mqtt` or `stream`. |
+| A command line client | `command` with `follow`. |
+| Something of your own | A source type of your own ([sources.md](sources.md), "A source type of your own"); the main agent can write one. |
 
 ## The types
 
@@ -226,8 +232,8 @@ shown to the model. Only the private chat counts; groups reach no agent.
   pairing messages are plain text.
 - **No throttle**: the default ten-second `throttle` of a subscription does not apply unless set.
 
-Long polling: nothing listens on a port. Telegram gives a bot's messages to one reader only: when
-another program reads them (another pine with this token, a script), this source gets nothing and
+No port is opened: pine fetches new messages from Telegram. Telegram gives a bot's messages to one
+reader only: when another program reads them (another pine with this token, a script), this source gets nothing and
 its status says so. Stop the other, or `/revoke` the token at BotFather and set the source up
 again.
 
@@ -299,12 +305,10 @@ browser would send them everywhere the page loads from, so a page behind a login
 watched), and `local: true`. Where the page's script gets its value from a JSON address (your
 browser's network tab shows it), watching that with `path` is lighter.
 
-The page's scripts run (the dialog says so), through the browser tools' guard
-([security.md](security.md)): the internet is reachable, your network and this computer are not,
-except the page's own address when it says by itself that it is local (`localhost`, `.local`, a
-private IP), and then that host and port only. A name that only looks up to a local address, and
-pine's control port, are never opened. A redirect to another host is a failed look. Nothing is
-kept between looks: no cookies, no logins, no downloads, no permissions.
+The page's scripts run (the dialog says so). The page reaches the internet, but not your network
+or this computer, except its own address when that is local by its name (`localhost`, `.local`, a
+private IP), and then that host and port only ([security.md](security.md)). A redirect to another
+host is a failed look. Nothing is kept between looks: no cookies, no logins, no downloads.
 
 The status names why a look failed: `pine's browser is not installed on this computer` (run
 `pine browser-install`), `the page did not finish loading within 45 s`, `it sends on to <host>`,
@@ -342,11 +346,10 @@ An event: `{ "values": { "price": 479, "stock": 3 }, "previous": { "price": 499,
 #### Limits of a look
 
 An answer is read up to 1 MB within 20 seconds, following up to five redirects on the same host.
-From the second look on, an address with `ETag` or `Last-Modified` is asked "anything new
-since?" (so are `feed` and `calendar`). A key in the address (`?apikey=`) is stored and shown like
-the rest. Refused at set-up: a user name or password in the address, more than one of `path`,
-`values`, `match`, `select`, `attr` without `select`, an unreadable selector, `body` without
-`POST`, `values` empty, over twenty, or under names that are not plain words.
+A key in the address (`?apikey=`) is stored and shown like the rest. Refused at set-up: a user
+name or password in the address, more than one of `path`, `values`, `match`, `select`, `attr`
+without `select`, an unreadable selector, `body` without `POST`, `values` empty, over twenty, or
+under names that are not plain words.
 
 ### command
 
@@ -398,8 +401,8 @@ Commands to follow: `tail -n 0 -F /path/app.log`, `log stream --style ndjson --p
 json`, `redis-cli --raw subscribe alerts`, `nats sub 'orders.>'`, `kcat -C -b broker -t topic -o
 end`, `ssh nas inotifywait -m -e close_write /volume1/scans`. The same sandbox holds: a log file
 needs `sandbox.read`, a network client `sandbox.network`. When the source stops, the command ends
-with everything it started. On Linux `follow` is refused (the sandbox cleans up only after a
-command ends): use `every` with a `match`, or send the lines to `syslog` or `webhook`.
+with everything it started. On Linux `follow` is refused: use `every` with a `match`, or send the
+lines to `syslog` or `webhook`.
 
 ### feed
 
@@ -923,11 +926,10 @@ Event `event`: `{ topic, source, data, time?, active?, dropped? }`. `topic` as t
 differ by make, so start without `topics` and watch `pine events --topic 'source/gate/#'`.
 
 Hikvision and Axis need an ONVIF user added in their ONVIF settings; Tapo's camera account is the
-user. pine keeps a pull point open, so the camera needs no way to reach pine. The first state is
-the starting point; an unchanged state is not reported again. Of addresses the camera names only
-the path is used, never another host. The password travels as an ONVIF digest. It changes nothing
-on the camera and brings no picture (use `ftp` for that). Not supported: digest-only HTTP
-authentication (choose "digest and WS-UsernameToken") and ONVIF over HTTPS.
+user. pine asks the camera for news, so the camera needs no way to reach pine. The first state is
+the starting point; an unchanged state is not reported again. It changes nothing on the camera
+and brings no picture (use `ftp` for that). Not supported: digest-only HTTP authentication
+(choose "digest and WS-UsernameToken") and ONVIF over HTTPS.
 
 ### modbus
 
@@ -1058,17 +1060,6 @@ under `/media`, `/run/media`, `/mnt` plus network shares. What is missing is nam
 
 #### system on Windows
 
-Built with the C# compiler Windows carries. `ups` counts as mains. Apps are looked at every two
-seconds: started with the first process of a name, quit with the last. A disk is named by its
+`ups` counts as mains. An app is started with the first process of its name and quit with the
+last, seen within two seconds. A disk is named by its
 label or letter. pine in WSL hears little (no lock, no battery).
-
-## What there is no type for
-
-| Wanted | Instead |
-|---|---|
-| A calendar's "ten minutes before" | A schedule ([events.md](events.md), "Schedules"). |
-| Bluetooth sensors | A bridge to MQTT (Theengs Gateway, OpenMQTTGateway) and `mqtt`. |
-| iMessage, WhatsApp | No type. Signal through signal-cli and `stream`. |
-| KNX, Zigbee, Z-Wave, HomeKit, Matter | The hub (Home Assistant, zigbee2mqtt), by `mqtt` or `stream`. |
-| A command line client | `command` with `follow`. |
-| Something of your own | A source type of your own ([sources.md](sources.md), "A source type of your own"); the main agent can write one. |
