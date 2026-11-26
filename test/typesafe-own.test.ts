@@ -101,6 +101,12 @@ test("typesafe at a server of your own: the owner confirms the address; one on t
 	assert.throws(() => type.plan!({ url: "http://user:pw@127.0.0.1:8080", model: "decider" }, setup()), /user name or password/);
 	assert.equal(type.plan!({ url: "https://decide.example.com", model: "decider" }, setup()).options.url, "https://decide.example.com", "a server on the web over https");
 	assert.throws(() => type.plan!({ url: tailnet, local: true }, setup()), /"model" is needed/, "a server's own name for its model");
-	assert.deepEqual(type.needs!({ url: tailnet }), [], "a server of one's own may want no key");
-	assert.deepEqual(type.needs!({}), ["key"], "TypeSafe does");
+	assert.ok((type.options as any).required.includes("key"), "the key is asked of the owner, also for a server of their own");
+});
+
+test("typesafe at a server of your own: an agent that leaves the key out has the owner asked for it", async () => {
+	const h = await harness({ pine: { main: "main" }, agents: { main: {} } });
+	const plan = h.pine.sources.propose("main", "studio", "typesafe", { url: "http://studio.tail784ebe.ts.net:8080", model: "decider", local: true }, true);
+	assert.deepEqual(plan.needs.map((n) => n.name), ["key"], "pine's dialog asks the owner for the token");
+	await h.close();
 });

@@ -17,7 +17,9 @@ import { systemOne } from "./systemone.ts";
  * options: { url?, model?, key?, local?, timeout? }
  *   url      a server of the owner's own, without /v1: http://studio.tail1234.ts.net:8080. Left out: TypeSafe
  *   model    jev-latest at TypeSafe; at a server of the owner's own, its name for the model ("decider")
- *   key      the API key: TypeSafe's (console.typesafe.ai), or the server's access token if it wants one
+ *   key      the API key: TypeSafe's (console.typesafe.ai), or the server's access token. Always asked of
+ *            the owner: a server of their own that answers without one (Pinecone does not) would be
+ *            reached by anybody on their network, and one that wants one would fail every route
  *   local    the server is on the owner's own network under a name that does not say so (a Tailscale name)
  *   timeout  seconds a request may take: 20 at TypeSafe, 120 at a server that may first load the model
  *
@@ -44,14 +46,12 @@ export const type: SourceType = {
 		{
 			url: Type.Optional(Type.String({ description: "a server of your owner's own that speaks TypeSafe's API, without /v1, e.g. http://studio.tail1234.ts.net:8080. Leave out for TypeSafe itself" })),
 			model: Type.Optional(Type.String({ description: 'the model that answers: at TypeSafe leave out for jev-latest; at a server of your owner\'s own, its name for the model, e.g. "decider"' })),
-			key: Type.Optional(Type.String({ description: "the API key: of your owner's TypeSafe account (console.typesafe.ai), or the access token of their own server if it wants one", secret: true })),
+			key: Type.String({ description: "the API key: of your owner's TypeSafe account (console.typesafe.ai), or the access token of their own server (for Pinecone, one made in its app)", secret: true }),
 			local: Type.Optional(Type.Boolean({ description: "true if the server at url is on your owner's own network under a name that does not say so, such as a Tailscale name. Not needed for an IP address, localhost or a .local name" })),
 			timeout: Type.Optional(Type.Integer({ minimum: 5, maximum: 600, description: "how many seconds a request may take, loading the model included. Default 20 at TypeSafe, 120 at a server of your owner's own" })),
 		},
 		{ additionalProperties: false },
 	),
-	// TypeSafe wants a key; a server of the owner's own may not.
-	needs: (o) => (o.url ? [] : ["key"]),
 	plan(o, setup) {
 		if (setup.key !== setup.name) throw new Error("routes ask only a source of all agents. Set it up for all agents");
 		if (o.model !== undefined && !MODEL.test(String(o.model))) throw new Error(`"${o.model}" is not a model name, such as jev-latest or decider`);
@@ -80,7 +80,7 @@ export const type: SourceType = {
 		if (setup.controlPort && port === setup.controlPort && ["localhost", "127.0.0.1", "::1"].includes(host)) throw new Error("that is pine's own control port, not a decision server");
 		return {
 			options: { ...o, url: baseOf(url) },
-			does: [`answer the typed questions of routes that name it, with the model ${o.model} of the server at ${url.host}`, `what such a route asks about (the event's data) goes to ${url.host}${o.key ? ", with the key" : ""}${local ? ", on your own network" : ""}`],
+			does: [`answer the typed questions of routes that name it, with the model ${o.model} of the server at ${url.host}`, `what such a route asks about (the event's data) goes to ${url.host}, with the key${local ? ", on your own network" : ""}`],
 			opens: true,
 		};
 	},
@@ -90,7 +90,7 @@ export default function typesafe(source: SourceApi): void {
 	const o = source.options;
 	const own = typeof o.url === "string" && o.url ? new URL(o.url) : undefined;
 	const key = typeof o.key === "string" && o.key ? o.key : undefined;
-	if (!own && !key) throw new Error('needs "key": the API key of a TypeSafe account');
+	if (!key) throw new Error(`needs "key": ${own ? "the server's access token" : "the API key of a TypeSafe account"}`);
 	source.secret(key);
 	const model = typeof o.model === "string" && o.model ? o.model : own ? "" : "jev-latest";
 	if (!model) throw new Error('needs "model": the server\'s name for the model that answers');

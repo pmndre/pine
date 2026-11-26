@@ -2055,7 +2055,7 @@ source. A chat model needs no source: a route names it with `"ask": { "model": .
 |---|---|---|
 | `url` | TypeSafe | A server of your own that speaks the same API, without `/v1`: for Pinecone, port 8080 on that Mac. Over `http://` only on your own network. |
 | `model` | `jev-latest` | The model that answers. At a server of your own it is needed: its name for the model (for Pinecone, the resource's name). |
-| `key` | | TypeSafe's API key (console.typesafe.ai), needed there; at a server of your own its access token, if it wants one (for Pinecone, an access token made in its app). Kept in `.env`; asked of you in pine's dialog when the main agent sets it up. |
+| `key` | | TypeSafe's API key (console.typesafe.ai), or the access token of your own server (for Pinecone, one made in its app). Always needed; kept in `.env`, and asked of you in pine's dialog when the main agent sets the source up. |
 | `local` | `false` | The server at `url` is on your own network under a name that does not say so: a Tailscale name (`.ts.net`). Not needed for an IP address, `localhost` or a `.local` name. |
 | `timeout` | `20`, or `120` with `url` | Seconds a request may take, loading the model included: a server that first has to make room for the model takes longer. |
 
