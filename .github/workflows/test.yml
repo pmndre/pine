@@ -4,7 +4,8 @@ name: Test
 # main. A pull request against next runs them on Linux (x64) alone: the other systems are slow and
 # costly, and they are run on next once it is merged, before anything is released from there. A file
 # with a failure is run again alone (scripts/test.mjs): one that passes then was a wait that ran out
-# on a slow runner, and does not fail the run.
+# on a slow runner, and does not fail the run. A pull request that changes only what pine's tests
+# never read (the Pine app's own code, the web client, the mobile app) does not run them (changes).
 #
 # pine: the type check and `npm test` on Linux (x64 and arm64), macOS and Windows. On Linux the
 # sandbox is set up first the way an owner sets it up, with `pine init` (bubblewrap, and the
@@ -46,11 +47,63 @@ concurrency:
 # The release's pull request (next into main) runs nothing: each push to next is tested by its push
 # run, on the same commit and the same systems, and its checks show on the pull request. Running both
 # asks for two macOS runners at once, and when GitHub has too few, one is never given a runner and the
-# run fails after a quarter of an hour without a test having failed. (desktop and pack need
-# desktop-changed, so they are skipped with it.)
+# run fails after a quarter of an hour without a test having failed. (pine, desktop and pack need
+# changes, so they are skipped with it.)
 jobs:
-  pine:
+  # What a change touches. desktop: the Pine app, or the parts of pine it talks to (the desktop and
+  # pack jobs). pine: anything that can reach pine's own tests (the pine job). pine is skipped only
+  # for a pull request whose every file lies where those tests read nothing: the Pine app's own code
+  # (desktop/, but not desktop/scripts/, whose failed-files.mjs scripts/test.mjs uses), the web
+  # client (web/, but not web/src/remote-command.ts, which a test imports) and the mobile app
+  # (mobile/, but not mobile/cases/, which a test reads). Everything else counts, docs and examples
+  # among them, since the tests read pine's own. A push to next always runs it: that run is what a
+  # release is made from. A job skipped by its `if:` passes a required check, where a workflow that
+  # does not run at all (`paths:`) would leave it waiting forever, so the choice is made here.
+  changes:
     if: github.event_name != 'pull_request' || github.head_ref != 'next' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      desktop: ${{ steps.filter.outputs.desktop }}
+      pine: ${{ steps.filter.outputs.pine }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: filter
+        shell: bash
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          # A new branch or a forced push has no usable "before": then everything counts as changed.
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+            echo "pine=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The names in a file rather than a pipe: grep -q stops at the first match, and under
+          # pipefail the git that it stops reading would make the test say no.
+          changed="$RUNNER_TEMP/changed"
+          git diff --name-only "$BASE" HEAD > "$changed"
+          if grep -Eq '^(desktop/|src/(http|owner|service|remote|csharp)\.ts$|scripts/helpers\.mjs$|\.github/workflows/test\.yml$)' "$changed"; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "desktop=false" >> "$GITHUB_OUTPUT"
+          fi
+          # pine: for anything but a pull request, for a pull request that changes no file, and for
+          # one with a file outside desktop/, web/ and mobile/ or in the parts of them the tests read.
+          if [ "$EVENT" != "pull_request" ] || [ ! -s "$changed" ] \
+            || grep -Evq '^(desktop|web|mobile)/' "$changed" \
+            || grep -Eq '^(desktop/scripts/|mobile/cases/|web/src/remote-command\.ts$)' "$changed"; then
+            echo "pine=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pine=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  pine:
+    needs: changes
+    if: needs.changes.outputs.pine == 'true'
     name: pine (${{ matrix.runner }}, ${{ matrix.shard }}/${{ matrix.of }})
     strategy:
       fail-fast: false
@@ -101,8 +154,8 @@ jobs:
           PINE_TEST_PATIENCE: "4"
 
   timing:
-    needs: pine
-    if: always() && needs.pine.result != 'skipped'
+    needs: [changes, pine]
+    if: always() && needs.changes.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # A table in a summary is no reason for a red run: whatever goes wrong here is only said.
@@ -117,7 +170,12 @@ jobs:
           REPO: ${{ github.repository }}
           RUN: ${{ github.run_id }}
           ATTEMPT: ${{ github.run_attempt }}
+          PINE: ${{ needs.pine.result }}
         run: |
+          if [ "$PINE" = "skipped" ]; then
+            echo "pine's tests did not run: nothing this pull request changes can reach them." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           # The jobs of the pine job, grouped by the runner they asked for (so that a run whose jobs
           # were not yet cut into shards, named "pine (macos-15)", is grouped as well as one whose
           # jobs were): from the first start to the last end, and the time of all of them added up.
@@ -153,32 +211,9 @@ jobs:
                 + " |"'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  desktop-changed:
-    if: github.event_name != 'pull_request' || github.head_ref != 'next' || github.event.pull_request.head.repo.full_name != github.repository
-    runs-on: ubuntu-latest
-    outputs:
-      changed: ${{ steps.filter.outputs.changed }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - id: filter
-        shell: bash
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          # A new branch or a forced push has no usable "before": then everything counts as changed.
-          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then echo "changed=true" >> "$GITHUB_OUTPUT"; exit 0; fi
-          if git diff --name-only "$BASE" HEAD | grep -Eq '^(desktop/|src/(http|owner|service|remote|csharp)\.ts$|scripts/helpers\.mjs$|\.github/workflows/test\.yml$)'; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
   desktop:
-    needs: desktop-changed
-    if: needs.desktop-changed.outputs.changed == 'true'
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -232,8 +267,8 @@ jobs:
   # The Pine app packed for Linux and Windows as a release packs it (unsigned, the app's folder
   # alone), and started once from there: whether it runs on the pine and the Node it carries.
   pack:
-    needs: desktop-changed
-    if: needs.desktop-changed.outputs.changed == 'true'
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     strategy:
       fail-fast: false
       matrix:
