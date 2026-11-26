@@ -130,6 +130,12 @@ drawn from what pine knows (which providers you are signed in to, your model ser
 main agent has a model). Nothing of them is written into the conversation, and they are no model's:
 reload the page and they are drawn again, the steps that are done shown as done.
 
+Typing works there before any model does: what you type in the input and send picks the option of
+the open card whose name it is, in any case ("a subscription", "claude"). Anything else is answered
+by one line of pine's, "There is no model yet to answer that. Pick one of the options, or type its
+name: what each one means is in its description.", and goes nowhere: no model reads it and it is not
+kept in the conversation. Once a model answers, what you type there is an ordinary message again.
+
 | Step | What it asks |
 |---|---|
 | How should your agents run? | **A subscription** (recommended: Claude, ChatGPT or GitHub Copilot, signed in to in your browser, no key to copy), **An API key**, or **A model on this computer**. The last two lead to Settings > Models for now |
@@ -1278,8 +1284,8 @@ desktop/
     sign-in.ts     a sign-in to a model provider as the page follows it (`SignInRun`), for Settings > Models
                    and Setup Pine; components/sign-in-card.tsx is its card in Setup Pine
     setup/         Setup Pine's own steps: engine.tsx walks them (the welcome, "How should your agents
-                   run?", the model kept), types.ts is what a step is, branches.ts lists the ways to a
-                   model (`BRANCHES`, one module each: subscription.tsx; soon.tsx for a way not built yet)
+                   run?", the model kept, and what is typed before a model answers), types.ts
+                   is what a step is, branches.ts lists the ways to a model (`BRANCHES`, one module each: subscription.tsx; soon.tsx for a way not built yet)
                    and the steps after one (`AFTER`). A new way is a module and one line there
     BrowserAccess.tsx, machines.ts  Settings > Browser access; how the page names a machine and draws a
                    pairing on the first screen

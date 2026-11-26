@@ -19,6 +19,7 @@ import { api } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { COMMANDS, runSlash } from "./commands.ts";
 import { type Attachment, REASONING_ABOUT, store, type Tab, useModel, useSignal } from "./model.ts";
+import { setup } from "./setup/engine.tsx";
 import { baseName, MODES, shortcut, size, tilde } from "./text.ts";
 
 const MAX_FILE = 20 * 1024 * 1024;
@@ -224,6 +225,12 @@ export function Composer({ tab }: { tab: Tab }) {
 			tab.inputs.push(value);
 			set("");
 			return store.answerInWords(asked, value);
+		}
+		// In "Setup Pine" before any model answers, what is typed answers pine's own card, and is never sent.
+		if (value && setup.type(tab, value)) {
+			tab.inputs.push(value);
+			set("");
+			return;
 		}
 		await store.submit(tab, value, whenBusy);
 	};

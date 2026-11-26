@@ -1,7 +1,7 @@
 import { Listbox, ListboxItem, ListboxItemIndicator } from "@ui-sdk/react/listbox";
 import { CheckIcon, MessageCircleQuestionIcon, XIcon } from "lucide-react";
 import { Trace, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
@@ -39,6 +39,20 @@ export interface QuestionCardOption {
 	description?: string;
 }
 
+/** A card on screen as whoever shows it sees it: its options, and how to answer it without a click. */
+export interface ShownQuestionCard {
+	options: QuestionCardOption[];
+	multiple?: boolean;
+	answer: (picked: number[]) => void;
+}
+
+/**
+ * Told of each card while it is on screen (the function given returns what to call when it goes):
+ * pine's own setup steps answer the card from what the owner types in the composer while no model
+ * can, whichever step drew it.
+ */
+export const QuestionCardHost = createContext<((card: ShownQuestionCard) => () => void) | undefined>(undefined);
+
 /**
  * A question put to the owner, inline above the composer of its conversation (shadcn's Confirmation
  * pattern on an `Item`): a few words over it as a `Badge`, the question, and its options in ui-sdk's
@@ -67,6 +81,8 @@ export function QuestionCard({ question, header, from, options, multiple, autoFo
 }) {
 	const [ticked, setTicked] = useState<string[]>([]);
 	const list = useRef<HTMLDivElement>(null);
+	const host = useContext(QuestionCardHost);
+	useEffect(() => host?.({ options, multiple, answer: onAnswer }), [host, options, multiple, onAnswer]);
 	useEffect(() => {
 		if (autoFocus) list.current?.querySelector<HTMLElement>("[role=option]")?.focus();
 	}, [autoFocus]);
