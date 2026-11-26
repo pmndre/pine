@@ -132,9 +132,11 @@ reload the page and they are drawn again, the steps that are done shown as done.
 
 | Step | What it asks |
 |---|---|
-| How should your agents run? | **A subscription** (recommended: Claude, ChatGPT or GitHub Copilot, signed in to in your browser, no key to copy), **An API key**, or **A model on this computer**. The last two lead to Settings > Models for now |
+| How should your agents run? | **A subscription** (recommended: Claude, ChatGPT or GitHub Copilot, signed in to in your browser, no key to copy), **An API key**, or **A model on this computer**. The last one leads to Settings > Models for now |
 | Which subscription? | Claude, ChatGPT or GitHub Copilot. **Back** returns to the first question |
 | The sign-in | A card: the provider's page is opened in your browser once, with **Open the sign-in page again**; a code to enter there, with **Copy**, when the provider gives one; a choice the provider asks is a question card, something to type a field of the card. **Cancel** ends the sign-in and brings the first question back. Nothing typed there reaches a model |
+| Which provider? | With **An API key**: Anthropic, OpenAI, Google Gemini, OpenRouter and xAI, and **Another…**, a list of every provider with a search, by its name or by what people call it ("kimi", "grok"). **Back** returns to the first question |
+| Your API key for … | A card with a field of its own for the key: what is typed there is not shown, goes straight to the sign-in with **Save**, and is stored with pine's other keys (`auth.json` in pine's home), where no agent reads it. The conversation says only **Key saved for …**, never the key. A provider that asks a choice first asks it as a question card. **Cancel** brings the first question back; a key the sign-in refused says why, with **Try again** |
 | Your agents run on … | Once signed in, pine says which model your agents now run on (it chose the provider's usual one, as Settings > Models does). **Keep this model?**: **Go on**, or **Choose another model** among the models you can use now |
 
 ### `pine` in a terminal
@@ -1279,7 +1281,7 @@ desktop/
                    and Setup Pine; components/sign-in-card.tsx is its card in Setup Pine
     setup/         Setup Pine's own steps: engine.tsx walks them (the welcome, "How should your agents
                    run?", the model kept), types.ts is what a step is, branches.ts lists the ways to a
-                   model (`BRANCHES`, one module each: subscription.tsx; soon.tsx for a way not built yet)
+                   model (`BRANCHES`, one module each: subscription.tsx, api-key.tsx; soon.tsx for a way not built yet)
                    and the steps after one (`AFTER`). A new way is a module and one line there
     BrowserAccess.tsx, machines.ts  Settings > Browser access; how the page names a machine and draws a
                    pairing on the first screen

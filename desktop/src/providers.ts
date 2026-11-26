@@ -13,6 +13,19 @@ export const SUBSCRIPTIONS: Record<string, { title: string; about: string }> = {
 	"github-copilot": { title: "GitHub Copilot", about: "Sign in with your GitHub Copilot subscription" },
 };
 
+/**
+ * The providers people most often have an API key for, by the provider's id in pi, in the order the
+ * setup conversation offers them; every other one is found by searching. The name is the company's,
+ * since a key comes from it ("Anthropic", not "Claude").
+ */
+export const KEY_PROVIDERS: Record<string, { title: string; about: string }> = {
+	anthropic: { title: "Anthropic", about: "Claude models. A key from console.anthropic.com" },
+	openai: { title: "OpenAI", about: "GPT models. A key from platform.openai.com" },
+	google: { title: "Google Gemini", about: "Gemini models. A key from Google AI Studio" },
+	openrouter: { title: "OpenRouter", about: "Models of many companies with one key, from openrouter.ai" },
+	xai: { title: "xAI", about: "Grok models. A key from console.x.ai" },
+};
+
 /** Providers that are better known by another name, and what to say about them on their row. */
 const KNOWN: Record<string, { title?: string; about?: string; words: string }> = {
 	// pi took out the sign-in with a Gemini subscription (Gemini CLI, Antigravity): searching for one finds this row,

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { narrow } from "../src/text.ts";
 
-const labels = (query: string, items: Array<{ label: string; about?: string }>) => narrow(query, items).map((i) => i.label);
+const labels = (query: string, items: Array<{ label: string; about?: string; words?: string }>) => narrow(query, items).map((i) => i.label);
 
 test("a model that does not fit what was typed is left out", () => {
 	const models = ["dev/claude-haiku", "openrouter/deepseek-v4", "fireworks/accounts/fireworks/routers/deepseek-r2", "dev/qwen3-coder"].map((m) => ({ value: m, label: m }));
@@ -20,4 +20,14 @@ test("a line beside an item counts after the labels, and only where it fits", ()
 	];
 	assert.deepEqual(labels("news", agents), ["newsroom", "scout"]);
 	assert.deepEqual(labels("mail", agents), []);
+});
+
+test("an item is found by the words it is known by, after the labels and the lines beside them", () => {
+	const providers = [
+		{ label: "xAI", words: "xai grok" },
+		{ label: "Moonshot AI", words: "moonshotai kimi" },
+		{ label: "Grokker", about: "not a provider" },
+	];
+	assert.deepEqual(labels("kimi", providers), ["Moonshot AI"]);
+	assert.deepEqual(labels("grok", providers), ["Grokker", "xAI"]);
 });

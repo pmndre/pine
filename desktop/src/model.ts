@@ -306,7 +306,7 @@ const worktreeNote = (made: WorktreeMade) =>
 export type UpdatePhase = { phase: "waiting" | "ready" | "downloading" | "link"; version: string; mine: string; url: string; reason?: string };
 
 /** `loading`: the dialog is open while what it lists is still asked for, and draws skeleton lines. */
-export type Picker = { title: string; loading?: boolean; items: Array<{ value: string; label: string; about?: string; tone?: Tone }>; current?: string; done: (value: string | undefined) => void; placeholder?: string; free?: boolean; /** With `free`: the text it starts with, and how much of it is selected (a file's name without its extension). */ initial?: string; selected?: number };
+export type Picker = { title: string; loading?: boolean; items: Array<{ value: string; label: string; about?: string; tone?: Tone; /** Not shown: more it is found by in the search (`narrow`). */ words?: string }>; current?: string; done: (value: string | undefined) => void; placeholder?: string; free?: boolean; /** With `free`: the text it starts with, and how much of it is selected (a file's name without its extension). */ initial?: string; selected?: number };
 
 /** The app as a whole. */
 export class Store extends Model {
