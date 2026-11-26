@@ -206,6 +206,8 @@ export function Composer({ tab }: { tab: Tab }) {
 		});
 	};
 
+	const asked = store.openQuestion(tab);
+	const openOptions = Boolean(asked?.req.options?.length || asked?.req.choices?.length);
 	const send = async (whenBusy: "steer" | "queue") => {
 		const value = text.trim();
 		const command = value.startsWith("/") && !value.startsWith("//");
@@ -216,6 +218,12 @@ export function Composer({ tab }: { tab: Tab }) {
 			tab.inputs.push(value);
 			set("");
 			return runSlash(value.slice(1), tab);
+		}
+		// A question that offers nothing to pick is answered here: its card has no field of its own.
+		if (asked && !openOptions && value) {
+			tab.inputs.push(value);
+			set("");
+			return store.answerInWords(asked, value);
 		}
 		await store.submit(tab, value, whenBusy);
 	};
@@ -426,7 +434,7 @@ export function Composer({ tab }: { tab: Tab }) {
 						<ComboboxPrimitive.Input
 							ref={area as unknown as React.Ref<HTMLInputElement>}
 							render={<InputGroupTextarea rows={1} className="max-h-48 p-3 leading-snug" />}
-							placeholder={tab.busy ? `Say something to ${tab.agent} while it works…` : `Message ${tab.agent} · / for commands · @ for files`}
+							placeholder={asked && !openOptions ? `Your answer to ${asked.req.agent}'s question` : tab.busy ? `Say something to ${tab.agent} while it works…` : `Message ${tab.agent} · / for commands · @ for files`}
 							onChange={(e) => {
 								// A key that types ends the listening: what was heard stays, and nothing more is put into the input.
 								if (voice !== "off") endVoice(true);

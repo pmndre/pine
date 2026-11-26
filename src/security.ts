@@ -725,6 +725,21 @@ export interface ApprovalRequest {
 	 * picked, or the owner's own words, comes back as the input `answer`.
 	 */
 	choices?: string[];
+	/**
+	 * An agent's `question`: the answers it offers, each with a line that says what it means, the
+	 * recommended one first. `choices` holds their labels too, for what reads only those.
+	 */
+	options?: QuestionOption[];
+	/** Several of `options` may be picked: the answer is their labels, or their numbers, joined by ", ". */
+	multiSelect?: boolean;
+	/** A few words over a question (12 characters at most), such as "Database". */
+	header?: string;
+}
+
+/** One answer an agent offers to its question. */
+export interface QuestionOption {
+	label: string;
+	description?: string;
 }
 
 export interface ApprovalDecision {

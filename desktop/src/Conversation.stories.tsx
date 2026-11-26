@@ -57,9 +57,8 @@ const approval: Approval = { id: "a1", agent: "main", task: 1, tool: "bash", sum
 const question: Approval = { id: "q1", agent: "main", task: 1, tool: "question", summary: "Which database?", why: "", expires: 0, choices: ["the old one", "the new one"] };
 const asks: Made[] = [
 	{ t: "approval", req: approval, state: "open" },
-	{ t: "approval", req: question, state: "open" },
 	{ t: "approval", req: { ...approval, id: "a2" }, state: "allowed", by: "you" },
-	{ t: "approval", req: { ...question, id: "q2" }, state: "allowed", by: "you" },
+	{ t: "approval", req: { ...question, id: "q2" }, state: "allowed", by: "you", answer: "the new one" },
 	{ t: "approval", req: { ...approval, id: "a3", summary: "rm -rf build" }, state: "denied", by: "you" },
 	{ t: "approval", req: { ...approval, id: "a4" }, state: "gone" },
 ];
@@ -70,7 +69,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Conversation: Story = { args: { items: conversation } };
 
-/** What the agent asks: an approval and a question, open, then as they were answered. */
+/** What the agent asks: an approval open, then an approval and a question as they were answered. (An open question is a card above the input: components/question-card.) */
 export const Ask: Story = { args: { items: asks } };
 
 /** A turn at work: its last lines under the head, the call that runs and the thought that goes on. */

@@ -284,7 +284,7 @@ async function answer(args: string, allow: boolean): Promise<void> {
 	const target = id || (pending.length === 1 ? pending[0].id : "");
 	if (!target) return store.flash(pending.length ? `Several requests wait: ${pending.map((p) => p.id).join(", ")}` : "Nothing waits for approval.");
 	const req = pending.find((p) => p.id === target);
-	// One that needs a value, or is a question, is answered in its dialog.
+	// One that needs a value is answered in its dialog, a question from its card above the composer.
 	if (allow && (req?.inputs?.length || req?.tool === "question")) return store.ask(target);
 	await store.decide(target, allow, always);
 }

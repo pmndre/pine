@@ -199,6 +199,12 @@ export interface Approval {
 	holds?: string;
 	inputs?: Array<{ name: string; label: string; secret?: boolean }>;
 	choices?: string[];
+	/** An agent's question: the answers it offers, each with what it means, the recommended one first. */
+	options?: Array<{ label: string; description?: string }>;
+	/** Several of `options` may be picked. */
+	multiSelect?: boolean;
+	/** A few words over a question. */
+	header?: string;
 }
 
 export interface Todo {

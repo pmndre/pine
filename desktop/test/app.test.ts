@@ -855,9 +855,9 @@ test("a sound in an answer that arrives plays by itself and shows its bars; a cl
 	assert.equal(await page.locator(`${SOUND}:not([data-sound=idle])`).count(), 0);
 });
 
-test("an approval is asked in a dialog and answered from it, and so is a question", async () => {
+test("an approval is asked in a dialog and answered from it; a question is a card above the composer", async () => {
 	// The owner listed bash under "approve": it asks in every mode.
-	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo hello" } }] }, { tools: [{ name: "question", args: { question: "Which database?", choices: ["the old one", "the new one"] } }] }, { text: "done" }], "run it "));
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo hello" } }] }, { tools: [{ name: "question", args: { question: "Which database?", header: "Database", options: [{ label: "the old one", description: "Nothing to move" }, { label: "the new one", description: "Faster, after a migration" }] } }] }, { text: "done" }], "run it "));
 	await page.keyboard.press("Enter");
 	await sees("role=dialog[name=/^Approval needed/]");
 	assert.match(await page.textContent("role=dialog[name=/^Approval needed/]"), /Approval needed[\s\S]*echo hello/);
@@ -884,18 +884,23 @@ test("an approval is asked in a dialog and answered from it, and so is a questio
 	assert.deepEqual(smooth, [], "no animation runs smoothly forever");
 	await page.locator("role=dialog[name=/^Approval needed/]").getByRole("button", { name: /^Allow/ }).click();
 	await sees('[data-item="approval"][data-state="allowed"]');
-	// Then the agent asks something: the answers it offers, the recommended one first.
-	await sees("role=dialog[name=/ asks$/]");
-	assert.match(await page.textContent("role=dialog[name=/ asks$/]"), /Which database\?[\s\S]*the old one[\s\S]*the new one/);
+	// Then the agent asks something: a card inline above the composer, and no dialog opens by itself.
+	const card = "[data-slot=composer-question] [data-slot=question-card]";
+	await sees(card);
+	assert.equal(await page.locator("[data-slot=dialog-content]").count(), 0, "no dialog opens for a question");
+	assert.match(await page.textContent(card), /Database[\s\S]*Which database\?[\s\S]*1[\s\S]*the old one[\s\S]*Nothing to move[\s\S]*recommended[\s\S]*2[\s\S]*the new one[\s\S]*Faster, after a migration/);
+	// The open question is not drawn in the conversation as well.
+	assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0);
 	await shot("03-question");
-	// The line for the owner's own words is named for a screen reader, not only by its placeholder.
-	assert.equal(await page.locator("role=dialog[name=/ asks$/]").getByRole("textbox", { name: "Or answer in your own words" }).count(), 1);
-	// A number answers from the answer field, which has the keyboard once the dialog is open (pressed on it: on a slow
-	// computer a key sent the moment the dialog shows would arrive before the field has it).
-	await page.locator("role=dialog[name=/ asks$/]").getByRole("textbox", { name: "Or answer in your own words" }).press("2", { timeout: 10_000 });
+	// The composer was empty: the card has the keyboard, and a digit answers.
+	await page.waitForFunction(() => document.activeElement?.closest("[data-slot=question-card]"), null, { timeout: 5000 });
+	await page.keyboard.press("2");
+	// Answered, the card folds into a line in the conversation that says what was answered.
 	await sees('[data-item="approval"][data-state="allowed"] >> text=Answered');
-	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
+	assert.match(await page.textContent('[data-item="approval"][data-state="allowed"] >> nth=-1'), /Which database\?[\s\S]*the new one/);
+	assert.equal(await page.locator(card).count(), 0);
 	await sees("[data-slot=markdown] >> text=done");
+	assert.match(JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "tool")), /Your owner answered: the new one/);
 });
 
 test("a value only the owner has, left empty, is marked as missing in the approval and nothing is allowed", { skip: process.platform === "win32" && "a local MCP server needs a sandbox, and Windows has none of pine's" }, async () => {
@@ -916,8 +921,9 @@ test("a value only the owner has, left empty, is marked as missing in the approv
 	await sees("[data-slot=markdown] >> text=not added then");
 });
 
-test("what is asked is answered from the conversation too: an approval by its buttons, a question by one of its answers", async () => {
-	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo again" } }] }, { tools: [{ name: "question", args: { question: "Which color?", choices: ["green", "blue"] } }] }, { text: "answered from the line" }], "ask in line "));
+test("what is asked is answered from the conversation too: an approval by its buttons, questions by a click, the arrows and Enter, ticks and Send; Later and No answer", async () => {
+	const pick = (question: string, extra: any = {}) => ({ tools: [{ name: "question", args: { question, options: [{ label: "green" }, { label: "blue" }, { label: "red" }], ...extra } }] });
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo again" } }] }, pick("Which color?"), pick("Which border?"), pick("Which colors?", { multiSelect: true }), pick("Which shade?"), pick("Which font?"), { text: "answered from the line" }], "ask in line "));
 	await page.keyboard.press("Enter");
 	// The dialog is put off ("Later"); the request stays in the conversation, with what it is and why.
 	await sees("role=dialog[name=/^Approval needed/]");
@@ -928,15 +934,52 @@ test("what is asked is answered from the conversation too: an approval by its bu
 	assert.match(await page.textContent(asked), /echo again/);
 	await shot("03-confirmation");
 	await page.click(`${asked} button:has-text("Allow once")`);
-	await sees('[data-item="approval"][data-state="allowed"] >> text=Allowed');
-	// The question offers its answers as suggestions; one click answers.
-	await sees("role=dialog[name=/ asks$/]");
-	await page.keyboard.press("Escape");
-	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
-	await sees(`${asked} >> text=Which color?`);
-	await page.click(`${asked} button:has-text("blue")`);
-	await sees('[data-item="approval"][data-state="allowed"] >> text=Answered');
+	await sees('[data-item="approval"][data-state="allowed"] >> text=/Allowed · bash · .*echo again/');
+	const card = "[data-slot=composer-question] [data-slot=question-card]";
+	// The conversation holds what was asked before this test too: the questions are counted from here.
+	const before = await page.locator('[data-item="approval"]:not([data-state="open"])').count();
+	const answered = (n: number) => page.waitForFunction((n: number) => document.querySelectorAll('[data-item="approval"]:not([data-state="open"])').length === n, before + n, { timeout: 10_000 });
+	const last = async () => (await page.$$eval('[data-item="approval"]:not([data-state="open"])', (els: Element[]) => els.at(-1)?.textContent)) ?? "";
+	const shows = (question: string) => page.waitForFunction(([c, q]: string[]) => document.querySelector(c)?.textContent?.includes(q), [card, question], { timeout: 10_000 });
+	// A click answers.
+	await shows("Which color?");
+	await page.locator(card).getByRole("option", { name: /blue/ }).click();
+	await answered(1);
+	assert.match(await last(), /Answered[\s\S]*Which color\?[\s\S]*blue/);
+	// The arrows and Enter answer.
+	await shows("Which border?");
+	await page.locator(card).getByRole("option", { name: /green/ }).focus();
+	await page.keyboard.press("ArrowDown");
+	await page.keyboard.press("ArrowDown");
+	await page.keyboard.press("Enter");
+	await answered(2);
+	assert.match(await last(), /Which border\?[\s\S]*red/);
+	// Several are ticked, by a click and by a digit, and sent together.
+	await shows("Which colors?");
+	assert.equal(await page.locator(card).getAttribute("data-multiple"), "");
+	assert.ok(await page.locator(card).getByRole("button", { name: "Send" }).isDisabled(), "nothing ticked, nothing to send");
+	await page.locator(card).getByRole("option", { name: /green/ }).click();
+	await page.keyboard.press("3");
+	await page.locator(card).getByRole("button", { name: "Send" }).click();
+	await answered(3);
+	assert.match(await last(), /Which colors\?[\s\S]*green, red/);
+	// Later puts the card away; the line under the conversation brings it back.
+	await shows("Which shade?");
+	await page.locator(card).getByRole("button", { name: "Later" }).click();
+	await page.waitForSelector(card, { state: "detached" });
+	const waits = page.locator("[data-slot=marker]", { hasText: "A question waits for your answer." });
+	await waits.waitFor();
+	await waits.getByRole("button", { name: "Open" }).click();
+	await page.locator(card).getByRole("option", { name: /green/ }).click();
+	await answered(4);
+	// No answer.
+	await shows("Which font?");
+	await page.locator(card).getByRole("button", { name: "No answer" }).click();
+	await answered(5);
+	assert.match(await last(), /No answer[\s\S]*Which font\?/);
 	await sees("[data-slot=markdown] >> text=answered from the line");
+	const told = JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "tool"));
+	for (const said of ["Your owner answered: blue", "Your owner answered: red", "Your owner answered: green, red", "Your owner answered: green", "Your owner did not answer"]) assert.ok(told.includes(said), said);
 	// The call the approval was for ended after its card closed the group it stood in: it is drawn as ended, and
 	// nothing in the window pulses once the agent is idle.
 	await page.waitForFunction(() => !document.querySelector("[data-slot=pulse]"), null, { timeout: 5000 }).catch(async () => {

@@ -15,7 +15,7 @@ import { addServer, findServer, mcpEnvName, piMcp, removeServer, splitCommand, v
 import { addDecision, checkDecision, decisionsText, removeDecision, signInTypesafe, signOutTypesafe, TYPESAFE, usersOf, whereIs } from "./decisions.ts";
 import { login, logout, type Prompter } from "./login.ts";
 import { setEnv } from "./env-file.ts";
-import { type ApprovalRequest, isInside, levelOf, realish } from "./security.ts";
+import { type ApprovalRequest, isInside, levelOf, type QuestionOption, realish } from "./security.ts";
 import { type Part, pineManual, showRead, showSearch } from "./manual.ts";
 import { addModelServer, checkServerName, listModelServers, lookAt, modelServerUsers, removeModelServer, type ServerModel, servedBy, serverUrl } from "./models.ts";
 import { allSkills, checkSkill, deleteSkill, listSkills, skillDir, skillsBeside, writeSkill } from "./skills.ts";
@@ -71,6 +71,38 @@ function readOwn(file: string, max: number): string | undefined {
 /** The tools pine adds to a session, according to what this run's profile allows. */
 /** A conversation named as the owner names the one they are in. */
 const THIS_ONE = /^(this|current|here|the same|this[ _-]?(one|conversation|chat|thread|session)|current[ _-]?(conversation|chat|thread|session)|the[ _-]?current[ _-]?(conversation|chat|thread|session)|same[ _-]?(conversation|chat))$/i;
+
+/**
+ * The answers a `question` offers: its options, or the plain `choices` of the old shape, each label
+ * on one line, the same label once, six at most. One alone is no choice, and is dropped.
+ */
+export function questionOptions(options: unknown, choices: unknown): QuestionOption[] {
+	const given: Array<{ label?: unknown; description?: unknown }> = Array.isArray(options) && options.length ? options.map((o: any) => (typeof o === "string" ? { label: o } : { label: o?.label, description: o?.description })) : Array.isArray(choices) ? choices.map((c) => ({ label: c })) : [];
+	const seen = new Set<string>();
+	const out: QuestionOption[] = [];
+	for (const o of given) {
+		const label = truncate(String(o.label ?? "").replace(/\s+/g, " ").trim(), 80);
+		if (!label || seen.has(label)) continue;
+		seen.add(label);
+		const description = truncate(String(o.description ?? "").replace(/\s+/g, " ").trim(), 200);
+		out.push(description ? { label, description } : { label });
+	}
+	return out.length < 2 ? [] : out.slice(0, 6);
+}
+
+/**
+ * What the owner answered, as the agent is told it. A UI that picks by number ("2", or "1,3" for a
+ * multiple answer) is given the labels, joined by ", ", in the order picked; anything else is the
+ * owner's own words.
+ */
+export function picked(answer: string | undefined, options: QuestionOption[], multiSelect: boolean): string | undefined {
+	if (!answer || !options.length) return answer;
+	const parts = answer.split(/\s*,\s*/);
+	if (!multiSelect && parts.length > 1) return answer;
+	const numbers = parts.map((n) => (/^\d+$/.test(n) ? Number(n) : 0));
+	if (!numbers.every((n) => n >= 1 && n <= options.length)) return answer;
+	return [...new Set(numbers)].map((n) => options[n - 1].label).join(", ");
+}
 
 export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live, profile: Profile, behalf?: { asker: string }): any[] {
 	const { cfg, bus, state } = manager;
@@ -673,10 +705,15 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 				name: "question",
 				label: "Ask the owner",
 				description:
-					"Ask your owner one question when you cannot go on without their decision: which of two ways, which file, yes or no. Give two to six short answers to pick from when you can, the one you recommend first; they can also answer in their own words. One question at a time. Not for permission to do something: that is asked by itself when it is needed.",
+					"Ask your owner one question when you cannot go on without their decision: which of two ways, which file, yes or no. Give two to six options to pick from when you can, each a short label with a line that says what it means, the one you recommend first; they can also answer in their own words. multiSelect when several may be picked. One question at a time. Not for permission to do something: that is asked by itself when it is needed.",
 				parameters: Type.Object({
 					question: Type.String({ description: "The question, in one or two sentences" }),
-					choices: Type.Optional(Type.Array(Type.String(), { description: "Two to six short answers to pick from. The one you recommend first." })),
+					header: Type.Optional(Type.String({ description: 'A few words over the question, 12 characters at most, such as "Database"' })),
+					options: Type.Optional(
+						Type.Array(Type.Object({ label: Type.String({ description: "The answer, in a few words" }), description: Type.Optional(Type.String({ description: "What it means or costs, in one line" })) }), { description: "Two to six answers to pick from. The one you recommend first." }),
+					),
+					multiSelect: Type.Optional(Type.Boolean({ description: "true: several options may be picked" })),
+					choices: Type.Optional(Type.Array(Type.String(), { description: "Answers as plain labels, instead of options" })),
 				}),
 				execute: async (_id, p) => {
 					const r = run();
@@ -684,11 +721,24 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 					if (profile.leaf) return ok("You are a sub-agent: your owner is not asked on your behalf. Go on with the most reasonable assumption and say in your answer which one you made, or say there what you need to know.");
 					const text = String(p.question ?? "").trim();
 					if (!text) throw new Error("give the question");
-					const choices = [...new Set((p.choices ?? []).map((c) => truncate(String(c).replace(/\s+/g, " ").trim(), 80)).filter(Boolean))].slice(0, 6);
+					const options = questionOptions(p.options, p.choices);
+					const header = String(p.header ?? "").replace(/\s+/g, " ").trim().slice(0, 12).trim();
+					const multiSelect = options.length > 0 && p.multiSelect === true;
 					const decision = await r.slot.suspend(() =>
-						manager.approvals.request({ agent: asker, task: r.task.id, root: r.task.meta.root ?? r.task.id, tool: "question", summary: truncate(text, 800), why: "the agent needs your answer to go on", choices: choices.length ? choices : undefined, inputs: [{ name: "answer", label: "Your answer", secret: false }] }),
+						manager.approvals.request({
+							agent: asker,
+							task: r.task.id,
+							root: r.task.meta.root ?? r.task.id,
+							tool: "question",
+							summary: truncate(text, 800),
+							why: "the agent needs your answer to go on",
+							...(options.length ? { options, choices: options.map((o) => o.label) } : {}),
+							...(multiSelect ? { multiSelect } : {}),
+							...(header ? { header } : {}),
+							inputs: [{ name: "answer", label: "Your answer", secret: false }],
+						}),
 					);
-					const answer = decision.values?.answer?.trim();
+					const answer = picked(decision.values?.answer?.trim(), options, multiSelect);
 					// (A swarm's check of the answer is told what the owner said: a value they gave is given, not made up.)
 					if (decision.allow && answer) manager.swarms.heard(r.task.agent, r.task.session, text, answer);
 					if (decision.allow && answer) return ok(`Your owner answered: ${answer}`);

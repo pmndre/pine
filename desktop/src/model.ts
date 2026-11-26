@@ -67,7 +67,7 @@ export type Item = Base &
 		| { t: "event"; label: string; body: string; /** A note of pine's to the agent (`notify`): what it reports, never the owner's words. */ pine?: boolean }
 		/** A message was not answered because the agent has no model that answers (`ModelNotice`). */
 		| { t: "model"; agent: string }
-		| { t: "approval"; req: Approval; state: "open" | "allowed" | "denied" | "gone"; by?: string; always?: boolean }
+		| { t: "approval"; req: Approval; state: "open" | "allowed" | "denied" | "gone"; by?: string; always?: boolean; /** What the owner answered a question with here, for the line it folds into. */ answer?: string }
 		| { t: "steps"; task: number; items: Todo[] }
 		| { t: "media"; name: string; url: string; kind: "image" | "video" | "audio" }
 		| { t: "goal"; goal: GoalInfo; full?: boolean }
@@ -436,8 +436,10 @@ export class Store extends Model {
 	picker?: Picker;
 	/** The form that publishes an event as the owner, while it is open. */
 	publishing = false;
-	/** The approval or question whose dialog is open. */
+	/** The approval whose dialog is open. (A question has no dialog: its card is above the composer.) */
 	asking?: string;
+	/** The questions the owner put off ("Later"): their card is not shown until they are opened again. */
+	later = new Set<string>();
 	/** The tabs of last time are open (there may be none): until then the window shows that pine is starting. */
 	opened = false;
 	/** What was typed into a conversation's input and not sent when its tab closed, given back when it opens again. */
@@ -2218,7 +2220,7 @@ export class Store extends Model {
 		tab.touch();
 		this.touch();
 		this.badge();
-		if (fresh ? tab === this.active && !this.asking && !this.picker && !this.publishing : false) this.ask(req.id);
+		if (fresh && req.tool !== "question" ? tab === this.active && !this.asking && !this.picker && !this.publishing : false) this.ask(req.id);
 		else if (tab === this.active) this.askNext();
 	}
 
@@ -2864,6 +2866,37 @@ export class Store extends Model {
 		if (r && !r.decided) this.flash("That request was already answered.");
 	}
 
+	/** The question of a conversation whose card is shown above its composer: the first that is open and not put off. */
+	openQuestion(tab: Tab): Of<"approval"> | undefined {
+		return [...tab.approvals.values()].find((a) => a.req.tool === "question" && !this.later.has(a.req.id));
+	}
+
+	/** Answer a question that offers nothing to pick, with what the owner typed in the composer. */
+	async answerInWords(item: Of<"approval">, text: string): Promise<void> {
+		item.answer = text;
+		await this.decide(item.req.id, true, false, { answer: text });
+	}
+
+	/** Put a question off: its card goes, and the line under the conversation brings it back. */
+	putOff(id: string): void {
+		this.later.add(id);
+		this.tabs.find((t) => t.approvals.has(id))?.touch();
+		this.touch();
+	}
+
+	/**
+	 * Answer a question with the options picked (counted from 1): their labels, joined by ", " for
+	 * several. The line the card folds into says them.
+	 */
+	async answer(req: Approval, picked: number[]): Promise<void> {
+		const labels = picked.map((n) => req.options?.[n - 1]?.label ?? req.choices?.[n - 1]).filter((l): l is string => Boolean(l));
+		if (!labels.length) return;
+		const text = labels.join(", ");
+		const item = this.tabs.map((t) => t.approvals.get(req.id)).find(Boolean);
+		if (item) item.answer = text;
+		await this.decide(req.id, true, false, { answer: text });
+	}
+
 	closeAsking(): void {
 		this.asking = undefined;
 		this.touch();
@@ -2877,14 +2910,22 @@ export class Store extends Model {
 	 */
 	askNext(): void {
 		if (this.asking || this.picker || this.publishing || !this.active) return;
-		const next = [...this.active.approvals.values()].find((a) => !this.asked.has(a.req.id));
+		// A question is answered from its card above the composer: it opens no dialog.
+		const next = [...this.active.approvals.values()].find((a) => a.req.tool !== "question" && !this.asked.has(a.req.id));
 		if (!next) return;
 		this.asking = next.req.id;
 		this.asked.add(next.req.id);
 		this.touch();
 	}
 
+	/** Bring what is asked to the owner: an approval's dialog, or a question's card above the composer. */
 	ask(id: string): void {
+		const tab = this.tabs.find((t) => t.approvals.has(id));
+		if (tab?.approvals.get(id)?.req.tool === "question") {
+			this.later.delete(id);
+			tab.touch();
+			return this.touch();
+		}
 		this.asking = id;
 		this.asked.add(id);
 		this.touch();
@@ -3198,6 +3239,7 @@ export class Store extends Model {
 					this.dirty.add(tab);
 				}
 				this.asked.delete(p.id);
+				this.later.delete(p.id);
 				if (this.asking === p.id) this.closeAsking();
 				this.dirty.add(this);
 				this.badge();

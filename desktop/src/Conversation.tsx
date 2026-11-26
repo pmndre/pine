@@ -3,7 +3,7 @@
 // The parts are shadcn's chat components, composed the way its AI Elements pages show: the thread
 // is Message Scroller, a turn is Message (and Bubble for the owner's), the work of a turn is Trace
 // (Task, Tool, Reasoning, Subagent and Plan), a request is an Item (Confirmation), a note is a Marker.
-import { ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
 import { Fragment, memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { Sound } from "@/components/sound";
 import { contextMenu } from "@/components/page-menu";
@@ -21,7 +21,8 @@ import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from "
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
-import { Item as Card, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item as Card, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { QuestionCard, QuestionTrace } from "@/components/question-card";
 import { Kbd } from "@/components/ui/kbd";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
@@ -375,16 +376,17 @@ export function Entry({ entry, agent }: { entry: TranscriptEntry; agent: string 
 
 /**
  * A request of the agent's, in the conversation (Confirmation): while it is open, an Item with
- * what it wants and why and the answers; once answered, a line again. What needs typing (a secret,
- * the owner's own words) opens the dialog.
+ * what it wants and why and its buttons; once answered, a line again. What needs typing (a secret)
+ * opens the dialog. A question is not drawn here while it is open: its card is above the composer
+ * (`ComposerQuestion`), and it folds into a line here once answered.
  */
 function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
 	const { req, state } = item;
 	const question = req.tool === "question";
-	const choices = req.choices ?? [];
 	const typed = Boolean(req.inputs?.length);
+	if (question && (state === "allowed" || state === "denied")) return <QuestionTrace data-item="approval" data-state={state} question={req.summary} answer={item.answer} answered={state === "allowed"} by={item.by} />;
 	if (state !== "open") {
-		const head = state === "gone" ? "No longer open" : question ? (state === "allowed" ? "Answered" : "No answer") : state === "allowed" ? "Allowed" : "Denied";
+		const head = state === "gone" ? "No longer open" : state === "allowed" ? "Allowed" : "Denied";
 		const about = state === "gone" ? "pine was restarted, or the question ran out of time" : [item.by ? `(${item.by})` : "", item.always && req.remember ? `${req.remember} will not ask again in this conversation` : ""].filter(Boolean).join(" · ");
 		const what = [head, question ? "" : req.tool, oneLine(req.summary)].filter(Boolean).join(" · ");
 		return (
@@ -394,31 +396,27 @@ function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
 					<TraceTitle className="select-text" title={req.summary}>
 						{what}
 					</TraceTitle>
-					{about ? <TraceDescription>{about}</TraceDescription> : null}
+					{about ? <TraceDescription className="select-text">{about}</TraceDescription> : null}
 				</TraceLine>
 			</Trace>
 		);
 	}
+	if (question) return null;
 	return (
 		<div data-item="approval" data-state={state}>
 			<Card variant="outline" size="sm">
-				<ItemMedia variant="icon">{question ? <MessageCircleQuestionIcon /> : <TriangleAlertIcon />}</ItemMedia>
+				<ItemMedia variant="icon"><TriangleAlertIcon /></ItemMedia>
 				<ItemContent>
 					<ItemTitle>
-						{question ? `${req.agent} asks` : "Approval needed"}
-						{question ? null : <span className="font-mono">{req.tool}</span>}
+						Approval needed
+						<span className="font-mono">{req.tool}</span>
 					</ItemTitle>
 					{/* Not clamped: what is allowed here must be read whole. */}
 					<ItemDescription className="line-clamp-none whitespace-pre-wrap wrap-anywhere text-foreground select-text">{req.summary}</ItemDescription>
-					{question || !req.why ? null : <ItemDescription className="line-clamp-none select-text">{req.why}</ItemDescription>}
+					{req.why ? <ItemDescription className="line-clamp-none select-text">{req.why}</ItemDescription> : null}
 				</ItemContent>
 				<ItemActions>
-					{question ? (
-						<>
-							<Button size="sm" variant="ghost" onClick={() => void store.decide(req.id, false)}>No answer</Button>
-							<Button size="sm" variant="outline" onClick={() => store.ask(req.id)}>{choices.length ? "In my own words…" : "Answer…"}</Button>
-						</>
-					) : typed ? (
+					{typed ? (
 						<>
 							<Button size="sm" variant="outline" onClick={() => void store.decide(req.id, false)}>Deny</Button>
 							<Button size="sm" onClick={() => store.ask(req.id)}>Decide…</Button>
@@ -431,21 +429,38 @@ function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
 						</>
 					)}
 				</ItemActions>
-				{question && choices.length ? (
-					// The answers it offers, the recommended one first (Suggestion: a Button that answers with its words).
-					<ItemFooter className="flex-wrap justify-start">
-						{choices.map((c, i) => {
-							const answer = <Button key={i} size="sm" variant={i === 0 ? "default" : "outline"} onClick={() => void store.decide(req.id, true, false, { answer: c })}>{c}</Button>;
-							return i === 0 ? (
-								<HoverTooltip key={i}>
-									<TooltipTrigger render={answer} />
-									<TooltipContent>recommended</TooltipContent>
-								</HoverTooltip>
-							) : answer;
-						})}
-					</ItemFooter>
-				) : null}
 			</Card>
+		</div>
+	);
+}
+
+/**
+ * The question that is open in a conversation, as a card inline above its composer: never a dialog
+ * that opens by itself. One the owner put off ("Later") is not shown; the line under the
+ * conversation brings it back. It takes the keyboard as it comes only when the composer is empty,
+ * so that it never takes what the owner is typing.
+ */
+function ComposerQuestion({ tab }: { tab: Tab }) {
+	const item = store.openQuestion(tab);
+	if (!item) return null;
+	const { req } = item;
+	const options = req.options ?? (req.choices ?? []).map((label) => ({ label }));
+	const field = document.activeElement;
+	const free = !field || field === document.body || (field instanceof HTMLTextAreaElement && Boolean(field.closest("[data-slot=composer]")) && !field.value.trim());
+	return (
+		<div data-slot="composer-question" className="mb-2">
+			<QuestionCard
+				key={req.id}
+				question={req.summary}
+				header={req.header}
+				from={`${req.agent} asks`}
+				options={options}
+				multiple={req.multiSelect}
+				autoFocus={free && options.length > 0}
+				onAnswer={(picked) => void store.answer(req, picked)}
+				onNoAnswer={() => void store.decide(req.id, false)}
+				onLater={() => store.putOff(req.id)}
+			/>
 		</div>
 	);
 }
@@ -810,6 +825,9 @@ function StatusLine({ tab }: { tab: Tab }) {
 			{action}
 		</Marker>
 	);
+	// A question put off ("Later"), with no other card above the composer: this line brings it back, while the agent waits too.
+	const putOff = waiting.find((a) => a.req.tool === "question" && store.later.has(a.req.id));
+	if (putOff && !store.openQuestion(tab)) return line(<TriangleAlertIcon />, "A question waits for your answer.", <Button variant="outline" size="xs" onClick={() => store.ask(putOff.req.id)}>Open</Button>, true);
 	if (!tab.busy) {
 		if (waiting.length) return line(<TriangleAlertIcon />, waiting[0].req.tool === "question" ? "A question waits for your answer." : "A request waits for your approval.", <Button variant="outline" size="xs" onClick={() => store.ask(waiting[0].req.id)}>Open</Button>, true);
 		if (swarm) return line(<UsersIcon />, `swarm · round ${swarm.round} of ${swarm.until} · ${swarm.checking ? "checking the answer" : "looking at the board"}`, <Button variant="outline" size="xs" onClick={() => void store.setSwarm(tab, "pause")}>Pause</Button>);
@@ -1267,6 +1285,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 			)}
 			<div className="shrink-0 px-4 pb-4">
 				<div className="relative mx-auto max-w-3xl">
+					{chat ? <ComposerQuestion tab={tab} /> : null}
 					<StatusLine tab={tab} />
 					{chat ? (
 						<Composer tab={tab} />

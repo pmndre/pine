@@ -37,7 +37,6 @@ import { Palette } from "./Palette.tsx";
 import { PairConfirm } from "./Pairing.tsx";
 import { PickDialog } from "./PickDialog.tsx";
 import { PublishDialog } from "./PublishDialog.tsx";
-import { QuestionDialog } from "./QuestionDialog.tsx";
 import { ago, newApp, shortcut, until } from "./text.ts";
 import { Listbox, ListboxItem } from "@ui-sdk/react/listbox";
 import { LISTBOX, onPick } from "./lists.tsx";
@@ -1512,7 +1511,8 @@ function Asking() {
 	if (!s.asking) return null;
 	const req = s.tabs.map((t) => t.approvals.get(s.asking!)).find(Boolean)?.req;
 	if (!req) return null;
-	return req.tool === "question" ? <QuestionDialog key={req.id} req={req} /> : <ApprovalDialog key={req.id} req={req} />;
+	// A question has no dialog: its card is above the composer of its conversation.
+	return req.tool === "question" ? null : <ApprovalDialog key={req.id} req={req} />;
 }
 
 function Help({ close }: { close: () => void }) {
