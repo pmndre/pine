@@ -327,6 +327,45 @@ test("telegram: what an agent writes in Markdown arrives formatted; pine's own q
 	await h.close();
 });
 
+test("telegram: a question with one answer has a button for each option; one with several answers is answered by a message", async (t) => {
+	const tg = await fakeTelegram();
+	t.after(() => tg.close());
+	const phone = { type: "telegram", token: TOKEN, allow: [1001], apiBase: tg.apiBase, trust: "owner" };
+	const h = await harness({ pine: { sources: { phone }, subscribe: ["phone"] }, agents: { main: {} } });
+	await until(() => h.pine.sources.list().find((s) => s.name === "phone")?.running, 4000, "the source to run");
+	const options = [{ label: "The mode", description: "how far your agents reach" }, { label: "A folder", description: "where they work" }, { label: "Telegram" }];
+	const ask = (multiSelect: boolean) => h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("question", { question: "What shall we set up?", header: "Next", options, multiSelect })] }]), ...owner });
+
+	// One answer: a button for each option, and what each means in the message.
+	let run = ask(false);
+	await until(() => tg.sent().some((m) => /What shall we set up\?/.test(m.text)), 5000, "the question");
+	let asking = tg.sent().filter((m) => /What shall we set up\?/.test(m.text)).at(-1);
+	assert.deepEqual(asking.reply_markup.inline_keyboard.map((row: any) => row[0].text), ["The mode", "A folder", "Telegram", "No answer"]);
+	assert.match(asking.text, /Next/);
+	assert.match(asking.text, /A folder: where they work/);
+	tg.callback(1001, asking.reply_markup.inline_keyboard[1][0].callback_data);
+	await run;
+	assert.equal(h.toolResults().at(-1), "Your owner answered: A folder");
+
+	// Several answers: no button for an option; the options are numbered and a message answers.
+	const before = tg.sent().length;
+	run = ask(true);
+	await until(() => tg.sent().slice(before).some((m) => /What shall we set up\?/.test(m.text)), 5000, "the second question");
+	asking = tg.sent().slice(before).find((m) => /What shall we set up\?/.test(m.text));
+	assert.deepEqual(asking.reply_markup.inline_keyboard.map((row: any) => row[0].text), ["No answer"]);
+	assert.match(asking.text, /1\. The mode: how far your agents reach\n2\. A folder: where they work\n3\. Telegram/);
+	assert.match(asking.text, /1,3/);
+	// Somebody else's message answers nothing.
+	tg.message(2002, "1,2,3");
+	await sleep(150);
+	assert.equal(h.pine.approvals.pending().length, 1, "a stranger cannot answer");
+	tg.message(1001, "1,3");
+	await run;
+	assert.equal(h.toolResults().at(-1), "Your owner answered: The mode, Telegram");
+	assert.ok(tg.calls.some((c) => c.method === "editMessageReplyMarkup" && /Answered \(telegram:1001\)/.test(JSON.stringify(c.body))));
+	await h.close();
+});
+
 test("telegram: an agent's own bot carries that agent's questions, and nobody else's are shown or answered there", async (t) => {
 	const forSlack = await fakeTelegram();
 	const forKevin = await fakeTelegram();

@@ -49,6 +49,8 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["react to each click on my page with a script instead of waking the agent", /^(events#running-a-script|interfaces)/],
 		["can the agent use bold text and formatting in telegram messages, markdown", /^source-types#telegram$/],
 		["why do questions of one agent show up in the telegram bot of another agent", /^source-types#telegram$/],
+		["the agent asks me to pick several things, how do I tick more than one in the terminal", /^tui#when-the-agent-asks-you-something$/],
+		["answer a question with several choices from telegram", /^source-types#telegram/],
 		["how do sub-agents know which of them looks at which file", /^boards(#a-pool-of-sub-agents)?$/],
 		["ten agents on one project: how do they share what they found", /^boards/],
 		["more than four sub-agents at once", /^boards#a-pool-of-sub-agents$/],
