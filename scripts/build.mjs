@@ -31,6 +31,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"))
 delete pkg.private;
 delete pkg.devDependencies;
 delete pkg.scripts;
+delete pkg.packageManager;
 pkg.bin = { pine: "bin/pine.js" };
 // A release gives the package its version; a plain build keeps the one in package.json.
 if (process.env.PINE_VERSION) pkg.version = process.env.PINE_VERSION;

@@ -33,7 +33,7 @@ export function ports() {
 /**
  * The entries of the preview pane. They run with the Node that runs this script (`npm install` in
  * desktop/), not the first `node` the pane's shell finds: that one may be older than the preview needs.
- * Storybook keeps its own port: one checkout at a time, or `npm run storybook -- -p <port>` by hand.
+ * Storybook keeps its own port: one checkout at a time, or `pnpm run storybook -p <port>` by hand.
  */
 function entries() {
 	const p = ports();

@@ -1,7 +1,7 @@
 // The iOS app of a release as an unsigned IPA, the file a person sideloads with AltStore or
 // Sideloadly, which sign it with their own Apple ID when they install it. Nothing here signs: pine
 // has no Apple certificate, profile or account, and wants none.
-//   node scripts/ipa.ts [version]      (npm run ipa -- 0.38.0)
+//   node scripts/ipa.ts [version]      (pnpm run ipa 0.38.0)
 // Builds the page for iOS and syncs it (npm run sync:ios), archives the app for devices with code
 // signing off, its version the release's and its build number Android's versionCode
 // (scripts/version-code.ts), and writes ios/App/output/Pine-<version>.ipa. Then checks what it

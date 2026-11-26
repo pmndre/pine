@@ -8,26 +8,27 @@ to change the code.
 
 | Command | What it does |
 |---|---|
-| `npm test` | All tests against the scripted model server. About ten seconds. Run it after every change. The Test workflow (`.github/workflows/test.yml`) runs it for every push to `next` and pull request against `main` on Linux (x64 and arm64, with the sandbox set up by `pine init`), macOS and Windows, and for a pull request against `next` on Linux x64 alone; a test that cannot run on a system skips itself and says why. A file with a failure is run again, alone (`scripts/test.mjs`): one that passes then is named and does not fail the run. |
-| `npm run build` | Makes the npm package in `build/`: the sources compiled to JavaScript at the same paths, plus docs and examples. Node runs TypeScript directly in a checkout but not inside `node_modules`, so only the package is compiled. Code that names one of pine's own module files at run time uses `EXT` from `src/config.ts` (".ts" or ".js"). |
-| `npm run release` | What the Release workflow runs on every push to `main` and to `next` (`.github/workflows/release.yml`): works out the next version, builds, publishes to npm, and marks the release with a tag. From `next` it is a preview (`--next` by hand). `node scripts/release.mjs --dry-run` shows the version and checks the package without publishing. The checkout's `package.json` is marked private so that the sources are never published uncompiled. |
-| `npm run check` | Type check (`tsc --noEmit`). |
-| `npm run test:live` | End-to-end through `claude -p`, plus the real browser and, on a Mac, the real app control helper and the helper of the `system` source. Slow, uses a Claude plan and the network. Run it when you change prompts, tool descriptions, `src/dev/claude-model.ts`, `mcp/browser.ts`, `mcp/computer.ts` or `mcp/computer.swift`. The tests that operate TextEdit skip themselves unless the terminal app they run in has the Accessibility and Screen Recording grants. |
-| `npm run baseline` | The 59 pi SDK checks in `baseline/`. Run it after upgrading pi. |
+| `pnpm install` | Installs every package of the repository at once: pine at the root, and `desktop/`, `mobile/`, `web/` and `web/relay/`, the packages of the pnpm workspace (`pnpm-workspace.yaml`), from the one lockfile, `pnpm-lock.yaml`. The install scripts that run are listed under `allowBuilds` there: pnpm runs no other, and an install that meets a new one fails until it is listed (allowed or not). Run it after pulling. `package.json` names the pnpm version (`packageManager`). |
+| `pnpm test` | All tests against the scripted model server. About ten seconds. Run it after every change. The Test workflow (`.github/workflows/test.yml`) runs it for every push to `next` and pull request against `main` on Linux (x64 and arm64, with the sandbox set up by `pine init`), macOS and Windows, and for a pull request against `next` on Linux x64 alone; a test that cannot run on a system skips itself and says why. A file with a failure is run again, alone (`scripts/test.mjs`): one that passes then is named and does not fail the run. |
+| `pnpm run build` | Makes the npm package in `build/`: the sources compiled to JavaScript at the same paths, plus docs and examples. Node runs TypeScript directly in a checkout but not inside `node_modules`, so only the package is compiled. Code that names one of pine's own module files at run time uses `EXT` from `src/config.ts` (".ts" or ".js"). |
+| `pnpm run release` | What the Release workflow runs on every push to `main` and to `next` (`.github/workflows/release.yml`): works out the next version, builds, publishes to npm, and marks the release with a tag. From `next` it is a preview (`--next` by hand). `node scripts/release.mjs --dry-run` shows the version and checks the package without publishing. The checkout's `package.json` is marked private so that the sources are never published uncompiled. |
+| `pnpm run check` | Type check (`tsc --noEmit`). |
+| `pnpm run test:live` | End-to-end through `claude -p`, plus the real browser and, on a Mac, the real app control helper and the helper of the `system` source. Slow, uses a Claude plan and the network. Run it when you change prompts, tool descriptions, `src/dev/claude-model.ts`, `mcp/browser.ts`, `mcp/computer.ts` or `mcp/computer.swift`. The tests that operate TextEdit skip themselves unless the terminal app they run in has the Accessibility and Screen Recording grants. |
+| `pnpm run baseline` | The 59 pi SDK checks in `baseline/`. Run it after upgrading pi. |
 | `node src/cli.ts <command>` | The CLI without installing it. |
-| `npm run desktop` | The desktop app (`desktop/`, Electron), built and opened. It has its own `package.json` and `node_modules`: `npm install` in `desktop/` once. `npm run dev` there reloads the page as you edit. On a Mac both start a copy of Electron's app named Pine, with Pine's icon and signed again for this Mac, so that the menu bar and the Dock say Pine (`desktop/scripts/dev-electron.mjs`, made once per Electron version in `desktop/node_modules/.cache/pine-dev`). |
-| `npm run desktop:test` | The desktop app from end to end: the real app, through its real window, on a pine home of its own with the scripted model server. It builds the app once for the run into a temp folder of its own and every test starts that build (`desktop/scripts/test.mjs`, `desktop/test/support/app.ts`), so runs of several checkouts at once never test each other's build. The app's window is drawn and never shown, so a run takes no place on the screen and the owner's pointer and keys never reach a test (`PINE_DESKTOP_SHOW=1` shows the windows, to watch a test). As many files side by side as the computer has room for (one for every two idle processors, six at most, two at least), two minutes at most a test; a file with a failure is run again alone, and one that passes then is named and does not fail the run. Under a minute. The Test workflow runs it on Linux under `xvfb-run` when those change, and on macOS too for a push to `next`. Run it when you change `desktop/`, the control API the app uses (`src/http.ts`, `src/owner.ts`) or `pine service`. `npm run check` in `desktop/` is its type check. |
-| `npm run dev:preview` (in `desktop/`) | The app's page in an ordinary browser on a throwaway pine; `dev:preview:home` on `~/.pine`, whose daemon it never stops. Each checkout has ports of its own, from its path (`desktop/scripts/launch-json.mjs`), and `.claude/launch.json` is written with them by `npm install` in `desktop/` (it is not in git). After pulling, or when the preview pane lists no `desktop-preview`, run `node desktop/scripts/launch-json.mjs` (or `npm install` in `desktop/`). A preview and `npm run dev` end with whatever started them (`desktop/scripts/leash.mjs`). |
-| `npm run storybook` (in `desktop/`) | Storybook for the parts of the app's page, at port 6006: a story sits beside the file of what it shows (`desktop/src/<File>.stories.tsx`, `desktop/src/components/<name>.stories.tsx`: `desktop/src/ApprovalDialog.stories.tsx`, `desktop/src/components/printed.stories.tsx`, `desktop/src/components/logo.stories.tsx`); `npm run build-storybook` builds it. Storybook is for looking at the parts, not a test: nothing publishes it and no check comes from it. Its toolbar draws a story in any of pine's themes and at a phone's width (360) and the window's (1280) (`desktop/.storybook/modes.ts`), so no dark or phone twin of a story is written. Add or update a story when you change a part in `desktop/src/components/` (outside `ui/`, which is stock). |
-| `npm run desktop:pack` | On a Mac `desktop/release/mac-arm64/Pine.app` (`mac/` on Intel); on Linux and Windows the app's folder (`linux-unpacked`, `win-unpacked`), and with `--dist` an AppImage and a deb, or an NSIS installer (`desktop/scripts/pack.mjs`). On a Mac: with the package of `npm run build` and its dependencies, the Node it runs on, pine's helpers built (`scripts/helpers.mjs`) and `pine` for a terminal inside, signed with the hardened runtime. `node desktop/scripts/smoke.mjs` starts that app from a folder of its own and checks that it runs on the pine and the Node it carries. Run both when you change `desktop/scripts/`, a helper's build function, `src/prebuilt.ts`, a native module of browser access (`ssh2`, `node-datachannel`) or `desktop/electron/service.ts`, and the smoke test also after a change to the page's markup that it finds the page by (`data-slot` names): no workflow runs it. |
-| `npm test`, `npm run check` (in `mobile/`) | The mobile app's bridge and both builds of its page (Android, iOS) under `node:test`, and its type check against the desktop page's `Bridge`. `npm install` in `mobile/` once. Run both when you change `mobile/src`, the page's bridge (`desktop/src/bridge.ts`) or what the page reads from it. The `android` job of the Release workflow runs both before it builds the APK; run them yourself before you build the IPA by hand. |
-| `npm run test:core` (in `mobile/`) | The native plugin's Kotlin core on the JVM: an SSH server in the test (Apache MINA sshd) and a stand-in daemon, and for a paired computer the Pine app's real access host under Node (`mobile/test/support/access-host.ts`, so it needs Node and `npm install` in `desktop/`), with libdatachannel's JVM binding behind the core's `WebRtc` interface. Run it when you change `mobile/core/`, `mobile/cases/`, `src/remote.ts` or `desktop/electron/access/`. |
-| `swift test` (in `mobile/ios-core/`) | The iOS plugin's Swift core on the Mac: a real OpenSSH `sshd` started by the test on a loopback port and a stand-in daemon, the same cases as the Kotlin core (`mobile/cases/`), and for a paired computer the same access host helper (Node and `npm install` in `desktop/`). Apple silicon only: libdatachannel's xcframework has no Intel slice for macOS. Run it when you change `mobile/ios-core/`, `mobile/cases/`, `src/remote.ts` or `desktop/electron/access/`. No workflow runs it for now. |
-| `npm run ipa`, `npm run smoke:ios`, `npm run ios:run` (in `mobile/`) | The IPA of a release, not signed (`scripts/ipa.ts`: `npm run ipa -- <version>`, written to `ios/App/output/`, checked unsigned and arm64); the iOS app from end to end on a simulator of its own without a window, against the Android smoke run's test SSH server, and paired with the real access host behind a TLS front whose authority the run adds to that simulator (`--pairing-only` for that alone); and the app opened in the Simulator app, by hand. The smoke test is the test of the web view's hardening in `PineViewController.swift` and `PinePlugin.swift`, of pairing by a pasted link and by a `pine:` address, of the return from the background and of the key kept in the Keychain: run it before a release that changes `mobile/` or upgrades Capacitor. No workflow runs it. They need Xcode 27 with an iOS simulator runtime, and the smoke run a JDK as `npm run smoke` does. |
-| `npm run apk`, `npm run apk:release`, `npm run smoke` (in `mobile/`) | A debug APK; a release APK (signed when `ANDROID_KEYSTORE_FILE` and the three other variables of the release job name a key, versioned by `PINE_VERSION` and `PINE_VERSION_CODE`); and the app from end to end on an emulator without a window, against a test SSH server of its own running the real `pine service`, and paired with the real access host behind a TLS front whose authority only the debug build trusts (`-PpineSmokeAuthority`; `--transport-only` for the libwebrtc check, `--pairing-only` for that and pairing). The smoke test is the test of the WebView's hardening in `PinePlugin.kt`, of libwebrtc (`LibWebRtcTest`, the only test of it), of pairing by a pasted link and by an App Link, and of the back button and the app's return from the background: run it before a release that changes `mobile/` or upgrades Capacitor. No workflow runs it. The Gradle commands need the Android SDK (`ANDROID_HOME`, default `~/Library/Android/sdk`) and a JDK of 21 or later: `JAVA_HOME`, default Android Studio's (`/Applications/Android Studio.app/Contents/jbr/Contents/Home`), since a Mac has no `java` on its PATH by default. |
-| `npm test`, `npm run check`, `npm run build` (in `web/`) | The web client: the web bridge as the page calls it, in Node with a stand-in for SSH, and its SSH core in headless Chrome for Testing against a `sshd` of the test's own on a loopback port, and peer to peer with the Pine app's real access host (`desktop/electron/access/`), so it needs `npm install` in `desktop/` too; its type check; and its build into `web/dist` (the bridge's document, and the desktop page built for the browser under `page/`). `npm install` in `web/` once. Run them when you change `web/`, `desktop/electron/access/`, the page's bridge (`desktop/src/bridge.ts`) or what the page reads from it. |
-| `npm test`, `npm run check` (in `web/relay/`) | The relay Worker's fetch handler with a stand-in TCP server on a loopback port, the meeting module and its routes, and its type check. `npm install` in `web/relay/` once. `wrangler.jsonc` has one configuration and no environment: the web client, the relay and the meeting service side by side, a whole deployment. Every deployment is a Worker of its own made from it, named with `--name`, at `pine-<channel>.<account>.workers.dev`: `pine-main` (the project's service, the apps' default), `pine-next`, and `pine-pr-<number>` for a pull request; a deployment of one's own uses it under a name of its own. `npm run dev` there serves the deployment (relay, meeting service and `web/dist`) under `wrangler dev`. A pull request that changes one of the paths listed in `.github/workflows/web-preview.yml` (`web/` and every input of the page's build) runs `.github/workflows/web-preview.yml`: the gates of `web/` and `web/relay/` and the build, then `wrangler deploy --name pine-pr-<number>`, whose address it posts on the pull request in one comment that each push updates; when the pull request is closed, `pine-pr-<number>` is deleted through Cloudflare's API. A push to `next` or `main` that changes one of those paths runs it too and deploys `pine-next` or `pine-main`, its address in the run's summary: a push to `main` is how the project's service changes. A Worker that holds a Durable Object gets no version preview addresses, which is why each channel is a Worker of its own. The secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`) are in the environment `web-preview`, which a fork's pull request never reaches, and are given to the deploy and delete steps alone; without them the jobs pass and say nothing was deployed or deleted. |
-| `npm run smoke` (in `web/`) | After `npm run build`: the page and the relay as one deployment under `wrangler dev`, in headless Chrome for Testing, against a `sshd` of its own on the loopback running the real `pine service` on a home of its own with the scripted model server; then, on the same deployment (the meeting service beside the relay), the Pine app's access host under Node beside that home's `pine service`, and a second browser paired by link, peer to peer. Named checks, each of which fails the run. It is the one test of the page's isolation in a real browser, and the one test of pairing from end to end. Run it before a release that changes `web/`, `web/relay/` or `desktop/electron/access/`; no workflow runs it. |
+| `pnpm run desktop` | The desktop app (`desktop/`, Electron), built and opened. It has its own `package.json` and `node_modules`, which `pnpm install` at the root installs. `pnpm run dev` there reloads the page as you edit. On a Mac both start a copy of Electron's app named Pine, with Pine's icon and signed again for this Mac, so that the menu bar and the Dock say Pine (`desktop/scripts/dev-electron.mjs`, made once per Electron version in `desktop/node_modules/.cache/pine-dev`). |
+| `pnpm run desktop:test` | The desktop app from end to end: the real app, through its real window, on a pine home of its own with the scripted model server. It builds the app once for the run into a temp folder of its own and every test starts that build (`desktop/scripts/test.mjs`, `desktop/test/support/app.ts`), so runs of several checkouts at once never test each other's build. The app's window is drawn and never shown, so a run takes no place on the screen and the owner's pointer and keys never reach a test (`PINE_DESKTOP_SHOW=1` shows the windows, to watch a test). As many files side by side as the computer has room for (one for every two idle processors, six at most, two at least), two minutes at most a test; a file with a failure is run again alone, and one that passes then is named and does not fail the run. Under a minute. The Test workflow runs it on Linux under `xvfb-run` when those change, and on macOS too for a push to `next`. Run it when you change `desktop/`, the control API the app uses (`src/http.ts`, `src/owner.ts`) or `pine service`. `pnpm run check` in `desktop/` is its type check. |
+| `pnpm run dev:preview` (in `desktop/`) | The app's page in an ordinary browser on a throwaway pine; `dev:preview:home` on `~/.pine`, whose daemon it never stops. Each checkout has ports of its own, from its path (`desktop/scripts/launch-json.mjs`), and `.claude/launch.json` is written with them by `pnpm install` (it is not in git). After pulling, or when the preview pane lists no `desktop-preview`, run `node desktop/scripts/launch-json.mjs` (or `pnpm install`). A preview and `pnpm run dev` end with whatever started them (`desktop/scripts/leash.mjs`). |
+| `pnpm run storybook` (in `desktop/`) | Storybook for the parts of the app's page, at port 6006: a story sits beside the file of what it shows (`desktop/src/<File>.stories.tsx`, `desktop/src/components/<name>.stories.tsx`: `desktop/src/ApprovalDialog.stories.tsx`, `desktop/src/components/printed.stories.tsx`, `desktop/src/components/logo.stories.tsx`); `pnpm run build-storybook` builds it. Storybook is for looking at the parts, not a test: nothing publishes it and no check comes from it. Its toolbar draws a story in any of pine's themes and at a phone's width (360) and the window's (1280) (`desktop/.storybook/modes.ts`), so no dark or phone twin of a story is written. Add or update a story when you change a part in `desktop/src/components/` (outside `ui/`, which is stock). |
+| `pnpm run desktop:pack` | On a Mac `desktop/release/mac-arm64/Pine.app` (`mac/` on Intel); on Linux and Windows the app's folder (`linux-unpacked`, `win-unpacked`), and with `--dist` an AppImage and a deb, or an NSIS installer (`desktop/scripts/pack.mjs`). On a Mac: with the package of `pnpm run build` and its dependencies, the Node it runs on, pine's helpers built (`scripts/helpers.mjs`) and `pine` for a terminal inside, signed with the hardened runtime. `node desktop/scripts/smoke.mjs` starts that app from a folder of its own and checks that it runs on the pine and the Node it carries. Run both when you change `desktop/scripts/`, a helper's build function, `src/prebuilt.ts`, a native module of browser access (`ssh2`, `node-datachannel`) or `desktop/electron/service.ts`, and the smoke test also after a change to the page's markup that it finds the page by (`data-slot` names): no workflow runs it. |
+| `pnpm test`, `pnpm run check` (in `mobile/`) | The mobile app's bridge and both builds of its page (Android, iOS) under `node:test`, and its type check against the desktop page's `Bridge`. Run both when you change `mobile/src`, the page's bridge (`desktop/src/bridge.ts`) or what the page reads from it. The `android` job of the Release workflow runs both before it builds the APK; run them yourself before you build the IPA by hand. |
+| `pnpm run test:core` (in `mobile/`) | The native plugin's Kotlin core on the JVM: an SSH server in the test (Apache MINA sshd) and a stand-in daemon, and for a paired computer the Pine app's real access host under Node (`mobile/test/support/access-host.ts`, so it needs Node and `pnpm install`), with libdatachannel's JVM binding behind the core's `WebRtc` interface. Run it when you change `mobile/core/`, `mobile/cases/`, `src/remote.ts` or `desktop/electron/access/`. |
+| `swift test` (in `mobile/ios-core/`) | The iOS plugin's Swift core on the Mac: a real OpenSSH `sshd` started by the test on a loopback port and a stand-in daemon, the same cases as the Kotlin core (`mobile/cases/`), and for a paired computer the same access host helper (Node and `pnpm install`). Apple silicon only: libdatachannel's xcframework has no Intel slice for macOS. Run it when you change `mobile/ios-core/`, `mobile/cases/`, `src/remote.ts` or `desktop/electron/access/`. No workflow runs it for now. |
+| `pnpm run ipa`, `pnpm run smoke:ios`, `pnpm run ios:run` (in `mobile/`) | The IPA of a release, not signed (`scripts/ipa.ts`: `pnpm run ipa <version>`, written to `ios/App/output/`, checked unsigned and arm64); the iOS app from end to end on a simulator of its own without a window, against the Android smoke run's test SSH server, and paired with the real access host behind a TLS front whose authority the run adds to that simulator (`--pairing-only` for that alone); and the app opened in the Simulator app, by hand. The smoke test is the test of the web view's hardening in `PineViewController.swift` and `PinePlugin.swift`, of pairing by a pasted link and by a `pine:` address, of the return from the background and of the key kept in the Keychain: run it before a release that changes `mobile/` or upgrades Capacitor. No workflow runs it. They need Xcode 27 with an iOS simulator runtime, and the smoke run a JDK as `pnpm run smoke` does. |
+| `pnpm run apk`, `pnpm run apk:release`, `pnpm run smoke` (in `mobile/`) | A debug APK; a release APK (signed when `ANDROID_KEYSTORE_FILE` and the three other variables of the release job name a key, versioned by `PINE_VERSION` and `PINE_VERSION_CODE`); and the app from end to end on an emulator without a window, against a test SSH server of its own running the real `pine service`, and paired with the real access host behind a TLS front whose authority only the debug build trusts (`-PpineSmokeAuthority`; `--transport-only` for the libwebrtc check, `--pairing-only` for that and pairing). The smoke test is the test of the WebView's hardening in `PinePlugin.kt`, of libwebrtc (`LibWebRtcTest`, the only test of it), of pairing by a pasted link and by an App Link, and of the back button and the app's return from the background: run it before a release that changes `mobile/` or upgrades Capacitor. No workflow runs it. The Gradle commands need the Android SDK (`ANDROID_HOME`, default `~/Library/Android/sdk`) and a JDK of 21 or later: `JAVA_HOME`, default Android Studio's (`/Applications/Android Studio.app/Contents/jbr/Contents/Home`), since a Mac has no `java` on its PATH by default. |
+| `pnpm test`, `pnpm run check`, `pnpm run build` (in `web/`) | The web client: the web bridge as the page calls it, in Node with a stand-in for SSH, and its SSH core in headless Chrome for Testing against a `sshd` of the test's own on a loopback port, and peer to peer with the Pine app's real access host (`desktop/electron/access/`), so it needs `desktop/` installed too (`pnpm install` does both); its type check; and its build into `web/dist` (the bridge's document, and the desktop page built for the browser under `page/`). Run them when you change `web/`, `desktop/electron/access/`, the page's bridge (`desktop/src/bridge.ts`) or what the page reads from it. |
+| `pnpm test`, `pnpm run check` (in `web/relay/`) | The relay Worker's fetch handler with a stand-in TCP server on a loopback port, the meeting module and its routes, and its type check. `wrangler.jsonc` has one configuration and no environment: the web client, the relay and the meeting service side by side, a whole deployment. Every deployment is a Worker of its own made from it, named with `--name`, at `pine-<channel>.<account>.workers.dev`: `pine-main` (the project's service, the apps' default), `pine-next`, and `pine-pr-<number>` for a pull request; a deployment of one's own uses it under a name of its own. `pnpm run dev` there serves the deployment (relay, meeting service and `web/dist`) under `wrangler dev`. A pull request that changes one of the paths listed in `.github/workflows/web-preview.yml` (`web/` and every input of the page's build) runs `.github/workflows/web-preview.yml`: the gates of `web/` and `web/relay/` and the build, then `wrangler deploy --name pine-pr-<number>`, whose address it posts on the pull request in one comment that each push updates; when the pull request is closed, `pine-pr-<number>` is deleted through Cloudflare's API. A push to `next` or `main` that changes one of those paths runs it too and deploys `pine-next` or `pine-main`, its address in the run's summary: a push to `main` is how the project's service changes. A Worker that holds a Durable Object gets no version preview addresses, which is why each channel is a Worker of its own. The secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`) are in the environment `web-preview`, which a fork's pull request never reaches, and are given to the deploy and delete steps alone; without them the jobs pass and say nothing was deployed or deleted. |
+| `pnpm run smoke` (in `web/`) | After `pnpm run build`: the page and the relay as one deployment under `wrangler dev`, in headless Chrome for Testing, against a `sshd` of its own on the loopback running the real `pine service` on a home of its own with the scripted model server; then, on the same deployment (the meeting service beside the relay), the Pine app's access host under Node beside that home's `pine service`, and a second browser paired by link, peer to peer. Named checks, each of which fails the run. It is the one test of the page's isolation in a real browser, and the one test of pairing from end to end. Run it before a release that changes `web/`, `web/relay/` or `desktop/electron/access/`; no workflow runs it. |
 
 There is no build step. Node runs the TypeScript directly (the compiled parts, pine's Swift
 helpers such as `mcp/computer.swift`, are built by pine on the Mac it runs on, on first use;
@@ -532,7 +533,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    (WebRTC's own UDP, QUIC, name lookups of its own) is switched off in the browser itself,
    for every way pine starts one (`NO_WAY_AROUND` in `mcp/browser.ts`). The `live:` test
    "reaches nothing nearby" in `test/browser.test.ts` listens on a UDP port for anything that
-   gets out: run it (`npm run test:live`) when Playwright MCP is upgraded, since the switches
+   gets out: run it (`pnpm run test:live`) when Playwright MCP is upgraded, since the switches
    are Chromium's and a new build can rename one.
    The Pine app on this computer has the agent's browser itself: while it runs, the browser of an
    owner's conversation is a set of tabs in the app's window (`desktop/electron/browser-host.ts`),
@@ -632,7 +633,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    beside them, a picture on the web as a line to click) or as plain text, nowhere as HTML.
    It renders with Streamdown, whose defaults are not safe here, and replaces three of them:
    its cleaning rules (`CLEAN`), its link component and its image component. On every upgrade
-   of Streamdown read its defaults again and run `npm run desktop:test`.
+   of Streamdown read its defaults again and run `pnpm run desktop:test`.
    `desktop/test/app.test.ts` has a test for it; keep it failing without each of the three.
    A view of the owner's (<home>/views, `src/views.ts`, docs/references/views.md) is the one script
    the page runs that is not the app's, and it runs in the page's one frame (`desktop/view.html`,
@@ -655,7 +656,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    `terminalNotice` in `src/background.ts`) as a `notify` task in pine's words with the output
    quoted, like a background command's end: only for blocks run with the button, never what the
    owner typed, and the agent never waits for it.
-   The page in an ordinary browser (`npm run dev:preview` in `desktop/`, a development tool and
+   The page in an ordinary browser (`pnpm run dev:preview` in `desktop/`, a development tool and
    no part of the app) is held to the same: Vite's server (`desktop/scripts/preview.ts`) stands
    where `main.ts` stands, holds the token and makes every call through the same module
    (`desktop/electron/daemon.ts`), only for a POST of JSON from the page's own loopback origin,
@@ -683,7 +684,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    trusted only as the owner confirmed it in the page, exactly the fingerprint shown, and a
    changed one is refused. `mobile/test/build.test.ts` fails when a build carries the other's
    stand-in. What the WebView is kept from (permissions, `onCreateWindow`, a second window, file
-   access, navigation) no suite of `npm test` reaches: `npm run smoke` in `mobile/` proves each
+   access, navigation) no suite of `pnpm test` reaches: `pnpm run smoke` in `mobile/` proves each
    as a named check, and is run before a release that changes `mobile/` or upgrades Capacitor.
    On iOS the same holds with WebKit's names: `PineViewController.swift` wraps Capacitor's UI
    delegate (camera, microphone and motion refused, `createWebViewWith` gives nothing and hands
@@ -691,7 +692,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
    `PinePlugin.swift`'s `shouldOverrideLoad` cancels every navigation off `capacitor://localhost`;
    media come only through the `pine-media:` scheme under the same rules (`MediaScheme.swift`
    on the core's `mediaRequest`), the one media origin of the iOS page's policy. The phone's key
-   is kept in the Keychain on this device only. `npm run smoke:ios` proves each as a named check.
+   is kept in the Keychain on this device only. `pnpm run smoke:ios` proves each as a named check.
    The mobile app also pairs with the Pine app's access host (browser access, below), and the
    same holds on that path. The data channel lives in the native plugin's core, never in the
    WebView (`Peer.kt` behind `WebRtc`, Google's libwebrtc in `LibWebRtc.kt` on Android;
@@ -734,8 +735,8 @@ These are invariants. A change that breaks one needs a test that shows why it is
    certificate checked for it, after the name's addresses passed the same check. Its one way to the
    loopback, `RELAY_ALLOW_LOOPBACK`, is the smoke's, given to `wrangler dev` on its command line;
    `web/relay/test/loopback.test.ts` fails when a configuration that is deployed sets it. What no
-   suite of `npm test` reaches (the opaque origin, a message from another window, the token kept
-   from the page, a frame that navigates itself making the whole client start anew) `npm run smoke` in `web/` proves as named checks.
+   suite of `pnpm test` reaches (the opaque origin, a message from another window, the token kept
+   from the page, a frame that navigates itself making the whole client start anew) `pnpm run smoke` in `web/` proves as named checks.
    Browser access (`desktop/electron/access/`, `docs/adr/0004-browser-access.md`) lets a browser,
    or the mobile app, paired at the computer that runs the Pine app reach that app's own pine, peer to peer
    (the mobile app's side of it is the end of the mobile app's part above). The access server in the app's
@@ -888,7 +889,7 @@ These are invariants. A change that breaks one needs a test that shows why it is
 ## pi behaviours pine depends on
 
 The baseline suite found these; each has a mitigation in the code. Re-check them when you
-upgrade pi (`npm run baseline`, then `npm test`).
+upgrade pi (`pnpm run baseline`, then `pnpm test`).
 
 | pi behaviour | Where pine handles it |
 |---|---|
@@ -990,7 +991,7 @@ microsoft/winget-pkgs with the secret `WINGET_TOKEN` (a classic token of abernie
 `public_repo`); without its secret each job submits nothing and says so.
 
 A release from `main` gets the Android app too (the job `android` in `release.yml`, on the
-same skeleton as `app`, on Linux): `npm run apk:release` in `mobile/`, signed with the release
+same skeleton as `app`, on Linux): `pnpm run apk:release` in `mobile/`, signed with the release
 key, `versionName` the release's version and `versionCode` major·1 000 000 + minor·1 000 +
 patch (`mobile/scripts/version-code.ts`, tested in `mobile/test/version.test.ts`), checked with
 `apksigner verify`, uploaded as `Pine-<version>.apk`. The key takes four secrets in the
@@ -1000,22 +1001,22 @@ says so; with only some it fails. The keystore file is removed whatever happens,
 ever committed. Keep that key: Android installs an update only over an app signed with the
 same one. The release APK packs its native libraries (Google's libwebrtc) for arm64-v8a and
 armeabi-v7a alone, stripped by the NDK `mobile/android/variables.gradle` pins, and the job fails
-when one still carries `.debug_info`. Before the APK is built the job runs `npm run check` and `npm test` in `mobile/`. The
-smoke test is not run there (`npm run smoke`, on a computer of your own, with an emulator).
+when one still carries `.debug_info`. Before the APK is built the job runs `pnpm run check` and `pnpm test` in `mobile/`. The
+smoke test is not run there (`pnpm run smoke`, on a computer of your own, with an emulator).
 
 A release from `main` does not get the iOS app for now: the job that built it was taken out of
 `release.yml` because the core's `swift test` did not pass on GitHub's `xcode-27` preview image.
-The IPA is made by hand on a Mac (`npm run ipa -- <version>` in `mobile/`): not signed,
+The IPA is made by hand on a Mac (`pnpm run ipa <version>` in `mobile/`): not signed,
 `Pine-<version>.ipa`, which whoever installs it signs with their own Apple ID (AltStore,
 Sideloadly; docs/adr/0002-ios-app.md). Nothing about Apple signing is ever stored in the
-repository or its secrets. Run `npm run check` and `npm test` in `mobile/` and `swift test` in
+repository or its secrets. Run `pnpm run check` and `pnpm test` in `mobile/` and `swift test` in
 `mobile/ios-core/` before building it. `scripts/ipa.ts` archives for devices with code signing
 off and the packages at their committed versions (`-onlyUsePackageVersionsFromResolvedFile`:
 swift-collections is held where it compiles on Xcode 27), sets `CFBundleShortVersionString` to
 the version and `CFBundleVersion` to Android's versionCode, and fails unless nothing inside the
 IPA is signed (the vendor's signature on the embedded `OpenSSL.framework`, which libdatachannel
 needs, is taken off), the app binary is arm64, and libdatachannel and OpenSSL are inside. The
-smoke test is `npm run smoke:ios`, on a Mac of your own.
+smoke test is `pnpm run smoke:ios`, on a Mac of your own.
 
 Publishing needs no stored secret: on npmjs.com the package names this repository and
 `release.yml` as a trusted publisher. A repository secret `NPM_TOKEN` is used instead if one exists.
@@ -1039,7 +1040,7 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   (`term.type("text")` does) and wait with `sees()`, not with sleeps.
 - `pine init` downloads the browser. A test that runs it sets `PINE_SKIP_DOWNLOADS=1` (see
   `test/cli.test.ts`); the variable exists for tests only and is not a user option.
-- `npm test` passes `--test-force-exit`, so a leaked handle cannot hang the run; a test that
+- `pnpm test` passes `--test-force-exit`, so a leaked handle cannot hang the run; a test that
   fails must still not leave a daemon behind (see the `after` hooks in `test/support/harness.ts`).
 - The source types are tested on stand-ins that run on any system and need no network: a web
   server whose answers the test changes (`test/watch.test.ts`, `test/feeds.test.ts`), a
@@ -1072,8 +1073,8 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   is not streamed is answered in one piece, and with `slotFiles` it writes and reads slot files
   (`state.slotActions`). The `live:` test at the end of `test/live.test.ts` asserts the same on a real
   server (`PINE_LIVE_URL`), by the tokens the server says it read and kept.
-- The desktop app has its own tests in `desktop/test/`, run by `npm run desktop:test` and not
-  by `npm test`: they start the real app (Electron, driven by Playwright through its window)
+- The desktop app has its own tests in `desktop/test/`, run by `pnpm run desktop:test` and not
+  by `pnpm test`: they start the real app (Electron, driven by Playwright through its window)
   on a temp home with the mock model server, and a daemon of its own on port 0, so a pine the
   developer has running is left alone. They start the build of the run (`launchApp` in
   `desktop/test/support/app.ts`), never `desktop/dist`. `launchApp` starts the app without a
@@ -1150,17 +1151,17 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   for tests only, `desktop/electron/access/stand-in.ts`), which also switches the app to Chromium's
   mock keychain. `web/test/peer.test.ts` pairs the web bridge with the real access host. Real
   networks (cellular, carrier NAT) are tried by hand.
-- The Android app has its own suites in `mobile/`, not run by `npm test` at the root. `npm run
-  check` and `npm test` there are run by the `android` job of the Release workflow before it
-  builds the APK; `npm run test:core` and `npm run smoke` by no workflow. `npm test` there: the mobile bridge with a fake native plugin in place of
+- The Android app has its own suites in `mobile/`, not run by `pnpm test` at the root. `pnpm run
+  check` and `pnpm test` there are run by the `android` job of the Release workflow before it
+  builds the APK; `pnpm run test:core` and `pnpm run smoke` by no workflow. `pnpm test` there: the mobile bridge with a fake native plugin in place of
   Capacitor's (`test/bridge.test.ts`), Capacitor's configuration (`test/config.test.ts`), both
   builds of the page, each without the other's stand-in (`test/build.test.ts`), and the
-  release's versionCode (`test/version.test.ts`). `npm run test:core`: the Kotlin core on the
+  release's versionCode (`test/version.test.ts`). `pnpm run test:core`: the Kotlin core on the
   JVM (JUnit), against an SSH server in the test (Apache MINA sshd) whose exec handler checks the
   command and a stand-in daemon (a local HTTP server); its cases mirror `test/remote.test.ts`
   and `desktop/test/daemon.test.ts`. For a paired computer it runs the Pine app's real access host
   under Node (`mobile/test/support/access-host.ts`, one helper for both cores, tested by
-  `mobile/test/access-host.test.ts` in `npm test` there) and drives the core above its `WebRtc`
+  `mobile/test/access-host.test.ts` in `pnpm test` there) and drives the core above its `WebRtc`
   interface on libdatachannel's JVM binding (`LibDataChannelRtc`, a test dependency only, which
   needs sshj's window at 512 KiB: the binding's 0.24.1 against the Pine app's 0.24.6 loses bursts
   above about 1 MiB). If that binding ever breaks these tests, `dev.onvoid.webrtc:webrtc-java`
@@ -1168,7 +1169,7 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   the tests name `https://pine.test` and reach it through a route that only `Remote`'s internal
   constructor takes, and a test fails when the public one accepts `http`. One root test,
   `test/mobile-remote.test.ts`, fails when the command the core runs over SSH differs from
-  `remoteCommand()`. `npm run smoke` is by hand:
+  `remoteCommand()`. `pnpm run smoke` is by hand:
   an emulator without a window, a test SSH server on this computer (`SmokeMachine.kt`) running
   the real `pine service` on a home of its own with the scripted model server. It is the one
   test of the WebView's hardening in `PinePlugin.kt` (permission denial, `onCreateWindow`, no
@@ -1182,12 +1183,12 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   link and an `http` service refused. The TLS front's authority is trusted by the debug build
   alone (`src/debug/`, from `-PpineSmokeAuthority`); a release build has neither the config nor
   the file. Run it before a release that changes `mobile/` or upgrades Capacitor.
-- The iOS app's suites are in `mobile/` too. `npm test` there covers the iOS bridge and the iOS
+- The iOS app's suites are in `mobile/` too. `pnpm test` there covers the iOS bridge and the iOS
   page's policy. `swift test` in `mobile/ios-core/` (run by hand: no workflow runs it for now) drives the Swift core
   as the Kotlin tests drive theirs, against a real OpenSSH `sshd` the test starts on a loopback
   port with a forced command that checks the remote command, and a stand-in daemon; it replays
-  the same JSON cases in `mobile/cases/` as `npm run test:core`, so a case added for one core is
-  run by both. `npm run smoke:ios` is by hand: a simulator of its own booted with `simctl` (never
+  the same JSON cases in `mobile/cases/` as `pnpm run test:core`, so a case added for one core is
+  run by both. `pnpm run smoke:ios` is by hand: a simulator of its own booted with `simctl` (never
   the Simulator app), the app built signed to run locally (the Keychain needs it), and a hosted
   XCTest (`ios/App/AppTests/SmokeTests.swift`) that evaluates JavaScript in the real page against
   the same `SmokeMachine.kt` at `127.0.0.1`. It is the one test of the web view's hardening on
@@ -1202,20 +1203,20 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
 - What no test has tried for the mobile app's pairing: a real phone, an Android phone with 16 KB
   memory pages, cellular networks, and AltStore or Sideloadly installing the IPA that carries
   libdatachannel and OpenSSL. Try them by hand before a release that changes that path.
-- The web client has its own suites in `web/` and `web/relay/`, not run by `npm test` at the
+- The web client has its own suites in `web/` and `web/relay/`, not run by `pnpm test` at the
   root but by the `build` job of `.github/workflows/web-preview.yml` on a pull request that
-  touches `web/`, the desktop page or what it is built from, or the workflow, before its preview is deployed. `npm test` in `web/`: the web bridge through the contract the page calls, in Node with a
+  touches `web/`, the desktop page or what it is built from, or the workflow, before its preview is deployed. `pnpm test` in `web/`: the web bridge through the contract the page calls, in Node with a
   stand-in for SSH (`test/support/fake-ssh.ts`): the message door (another window, a method not
   on the list, bad arguments), host-key trust and change, `local: false`, media and link rules,
   reconnecting, the choice on an iPhone or iPad (`test/app-choice.test.ts`: the code unused before
   it, no choice on other devices); and the SSH core in headless Chrome for Testing against a real `sshd` on a
   loopback port with its own host key and `authorized_keys` (`test/support/machine.ts`): no test
-  touches `~/.ssh` or the system's sshd. `npm test` in `web/relay/`: the relay's fetch handler
+  touches `~/.ssh` or the system's sshd. `pnpm test` in `web/relay/`: the relay's fetch handler
   with `connect()`, the name lookup and the WebSocket pair handed in (a stand-in TCP server on a
   loopback port; a pair that delivers Blobs unless asked otherwise, as workerd does), and the
   statement for App Links (`test/app-links.test.ts`). One root
   test, `test/web-remote.test.ts`, fails when the command the web bridge runs over SSH differs
-  from `remoteCommand()`. `npm run smoke` in `web/` is by hand: the deployment under `wrangler
+  from `remoteCommand()`. `pnpm run smoke` in `web/` is by hand: the deployment under `wrangler
   dev` (local, never logged in to Cloudflare, its files in a temp folder), headless Chrome for
   Testing with a throwaway profile, a `sshd` of its own running the real `pine service` on a
   home of its own with the scripted model server; each named check fails the run. Run it before

@@ -159,18 +159,18 @@ npm install
 npm start
 ```
 
-`npm run dev` is the same with the page reloading as you edit it. An app started from a checkout has
+`pnpm run dev` is the same with the page reloading as you edit it. An app started from a checkout has
 View › Reload and View › Toggle Developer Tools, which a packed app does not have: `⌘R` and `⌥⌘I`
 on a Mac, `F5` and `Ctrl+Alt+I` elsewhere (`Ctrl+R` is Dictate Message there, and `Ctrl+Shift+I` the
 panel's Agent view). To make an app that can be put into Applications:
 
 ```bash
-npm run pack
+pnpm run pack
 ```
 
 That writes the app for the system it runs on: `desktop/release/mac-arm64/Pine.app` on a Mac
 (`release/mac/Pine.app` on an Intel Mac), `release/linux-unpacked/` (`linux-arm64-unpacked` on
-arm64) on Linux, `release/win-unpacked/` (`win-arm64-unpacked`) on Windows. `npm run dist` also
+arm64) on Linux, `release/win-unpacked/` (`win-arm64-unpacked`) on Windows. `pnpm run dist` also
 makes what is handed out there: the disk image, the AppImage and the .deb, the installer. On a
 Mac it is signed for the Mac it was built on. See "Packing and signing" for what it carries and
 how it is signed for others. An app for Linux is packed on Linux, one for Windows on Windows.
@@ -178,13 +178,13 @@ how it is signed for others. An app for Linux is packed on Linux, one for Window
 | Command (in `desktop/`) | What it does |
 |---|---|
 | `npm start` | Builds the app and opens it |
-| `npm run dev` | Opens it with the page served by Vite, reloading on every change. It ends, with the app and the daemon the app started, when whatever started it is gone. Its page is served at this checkout's own port (`scripts/launch-json.mjs`); `$PORT` overrides it, and the next free one is taken when it is in use |
-| `npm run dev:preview` | The app's page in an ordinary browser, reloading on every change, on a throwaway pine. `-- --home <dir>` puts it on that pine home instead. See below |
-| `npm run dev:preview:home` | The same on your own pine home, `~/.pine`, at the port after the throwaway one's, so that it runs beside it. Its agents are your real ones. See below |
-| `npm run check` | Type check |
-| `npm test` | The app from end to end: the real app on a pine home of its own with a scripted model. Needs no screen: the window is drawn and never shown (`PINE_DESKTOP_SHOW=1` shows it). The app is built once for the run, into a temp folder of its own that every test starts (`scripts/test.mjs`, `test/support/app.ts`), as many test files side by side as the computer has room for (one for every two idle processors, two to six), two minutes at most for a test. A test file run on its own with `node --test` builds for itself. With `PINE_LIVE=1` on a Mac it also dictates with the real voice helper, from a recording |
-| `npm run pack` | The app for this system (`release/mac-arm64/Pine.app`, `release/linux-unpacked/`, `release/win-unpacked/`), with pine, Node and on a Mac the helpers inside |
-| `npm run dist` | The same, and what is handed out: a disk image, an AppImage and a .deb, an installer |
+| `pnpm run dev` | Opens it with the page served by Vite, reloading on every change. It ends, with the app and the daemon the app started, when whatever started it is gone. Its page is served at this checkout's own port (`scripts/launch-json.mjs`); `$PORT` overrides it, and the next free one is taken when it is in use |
+| `pnpm run dev:preview` | The app's page in an ordinary browser, reloading on every change, on a throwaway pine. `--home <dir>` puts it on that pine home instead. See below |
+| `pnpm run dev:preview:home` | The same on your own pine home, `~/.pine`, at the port after the throwaway one's, so that it runs beside it. Its agents are your real ones. See below |
+| `pnpm run check` | Type check |
+| `pnpm test` | The app from end to end: the real app on a pine home of its own with a scripted model. Needs no screen: the window is drawn and never shown (`PINE_DESKTOP_SHOW=1` shows it). The app is built once for the run, into a temp folder of its own that every test starts (`scripts/test.mjs`, `test/support/app.ts`), as many test files side by side as the computer has room for (one for every two idle processors, two to six), two minutes at most for a test. A test file run on its own with `node --test` builds for itself. With `PINE_LIVE=1` on a Mac it also dictates with the real voice helper, from a recording |
+| `pnpm run pack` | The app for this system (`release/mac-arm64/Pine.app`, `release/linux-unpacked/`, `release/win-unpacked/`), with pine, Node and on a Mac the helpers inside |
+| `pnpm run dist` | The same, and what is handed out: a disk image, an AppImage and a .deb, an installer |
 | `node scripts/smoke.mjs` | Starts a packed app from a folder of its own, on a home of its own, and checks that it answers a message with the pine and the Node it carries, that the terminal runs and a Run block reports, that `pine` works through a link (on Windows through `pine.cmd`), and on a Mac that pine finds the helpers in the app. On the system the app was packed for |
 
 pine itself runs on Node 24 or newer, also when the app starts it, and never on the app's own
@@ -195,7 +195,7 @@ that is not its own, and falls back to its own Node where the Mac has none.
 
 ### The page in a browser
 
-`npm run dev:preview` serves the app's page at `http://localhost:<port>`, for an editor's preview
+`pnpm run dev:preview` serves the app's page at `http://localhost:<port>`, for an editor's preview
 pane or any browser, without the app's window. It is a tool for working on the app, not a way to
 use pine. The port is the checkout's own, made from its path (`scripts/launch-json.mjs`: between
 5200 and 5902), so that two checkouts on one Mac (git worktrees) rarely share one: there are 176
@@ -205,9 +205,9 @@ started it is gone, also when that was not a signal (an editor or an agent sessi
 
 | How it is started | What it runs on |
 |---|---|
-| `npm run dev:preview` | A throwaway pine: a home in a temp folder with two agents (`main` and `scout`) and the scripted model of pine's tests. The home and its daemon are removed when the preview stops |
-| `npm run dev:preview -- --home <dir>` | That pine home, with its own models and conversations. The daemon that runs there is used; if none runs, one is started that goes on after the preview, as with the app's "keep pine running". The preview never stops that daemon and never removes the home. `~` in `<dir>` is your home folder |
-| `npm run dev:preview:home` | `--home ~/.pine`, at the port after the throwaway preview's (`$PORT` still wins). What you do in the page, your real agents do, with your real models, sources and files: a message is a real one |
+| `pnpm run dev:preview` | A throwaway pine: a home in a temp folder with two agents (`main` and `scout`) and the scripted model of pine's tests. The home and its daemon are removed when the preview stops |
+| `pnpm run dev:preview --home <dir>` | That pine home, with its own models and conversations. The daemon that runs there is used; if none runs, one is started that goes on after the preview, as with the app's "keep pine running". The preview never stops that daemon and never removes the home. `~` in `<dir>` is your home folder |
+| `pnpm run dev:preview:home` | `--home ~/.pine`, at the port after the throwaway preview's (`$PORT` still wins). What you do in the page, your real agents do, with your real models, sources and files: a message is a real one |
 
 `.claude/launch.json` has one entry for each, so that the preview pane of Claude Code starts the
 one you name, and both can run side by side. It is not kept in git: `npm install` in `desktop/`
@@ -219,8 +219,8 @@ from the root, or `npm install` in `desktop/`.
 
 | Entry | Command | Port |
 |---|---|---|
-| `desktop-preview` | `npm run dev:preview` (the throwaway pine) | the checkout's own |
-| `desktop-preview-home` | `npm run dev:preview:home` (your pine home) | the next one |
+| `desktop-preview` | `pnpm run dev:preview` (the throwaway pine) | the checkout's own |
+| `desktop-preview-home` | `pnpm run dev:preview:home` (your pine home) | the next one |
 
 The throwaway pine has neither a web browser nor your models, so what needs them (the agent's
 browser in the side panel, an answer of a real model) is seen on `desktop-preview-home`.
@@ -1134,7 +1134,7 @@ itself. What it knows, the daemon told it.
 
 ## Packing and signing
 
-`node scripts/pack.mjs` (in `desktop/`; `npm run pack`) makes the app that is handed out.
+`node scripts/pack.mjs` (in `desktop/`; `pnpm run pack`) makes the app that is handed out.
 
 | Flag | What it does |
 |---|---|
@@ -1151,7 +1151,7 @@ the program on Linux and Windows):
 
 | Folder | What it is |
 |---|---|
-| `pine/` | The package `npm run build` makes, with its dependencies installed, and on a Mac the helpers built by `scripts/helpers.mjs` in `prebuilt/` folders beside their sources (pine looks there before it builds one: `src/prebuilt.ts`) |
+| `pine/` | The package `pnpm run build` makes, with its dependencies installed, and on a Mac the helpers built by `scripts/helpers.mjs` in `prebuilt/` folders beside their sources (pine looks there before it builds one: `src/prebuilt.ts`) |
 | `node/` | Node and its licence from nodejs.org, as it is handed out for that system (`bin/node`; `node.exe` on Windows), in the version of the Node that runs the pack script, checked against the checksums nodejs.org publishes |
 | `bin/pine` | The launcher for a terminal (`scripts/pine.sh`); on Windows `bin/pine.cmd` (`scripts/pine.cmd`), whose folder the installer puts into the user's PATH (`scripts/installer.nsh`) |
 
@@ -1261,14 +1261,14 @@ desktop/
                    and `.dark` for a dark theme); the preset colors of an agent (`AGENT_COLORS`), what
                    reads on a color (`onColor`)
     preview-bridge.ts  the page's stand-in for the preload's bridge, in the preview only
-                   (`npm run dev:preview`): it calls the preview's server under `/__pine/`
+                   (`pnpm run dev:preview`): it calls the preview's server under `/__pine/`
   .agents/skills/  shadcn's agent skill, as `npx skills add shadcn/ui` installed it (locked in
                    skills-lock.json; .claude/skills links to it for Claude Code)
   scripts/         build, dev, pack, the icon, the smoke test of a packed app, pine.sh (the
                    launcher that becomes Resources/bin/pine), pine.cmd (Windows' launcher) and
                    installer.nsh (what the Windows installer adds: that folder in the PATH), preview.ts (the page in an ordinary
-                   browser, `npm run dev:preview`: Vite's server makes every call for the page,
-                   on a throwaway pine or the home `--home` names), test.mjs (`npm test`: the
+                   browser, `pnpm run dev:preview`: Vite's server makes every call for the page,
+                   on a throwaway pine or the home `--home` names), test.mjs (`pnpm test`: the
                    app built once for the run, a temp folder of the run's own, a file that
                    failed run again alone), launch-json.mjs (the checkout's ports and
                    .claude/launch.json), leash.mjs (a preview or `dev` ends with its starter),
@@ -1285,7 +1285,7 @@ desktop/
 - The page asks for something new through `preload.ts` and a handler in `main.ts`, never by
   getting more of the system. A handler checks that the call comes from the app's own page.
   `src/preview-bridge.ts` implements it too: it returns the `Bridge` type, so a missing method
-  fails `npm run check`. If it needs the daemon, `scripts/preview.ts` routes it under `/__pine/`.
+  fails `pnpm run check`. If it needs the daemon, `scripts/preview.ts` routes it under `/__pine/`.
 - The page is also the Android and iOS app's ([mobile.md](mobile.md)): `mobile/src/mobile-bridge.ts`
   returns the same `Bridge` type, and so does the web client's (`web/src/frame-bridge.ts`,
   [web.md](web.md)). Four parts of the bridge are optional and only those two give them: `local: false` in `state()` (no machine of its own: the page hides This Mac (This computer
@@ -1303,7 +1303,7 @@ desktop/
   the desktop app and the mobile app (which shows none yet); the preview and the web client leave it
   out, and the page draws the menu itself (`contextMenu` in `src/components/page-menu.tsx`: the same
   entries, ids, separators and choices, at the pointer; the id picked, or nothing when dismissed).
-  Absent, the page is the desktop's as before. A change of the page is checked in all three: `npm run check`
+  Absent, the page is the desktop's as before. A change of the page is checked in all three: `pnpm run check`
   in `desktop/`, in `mobile/` and in `web/`.
 - What the daemon can do is added to the control API (`src/http.ts`, `src/owner.ts`) with a
   test there, then to `api.ts`. The app never does a daemon's work itself.
@@ -1479,8 +1479,8 @@ stand-ins: the bridge in `.storybook/preview.tsx` is one whose every call does n
 
 | Command (in `desktop/`) | What it does |
 |---|---|
-| `npm run storybook` | Storybook at http://localhost:6006. The Theme menu in its toolbar picks one of pine's themes (pmndre at first). |
-| `npm run build-storybook` | The stories built into `storybook-static/`. |
+| `pnpm run storybook` | Storybook at http://localhost:6006. The Theme menu in its toolbar picks one of pine's themes (pmndre at first). |
+| `pnpm run build-storybook` | The stories built into `storybook-static/`. |
 
 Storybook is a place to look at the app's parts, not a test, and nothing publishes it: no check of a
 pull request comes from it. Its toolbar draws a story in any of pine's themes and at the app's two

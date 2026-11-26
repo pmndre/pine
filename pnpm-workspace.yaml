@@ -1,0 +1,23 @@
+packages:
+  - desktop
+  - mobile
+  - web
+  - web/relay
+
+# The install scripts that run. pnpm runs none it is not told about, and fails the install on one
+# that is not listed here.
+allowBuilds:
+  esbuild: true
+  node-pty: true # its prebuilt binary, or a build where there is none (Linux)
+  electron-winstaller: true # picks its 7-Zip for the processor, for the Windows installer
+  workerd: true
+  # ssh2 and cpu-features would compile native bindings that the app never loads (see
+  # desktop/scripts/ssh2-pure.mjs): ssh2 falls back to Node's crypto.
+  ssh2: false
+  cpu-features: false
+  protobufjs: false # only prints a warning about its version
+
+# npm installed a version as soon as it was published, and the dependencies here are kept that
+# fresh: pnpm's default wait of a day before it takes a new version would refuse the lockfile.
+# A wait (in minutes) is a choice of its own to make.
+minimumReleaseAge: 0

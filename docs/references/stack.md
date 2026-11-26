@@ -4,7 +4,7 @@
 
 | Piece | Role | Notes |
 |---|---|---|
-| Node 24+ | Runtime | Runs the TypeScript sources directly in a checkout (type stripping); the npm package holds them compiled to JavaScript (`npm run build`). No bundler. |
+| Node 24+ | Runtime | Runs the TypeScript sources directly in a checkout (type stripping); the npm package holds them compiled to JavaScript (`pnpm run build`). No bundler. |
 | `@earendil-works/pi-coding-agent` 1.6 | The agent loop | Sessions, model calls, tool execution, compaction, retries, MCP client, skills, extensions. pine embeds it through its SDK. |
 | `node:sqlite` | Storage | One file, `data/pine.db`: events, tasks, shared state, and what pine keeps for itself (what sources remember, when schedules last fired, which conversations have read outside content, their folders, pins, goals and lists of steps, what `/undo` can take back, the open tabs). WAL mode. |
 | `undici` | HTTP client behind `fetch` | pine installs timeouts for the model servers' connection pools; the `web` MCP server, the `download` tool and the `http` source use it for address checks at connect time. |
@@ -75,7 +75,7 @@ Found since the baseline:
 | A session opened from its file stands at its last entry; `branch()` moves it in memory only | `/undo` works on the closed session and writes an entry of pine's own where it went back to |
 | pi's choice of model for each provider is not exported | pine reads it from pi's own module, and takes the provider's first model when that fails |
 
-Run `npm run baseline` after upgrading pi and compare with `RESULTS.md`.
+Run `pnpm run baseline` after upgrading pi and compare with `RESULTS.md`.
 
 ## The request pi sends
 
@@ -88,9 +88,9 @@ two consecutive user messages.
 
 | Suite | Runs | Against |
 |---|---|---|
-| `npm test` | More than 500 tests in about ten seconds, files in parallel. The ones whose name starts with `live:` are skipped | The scripted model server in `baseline/tests/mock.mjs` |
-| `npm run test:live` | The `live:` tests of `test/live.test.ts`, `test/browser.test.ts`, `test/computer.test.ts`, `test/voice.test.ts`, `test/system.test.ts` and `test/render.test.ts`: delegation to a specialist that reads its files, then a hostile event; an agent that sets up, uses and removes an MCP server, a skill, an event source and a schedule when asked in plain words; an agent driving the real browser; the `http` source's `render` with the real browser; and, on a Mac, app control with the real helper (its own demo window, and TextEdit when the terminal has the grants), the voice helper reading a recording and the `system` source's helper. With `PINE_LIVE_URL` naming a llama.cpp server, also what that server keeps of a conversation | A real model through `claude -p`; Chromium and the network |
-| `npm run baseline` | 59 checks of pi itself | The scripted model server |
+| `pnpm test` | More than 500 tests in about ten seconds, files in parallel. The ones whose name starts with `live:` are skipped | The scripted model server in `baseline/tests/mock.mjs` |
+| `pnpm run test:live` | The `live:` tests of `test/live.test.ts`, `test/browser.test.ts`, `test/computer.test.ts`, `test/voice.test.ts`, `test/system.test.ts` and `test/render.test.ts`: delegation to a specialist that reads its files, then a hostile event; an agent that sets up, uses and removes an MCP server, a skill, an event source and a schedule when asked in plain words; an agent driving the real browser; the `http` source's `render` with the real browser; and, on a Mac, app control with the real helper (its own demo window, and TextEdit when the terminal has the grants), the voice helper reading a recording and the `system` source's helper. With `PINE_LIVE_URL` naming a llama.cpp server, also what that server keeps of a conversation | A real model through `claude -p`; Chromium and the network |
+| `pnpm run baseline` | 59 checks of pi itself | The scripted model server |
 
 The scripted server answers according to a directive embedded in the prompt
 (`<<MOCK {"steps":[...]}>>`), which makes every tool call in a test deterministic. Tests start a

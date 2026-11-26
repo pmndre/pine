@@ -129,7 +129,8 @@ brew install --cask pmndre/pine/pmndre-pine
 From a checkout:
 
 ```bash
-npm run desktop
+pnpm install
+pnpm run desktop
 ```
 
 On an Android phone or an iPhone, the Pine app shows the pine of another machine, over SSH (your

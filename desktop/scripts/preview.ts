@@ -4,7 +4,7 @@
 // runs there, or one started for it that goes on after the preview; neither the home nor its
 // daemon is ever stopped or removed by the preview.
 //   npm run dev:preview                     (the port from $PORT, this checkout's own by default)
-//   npm run dev:preview -- --home ~/.pine
+//   pnpm run dev:preview --home ~/.pine
 //   npm run dev:preview:home                (the same, at the next port: beside the throwaway one)
 //
 // The ports are this checkout's (scripts/launch-json.mjs), so that the previews of two checkouts

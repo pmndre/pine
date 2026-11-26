@@ -18,7 +18,7 @@ Capacitor around the page of `desktop/`: the same page and the same app on both 
 
 A release of pine has the Android app attached, next to the Mac disk images:
 <https://github.com/pmndre/pine/releases/latest>. The iPhone app is not attached for now: it is
-built by hand (`npm run ipa`, below), and a release that has one lists it there.
+built by hand (`pnpm run ipa`, below), and a release that has one lists it there.
 
 | File | For |
 |---|---|
@@ -282,10 +282,10 @@ default Android Studio's on a Mac).
 
 | Command | What it does |
 |---|---|
-| `npm run apk` | A debug APK, in `android/app/build/outputs/apk/debug/` |
-| `npm run apk:release` | A release APK. Signed when `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` name a key; unsigned otherwise. `PINE_VERSION` and `PINE_VERSION_CODE` set its version |
-| `npm run test:core` | The Kotlin core on the JVM, against an SSH server in the test and a stand-in daemon, and against the Pine app's real access host for a paired computer (pairing, calls, reconnection, refusals, several megabytes each way). That part needs Node and `npm install` in `desktop/` |
-| `npm run smoke` | Builds, installs on an emulator without a window and opens the app against a test machine of its own. It is the test of the WebView's hardening (no permission, no window, no file access, no navigation away), of Share, of the back button, of the return from the background, and of the system bars in a dark theme and a light one (`bars-dark.png`, `bars-light.png` beside its screenshot). It also pairs from end to end with the Pine app's real access host: first libwebrtc alone (an instrumented test, `LibWebRtcTest`, that pairs, connects and sends 2, 4 and 6 MiB each way), then the app by a pasted link, by an App Link while it runs and at its start, with a malformed link and an `http` service refused. `--transport-only` runs the libwebrtc test alone, `--pairing-only` that and the pairing. An emulator that starts cold on a busy computer says that its own apps (System UI, the keyboard) are not responding: the run waits for the system to settle, answers such a dialog with Wait, and fails only when the app itself is not responding. Run it before a release that changes `mobile/` or upgrades Capacitor |
+| `pnpm run apk` | A debug APK, in `android/app/build/outputs/apk/debug/` |
+| `pnpm run apk:release` | A release APK. Signed when `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` name a key; unsigned otherwise. `PINE_VERSION` and `PINE_VERSION_CODE` set its version |
+| `pnpm run test:core` | The Kotlin core on the JVM, against an SSH server in the test and a stand-in daemon, and against the Pine app's real access host for a paired computer (pairing, calls, reconnection, refusals, several megabytes each way). That part needs Node and `npm install` in `desktop/` |
+| `pnpm run smoke` | Builds, installs on an emulator without a window and opens the app against a test machine of its own. It is the test of the WebView's hardening (no permission, no window, no file access, no navigation away), of Share, of the back button, of the return from the background, and of the system bars in a dark theme and a light one (`bars-dark.png`, `bars-light.png` beside its screenshot). It also pairs from end to end with the Pine app's real access host: first libwebrtc alone (an instrumented test, `LibWebRtcTest`, that pairs, connects and sends 2, 4 and 6 MiB each way), then the app by a pasted link, by an App Link while it runs and at its start, with a malformed link and an `http` service refused. `--transport-only` runs the libwebrtc test alone, `--pairing-only` that and the pairing. An emulator that starts cold on a busy computer says that its own apps (System UI, the keyboard) are not responding: the run waits for the system to settle, answers such a dialog with Wait, and fails only when the app itself is not responding. Run it before a release that changes `mobile/` or upgrades Capacitor |
 
 The app takes an `https` meeting service only, and the run's access host is on this computer. So
 the smoke run puts a TLS front with a certificate authority of its own before it, and the debug
@@ -306,12 +306,12 @@ Components).
 
 | Command | What it does |
 |---|---|
-| `npm run sync:ios` | Builds the page for iOS (WebKit, media on `pine-media:`) and copies it into `ios/` |
-| `npm run ios` | A debug build for the simulator, in `ios/DerivedData` |
-| `npm run ios:run` | Builds the app and opens it in the Simulator app |
-| `npm run ipa` | The IPA of a release, not signed, in `ios/App/output/Pine-<version>.ipa` (`npm run ipa -- 0.38.0`; 0.0.0 without a version). It fails unless the app inside is unsigned and arm64 |
-| `npm run smoke:ios` | Builds the app and a test that runs inside it, starts a simulator of its own without a window, and drives the page against a test machine on the Mac's loopback. It is the test of the web view's hardening (the page's policy, no camera, microphone or motion sensors, no file access, the media scheme's rules and ranges, no window, no navigation away), of the page inside the safe area with and without the keyboard, of a host key's fingerprint within the screen's width, of the return from the background, of the status bar in a dark theme and a light one, and of the key kept across a relaunch. It also pairs from end to end with the Pine app's real access host, by a pasted link and by a `pine:` address, with a malformed address and an `http` service refused, behind a TLS front whose certificate authority the run adds to the simulator alone (`simctl keychain add-root-cert`). `--pairing-only` runs the pairing alone. Run it before a release that changes `mobile/` or upgrades Capacitor |
-| `swift test` (in `ios-core/`) | The iOS app's Swift core on the Mac, against an OpenSSH `sshd` of the test's own and a stand-in daemon, and against the Pine app's real access host for a paired computer. That part needs Node and `npm install` in `desktop/`. It runs on Apple silicon only: the libdatachannel package has no Intel slice for macOS |
+| `pnpm run sync:ios` | Builds the page for iOS (WebKit, media on `pine-media:`) and copies it into `ios/` |
+| `pnpm run ios` | A debug build for the simulator, in `ios/DerivedData` |
+| `pnpm run ios:run` | Builds the app and opens it in the Simulator app |
+| `pnpm run ipa` | The IPA of a release, not signed, in `ios/App/output/Pine-<version>.ipa` (`pnpm run ipa 0.38.0`; 0.0.0 without a version). It fails unless the app inside is unsigned and arm64 |
+| `pnpm run smoke:ios` | Builds the app and a test that runs inside it, starts a simulator of its own without a window, and drives the page against a test machine on the Mac's loopback. It is the test of the web view's hardening (the page's policy, no camera, microphone or motion sensors, no file access, the media scheme's rules and ranges, no window, no navigation away), of the page inside the safe area with and without the keyboard, of a host key's fingerprint within the screen's width, of the return from the background, of the status bar in a dark theme and a light one, and of the key kept across a relaunch. It also pairs from end to end with the Pine app's real access host, by a pasted link and by a `pine:` address, with a malformed address and an `http` service refused, behind a TLS front whose certificate authority the run adds to the simulator alone (`simctl keychain add-root-cert`). `--pairing-only` runs the pairing alone. Run it before a release that changes `mobile/` or upgrades Capacitor |
+| `swift test` (in `ios-core/`) | The iOS app's Swift core on the Mac, against an OpenSSH `sshd` of the test's own and a stand-in daemon, and against the Pine app's real access host for a paired computer. That part needs Node and `pnpm install`. It runs on Apple silicon only: the libdatachannel package has no Intel slice for macOS |
 
 ### What the tests do not cover
 
@@ -324,7 +324,7 @@ computer on a real network (`NsdManager`, `NWBrowser`): the cores' suites test r
 announcement and the pairing without a code against the real access host, not the looking.
 
 To try the app on the simulator against the pine of your own Mac: turn on Remote Login (System
-Settings > General > Sharing), run `npm run ios:run`, add the simulator's key (Settings >
+Settings > General > Sharing), run `pnpm run ios:run`, add the simulator's key (Settings >
 Environments) to your `~/.ssh/authorized_keys`, and add the machine as `you@127.0.0.1`. The
 simulator shares the Mac's network, so its loopback is the Mac's, and iOS does not ask about the
 local network for it. A simulator build is signed to run locally (Xcode does it, without an
@@ -341,8 +341,8 @@ all; the job fails when a native library in it kept its debug symbols. A debug A
 four, for emulators.
 
 The release does not build the IPA for now: the core's `swift test` did not pass on GitHub's
-Xcode 27 preview image. On a Mac with Xcode 27, `npm run ipa -- <version>` in `mobile/` makes
-`Pine-<version>.ipa`, whose build number is Android's `versionCode`; run `npm test` there and
+Xcode 27 preview image. On a Mac with Xcode 27, `pnpm run ipa <version>` in `mobile/` makes
+`Pine-<version>.ipa`, whose build number is Android's `versionCode`; run `pnpm test` there and
 `swift test` in `mobile/ios-core/` first. The IPA carries libdatachannel inside the app and
 OpenSSL as a framework beside it (about 7 MB in all); the script takes its vendor's signature off
 that framework, so that nothing in the IPA is signed before you sign it.

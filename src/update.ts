@@ -8,7 +8,8 @@ import { PINE_ROOT } from "./config.ts";
 
 /**
  * How this copy of pine got here.
- * checkout: a git clone, which runs the sources directly. It is updated with git.
+ * checkout: a git clone, which runs the sources directly. It is updated with git, and pnpm installs
+ *           what pine depends on (the workspace's other packages, the apps, are left as they are).
  * global:   installed with "npm install -g". It is updated with npm.
  * local:    a dependency inside some project's node_modules. That project decides its version.
  * app:      the pine the Pine app carries, inside the app. A new app brings a new pine.
@@ -110,9 +111,12 @@ export function installed(root = PINE_ROOT): { name: string; version: string; ki
 	return { name: pkg.name, version: pkg.version, kind: kind === "local" ? installKind(root, capture("npm", ["root", "-g"])) : kind, root };
 }
 
-// npm is npm.cmd on Windows, which Node starts only through cmd.exe. The arguments are pine's own
-// (its package name, a version npm gave), never text from anywhere else.
-const viaShell = (cmd: string) => process.platform === "win32" && cmd === "npm";
+// npm is npm.cmd on Windows, which Node starts only through cmd.exe, and so is a pnpm that npm
+// installed. The arguments are pine's own (its package name, a version npm gave), never text from anywhere else.
+const viaShell = (cmd: string) => process.platform === "win32" && (cmd === "npm" || cmd === "pnpm");
+
+/** What a checkout installs after a pull: pine's own dependencies, from the lockfile the pull brought. */
+const CHECKOUT_INSTALL = ["install", "--frozen-lockfile", "--filter", "@pmndre/pine"];
 
 /** The command and its arguments as spawnSync takes them: one line for cmd.exe where it has to read them. */
 const line = (cmd: string, args: string[]): [string, string[]] => (viaShell(cmd) ? [[cmd, ...args].join(" "), []] : [cmd, args]);
@@ -269,14 +273,14 @@ export async function update(opts: { check: boolean; out: (line: string) => void
 			return 1;
 		}
 		out("Installing what the new version depends on ...");
-		if (show("npm", ["install", "--no-audit", "--no-fund"], me.root) !== 0) {
+		if (show("pnpm", CHECKOUT_INSTALL, me.root) !== 0) {
 			// The pull landed and the install did not: the new code is here with the dependencies of the
 			// version before it, which may not run it, and the next update finds nothing behind, so it
 			// would say that all is well. Say where the checkout stands and how to get back to where it was.
 			// --keep, not --hard: a fast-forward pull lands beside changes of the owner's that it does not
 			// touch, and the way back must not throw those away. ORIG_HEAD is where the pull started.
 			const before = was ?? "ORIG_HEAD";
-			out(`npm could not install what the new version depends on. This checkout has the new code and the dependencies of the version before it, and the next "pine update" will find nothing behind it to put that right. In ${me.root}, either go back to where it was (your own changes stay):\n\n  git reset --keep ${before}\n\nor stay on the new code and see why npm failed:\n\n  npm install --no-audit --no-fund`);
+			out(`pnpm could not install what the new version depends on. This checkout has the new code and the dependencies of the version before it, and the next "pine update" will find nothing behind it to put that right. In ${me.root}, either go back to where it was (your own changes stay):\n\n  git reset --keep ${before}\n\nor stay on the new code and see why pnpm failed:\n\n  pnpm ${CHECKOUT_INSTALL.join(" ")}`);
 			return 1;
 		}
 	} else if (me.kind === "app") {

@@ -215,7 +215,7 @@ how pine got onto the machine, which `pine version` tells you:
 | Installed | `pine update` |
 |---|---|
 | with `npm install -g` | Asks npm for the latest version. If there is one, installs it (`npm install -g @pmndre/pine@latest`). |
-| as a checkout (`git clone`) | Fetches from the repository the checkout follows and moves it forward, then runs `npm install`. Only ever a fast-forward: if commits or changes of your own are in the way, nothing is changed and it says so. |
+| as a checkout (`git clone`) | Fetches from the repository the checkout follows and moves it forward, then runs `pnpm install --frozen-lockfile --filter @pmndre/pine` (pine's own dependencies; the apps' packages are left as they are). Only ever a fast-forward: if commits or changes of your own are in the way, nothing is changed and it says so. |
 | as a dependency inside a project | Tells you the command to run in that project; that project decides its version. |
 | with the Pine app | Says whether there is a newer version and where the new app is. The pine inside the app is not replaced by itself: a new app brings it ([desktop.md](desktop.md), "Getting it"). |
 

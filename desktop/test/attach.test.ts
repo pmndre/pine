@@ -25,8 +25,9 @@ let port: number;
  */
 let newer: string;
 /**
- * A pine of an older version: the checkout's own files, linked under a package that says 0.0.1 and
- * run with the links kept, so that pine's root, and the version its daemon says, is that folder.
+ * A pine of an older version: the checkout's own files, copied under a package that says 0.0.1, so
+ * that pine's root, and the version its daemon says, is that folder. Its node_modules is a link to the
+ * checkout's: Node follows it to the packages' real folders, where pnpm puts what each depends on.
  */
 let older: string;
 /** What a menu item does, sent as the menu sends it to the app's window. */
@@ -59,7 +60,8 @@ before(async () => {
 	write(path.join(newer, "bin", "pine.js"), `import ${JSON.stringify(pathToFileURL(path.join(root, "..", "bin", "pine.js")).href)};\n`);
 	older = path.join(home, "older-pine");
 	write(path.join(older, "package.json"), JSON.stringify({ name: "@pmndre/pine", version: "0.0.1", type: "module" }));
-	for (const part of ["src", "mcp", "docs", "examples", "node_modules"]) fs.symlinkSync(path.join(root, "..", part), path.join(older, part));
+	for (const part of ["src", "mcp", "docs", "examples"]) fs.cpSync(path.join(root, "..", part), path.join(older, part), { recursive: true });
+	fs.symlinkSync(path.join(root, "..", "node_modules"), path.join(older, "node_modules"));
 	write(path.join(older, "bin", "pine.js"), `import "../src/cli.ts";\n`);
 	// A pine as somebody would have started it in a terminal.
 	daemon = spawn(process.execPath, [path.join(root, "..", "bin", "pine.js"), "start", "--home", home], { stdio: "ignore" });
@@ -107,7 +109,7 @@ test("a pine that runs is said to be older than the app's own when it is", async
 	// checkout's. What tells them apart is the version the daemon itself says, not its CLI's.
 	daemon.kill("SIGTERM");
 	await daemonGone(port, home);
-	daemon = spawn(process.execPath, ["--preserve-symlinks", "--preserve-symlinks-main", path.join(older, "bin", "pine.js"), "start", "--home", home], { stdio: "ignore" });
+	daemon = spawn(process.execPath, [path.join(older, "bin", "pine.js"), "start", "--home", home], { stdio: "ignore" });
 	await waitForDaemon(port, home);
 	app = await launchApp({ ...process.env, PINE_HOME: home, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_DESKTOP_DEV_URL: "" });
 	const page = await app.firstWindow();

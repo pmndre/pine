@@ -321,10 +321,10 @@ function sandbox(t: { after(fn: () => void): void }) {
 	fs.writeFileSync(env.GIT_CONFIG_GLOBAL, "");
 	const kept = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
 	Object.assign(process.env, env);
-	const npm = (script: string) => {
+	const npm = (script: string, name = "npm") => {
 		const bin = path.join(dir, "bin");
 		fs.mkdirSync(bin, { recursive: true });
-		fs.writeFileSync(path.join(bin, "npm"), `#!/bin/sh\n${script}\n`, { mode: 0o755 });
+		fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${script}\n`, { mode: 0o755 });
 		process.env.PATH = [bin, path_].join(path.delimiter);
 	};
 	t.after(() => {
@@ -356,15 +356,15 @@ test("pine update on a checkout: a pull that lands and an install that does not 
 	fs.writeFileSync(path.join(other, "src", "cli.ts"), "export const answer = 2;\n");
 	await s.git("-C", other, "commit", "-qam", "two");
 	await s.git("-C", other, "push", "-q", "origin", "main");
-	// npm cannot install what the new commit depends on.
-	s.npm("exit 1");
+	// pnpm cannot install what the new commit depends on.
+	s.npm("exit 1", "pnpm");
 
 	const { update } = await import("../src/update.ts");
 	const said: string[] = [];
 	const code = await update({ check: false, out: (l) => void said.push(l), browser: false, root });
 	assert.equal(code, 1, "an install that failed is not a success");
 	const text = said.join("\n");
-	assert.match(text, /npm could not install what the new version depends on\. This checkout has the new code and the dependencies of the version before it/);
+	assert.match(text, /pnpm could not install what the new version depends on\. This checkout has the new code and the dependencies of the version before it/);
 	assert.ok(text.includes(`git reset --keep ${was}`), `the way back to where it was, which keeps the owner's changes: ${text}`);
 	assert.ok(text.includes(`In ${root}`), `where to run it: ${text}`);
 	// The message is about what happened: the pull moved the checkout, and no install followed it.

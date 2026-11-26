@@ -1,7 +1,7 @@
 name: Web preview
 
 # The web client on every pull request that touches it, and on every push to next and main that
-# does: the gates of web/ and web/relay/, the build as by hand (`npm run build` in web/), then a
+# does: the gates of web/ and web/relay/, the build as by hand (`pnpm run build` in web/), then a
 # whole deployment of web/relay (the web client, the SSH relay and the meeting service) as a
 # Worker of its own for the channel: `pine-pr-<number>` for a pull request, `pine-next` and
 # `pine-main` for those branches, each at pine-<channel>.<account>.workers.dev. Each push deploys
@@ -26,7 +26,8 @@ on:
       - "desktop/vite.config.ts"
       - "desktop/electron/daemon.ts"
       - "desktop/package.json"
-      - "desktop/package-lock.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       # The desktop page measures a sound's levels with the terminal UI's code.
       - "src/tui/levels.ts"
       # web/test/peer.test.ts runs the Pine app's access host, which runs the remote command.
@@ -56,6 +57,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
@@ -66,24 +68,19 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q openssh-server
           sudo mkdir -p /run/sshd
-      - run: npm ci
-        working-directory: desktop
-      - run: npm ci
-        working-directory: web
-      - run: npm ci
-        working-directory: web/relay
+      - run: pnpm install --frozen-lockfile --filter pine-desktop --filter @pmndre/pine-web --filter @pmndre/pine-relay
       - name: Chrome for Testing for the SSH core's tests
-        run: npx playwright-core install --with-deps chromium
+        run: pnpm exec playwright-core install --with-deps chromium
         working-directory: web
-      - run: npm run check
+      - run: pnpm run check
         working-directory: web
-      - run: npm test
+      - run: pnpm test
         working-directory: web
-      - run: npm run check
+      - run: pnpm run check
         working-directory: web/relay
-      - run: npm test
+      - run: pnpm test
         working-directory: web/relay
-      - run: npm run build
+      - run: pnpm run build
         working-directory: web
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -112,6 +109,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
@@ -122,8 +120,7 @@ jobs:
           path: web/dist
       # No install scripts: wrangler only bundles and uploads here, which esbuild does from its
       # platform package without its own postinstall check, and workerd is not run.
-      - run: npm ci --ignore-scripts
-        working-directory: web/relay
+      - run: pnpm install --frozen-lockfile --ignore-scripts --filter @pmndre/pine-relay
       - name: Deploy the channel's Worker
         id: deploy
         working-directory: web/relay
@@ -138,7 +135,7 @@ jobs:
             exit 0
           fi
           if [ -n "$PR" ]; then message="PR #$PR at ${SHA:0:7}"; else message="${GITHUB_REF_NAME} at ${SHA:0:7}"; fi
-          npx wrangler deploy --name "$WORKER" --message "$message" 2>&1 | tee deploy.log
+          pnpm exec wrangler deploy --name "$WORKER" --message "$message" 2>&1 | tee deploy.log
           # wrangler lists what it deployed, the workers.dev address on a line of its own.
           url=$(grep -Eo "https://$WORKER\.[A-Za-z0-9.-]+\.workers\.dev" deploy.log | head -n 1)
           if [ -z "$url" ]; then
