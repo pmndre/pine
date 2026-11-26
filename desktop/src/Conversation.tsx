@@ -1289,8 +1289,9 @@ export function Conversation({ tab }: { tab: Tab }) {
 									</MessageScrollerItem>
 								) : null}
 								{!tab.items.length && chat ? (
-									(store.agent(tab.agent)?.main && tab.session === "main") || setupTab ? null : (
-										<MessageScrollerItem className="my-auto">
+									store.agent(tab.agent)?.main && tab.session === "main" ? null : (
+										// "Setup Pine" has its agent above pine's steps, as main has it above its letter.
+										<MessageScrollerItem className={setupTab ? "order-first" : "my-auto"}>
 											<Welcome tab={tab} />
 										</MessageScrollerItem>
 									)

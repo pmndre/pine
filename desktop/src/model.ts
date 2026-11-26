@@ -1530,17 +1530,19 @@ export class Store extends Model {
 	}
 
 	/** The toast that says the main agent has no model that answers: its id while shown, `closed` once the owner closed it. */
-	private noModel: { id?: string; closed?: boolean } = {};
+	private noModel: { id?: string; closed?: boolean; text?: { title: string; description: string } } = {};
 
 	/**
 	 * Say once, in a toast that stays (the stock Toaster, no timeout), that the main agent has no model
 	 * that answers, with the way to the setup conversation. Shown from `main`'s welcome card; gone when
-	 * a model answers, and not shown again for this page once the owner closed it.
+	 * a model answers, and not shown again for this page once the owner closed it. Kept back while
+	 * "Setup Pine" is in front, which it points to and would only cover (`placeNoModelNotice`).
 	 */
 	noModelNotice(text: { title: string; description: string }): void {
-		if (this.hasModel || this.noModel.id || this.noModel.closed) return;
-		const shown: { id?: string; closed?: boolean } = {};
-		this.noModel = shown;
+		if (this.hasModel || this.noModel.closed) return;
+		this.noModel.text = text;
+		if (this.noModel.id || (this.active && this.isSetup(this.active))) return;
+		const shown = this.noModel;
 		shown.id = toast.add({
 			...text,
 			type: "warning",
@@ -1552,6 +1554,18 @@ export class Store extends Model {
 				shown.id = undefined;
 			},
 		});
+	}
+
+	/** The toast goes away when "Setup Pine" comes to the front, not as closed by the owner, and comes back on any other tab. */
+	private placeNoModelNotice(tab: Tab): void {
+		if (!this.isSetup(tab)) {
+			if (this.noModel.text) this.noModelNotice(this.noModel.text);
+			return;
+		}
+		const id = this.noModel.id;
+		if (!id) return;
+		this.noModel.id = undefined;
+		toast.close(id);
 	}
 
 	private endNoModelNotice(): void {
@@ -1694,6 +1708,7 @@ export class Store extends Model {
 		this.active = tab;
 		tab.unread = false;
 		if (tab.kind === "chat") this.chatLast = tab;
+		this.placeNoModelNotice(tab);
 		this.place(tab);
 		this.dock = dock.setFront(this.dock, tab.item);
 		this.focus = dock.groupHolding(this.dock, tab.item)?.id ?? this.focus;
