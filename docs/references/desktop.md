@@ -136,6 +136,7 @@ reload the page and they are drawn again, the steps that are done shown as done.
 | Which subscription? | Claude, ChatGPT or GitHub Copilot. **Back** returns to the first question |
 | The sign-in | A card: the provider's page is opened in your browser once, with **Open the sign-in page again**; a code to enter there, with **Copy**, when the provider gives one; a choice the provider asks is a question card, something to type a field of the card. **Cancel** ends the sign-in and brings the first question back. Nothing typed there reaches a model |
 | Your agents run on … | Once signed in, pine says which model your agents now run on (it chose the provider's usual one, as Settings > Models does). **Keep this model?**: **Go on**, or **Choose another model** among the models you can use now |
+| What would you like to set up now? | Once the model is kept, the card **Next**, where you tick what to set up today, every item optional: **The mode**, **A working folder**, **Telegram**, **A first agent** (for example the welcome letter's "Make an agent that tells me about each new file in Downloads."), **The theme**, and on a Mac **Pinecone**, to install it. **Send** sends an ordinary message of yours in Setup Pine, one line for each item ticked, and the main agent answers it there: it introduces itself and takes each item in turn, with its own tools and question cards. **Nothing for now** opens the main conversation; the card comes back once the app is opened again, until something is said in Setup Pine |
 
 ### `pine` in a terminal
 
@@ -1280,7 +1281,8 @@ desktop/
     setup/         Setup Pine's own steps: engine.tsx walks them (the welcome, "How should your agents
                    run?", the model kept), types.ts is what a step is, branches.ts lists the ways to a
                    model (`BRANCHES`, one module each: subscription.tsx; soon.tsx for a way not built yet)
-                   and the steps after one (`AFTER`). A new way is a module and one line there
+                   and the steps after one (`AFTER`: handoff.tsx, the card "Next"). A new way is a module
+                   and one line there
     BrowserAccess.tsx, machines.ts  Settings > Browser access; how the page names a machine and draws a
                    pairing on the first screen
     DevicePairing.tsx  the Add a device dialog (its QR code, components/qr-code.tsx), the toast when a

@@ -1,6 +1,7 @@
 // The steps of "Setup Pine" that are not the engine's own, in the order they are offered. A new
 // way to a model is a module of its own (its card, what it derives from the daemon's state) and
 // one line in BRANCHES; a step once a model answers is one line in AFTER.
+import { handoff } from "./handoff.tsx";
 import { soon } from "./soon.tsx";
 import { subscription } from "./subscription.tsx";
 import type { SetupBranch, SetupStage } from "./types.ts";
@@ -13,4 +14,4 @@ export const BRANCHES: SetupBranch[] = [
 ];
 
 /** The steps once a model answers, after the model is kept. */
-export const AFTER: SetupStage[] = [];
+export const AFTER: SetupStage[] = [handoff];
