@@ -283,6 +283,9 @@ export class Tab extends Model {
 const STOP_GRACE = 3000;
 /** What the gate says of a pine that answered with no agent at all, until one is made there. */
 const NO_AGENTS = "This pine has no agents.";
+
+/** The main agent's conversation that sets pine up ("Setup Pine", src/setup/). */
+export const SETUP = "setup";
 /** Kept once the home-screen suggestion was made, so that it is never made again. */
 const HOME_SCREEN_KEY = "pine.homeScreen";
 const sessionName = () => `s${Date.now().toString(36)}`;
@@ -1196,6 +1199,8 @@ export class Store extends Model {
 		void this.refreshThemes();
 		void this.refreshViews();
 		this.touch();
+		// A pine whose agents cannot answer is set up first (a window opened for one conversation is left to it).
+		if (!this.hasModel && !initialTab && !startNoTab) await this.openSetup();
 	}
 
 	/**
@@ -1267,7 +1272,11 @@ export class Store extends Model {
 		if (was === now) return;
 		const fresh = list.filter((a) => !this.agents.some((x) => x.id === a.id)).map((a) => a.id);
 		const gone = this.agents.filter((a) => !list.some((x) => x.id === a.id)).map((a) => a.id);
+		const had = this.hasModel;
 		this.agents = list;
+		// The model was lost (signed out, a server removed): the setup conversation comes again, to connect one;
+		// behind the settings, where the owner may be setting it up already.
+		if (had && !this.hasModel && this.opened) void this.openSetup(this.active?.kind !== "settings");
 		for (const a of list) learnHome(a.workspace);
 		// The pine had no agents when the page was loaded and has one now: the page is loaded, not left on that screen.
 		if (!this.opened && this.loadError === NO_AGENTS && list.length) {
@@ -1318,6 +1327,7 @@ export class Store extends Model {
 	 */
 	titleOf(agent: string, session: string): string {
 		if (session === "main") return "main conversation";
+		if (session === SETUP && this.agent(agent)?.main) return "Setup Pine";
 		// A branch of a conversation that has no name of its own is called after that one's title.
 		const branch = /^(s[0-9a-z]{6,10})-branch(?:-(\d+))?$/.exec(session);
 		if (branch) return `${this.titleOf(agent, branch[1])} · branch${branch[2] ? ` ${branch[2]}` : ""}`;
@@ -1493,6 +1503,28 @@ export class Store extends Model {
 		if (this.browser) this.flash(`The browser of the web tools is on this ${computerWord(this.platform)} now.`, "good");
 		else this.flash(code === 0 ? "The browser is still not there. What was said is shown in Settings > General." : "The browser could not be fetched. What was said is shown in Settings > General; try again when you are online.", "bad", 8000);
 		this.touch();
+	}
+
+	/**
+	 * Open "Setup Pine", the main agent's conversation that sets pine up, in front and pinned. The
+	 * pin is the daemon's like any other; a conversation with nothing said in it is not in its list,
+	 * so the page marks it here too.
+	 */
+	async openSetup(front = true): Promise<void> {
+		const main = this.agents.find((a) => a.main);
+		if (!main) return;
+		await this.openTab(main.id, SETUP, front);
+		const key = `${main.id}:${SETUP}`;
+		if (this.pins.has(key)) return;
+		this.pins.add(key);
+		this.touch();
+		await api.pinSession(main.id, SETUP, true).catch(() => {});
+	}
+
+	/** Whether the main agent has a model that answers, as the daemon says it (`modelProblem`). */
+	get hasModel(): boolean {
+		const main = this.agents.find((a) => a.main);
+		return !main || !main.modelProblem;
 	}
 
 	/** Where there is no model to choose from yet: the way to Settings › Models, in place of an empty list. */

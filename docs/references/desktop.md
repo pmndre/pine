@@ -110,10 +110,32 @@ web tools drive. It asks for each where it is missing.
 |---|---|
 | No pine home | It offers to set pine up (`pine init`): the example home is copied, and the browser is fetched (about 600 MB, once). On Linux `pine init` also sets up the sandbox, which needs an administrator (bubblewrap, and on some systems a rule for AppArmor): the app runs none of that. The commands are shown, to be run in a terminal, and then **Try again**. Until they have run, pine works without the sandbox |
 | The welcome | The app opens on the main agent's own conversation (`main` in a new home, with pine's mark as its picture), which begins with pine's welcome: that the main agent is pine's administrator and the one to ask, that agents come first (ask it for one for each purpose: coding, work, automation, chat), that the first conversation is kept and the others are cleared after a while unless pinned, the things pine is for (chatting, code, a folder, acting on events), a prompt to try (one that watches the Downloads folder, which puts its words into the input), and where pine keeps everything (its home, shown in the Finder with a click). pine wrote it, and it is never sent to a model. The terminal UI shows the same there while nothing was said in it yet |
-| Nothing to answer with | A new home has nothing to run on: the agent's card at the top of a conversation says **Connect a model first**, with a button to Settings > Models (the main agent's too, above pine's welcome); that page lists every agent that cannot answer, with the reason (nothing connected yet, or nobody signed in to its provider). A message sent meanwhile says so; send it again once a model is there |
+| Nothing to answer with | A new home has nothing to run on: the app opens **Setup Pine** in front (below), after **Set up pine** and whenever the main agent has no model that answers. The agent's card at the top of a conversation says **Connect a model first** too, with **Set up a model…**, which opens Setup Pine (the main agent's card too, above pine's welcome); Settings > Models lists every agent that cannot answer, with the reason (nothing connected yet, or nobody signed in to its provider). A message sent meanwhile says so; send it again once a model is there |
 | A sign-in in Settings > Models | A Claude, ChatGPT or Copilot subscription is signed in to through the browser (**Sign in**), any provider with an API key. Where the choice in force cannot answer, pine switches to the provider's usual one (pi's choice) and the dialog says which, with **Another one…**; so does adding a server of your own. Otherwise nothing switches by itself and the dialog offers **Choose the model your agents run on**. The page keeps it (`defaults.model`) with **Change** |
 | The first message | No agent writes first. Main, and every other agent, introduces itself in its answer to the first message you write to it. Once each; `defaults.introduce` turns it off ([agents.md](agents.md), "Meeting an agent") |
 | The browser is not there in the build this pine drives | Each version of pine drives a browser build of its own. A home that an older pine set up, or a new app in place of an old one, has the old build or none. The app asks once for each version of pine whether to fetch it, and Settings > General shows whether it is there, with **Fetch it** (`pine browser-install`, run by the app's pine). Until then the browser tools do not work; web search and reading a page do |
+
+### Setup Pine: getting started
+
+To get started once pine is installed, there is nothing to look for: **Setup Pine** is where pine
+is set up. It is a conversation of the main agent, `setup`, pinned in the side bar, and the one
+place to connect a model, so it is also where to go when pine does not answer yet. The app opens it in
+front when pine has just been set up and whenever the main agent has no model that answers (a new
+home, a sign-out, a model server removed); it stays in the side bar, to come back to at any time. It
+works the same in the Pine app, the mobile app and the web client. The main conversation keeps
+pine's welcome letter.
+
+Until a model answers, the steps are pine's own: a short welcome and question cards above the input,
+drawn from what pine knows (which providers you are signed in to, your model servers, whether the
+main agent has a model). Nothing of them is written into the conversation, and they are no model's:
+reload the page and they are drawn again, the steps that are done shown as done.
+
+| Step | What it asks |
+|---|---|
+| How should your agents run? | **A subscription** (recommended: Claude, ChatGPT or GitHub Copilot, signed in to in your browser, no key to copy), **An API key**, or **A model on this computer**. The last two lead to Settings > Models for now |
+| Which subscription? | Claude, ChatGPT or GitHub Copilot. **Back** returns to the first question |
+| The sign-in | A card: the provider's page is opened in your browser once, with **Open the sign-in page again**; a code to enter there, with **Copy**, when the provider gives one; a choice the provider asks is a question card, something to type a field of the card. **Cancel** ends the sign-in and brings the first question back. Nothing typed there reaches a model |
+| Your agents run on … | Once signed in, pine says which model your agents now run on (it chose the provider's usual one, as Settings > Models does). **Keep this model?**: **Go on**, or **Choose another model** among the models you can use now |
 
 ### `pine` in a terminal
 
@@ -1248,6 +1270,12 @@ desktop/
                    is what a view is told of it (names and states, no text); view-frame.ts (view.html) is the
                    frame a view runs in, with "pine/view" (../src/view-kit.ts)
     Settings.tsx   the settings pages; settings-index.ts is what their search finds and where it is
+    sign-in.ts     a sign-in to a model provider as the page follows it (`SignInRun`), for Settings > Models
+                   and Setup Pine; components/sign-in-card.tsx is its card in Setup Pine
+    setup/         Setup Pine's own steps: engine.tsx walks them (the welcome, "How should your agents
+                   run?", the model kept), types.ts is what a step is, branches.ts lists the ways to a
+                   model (`BRANCHES`, one module each: subscription.tsx; soon.tsx for a way not built yet)
+                   and the steps after one (`AFTER`). A new way is a module and one line there
     BrowserAccess.tsx, machines.ts  Settings > Browser access; how the page names a machine and draws a
                    pairing on the first screen
     DevicePairing.tsx  the Add a device dialog (its QR code, components/qr-code.tsx), the toast when a

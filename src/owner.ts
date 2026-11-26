@@ -95,6 +95,26 @@ interface LoginSession extends LoginView {
 /** What a sign-in is run with: pi's own flow, or a stand-in in a test. Returns the models the provider then has. */
 export type LoginRunner = (provider: string, type: "api_key" | "oauth" | undefined, prompter: Prompter, signal: AbortSignal) => Promise<string[]>;
 
+/**
+ * A browser sign-in without a browser, for the Pine app's tests (`PINE_LOGIN_STAND_IN`, for tests
+ * only, not a user option): it shows a page and a device code as a provider's flow does, waits
+ * until the file the variable names exists, and then stores what the file holds as that
+ * provider's key through pi's own flow. A sign-in with a key is pi's own, as it is.
+ */
+function browserStandIn(cfg: PineConfig, file: string): LoginRunner {
+	return async (provider, type, prompter, signal) => {
+		if (type === "api_key") return login(cfg, provider, type, prompter, signal);
+		prompter.device?.("https://sign-in.example/device", "PINE-1234");
+		while (!fs.existsSync(file)) {
+			if (signal.aborted) throw new Error("cancelled");
+			await new Promise((r) => setTimeout(r, 100));
+		}
+		const key = fs.readFileSync(file, "utf8").trim();
+		fs.rmSync(file, { force: true });
+		return login(cfg, provider, "api_key", { ...prompter, text: async () => key, secret: async () => key }, signal);
+	};
+}
+
 const MAX_LOGINS = 4;
 const KEEP_ENDED_MS = 5 * 60_000;
 
@@ -232,7 +252,8 @@ export class OwnerApi {
 		this.schedules = deps.schedules;
 		this.router = deps.router;
 		this.log = deps.log;
-		this.logins = new Logins(deps.loginRunner ?? ((provider, type, prompter, signal) => login(this.cfg, provider, type, prompter, signal)), {
+		const standIn = process.env.PINE_LOGIN_STAND_IN;
+		this.logins = new Logins(deps.loginRunner ?? (standIn ? browserStandIn(this.cfg, standIn) : (provider, type, prompter, signal) => login(this.cfg, provider, type, prompter, signal)), {
 			// A key that was typed is a secret from then on, wherever it might turn up.
 			secret: (value) => this.sources?.keepOut([value]),
 			ended: (provider) => this.modelsChanged(provider),

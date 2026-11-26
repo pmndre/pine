@@ -43,7 +43,8 @@ import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
 import { runs } from "./work-runs.ts";
-import { type Bookmark, type Item, type Part, type QuoteSource, quoteId, type SentQuote, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
+import { type Bookmark, type Item, type Part, type QuoteSource, quoteId, type SentQuote, SETUP, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
+import { SetupCard, SetupScript } from "./setup/engine.tsx";
 import { childKind, clock, count, MODES, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
 import { sameSource } from "../../src/quotes.ts";
@@ -540,7 +541,7 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 		case "model": {
 			// Drawn from what is known now: once a model answers, the notice is gone.
 			const info = store.agent(item.agent);
-			return info?.modelProblem ? <ModelNotice agent={item.agent} model={info.model} problem={info.modelProblem} retry onModels={() => store.openSettings("models")} /> : null;
+			return info?.modelProblem ? <ModelNotice agent={item.agent} model={info.model} problem={info.modelProblem} retry onSetup={() => void store.openSetup()} /> : null;
 		}
 		case "event":
 			return (
@@ -714,7 +715,7 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 					{info?.delegates.length ? <HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}>hands work to <b>{info.delegates.includes("*") ? (info.main ? "all other agents" : `all agents except ${store.agents.find((a) => a.main)?.id ?? "the main one"}`) : info.delegates.join(", ")}</b></TooltipTrigger><TooltipContent>Agents it can hand work to</TooltipContent></HoverTooltip> : null}
 					{asked === tab.agent ? counts.filter(([, n]) => n > 0).map(([what, n]) => <Badge variant="outline" key={what}><b>{n}</b>{n === 1 ? what : `${what}s`}</Badge>) : <WelcomeBadgesSkeleton count={2} />}
 				</div>
-				{info?.modelProblem ? <ModelNotice agent={tab.agent} model={info.model} problem={info.modelProblem} onModels={() => store.openSettings("models")} /> : null}
+				{info?.modelProblem ? <ModelNotice agent={tab.agent} model={info.model} problem={info.modelProblem} onSetup={() => void store.openSetup()} /> : null}
 				{/* The way on to what the card only names: the agent's own page, where its model, mode, tools and instructions are changed. */}
 				<Button variant="outline" size="sm" data-slot="agent-settings" onClick={() => store.openSettings("agents", tab.agent)}><SettingsIcon data-icon="inline-start" />Agent settings</Button>
 			</EmptyContent>
@@ -1219,6 +1220,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 		return () => clearTimeout(t);
 	}, [glide, seen]);
 	const chat = tab.kind === "chat";
+	const setupTab = chat && tab.session === SETUP && Boolean(store.agent(tab.agent)?.main);
 	const checkpoint = chat && !tab.busy ? lastOwnerMessage(tab.items) : -1;
 	return (
 		<div className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background text-sm">
@@ -1257,8 +1259,14 @@ export function Conversation({ tab }: { tab: Tab }) {
 										</MessageScrollerItem>
 									</>
 								) : null}
+								{/* "Setup Pine" begins with pine's own steps, above everything said in it. */}
+								{setupTab ? (
+									<MessageScrollerItem>
+										<SetupScript />
+									</MessageScrollerItem>
+								) : null}
 								{!tab.items.length && chat ? (
-									store.agent(tab.agent)?.main && tab.session === "main" ? null : (
+									(store.agent(tab.agent)?.main && tab.session === "main") || setupTab ? null : (
 										<MessageScrollerItem className="my-auto">
 											<Welcome tab={tab} />
 										</MessageScrollerItem>
@@ -1285,7 +1293,8 @@ export function Conversation({ tab }: { tab: Tab }) {
 			)}
 			<div className="shrink-0 px-4 pb-4">
 				<div className="relative mx-auto max-w-3xl">
-					{chat ? <ComposerQuestion tab={tab} /> : null}
+					{/* An agent's question comes first; pine's own step in "Setup Pine" is there when none is open. */}
+					{chat ? store.openQuestion(tab) || !setupTab ? <ComposerQuestion tab={tab} /> : <SetupCard tab={tab} /> : null}
 					<StatusLine tab={tab} />
 					{chat ? (
 						<Composer tab={tab} />
