@@ -131,7 +131,9 @@ a choice that must not be dismissed by a click outside stays an `AlertDialog`, e
 like a palette.
 
 **Reading comes first.** Text the owner reads at length is at the reading size, `text-read`
-(15px, snug); the controls around it stay stock. The reading size is a step of the type scale,
+(15px, with a relaxed line height: room between its lines, as shadcn's typography gives running
+text); the controls around it stay stock. Headings in it follow shadcn's typography (`markdown.tsx`):
+each level a clear step above the next, more room above a heading than below it. The reading size is a step of the type scale,
 set once in the theme (`src/index.css`), not a size in the markup: the browser's 16px
 (`text-base`) reads a size larger than Claude and the apps beside pine, and moving the root
 instead would move every stock size with it. The reading part says it on its root, to the stock
@@ -145,7 +147,7 @@ that fades at the bottom only, where the newest text arrives.
 
 ```tsx
 // Do: the reading part sets the reading size once, on its root; the controls in it stay stock.
-<section className="text-read leading-snug">
+<section className="text-read">
   <Message>…</Message>
   <Button variant="ghost" size="sm">Copy</Button>
 </section>

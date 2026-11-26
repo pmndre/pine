@@ -413,7 +413,7 @@ function AnswerTable({ node: _, className, ...props }: React.ComponentProps<"tab
 }
 
 function AnswerCell({ node: _, className, ...props }: React.ComponentProps<"td"> & ExtraProps) {
-	return <TableCell className={cn("whitespace-normal", className)} {...props} />;
+	return <TableCell className={cn("align-top whitespace-normal", className)} {...props} />;
 }
 
 // Lists as shadcn's typography draws them: the marker outside, so that a wrapped line starts under the
@@ -453,13 +453,21 @@ function Quote({ node: _, className, ...props }: React.ComponentProps<"blockquot
 	return <blockquote className={cn("flex flex-col gap-2 border-s-2 ps-6 italic", className)} {...props} />;
 }
 
-// Headings on the answer's own scale: the reading part is at the reading size, and a heading stands a
-// step or two above it, not at Streamdown's fixed 30 pixels. Space above sets a heading apart from
-// what it closes, as shadcn's typography does.
-const HEADING = { h1: "text-xl", h2: "text-lg", h3: "text-read", h4: "text-read", h5: "text-read", h6: "text-read" } as const;
+// Headings as shadcn's typography sets them, on the answer's own scale: the reading part is at the
+// reading size, and each level stands a clear step above the next, not at Streamdown's fixed 30 pixels.
+// A heading has more room above it than below (Streamdown's gap between blocks), so it reads with
+// what it opens, apart from what it closes; h2 carries typography's rule under it.
+const HEADING = {
+	h1: "mt-10 text-2xl leading-tight font-semibold tracking-tight",
+	h2: "mt-10 border-b pb-2 text-xl leading-tight font-semibold tracking-tight",
+	h3: "mt-8 text-lg leading-snug font-semibold tracking-tight",
+	h4: "mt-6 text-read font-semibold",
+	h5: "mt-6 text-read font-semibold",
+	h6: "mt-6 text-read font-semibold text-muted-foreground",
+} as const;
 function heading(Tag: keyof typeof HEADING) {
 	return function Heading({ node: _, className, ...props }: React.ComponentProps<"h1"> & ExtraProps) {
-		return <Tag className={cn("mt-6 font-semibold text-balance", HEADING[Tag], className)} {...props} />;
+		return <Tag className={cn("scroll-mt-4 text-balance", HEADING[Tag], className)} {...props} />;
 	};
 }
 
