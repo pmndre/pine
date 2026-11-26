@@ -13,11 +13,11 @@ name: Test
 # and are not skipped. On Windows pine has no sandbox yet: those tests skip themselves, each with
 # the reason why.
 #
-# The tests are cut into shards, each on a runner of its own (`--test-shard`, which deals the test
-# files out in turn by their place in the sorted list): three on macOS, two on Linux and on Windows.
-# No file holds more than a tenth of the time, so dealing them out in turn gives shards within about
-# a quarter of each other. macOS has the most to gain, from close to half an hour to about ten
-# minutes, but its runners are the scarcest: three at once is a bet that GitHub has them, and more
+# The tests are cut into shards, each on a runner of its own: three on macOS, two on Linux and on
+# Windows. The files are dealt out by how long each took on macOS (scripts/test-shard.mjs, which
+# says how to refresh scripts/test-durations.json), not in turn by their place in the list, which
+# left one macOS shard taking twice as long as another. macOS has the most to gain, from close to
+# half an hour to about ten minutes, but its runners are the scarcest: three at once is a bet that GitHub has them, and more
 # would ask too much (see the note above `jobs:`; the desktop job wants one more when it runs). On
 # Linux and Windows every shard repeats `npm ci`, the type check and, on Linux, `pine init`, close to
 # a minute, so a third shard would cost more runner time than it saves.
@@ -147,11 +147,20 @@ jobs:
           node --input-type=module -e 'import { sandboxKind, sandboxMissing } from "./src/security.ts"; console.log(`sandbox: ${sandboxKind() ?? "none"} on ${process.platform} ${sandboxMissing()}`)'
       # A test that hangs fails after three minutes, instead of holding the job until its own limit.
       # The runners are slower than a computer at a desk: the tests' waits are four times as long.
-      # The shard comes before the files' pattern: what follows the pattern is not read as an option,
-      # and the whole suite would run in every shard.
-      - run: node scripts/test.mjs --test-force-exit --test-timeout=180000 --test-shard=${{ matrix.shard }}/${{ matrix.of }} "test/*.test.ts"
+      # The files of this shard are named one by one; the list is made first, on a line of its own, so
+      # that a failure to make it fails the step instead of running nothing or everything.
+      - name: The tests of this shard
+        shell: bash
         env:
           PINE_TEST_PATIENCE: "4"
+          SHARD: ${{ matrix.shard }}
+          OF: ${{ matrix.of }}
+        run: |
+          list=$(node scripts/test-shard.mjs "$SHARD" "$OF")
+          # One file a line, none with a space in its name: the list is split into words on purpose
+          # (mapfile would do it more carefully, but macOS's own bash is too old for it).
+          # shellcheck disable=SC2086
+          node scripts/test.mjs --test-force-exit --test-timeout=180000 $list
 
   timing:
     needs: [changes, pine]
