@@ -211,6 +211,85 @@ export async function lookAt(baseUrl: string, key?: string, timeoutMs = 10_000):
 	return { locked: false, models };
 }
 
+/** A model server that answered on one of the usual ports of this computer. */
+export interface LocalServer {
+	/** The name it is added under, unless the owner gives another. */
+	id: string;
+	title: string;
+	/** Its address as `POST /models/servers` takes it. */
+	url: string;
+	/** It wants a key: the owner is asked for one. */
+	locked: boolean;
+	models: string[];
+	/** Pinecone's MCP server, which answered beside it. */
+	mcp?: string;
+}
+
+/**
+ * The usual ports of model servers on this computer, in the order they are offered. llama.cpp's
+ * 8080 is Pinecone when Pinecone's MCP server answers on 8090 too.
+ */
+const LOCAL_SERVERS = [
+	{ port: 8080, id: "llamacpp", title: "llama.cpp", pinecone: { port: 8090, id: "pinecone", title: "Pinecone" } },
+	{ port: 11434, id: "ollama", title: "Ollama" },
+	{ port: 1234, id: "lmstudio", title: "LM Studio" },
+];
+
+/**
+ * Where each usual port is asked. A test moves them to stand-ins (`PINE_LOCAL_PORTS`, for tests
+ * only, not a user option: "8080=51234,8090=51235"), and then a port it does not name is not asked.
+ */
+function localPort(port: number): number | undefined {
+	const moved = process.env.PINE_LOCAL_PORTS;
+	if (!moved) return port;
+	const to = Number(moved.split(",").find((pair) => pair.split("=")[0] === String(port))?.split("=")[1]);
+	return Number.isInteger(to) && to > 0 && to < 65536 ? to : undefined;
+}
+
+/** Whether an MCP server answers at this address: it takes the protocol's first request. */
+async function answersMcp(url: string, timeoutMs: number): Promise<boolean> {
+	try {
+		const res = await fetch(url, {
+			method: "POST",
+			headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+			body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "pine", version: "1" } } }),
+			redirect: "error",
+			signal: AbortSignal.timeout(timeoutMs),
+		});
+		if (!res.ok) return false;
+		if ((res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+			await res.body?.cancel();
+			return true;
+		}
+		const body: any = await res.json().catch(() => undefined);
+		return body?.jsonrpc === "2.0";
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Ask the usual ports of this computer what they serve: 127.0.0.1 and those fixed ports alone,
+ * never an address somebody gave, and never `skip` (pine's own control port).
+ */
+export async function lookAround(skip: number | undefined, timeoutMs = 1500): Promise<LocalServer[]> {
+	const found = await Promise.all(
+		LOCAL_SERVERS.map(async (s): Promise<LocalServer | undefined> => {
+			const port = localPort(s.port);
+			if (!port || port === skip) return undefined;
+			const url = `http://127.0.0.1:${port}/v1`;
+			const look = await lookAt(url, undefined, timeoutMs).catch(() => undefined);
+			if (!look) return undefined;
+			const server = { url, locked: look.locked, models: look.locked ? [] : look.models.map((m) => m.id) };
+			const mcpPort = s.pinecone ? localPort(s.pinecone.port) : undefined;
+			const mcp = mcpPort && mcpPort !== skip ? `http://127.0.0.1:${mcpPort}/mcp` : undefined;
+			if (s.pinecone && mcp && (await answersMcp(mcp, timeoutMs))) return { id: s.pinecone.id, title: s.pinecone.title, ...server, mcp };
+			return { id: s.id, title: s.title, ...server };
+		}),
+	);
+	return found.filter((s) => s !== undefined);
+}
+
 export interface NewServer {
 	name: string;
 	baseUrl: string;

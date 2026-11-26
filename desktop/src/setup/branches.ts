@@ -3,16 +3,12 @@
 // one line in BRANCHES; a step once a model answers is one line in AFTER.
 import { apiKey } from "./api-key.tsx";
 import { handoff } from "./handoff.tsx";
-import { soon } from "./soon.tsx";
+import { localBranch } from "./local.tsx";
 import { subscription } from "./subscription.tsx";
 import type { SetupBranch, SetupStage } from "./types.ts";
 
 /** The ways to a model, the recommended one first: the options of "How should your agents run?". */
-export const BRANCHES: SetupBranch[] = [
-	subscription,
-	apiKey,
-	soon("local", "A model on this computer", "LM Studio, Ollama, llama.cpp or Pinecone, running here. Free and private, if this computer can run one."),
-];
+export const BRANCHES: SetupBranch[] = [subscription, apiKey, localBranch];
 
 /** The steps once a model answers, after the model is kept. */
 export const AFTER: SetupStage[] = [handoff];

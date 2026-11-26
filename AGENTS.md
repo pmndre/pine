@@ -1044,6 +1044,11 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   tests is given `PINE_LOGIN_STAND_IN=<file>` instead (`browserStandIn` in `src/owner.ts`, for tests
   only, not a user option): it shows a page and a device code, and once the test writes a key into
   that file it stores it through pi's own sign-in with a key (`desktop/test/setup-conversation.test.ts`).
+- What answers on the usual ports of this computer (`GET /models/local`, `lookAround` in
+  `src/models.ts`) is asked of stand-ins on port 0: `PINE_LOCAL_PORTS=8080=<port>,8090=<port>,...`
+  (for tests only, not a user option) moves each usual port it names, and a usual port it does not
+  name is not asked, so a test never reaches a model server of the developer's
+  (`test/local-models.test.ts`, `desktop/test/setup-local.test.ts`).
 - `npm test` passes `--test-force-exit`, so a leaked handle cannot hang the run; a test that
   fails must still not leave a daemon behind (see the `after` hooks in `test/support/harness.ts`).
 - The source types are tested on stand-ins that run on any system and need no network: a web

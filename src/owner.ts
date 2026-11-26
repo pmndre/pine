@@ -17,7 +17,7 @@ import { type AgentConfig, loadConfig, mainAgentId, ownText, PINE_ROOT, type Pin
 import { login, logout, type Prompter } from "./login.ts";
 import { findServer, piMcp, serverStates } from "./mcp-config.ts";
 import { addDecision, checkDecision, removeDecision, signInTypesafe, signOutTypesafe, TYPESAFE, typesafeSignedIn, usersOf, whereIs } from "./decisions.ts";
-import { addModelServer, checkServerName, listModelServers, lookAt, modelKeys, modelServerUsers, removeModelServer, serverUrl } from "./models.ts";
+import { addModelServer, checkServerName, listModelServers, lookAround, lookAt, modelKeys, modelServerUsers, removeModelServer, serverUrl } from "./models.ts";
 import type { Router } from "./router.ts";
 import { audit, isInside, realish, sandboxAvailable } from "./security.ts";
 import { allSkills, checkSkill, deleteSkill, skillDir, skillsBeside, writeSkill } from "./skills.ts";
@@ -345,6 +345,8 @@ export class OwnerApi {
 				models: Object.entries(cfg.decisions).map(([name, d]) => ({ name, model: d.model, server: d.server, host: d.url ? new URL(d.url).host : undefined, where: whereIs(d), routes: usersOf(cfg, name) })),
 			};
 		if (at === "models/servers") return listModelServers(cfg.home).map((x) => ({ ...x, models: x.models.map((m) => ({ ...m, ...(cfg.limits.models[`${x.name}/${m.id}`] !== undefined ? { limit: cfg.limits.models[`${x.name}/${m.id}`] } : {}) })), runs: cfg.limits.maxConcurrentRuns }));
+		// The model servers on the usual ports of this computer (llama.cpp, Ollama, LM Studio, Pinecone), for the owner to pick one.
+		if (at === "models/local") return { found: await lookAround(cfg.http?.port) };
 		if (at === "models/providers") {
 			// What pi says of each provider. `signedIn` is "pi has a credential or a key for it", which
 			// for a model server of the owner's own without a key is true as well; `oauth` is "its

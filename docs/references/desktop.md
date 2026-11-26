@@ -138,8 +138,9 @@ kept in the conversation. Once a model answers, what you type there is an ordina
 
 | Step | What it asks |
 |---|---|
-| How should your agents run? | **A subscription** (recommended: Claude, ChatGPT or GitHub Copilot, signed in to in your browser, no key to copy), **An API key**, or **A model on this computer**. The last one leads to Settings > Models for now |
+| How should your agents run? | **A subscription** (recommended: Claude, ChatGPT or GitHub Copilot, signed in to in your browser, no key to copy), **An API key**, or **A model on this computer** |
 | Which subscription? | Claude, ChatGPT or GitHub Copilot. **Back** returns to the first question |
+| Which server? | After **A model on this computer**: what pine found on this computer's usual ports (llama.cpp, Ollama, LM Studio; **Pinecone**, which adds its models and its tools for all your agents), and **Another address**. With nothing found, the card says so and asks for the address of your server. A server that wants a key asks for it in a secret field of the card; one that does not say how much context its models get asks for that. The key goes into pine's `.env` and is never shown. See [setup.md](setup.md), "A model server on this computer" |
 | The sign-in | A card: the provider's page is opened in your browser once, with **Open the sign-in page again**; a code to enter there, with **Copy**, when the provider gives one; a choice the provider asks is a question card, something to type a field of the card. **Cancel** ends the sign-in and brings the first question back. Nothing typed there reaches a model |
 | Which provider? | With **An API key**: Anthropic, OpenAI, Google Gemini, OpenRouter and xAI, and **Another…**, a list of every provider with a search, by its name or by what people call it ("kimi", "grok"). **Back** returns to the first question |
 | Your API key for … | A card with a field of its own for the key: what is typed there is not shown, goes straight to the sign-in with **Save**, and is stored with pine's other keys (`auth.json` in pine's home), where no agent reads it. The conversation says only **Key saved for …**, never the key. A provider that asks a choice first asks it as a question card. **Cancel** brings the first question back; a key the sign-in refused says why, with **Try again** |
@@ -1296,9 +1297,8 @@ desktop/
     setup/         Setup Pine's own steps: engine.tsx walks them (the welcome, "How should your agents
                    run?", the model kept, and what is typed before a model answers), types.ts is
                    what a step is, branches.ts lists the ways to a model (`BRANCHES`, one module
-                   each: subscription.tsx, api-key.tsx; soon.tsx for a way not built yet) and the
-                   steps after one (`AFTER`: handoff.tsx, the card "Next"). A new way is a module
-                   and one line there
+                   each: subscription.tsx, api-key.tsx, local.tsx) and the steps after one
+                   (`AFTER`: handoff.tsx, the card "Next"). A new way is a module and one line there
     BrowserAccess.tsx, machines.ts  Settings > Browser access; how the page names a machine and draws a
                    pairing on the first screen
     DevicePairing.tsx  the Add a device dialog (its QR code, components/qr-code.tsx), the toast when a
