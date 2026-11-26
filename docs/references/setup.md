@@ -36,6 +36,9 @@ The main agent is the one `pine.json` names with `"main"`; without that entry, t
 ("The main agent administers pine" below). Other agents have none of its tools (apart from routes
 of their own) and are refused the global scope; they send you to the main agent.
 
+All of these tools exist only in your own conversations: a run that an outside event started
+and a sub-agent have none of them, nor the listing tools.
+
 ## Three scopes
 
 | Scope | Who gets it | It lasts |
@@ -83,8 +86,6 @@ After outside content, `add_skill` is always put to you with its instructions, a
 `add_source_type`, `add_model_server`, `add_model` and `configure_model`: start a new
 conversation for them.
 
-Runs that an outside event started (a route, or a subscription marked `separate`) and sub-agents
-have none of these tools.
 
 ## What an agent has
 

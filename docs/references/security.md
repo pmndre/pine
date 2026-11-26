@@ -345,7 +345,7 @@ nothing else to set.
 |---|---|---|
 | `auto` (the main agent, unless you say otherwise) | Off: shell and file tools reach your whole account and the network | Your `approve` list; a critical action, in every conversation; after outside content, sending something out ("What asks you") |
 | `safe` (every other agent, unless you say otherwise) | On: the agent's own folders. Beyond them you are asked, by pine when a call needs it or by the agent with `request_access` | As `auto`, and after outside content a change to its own memory or instructions, once for the conversation |
-| `manual` | On, where the machine has one | Every action that changes or sends something, unless you answered "always" for it here. Reading files and state and read-only MCP tools are free |
+| `manual` | On, where the machine has one | Every action that changes or sends something, a message to you through Telegram included, unless you answered "always" for it here. What only looks is free: reading files and state, `read_source`, the lists (`sources`, `skills`, ...), read-only MCP tools |
 | `bypass` | Off, like `auto` | Nothing |
 | `plan` | That of the mode the agent had before | Nothing, because nothing is done: a call that does not only look is refused ("Plan mode") |
 

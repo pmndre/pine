@@ -16,17 +16,26 @@ A topic is a slash-separated name. Patterns use `+` for exactly one level and `#
 | `source/#` | everything below `source`, and `source` itself |
 | `#` | everything |
 
-Where events come from:
+Where events come from, and the topics a route can listen to:
 
-| Source | Topics | Trust |
+| Topic | Published when | Trust |
 |---|---|---|
-| Webhook `POST /hook/<name>` | `hook/<name>` (or the hook's `topic`) | untrusted |
-| Event sources ([sources.md](sources.md)) | `source/<name>/<event>`, or `source/<name>@<agent>/<event>` for an agent's own | untrusted; owner for a source with `"trust": "owner"` (`add_source` writes that for a Telegram account you paired) |
-| `pine emit`, `POST /events` | whatever you name | owner (untrusted if the request says so) |
-| Schedules | `timer/<name>`, or `timer/<name>@<agent>` for an agent's own | owner |
-| Agents (`publish_event`) | topics in the agent's `publish` list | owner, or untrusted if the run was restricted |
-| A board with a name ([boards.md](boards.md), "Events of a board") | `board/<name>/task`, `/note`, `/done`, `/failed`, `/blocked` | owner for a post from your own conversation that read nothing from outside, untrusted otherwise |
-| pine | `agent/...`, `state/...`, `approval/...`, `pine/...` | untrusted |
+| `source/<name>/<event>` (`source/<name>@<agent>/<event>` for an agent's own) | An event source reported ([sources.md](sources.md)) | untrusted; owner for a source with `"trust": "owner"` (`add_source` writes that for a Telegram account you paired) |
+| `hook/<name>` (or the hook's `topic`) | `POST /hook/<name>` of `http.hooks` was called ("Webhooks") | untrusted |
+| whatever you name | `pine emit`, `POST /events` | owner (untrusted if the request says so) |
+| `timer/<name>` (`timer/<name>@<agent>` for an agent's own) | A schedule fired | owner |
+| topics in the agent's `publish` list | An agent called `publish_event` | owner, or untrusted if the run was restricted |
+| `board/<name>/task`, `/note`, `/done`, `/failed`, `/blocked` | Something happened on a board with a name ([boards.md](boards.md), "Events of a board") | owner for a post from your own conversation that read nothing from outside, untrusted otherwise |
+| `state/<key>` | Shared state changed (payload `value`, `previous`) | untrusted |
+| `agent/<id>/started`, `agent/<id>/done`, `agent/<id>/failed` | A task started or ended | untrusted |
+| `agent/<id>/tool` | A tool call started or ended (live only, not stored) | untrusted |
+| `agent/<id>/goal`, `agent/<id>/swarm` | A goal or a swarm changed ([agents.md](agents.md), "Goal mode"; [boards.md](boards.md), "A swarm") | untrusted |
+| `approval/requested`, `approval/decided` | An approval was asked or answered | untrusted |
+| `pine/started`, `pine/route-failed` | The daemon started; a route failed | untrusted |
+| `out/source/<name>` | An answer going out: a source that can send sends what is published here, while it runs | as published |
+
+Agents cannot publish on `agent/`, `approval/`, `board/`, `pine/`, `state/` or `timer/`, and
+`add_route` refuses a route that would.
 
 Watch them with `pine events -f`, or `pine events --topic "source/#" --limit 50`.
 
@@ -58,7 +67,9 @@ one should be woken.
 Here `house` is an `mqtt` source and `telegram` a `telegram` source in `pine.json`. For a source
 an agent set up for itself the topic carries its name: `out/source/telegram@main`. A route on a
 source by its name (`source/<name>/...`) keeps that source running, as a subscription does; a
-wider pattern (`source/#`) starts nothing.
+wider pattern (`source/#`) starts nothing. A source sends what is published on
+`out/source/<name>` only while it runs: for a source that nothing subscribes or routes to by
+name, set `"start": "always"` on it.
 
 **An agent's own routes.** Any agent can make routes with `add_route` on its own sources' events
 (`source/<name>@<agent>/...`) or its own shared state (`state/agent/<agent>/...`), acting only

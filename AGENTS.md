@@ -161,7 +161,8 @@ mcp/                bundled MCP servers (separate processes): web, browser, comm
 examples/home/      what `pine init` copies
 test/               node:test files; support/harness.ts builds a temp home and a daemon
 baseline/           pi SDK behaviour checks and their results; the mock model server lives here
-docs/               SKILL.md index and references/
+docs/               SKILL.md index and references/ (the manual: what owners and agents read); dev/ (what only a
+                    contributor needs: building, packing, testing, releasing, internals; docs/dev/README.md indexes it)
 desktop/            the desktop app (Electron; a package of its own, not part of what goes to npm): electron/ is the
                     main process (the window, the daemon's token, `pine service`, `pine` for a terminal, the look for a newer app and its own update;
                     electron/access/ is browser access, without Electron: the access server on ssh2, this computer's host key and
@@ -169,7 +170,8 @@ desktop/            the desktop app (Electron; a package of its own, not part of
                     meeting service, and the control the page's Settings > Browser access reads), src/ the
                     page (React, Tailwind v4, shadcn on Base UI with its chat components, Streamdown for answers, lucide icons,
                     usehooks-ts for the side panel's breakpoint; ui-sdk only for what shadcn lacks), test/ the app driven through its real window, scripts/ what builds, tests, previews and packs it.
-                    docs/references/desktop.md describes it and its layout.
+                    docs/references/desktop.md describes it for the owner; docs/dev/desktop.md has its layout, building, packing,
+                    signing and how the page is drawn.
                     Before you change anything under desktop/src, and when you review such a change, read
                     desktop/.agents/skills/shadcn/SKILL.md with the files in its rules/ folder, then desktop/DESIGN.md,
                     and hold the page to them.
@@ -206,7 +208,7 @@ mobile/             the Android and iOS app (Capacitor; a package of its own, no
                     `vite build` makes Android's page, `vite build --mode ios` the iOS one (WebKit, its own policy).
                     scripts/ runs Gradle (`gradle.mjs`), derives the release's versionCode (`version-code.ts`),
                     drives the emulator (`smoke.mjs`) and the simulator (`smoke-ios.mjs`), and makes the IPA (`ipa.ts`).
-                    docs/references/mobile.md describes it; docs/adr/0001-mobile-app.md and 0002-ios-app.md say why it is so
+                    docs/references/mobile.md describes it for the owner, docs/dev/mobile.md how it is built and tested; docs/adr/0001-mobile-app.md and 0002-ios-app.md say why it is so
                     (and 0004-browser-access.md for pairing)
 web/                the web client (a package of its own, not part of what goes to npm): the desktop page in a
                     browser, for the owner's own pine over SSH, or the Pine app's pine on a computer paired by QR code, no daemon in
@@ -220,7 +222,7 @@ web/                the web client (a package of its own, not part of what goes 
                     builds it and runs the smoke. relay/ is the relay, a Cloudflare Worker of its own package that
                     carries SSH (while `RELAY` is on) and serves the build beside it, and the meeting service
                     (`meet.ts`, with no Cloudflare in it; `meet-object.ts`, its Durable Object), all in the one
-                    configuration of wrangler.jsonc that every channel deploys (`pine-main`, `pine-next`, `pine-pr-<n>`). docs/references/web.md describes it; docs/adr/0003-web-client.md
+                    configuration of wrangler.jsonc that every channel deploys (`pine-main`, `pine-next`, `pine-pr-<n>`). docs/references/web.md describes it for the owner, docs/dev/web.md how it is built, deployed and tested; docs/adr/0003-web-client.md
                     and 0004-browser-access.md say why it is so
 ```
 
@@ -232,6 +234,9 @@ describes a named thing. For a change this means:
 
 - What an agent has to know to use a feature goes into `docs/references/`. What is not there,
   agents do not know. Do not put it into the base prompt instead.
+- What only a contributor needs (how something is built, packed, signed, tested, released; code
+  names and internals) goes into `docs/dev/`, which the manual tool does not index. Keep
+  `docs/references/` short: say what is, not how it came to be.
 - A thing with a name (a key, a tool, a command, an option) gets a row in a table whose first
   cell is that name in backticks. Such a row is found by the name alone.
 - Words people use for it that the manual does not use go into `SYNONYMS` in `src/manual.ts`.

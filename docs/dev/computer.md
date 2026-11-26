@@ -27,3 +27,9 @@ registered at all (macOS, Windows, Linux with `DISPLAY` and not Wayland).
 The `live:` tests build the real helper and drive its own demo window (`--demo`), which needs no
 grant; the tests that operate TextEdit skip themselves without the Accessibility and Screen
 Recording grants.
+
+The app pine runs in, where it never acts: on a Mac the Pine app or the terminal app the daemon
+was started from; on Windows the console window it was started from or the terminal app above it;
+on Linux the first process above pine with a window, or the window `WINDOWID` names. Windows'
+menus show their entries only while open, so `app_menu` opens them on the screen; pictures there
+come from `PrintWindow`, and a window it cannot draw is photographed from the screen.

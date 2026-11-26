@@ -162,6 +162,13 @@ agent says.
 A program that detaches itself completely (a daemon with a session of its own) is not found. On
 Linux in the sandbox nothing outlives its command: start a server in the background (below).
 
+A development server is best started as a command in the background (below) and ended with
+`stop_program`. In the sandbox (`safe`, `manual`) a command has no network: it cannot listen on
+a port, and on Linux it has a network of its own. For a server you or the browser must reach, the conversation needs network access:
+the agent asks with `request_access` and `network: true` (a yes holds for the conversation), or
+`sandbox.network: true` in its `agent.json` gives it always ([configuration.md](configuration.md)).
+In `auto` and `bypass` there is no sandbox and nothing is needed.
+
 ### Commands in the background
 
 A shell command is waited for and stopped at the time limit (`bashTimeoutSec`). For a long
@@ -175,7 +182,8 @@ conversation when the command has ended.
 | `timeout` | An argument of the `bash` tool: how many seconds a command that is waited for may take, never more than `bashTimeoutSec`. A command that reaches it is stopped, and the agent is told to start it again with `background: true` |
 | `stop_program` | The agent's tool: ends a background command by its id; without an id it lists what runs, with each output file |
 
-- It runs in the same sandbox and folder as every other command of that conversation.
+- It runs in the same sandbox and folder as every other command of that conversation. A server
+  that must be reached needs network access there (see "What an agent left running").
 - Its output goes to `sandbox/<agent>/tmp/background/` in pine's home, which the agent reads
   with its file tools, also while it runs. pine does not delete these files.
 - When it ends, the conversation gets a message from pine, not from you: the id, the command,

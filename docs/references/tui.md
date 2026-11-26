@@ -313,7 +313,12 @@ happens on this computer only; nothing that is heard is sent to a server.
 | macOS | The speech recognition macOS has on the device | Nothing on macOS 26 and later (a new language is fetched once, which needs the network). Before: Dictation on in System Settings > Keyboard, with the language |
 | Windows | Windows' desktop speech recogniser (System.Speech) | Speech recognition installed for the language (Settings > Time & language > Language & region > the language's options), and "Let desktop apps access your microphone" on |
 | Linux | whisper.cpp's `whisper-cli` and a model, fed by a recorder | All three installed by you (below); pine installs and downloads none of it |
-| Anything else | Nothing | `ctrl+r` and `/voice` say so; there is no microphone in the input |
+| Anything else | Nothing | `ctrl+r` and `/voice` say so |
+
+Where a piece is missing (on Linux a recorder, `whisper-cli` or a model; on Windows the C#
+compiler), the input has no `🎤`, and `ctrl+r` and `/voice` answer with one line that names what
+to install (the table at the end of this section). On a Mac the `🎤` is always there; without
+the developer tools the first try says so.
 
 On a Mac, the first time, macOS asks whether **pine voice** may use the microphone: a small
 helper pine builds with Apple's command line developer tools (`xcode-select --install` if they

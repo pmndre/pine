@@ -588,7 +588,9 @@ A skill is for one conversation, the agent, or all agents ([setup.md](setup.md),
 | "for all agents" | Every agent. Only the main agent can do this | Yes |
 
 From a conversation that has read outside content, and in manual mode, it is always put to you
-first, with its instructions. A name is used once among the skills a conversation would see.
+first, with its instructions. A name is used once among the skills a conversation would see:
+the same name in the same place replaces the skill, and one that exists elsewhere (another scope,
+or set up by you) is refused.
 
 ### Put it there yourself
 

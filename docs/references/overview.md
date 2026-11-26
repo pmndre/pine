@@ -44,24 +44,8 @@ searches these pages ([agents.md](agents.md), "The manual tool").
 Everything that happens is an event in one log (`data/pine.db`, kept `limits.eventRetentionDays`).
 An event has a `topic` (`source/telegram/message`, `agent/gonzo/done`), a `payload`, the
 `source` that published it, and a `trust`: `owner` or `untrusted`, set by how the content entered.
-Topics and patterns: [events.md](events.md), "Topics".
-
-Topics pine publishes itself (agents cannot publish on `agent/`, `approval/`, `board/`, `pine/`,
-`state/` or `timer/`):
-
-| Topic | Published when |
-|---|---|
-| `agent/<id>/started`, `agent/<id>/done`, `agent/<id>/failed` | A task starts or ends |
-| `agent/<id>/tool` | A tool call starts or ends (live only, not stored) |
-| `agent/<id>/goal`, `agent/<id>/swarm` | A goal or a swarm changed ([agents.md](agents.md), "Goal mode"; [boards.md](boards.md), "A swarm") |
-| `board/<name>/task`, `/note`, `/done`, `/failed`, `/blocked` | Something happened on a named board ([boards.md](boards.md)) |
-| `state/<key>` | Shared state changed |
-| `timer/<name>` | A schedule fired (`timer/<name>@<agent>` for an agent's own) |
-| `source/<name>/<event>` | An event source reported (`source/<name>@<agent>/<event>` for an agent's own) |
-| `out/source/<name>` | An answer going out through a source that can send |
-| `hook/<name>` | A hook of `http.hooks` was called |
-| `approval/requested`, `approval/decided` | An approval was asked or answered |
-| `pine/started`, `pine/route-failed` | The daemon started; a route failed |
+Which topics there are, who publishes each, and how patterns match them:
+[events.md](events.md), "Topics".
 
 ## From event to work
 

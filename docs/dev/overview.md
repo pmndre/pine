@@ -59,7 +59,7 @@ For contributors and for programs that are a UI of their own. What an owner or a
 ## Topics for a UI
 
 Live only (not stored), for a client of `GET /events/stream`, besides those in
-[references/overview.md](../references/overview.md), "Events":
+[references/events.md](../references/events.md), "Topics":
 
 | Topic | Published when |
 |---|---|

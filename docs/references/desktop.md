@@ -63,7 +63,6 @@ home (`~/.pine`) is not in the app and stays as it is.
 | At the start | The app asks GitHub once for pine's last release. A newer one is downloaded without a dialog; the foot of the side bar says **Downloading Pine <version>…**, then **Restart to update**. Nothing is said when the app is the latest or nobody answers |
 | `Restart to update` | At the foot of the side bar, in Settings > General and in the dialog of **Check for Updates…**. Every pine this app started is stopped first (also one kept with **Keep pine running**) and the new app starts it again. A pine the app only attached to (started in a terminal or at login) is left alone: restart it yourself. While agents work it first warns how many conversations would be cut off: **Restart now**, **Restart when they are done** or **Cancel** |
 | `Restart when they are done` | **Restarts when the work is done** stays at the foot of the side bar until then. Click it, or **Call off the wait** in Settings > General, to call it off |
-| Quitting | With an update downloaded, quitting Pine installs it |
 | `Check for Updates…` | In the **Pine** menu (Help elsewhere), and `updates` in the palette: asks again now |
 | Settings > General | The version and whether it is the latest, **Check now**, **Check for updates at start**, and **Update automatically** (on unless you turn it off) |
 | `Pine <version> is available` | Said instead when the app does not update itself: **Update automatically** is off, or the download or install failed. A click opens the release's page |
@@ -204,11 +203,9 @@ menu, or ask the main agent: "make scout blue"). Only its avatar is drawn in it,
 ## Environments: the pine of another machine
 
 The app can use the pine of another machine you reach over SSH (a server, a desktop at home),
-beside or instead of this computer's. Each window chooses its own pine: windows on different
-machines can stand side by side. The foot of the side bar says which (`pine 0.23.0 · started
-here`, `pine 0.23.0 · server`); the title bar shows an environment pill while a window views
-another machine or its side bar is hidden. A click on either lists this computer and your
-machines; the palette (`⌘K`) has "Use the pine on …". In a terminal, `pine --ssh <host>` does the
+beside or instead of this computer's. Each window chooses its own pine. The foot of the side bar
+says which (`pine 0.23.0 · started here`, `pine 0.23.0 · server`), and so does a pill in the title
+bar while a window views another machine; the palette has "Use the pine on …". In a terminal, `pine --ssh <host>` does the
 same for the terminal UI ([tui.md](tui.md#the-pine-of-another-machine)). On Windows, pine in WSL
 is reached the same way ([operations.md](operations.md), "On Windows").
 
@@ -264,7 +261,8 @@ this computer "This Mac" on macOS and "This computer" elsewhere. The browser's s
 ### From a phone without SSH
 
 Pair the Pine app on the phone, or the phone's browser, with the same QR code. On Android the code
-opens the app when it is installed; on an iPhone Safari offers to open it
+opens the browser for now, which pairs by itself; the app opens it once the service serves the App
+Links statement. On an iPhone Safari offers to open the app
 ([mobile.md](mobile.md#pairing-with-a-computer-that-runs-the-pine-app)). On the same Wi-Fi the
 app needs no code: it lists this computer under "On this network" (while **Visible on this
 network** is on), and a tap asks. It is listed here by the phone's name ("Pine on Pixel 9").
@@ -353,9 +351,8 @@ them that way. Where this manual says `⌘`, read `Ctrl` there. Zoom with `Ctrl+
 conversation that works in it. The app's icon (the taskbar button on Windows) shows when something
 waits for you.
 
-**The side bar is your agents.** An agent with one conversation is one line: its name and what it
-is for; a click opens the conversation. An agent with more is a group with its conversations
-under it. Everything that starts something new is on the agent's own line.
+**The side bar is your agents**: one line per agent with one conversation, a group for one with
+more. What starts something new is on the agent's own line.
 
 | On an agent's line | What it does |
 |---|---|
@@ -380,7 +377,7 @@ Where no agent is named, the app goes by the tab in front:
 
 | Part | What it is |
 |---|---|
-| Side bar | Search at the top, then your agents. Drag its edge to resize it (or Tab to the edge and use the arrow keys; a double click resets it); `⌘B` hides and shows it. In each agent: its groups of conversations, then conversations in no group; the agent's own (`main conversation`) first, then pinned ones, then by last use or by name. A click or Enter opens a conversation; with the keyboard Tab reaches an agent's line (Enter or Space folds it), a group's line, then its conversations (arrow keys). A conversation's right click: Pin, Rename, Move to Group…, Remove (Start over for an agent's own). At the bottom: the event log, Settings, and whether pine answers |
+| Side bar | Search, then your agents, and at the bottom the event log, Settings and whether pine answers. Drag its edge to resize it (or Tab to it and use the arrow keys); `⌘B` hides it. Under an agent: its groups, then the rest; its own conversation (`main conversation`) first, then pinned ones, then by last use or by name. With the keyboard Tab reaches an agent's line, a group's line, then its conversations (arrow keys, Enter opens). A conversation's right click: Pin, Rename, Move to Group…, Remove (Start over for an agent's own) |
 | Groups of conversations | An agent's conversations in named groups, one level deep, kept however long unused ([agents.md](agents.md#groups-of-conversations)). New Group… in the agent's right click. Drag a conversation onto a group to put it there, onto the agent's line to take it out; its branches go along. Without a mouse: Move to Group… in its right click, or `Move conversation to group` in the palette (`/group`). A group's right click: New Conversation, Rename…, Remove Group…, which removes the group and every conversation in it for good after you confirm (an agent's own conversation stays) |
 | Tabs | One conversation each. With the keyboard a row of tabs is one Tab stop: arrow keys move, Enter or Space brings one to the front, `⌘W` closes it. The `⌄` after a row's last tab lists that row's tabs to pick from (shown with two tabs or more). A tab shows a pulsing grey dot while the agent works, a dot when something new arrived, `!` when it waits for you, `★` for a conversation kept for good. Settings, the event log, a task's work, the side panel and the view are tabs too. Drag a tab to reorder it, into another group, to another window, or out of every window. Right click: Close (`⌘W`), Close Others, Close to the Right, Close All, Split Right, Split Down, Move to New Window, Pin or Unpin. Closing a tab only closes the view: the conversation stays in the side bar with your unsent text. Any tab can be closed; with none open the window offers a new conversation (`⌘W` again closes the window). A tab that waits for your answer is never lost: Close Others and the like leave it open, and one closed by itself hands what it waits for to another tab. An approval that arrives with no tab open opens the agent's main conversation |
 | Conversation | An empty one shows who its agent is: what it is for, model and mode, whom it hands work to, and how many skills, sources, schedules and MCP servers it has. Then your messages, the answers as markdown, and the work of each turn (tool calls, thoughts, sub-tasks) folded into one line that a click opens. A `↳ … ↗` line opens a sub-agent's or delegated task's work in a tab. Above your last message, **Take back** (`/undo`). When you send, by default your message moves to the top and the answer is written below it; an agent set to follow the answer ("When you send a message" on its page in Settings > Agents) keeps your message at the end and follows the answer. Scrolled up, the view holds still, and a button brings you back to the end |
@@ -392,10 +389,8 @@ Where no agent is named, the app goes by the tab in front:
 | View | A tab (`⇧⌘O`): all agents and their work at a glance. See "The view" |
 | Search | `⌘K`, or Search in the side bar: see "Finding a conversation" |
 
-The window can be as narrow as a phone (360 pixels). Below 1024 pixels there are no groups of
-tabs: one row holds every tab, the tab in front fills the window, and the side panel and the view
-come over it as a sheet. Below 768 pixels the side bar comes over the page too. A wide window puts
-everything back as it was.
+The window can be as narrow as a phone (360 pixels). Below 1024 pixels one row holds every tab and
+the tab in front fills the window; a wide window puts everything back as it was.
 
 | Window | Side bar | Side panel and view |
 |---|---|---|
@@ -444,7 +439,8 @@ own tabs, groups and side bar.
 
 ### Quoting part of a conversation
 
-Select text in the conversation: a small bar offers **Quote**, **Reply** and **Bookmark**. **Quote**
+Select text in the conversation, a sentence of an answer for example: a small bar offers **Quote**,
+**Reply** and **Bookmark**. **Quote**
 puts it as a badge above the input (hover shows it, a click goes back to where it was taken, `×`
 removes it). Quote several pieces, or send quotes with no text of your own. **Reply** also opens a
 field under the badges for your reply to that quote; `↩` or `esc` closes it, `⇧↩` is a new line,
@@ -800,14 +796,13 @@ mail room's counter. The bubbles say the same as in `office`; the `?` shows what
 
 ### The overview
 
-`overview` is all of pine on one board, in words, in three columns, in the app's own look and
-theme.
+`overview` is all of pine on one board, in words: what triggers agents, the agents and what each
+does, and the tools and boards they use ([views.md](views.md) says how it is laid out).
 
 | On the board | What it is |
 |---|---|
-| The left column, "Triggers" | What starts work: you, every event source, schedule and webhook, each with whom it triggers ("inbox, triggers books") and, for a schedule, when it is due. A source that is down says so |
-| The middle column, "Agents" | Every agent, working ones on top. Under its name what it does ("Running a command", "Waiting for scout", "Needs your answer", "Idle"), why ("for you", "delegated by main", "triggered by inbox") and how far ("step 2 of 5"). Its sub-agents are lines under it. Its mode is a badge |
-| The right column, "Tools" | On top, "Boards": a card per board with work on it, with whose it is, how far ("7/24"), what happens ("3 in progress · 14 to do"), and a tile per task (outlined to do, agent's color in progress, text color done, question color waits for an answer, failure color failed). A line joins an agent and a board its sub-agents work on. Below: every MCP server and skill |
+| An agent's card | What it does now ("Running a command", "Waiting for scout", "Needs your answer", "Idle"), why ("for you", "delegated by main", "triggered by inbox"), how far ("step 2 of 5"), its sub-agents as lines under it, and its mode as a badge |
+| A board's card | Whose it is, how far ("7/24"), what happens ("3 in progress · 14 to do"), and a tile per task: outlined to do, the agent's color in progress, the text's color done, the question color waits for an answer, the failure color failed |
 | A colored border and tint | Something happens there now, in the agent's color; a question for you, or a source that is down, in its own color |
 | A line between two things | Something happens between them now: a trigger to the agent it started, an agent to the tool it uses, an agent to one it delegated to, an agent to you while it waits for your answer. A dot runs along it the way things go |
 | A line at the right of the agents | A delegated task's answer on its way back, for a few seconds (in the failure color if it failed) |
@@ -818,7 +813,6 @@ theme.
 | Zooming out | Every box is one line: a name and its state (`working`, `waiting`, `asks you`, `idle`) |
 | Zooming in | Every box says all: for an agent each piece of work with its time, tool calls and last tools, what it finished, what it has and its conversations; for a board every task with its worker, wait and notes |
 | A click on a board or a task | Shows it under the view |
-| An agent that leads a swarm | Its card shows the round ("round 2 of 8") and its state ("Checking the answer", "Swarm needs your answer", paused); its board says "swarm · …" ([boards.md](boards.md), "A swarm") |
 | The button beside the eye | Shows the whole board |
 
 ## Settings
@@ -877,6 +871,7 @@ agent. So:
 | Notifications and the window's title | pine's own words only |
 | What is heard | Text for the input, never sent by itself |
 | A code block's Run button | Only your click types a block into your terminal, and only a block whose every character shows as itself. The agent hears only that block's output |
+| A view | Runs in a sandboxed frame that reaches nothing and is told only names and states, never a prompt, an answer, a path or what an event said |
 | The window stays the app | It cannot be taken to another address and opens no further windows |
 | The agent's browser | A sandboxed view of its own, through pine's guard, with nothing of the app in it. As a picture elsewhere, what you do in it is checked piece by piece by the browser's server |
 | Browser access | Off until you turn it on. Then the app's own SSH server (not the system's) accepts only keys you allowed here, never a password, and gives them this computer's pine and nothing else: at most 8 connections, 20 seconds to sign in, a device name of at most 60 characters |

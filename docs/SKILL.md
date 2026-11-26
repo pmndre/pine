@@ -89,8 +89,8 @@ If something is the main agent's job and you are not the main agent, send your o
 | Use the Pine app on a computer: window, code panel, settings, browser access for a phone or browser | [references/desktop.md](references/desktop.md) |
 | Write a view: your own script that draws pine in the Pine app's panel | [references/views.md](references/views.md) |
 | Use pine from an Android phone or an iPhone | [references/mobile.md](references/mobile.md) |
-| Use pine from a web browser with nothing installed | [references/web.md](references/web.md) |
-| Work on a project: a folder for a conversation, the code pane, commands in the background, `/undo` | [references/coding.md](references/coding.md) |
+| Use pine from a web browser with nothing installed; what the relay and the meeting service see, a deployment of your own | [references/web.md](references/web.md) |
+| Work on a project: a folder for a conversation, the code pane, programs left running, `/undo` | [references/coding.md](references/coding.md) |
 | Make a web page that works as a user interface for an agent | [references/interfaces.md](references/interfaces.md) |
 | Install, start, update, the CLI, the control API, problems | [references/operations.md](references/operations.md) |
 | Look up a key in `pine.json`, `agent.json`, `models.json` or `.env` | [references/configuration.md](references/configuration.md) |
@@ -103,7 +103,7 @@ If something is the main agent's job and you are not the main agent, send your o
 | MCP servers; web search, page reading and the bundled browser | [references/mcp.md](references/mcp.md) |
 | Operate the apps on the computer: read a window, click, type | [references/computer.md](references/computer.md) |
 | The defences against prompt injection and their limits: sandbox, modes, approvals | [references/security.md](references/security.md) |
-| The technology underneath | [references/stack.md](references/stack.md) |
+| What pine runs on, which system programs it uses, what is not verified yet | [references/stack.md](references/stack.md) |
 | Change pine's code | [../AGENTS.md](../AGENTS.md) |
 
 ## The shortest working setup

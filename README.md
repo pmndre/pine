@@ -230,4 +230,4 @@ Start at [docs/SKILL.md](docs/SKILL.md); it indexes everything.
 | MCP servers, web search, command tools                                                  | [mcp.md](docs/references/mcp.md)                             |
 | Let an agent operate the apps on your Mac                                               | [computer.md](docs/references/computer.md)                   |
 | Know what is protected and what is not                                                  | [security.md](docs/references/security.md)                   |
-| Work on pine itself                                                                     | [AGENTS.md](AGENTS.md), [stack.md](docs/references/stack.md) |
+| Work on pine itself                                                                     | [AGENTS.md](AGENTS.md), [docs/dev](docs/dev/README.md)       |

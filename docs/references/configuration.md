@@ -57,8 +57,8 @@ pine writes `.env` itself, and the configuration names the entry; removing the t
 
 | Entry | Written for |
 |---|---|
-| `PINE_SOURCE_<NAME>_<AGENT>_<OPTION>` | A secret of an event source an agent set up (no `<AGENT>` for one of all agents). See [sources.md](sources.md), "Secrets" |
-| `PINE_MCP_<NAME>_<AGENT>_<OPTION>` | A key of a local MCP server an agent added ([mcp.md](mcp.md)) |
+| `PINE_SOURCE_<NAME>[_<AGENT>]_<OPTION>` | A secret of an event source, typed into pine's dialog (no `<AGENT>` for a source of all agents). See [sources.md](sources.md), "Secrets" |
+| `PINE_MCP_<SERVER>[_<AGENT>]_<VARIABLE>` | A key of a local MCP server, typed into pine's dialog ([mcp.md](mcp.md)) |
 | `PINE_MODEL_<NAME>_API_KEY` | The key of a model server of yours (`pine model add`, `add_model_server`); see "A server that wants a key" |
 | `PINE_DECISION_<NAME>_KEY` | The key of a decision model at another server; see "Decision models" |
 | `TYPESAFE_API_KEY` | pine's sign-in at TypeSafe |
@@ -334,7 +334,7 @@ TypeSafe's API (`POST /v1/systemone`) and are kept by name under `decisions` in 
   Settings > Models, Decision models, with `pine login typesafe`, or by asking the main agent
   (`sign_in` with `typesafe`; you type the key into pine's dialog). It is checked and kept as
   `TYPESAFE_API_KEY`; `pine logout typesafe` removes it. Then add `{ "server": "typesafe" }`.
-- **Adding one:** Settings > Models, Decision models, or ask the main agent (`add_decision_model`).
+- **Adding one:** Settings > Models, Decision models, or ask an agent in your own conversation (`add_decision_model`).
   You are told, when you confirm it and each route that asks it, where the text goes.
 
 A chat model is asked in words with a route's `call`; only a decision model answers typed
