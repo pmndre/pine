@@ -110,7 +110,7 @@ web tools drive. It asks for each where it is missing.
 |---|---|
 | No pine home | It offers to set pine up (`pine init`): the example home is copied, and the browser is fetched (about 600 MB, once). On Linux `pine init` also sets up the sandbox, which needs an administrator (bubblewrap, and on some systems a rule for AppArmor): the app runs none of that. The commands are shown, to be run in a terminal, and then **Try again**. Until they have run, pine works without the sandbox |
 | The welcome | The app opens on the main agent's own conversation (`main` in a new home, with pine's mark as its picture), which begins with pine's welcome: that the main agent is pine's administrator and the one to ask, that agents come first (ask it for one for each purpose: coding, work, automation, chat), that the first conversation is kept and the others are cleared after a while unless pinned, the things pine is for (chatting, code, a folder, acting on events), a prompt to try (one that watches the Downloads folder, which puts its words into the input), and where pine keeps everything (its home, shown in the Finder with a click). pine wrote it, and it is never sent to a model. The terminal UI shows the same there while nothing was said in it yet |
-| Nothing to answer with | A new home has nothing to run on: the app opens **Setup Pine** in front (below), after **Set up pine** and whenever the main agent has no model that answers. The agent's card at the top of a conversation says **Connect a model first** too, with **Set up a model…**, which opens Setup Pine (the main agent's card too, above pine's welcome); Settings > Models lists every agent that cannot answer, with the reason (nothing connected yet, or nobody signed in to its provider). A message sent meanwhile says so; send it again once a model is there |
+| Nothing to answer with | A new home has nothing to run on: the app opens **Setup Pine** in front (below), after **Set up pine** and whenever the main agent has no model that answers. The main agent's conversation says it once in a notice at the corner of the window that stays until a model answers (or you close it): **Connect a model first**, with **Set up a model…**, which opens Setup Pine. Another agent's card at the top of its conversation says it on the card, with the same button; Settings > Models lists every agent that cannot answer, with the reason (nothing connected yet, or nobody signed in to its provider). A message sent meanwhile says so; send it again once a model is there |
 | A sign-in in Settings > Models | A Claude, ChatGPT or Copilot subscription is signed in to through the browser (**Sign in**), any provider with an API key. Where the choice in force cannot answer, pine switches to the provider's usual one (pi's choice) and the dialog says which, with **Another one…**; so does adding a server of your own. Otherwise nothing switches by itself and the dialog offers **Choose the model your agents run on**. The page keeps it (`defaults.model`) with **Change** |
 | The first message | No agent writes first. Main, and every other agent, introduces itself in its answer to the first message you write to it. Once each; `defaults.introduce` turns it off ([agents.md](agents.md), "Meeting an agent") |
 | The browser is not there in the build this pine drives | Each version of pine drives a browser build of its own. A home that an older pine set up, or a new app in place of an old one, has the old build or none. The app asks once for each version of pine whether to fetch it, and Settings > General shows whether it is there, with **Fetch it** (`pine browser-install`, run by the app's pine). Until then the browser tools do not work; web search and reading a page do |
@@ -134,7 +134,7 @@ Typing works there before any model does: what you type in the input and send pi
 the open card whose name it is, in any case ("a subscription", "claude"). Anything else is answered
 by one line of pine's, "There is no model yet to answer that. Pick one of the options, or type its
 name: what each one means is in its description.", and goes nowhere: no model reads it and it is not
-kept in the conversation. Once a model answers, what you type there is an ordinary message again.
+kept in the conversation. The input's placeholder says so ("Type an option's name to pick it…"). While the field for an API key is open, what you type in the input is neither shown nor kept, even to come back with the arrow keys: pine says to paste the key in the card's field. Once a model answers, what you type there is an ordinary message again.
 
 | Step | What it asks |
 |---|---|
@@ -144,7 +144,7 @@ kept in the conversation. Once a model answers, what you type there is an ordina
 | The sign-in | A card: the provider's page is opened in your browser once, with **Open the sign-in page again**; a code to enter there, with **Copy**, when the provider gives one; a choice the provider asks is a question card, something to type a field of the card. **Cancel** ends the sign-in and brings the first question back. Nothing typed there reaches a model |
 | Which provider? | With **An API key**: Anthropic, OpenAI, Google Gemini, OpenRouter and xAI, and **Another…**, a list of every provider with a search, by its name or by what people call it ("kimi", "grok"). **Back** returns to the first question |
 | Your API key for … | A card with a field of its own for the key: what is typed there is not shown, goes straight to the sign-in with **Save**, and is stored with pine's other keys (`auth.json` in pine's home), where no agent reads it. The conversation says only **Key saved for …**, never the key. A provider that asks a choice first asks it as a question card. **Cancel** brings the first question back; a key the sign-in refused says why, with **Try again** |
-| Your agents run on … | Once signed in, pine says which model your agents now run on (it chose the provider's usual one, as Settings > Models does). **Keep this model?**: **Go on**, or **Choose another model** among the models you can use now |
+| Your agents run on … | Once signed in, pine says which model your agents now run on (it chose the provider's usual one, as Settings > Models does). **Keep this model?**: **Go on**, or **Choose another model** among the models you can use now. Not asked again once the setup went on from it (something was said in Setup Pine, or the card **Next** is done) |
 | What would you like to set up now? | Once the model is kept, the card **Next**, where you tick what to set up today, every item optional: **The mode**, **A working folder**, **Telegram**, **A first agent** (for example the welcome letter's "Make an agent that tells me about each new file in Downloads."), **The theme**, and on a Mac **Pinecone**, to install it. **Send** sends an ordinary message of yours in Setup Pine, one line for each item ticked, and the main agent answers it there: it introduces itself and takes each item in turn, with its own tools and question cards. **Nothing for now** opens the main conversation; the card comes back once the app is opened again, until something is said in Setup Pine |
 
 ### `pine` in a terminal
@@ -747,12 +747,12 @@ A question an agent asks with its `question` tool ([setup.md](setup.md)) is a ca
 input of its conversation, never a dialog that opens by itself, so that you can read the conversation
 while you decide. It shows the few words over the question (its `header`), the question, and the
 answers it offers, each with its number, its line that says what it means, and `recommended` on the
-first when one answer is asked for. A click, its digit or Space answers it at once, with no button to
+first when one answer is asked for (an agent's question names the one it would pick first). A click, its digit or Space answers it at once, with no button to
 send it; the arrow keys move between the answers and `↩` gives the one they reached. A question with
 several answers (`multiSelect`) is answered by ticking (a click, a digit or Space) and **Send** (or
 `↩` on a ticked answer); none of its answers is marked `recommended`. In a short pane (a split
 view, a small window) the card takes what the conversation and the input leave and scrolls inside:
-the input stays in view and the conversation keeps a few lines above it. The card takes
+the input stays in view, the conversation keeps a few lines above it, and an answer cut by the edge fades out. The card takes
 the keyboard when it appears only while the input is empty, so it never takes what you are typing.
 **No answer** tells the agent there is none, and it goes on with an assumption it names. **Later**
 puts the card away: the line above the input says that a question waits, and **Open** brings it
@@ -762,12 +762,12 @@ placeholder says so, your message shows as yours in the conversation, and the ag
 you answered in your own words. That is also how a question that offers nothing to pick is
 answered, and how you ask something back ("what is the difference?"): the agent responds to it
 and may ask again. A `/command` stays a command. Once answered, the card folds into one line in the
-conversation that says what was asked and what you answered. An approval (a permission) still opens
+conversation that says what was asked and what you answered. A question you answer this way that was answered meanwhile elsewhere (Telegram, another window) does not take your words: they are sent as an ordinary message. A question of another conversation, which has no tab open, is never answered from the one in front: the line above the input says that it waits, and **Go there** opens its conversation, where its card is. An approval (a permission) still opens
 its dialog. With no question open, the input sends as before (into the work, or after it).
 
 A sign-in that asks you to choose (the main agent's `sign_in`, when a provider's flow offers ways to
 sign in, such as Amazon Bedrock's "Bearer token" or "AWS profile") is the same card, with the flow's
-choices as its answers, picked by a click, a digit or the arrow keys and `↩`. **No answer** stops the
+choices as its answers, picked by a click, a digit or the arrow keys and `↩`. None of them is marked `recommended`. **No answer** stops the
 sign-in. It takes no answer in your own words: what you send from the input while it is open goes to
 the conversation as usual. What the sign-in then asks you to type (a key, a profile name) opens the
 approval dialog with its field, as before.

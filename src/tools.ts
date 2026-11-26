@@ -93,6 +93,8 @@ export function questionOptions(options: unknown, choices: unknown): QuestionOpt
 /**
  * What the owner answered, as the agent is told it. Options picked by their labels or their numbers
  * ("2", or "1,3" for a multiple answer) are given as the labels, joined by ", ", in the order picked.
+ * A label is matched before a number: a number picks by its place only where no label is that text,
+ * and a multiple answer is read as labels (which may hold commas) before it is read as numbers.
  * Anything else is the owner's own words (`words`): what was typed in the composer while the
  * question was open, which may answer it, or not.
  */
@@ -100,12 +102,29 @@ export function picked(answer: string | undefined, options: QuestionOption[], mu
 	if (!answer) return undefined;
 	const words = { text: answer, words: true };
 	if (!options.length) return words;
-	const which = (part: string) => (/^\d+$/.test(part) ? Number(part) : options.findIndex((o) => o.label.toLowerCase() === part.toLowerCase()) + 1);
+	// A label first, so that an option labelled "2" is picked by "2"; a number picks by its place only where no label is that text.
+	const which = (part: string) => options.findIndex((o) => o.label.toLowerCase() === part.toLowerCase()) + 1 || (/^\d+$/.test(part) ? Number(part) : 0);
 	const whole = which(answer);
 	if (whole >= 1 && whole <= options.length) return { text: options[whole - 1].label, words: false };
-	const parts = answer.split(/\s*,\s*/);
 	if (!multiSelect) return words;
-	const numbers = parts.map(which);
+	// Labels joined by ", ", where a label may hold a comma itself ("Yes, with tests, No"): at each point the
+	// longest label that stands there, followed by a comma or the end, and a shorter one if the rest then fails.
+	const byLength = options.map((o, i) => ({ label: o.label.toLowerCase(), n: i + 1 })).sort((a, b) => b.label.length - a.label.length);
+	const labels = (rest: string): number[] | undefined => {
+		if (!rest) return [];
+		for (const o of byLength) {
+			if (!rest.startsWith(o.label)) continue;
+			const after = rest.slice(o.label.length);
+			const next = after === "" ? "" : /^\s*,\s*/.exec(after) ? after.replace(/^\s*,\s*/, "") : undefined;
+			if (next === undefined) continue;
+			const more = labels(next);
+			if (more) return [o.n, ...more];
+		}
+		return undefined;
+	};
+	const named = labels(answer.trim().toLowerCase());
+	if (named) return { text: [...new Set(named)].map((n) => options[n - 1].label).join(", "), words: false };
+	const numbers = answer.split(/\s*,\s*/).map(which);
 	if (!numbers.every((n) => n >= 1 && n <= options.length)) return words;
 	return { text: [...new Set(numbers)].map((n) => options[n - 1].label).join(", "), words: false };
 }

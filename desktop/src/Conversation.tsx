@@ -22,7 +22,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { Item as Card, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { COMPOSER_QUESTION, QuestionCard, QuestionTrace } from "@/components/question-card";
+import { COMPOSER_QUESTION, ComposerCardSlot, QuestionCard, QuestionCardHost, QuestionTrace } from "@/components/question-card";
 import { Kbd } from "@/components/ui/kbd";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
@@ -44,7 +44,7 @@ import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
 import { Markdown, MEDIA } from "./markdown.tsx";
 import { runs } from "./work-runs.ts";
-import { type Bookmark, isPick, type Item, type Part, type QuoteSource, quoteId, type SentQuote, SETUP, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
+import { type Bookmark, isPick, type Item, type Part, type QuoteSource, quoteId, type SentQuote, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { SetupCard, SetupScript } from "./setup/engine.tsx";
 import { childKind, clock, count, MODES, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
@@ -449,6 +449,9 @@ function ComposerQuestion({ tab }: { tab: Tab }) {
 	const options = req.options ?? (req.choices ?? []).map((label) => ({ label }));
 	const field = document.activeElement;
 	const free = !field || field === document.body || (field instanceof HTMLTextAreaElement && Boolean(field.closest("[data-slot=composer]")) && !field.value.trim());
+	// An agent's question takes what is typed below as the owner's own words; a sign-in's choice does
+	// not: words of the owner's would mean nothing to its flow, and go as an ordinary message.
+	const words = req.tool === "question";
 	return (
 		<ScrollArea data-slot="composer-question" className={COMPOSER_QUESTION}>
 			<QuestionCard
@@ -458,6 +461,9 @@ function ComposerQuestion({ tab }: { tab: Tab }) {
 				from={`${req.agent} asks`}
 				options={options}
 				multiple={req.multiSelect}
+				recommended={words}
+				type={words ? (text) => (void store.answerInWords(tab, item, text), true) : undefined}
+				placeholder={words ? `Answer ${req.agent}'s question in your own words…` : undefined}
 				autoFocus={free && options.length > 0}
 				onAnswer={(picked) => void store.answer(req, picked)}
 				onNoAnswer={() => void store.decide(req.id, false)}
@@ -693,6 +699,13 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 			live = false;
 		};
 	}, [tab.agent]);
+	// The main agent without a model that answers: said once in a toast that stays, with the way to "Setup Pine".
+	const problem = info?.main ? info.modelProblem : undefined;
+	useEffect(() => {
+		if (!problem) return;
+		// Short, for the stock toast's row: its action says the rest.
+		store.noModelNotice({ title: "Connect a model first", description: "Your agents can't answer you yet." });
+	}, [problem]);
 	const mode = MODES.find((m) => m.value === info?.mode);
 	const h = has?.holdings;
 	const counts: Array<[string, number]> = h ? [["skill", h.skills.length], ["event source", h.sources.length], ["schedule", h.schedules.length], ["MCP server", h.servers.length], ["conversation", h.conversations.length]] : [];
@@ -716,7 +729,8 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 					{info?.delegates.length ? <HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}>hands work to <b>{info.delegates.includes("*") ? (info.main ? "all other agents" : `all agents except ${store.agents.find((a) => a.main)?.id ?? "the main one"}`) : info.delegates.join(", ")}</b></TooltipTrigger><TooltipContent>Agents it can hand work to</TooltipContent></HoverTooltip> : null}
 					{asked === tab.agent ? counts.filter(([, n]) => n > 0).map(([what, n]) => <Badge variant="outline" key={what}><b>{n}</b>{n === 1 ? what : `${what}s`}</Badge>) : <WelcomeBadgesSkeleton count={2} />}
 				</div>
-				{info?.modelProblem ? <ModelNotice agent={tab.agent} model={info.model} problem={info.modelProblem} onSetup={() => void store.openSetup()} /> : null}
+				{/* The main agent's says it in a toast (above); another agent's on its card. */}
+				{info?.modelProblem && !info.main ? <ModelNotice agent={tab.agent} model={info.model} problem={info.modelProblem} onSetup={() => void store.openSetup()} /> : null}
 				{/* The way on to what the card only names: the agent's own page, where its model, mode, tools and instructions are changed. */}
 				<Button variant="outline" size="sm" data-slot="agent-settings" onClick={() => store.openSettings("agents", tab.agent)}><SettingsIcon data-icon="inline-start" />Agent settings</Button>
 			</EmptyContent>
@@ -814,7 +828,10 @@ function StatusLine({ tab }: { tab: Tab }) {
 		const t = window.setInterval(() => tick((n) => n + 1), 1000);
 		return () => window.clearInterval(t);
 	}, [tab.busy]);
-	const waiting = [...tab.approvals.values()];
+	// What this conversation was asked. A question of another conversation this tab holds (that one has no
+	// tab of its own) is said as waiting there, and never answered from here.
+	const waiting = [...tab.approvals.values()].filter((a) => !isPick(a.req) || store.ownAsk(tab, a.req));
+	const held = [...tab.approvals.values()].find((a) => isPick(a.req) && !store.ownAsk(tab, a.req));
 	const elsewhere = store.tabs.find((t) => t !== tab && t.approvals.size > 0);
 	const goal = tab.goal?.status === "active" ? tab.goal : undefined;
 	const swarm = tab.swarm?.status === "active" ? tab.swarm : undefined;
@@ -834,6 +851,7 @@ function StatusLine({ tab }: { tab: Tab }) {
 		if (waiting.length) return line(<TriangleAlertIcon />, isPick(waiting[0].req) ? "A question waits for your answer." : "A request waits for your approval.", <Button variant="outline" size="xs" onClick={() => store.ask(waiting[0].req.id)}>Open</Button>, true);
 		if (swarm) return line(<UsersIcon />, `swarm · round ${swarm.round} of ${swarm.until} · ${swarm.checking ? "checking the answer" : "looking at the board"}`, <Button variant="outline" size="xs" onClick={() => void store.setSwarm(tab, "pause")}>Pause</Button>);
 		if (goal) return line(<TargetIcon />, `goal · round ${goal.round} of ${goal.until} · checking whether it is met`, <Button variant="outline" size="xs" onClick={() => void store.setGoal(tab, "pause")}>Pause</Button>);
+		if (held) return line(<TriangleAlertIcon />, `A question of ${held.req.agent}'s in another conversation waits for you.`, <Button variant="outline" size="xs" onClick={() => void store.goToAsk(held.req)}>Go there</Button>, true);
 		if (elsewhere) return line(<TriangleAlertIcon />, `${elsewhere.agent} · ${elsewhere.session} waits for you.`, <Button variant="outline" size="xs" onClick={() => store.activate(elsewhere)}>Go there</Button>, true);
 		if (tab.programs.length) return line(<PlayIcon />, `${plural(tab.programs.length, "program")} still running`, <Button variant="ghost" size="xs" onClick={() => void store.command("code-running")}>Show</Button>);
 		return null;
@@ -1221,7 +1239,10 @@ export function Conversation({ tab }: { tab: Tab }) {
 		return () => clearTimeout(t);
 	}, [glide, seen]);
 	const chat = tab.kind === "chat";
-	const setupTab = chat && tab.session === SETUP && Boolean(store.agent(tab.agent)?.main);
+	const setupTab = store.isSetup(tab);
+	const above = store.cardAbove(tab);
+	// What the card above the composer tells the composer (`HostedCard`): one for this view of the conversation.
+	const [slot] = useState(() => new ComposerCardSlot());
 	const checkpoint = chat && !tab.busy ? lastOwnerMessage(tab.items) : -1;
 	return (
 		<div data-slot="conversation" className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background text-sm">
@@ -1264,7 +1285,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 								{/* "Setup Pine" begins with pine's own steps, above everything said in it. */}
 								{setupTab ? (
 									<MessageScrollerItem>
-										<SetupScript />
+										<SetupScript tab={tab} />
 									</MessageScrollerItem>
 								) : null}
 								{!tab.items.length && chat ? (
@@ -1294,12 +1315,14 @@ export function Conversation({ tab }: { tab: Tab }) {
 				</MessageScrollerProvider>
 			)}
 			<div className="flex min-h-0 flex-col px-4 pb-4">
-				<div className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-col">
+				<div className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-col gap-2">
 					{/* An agent's question comes first; pine's own step in "Setup Pine" is there when none is open. */}
-					{chat ? store.openQuestion(tab) || !setupTab ? <ComposerQuestion tab={tab} /> : <SetupCard tab={tab} /> : null}
+					<QuestionCardHost.Provider value={slot}>
+						{above === "question" ? <ComposerQuestion tab={tab} /> : above === "setup" ? <SetupCard tab={tab} /> : null}
+					</QuestionCardHost.Provider>
 					<StatusLine tab={tab} />
 					{chat ? (
-						<Composer tab={tab} />
+						<Composer tab={tab} host={slot} />
 					) : tab.busy ? (
 						<div className="flex items-center gap-2"><span className="min-w-0 flex-1 text-muted-foreground">This tab shows one task's work and takes no messages.</span><Button variant="outline" size="xs" onClick={() => void store.stop(tab)}><SquareIcon data-icon="inline-start" />Stop this task</Button></div>
 					) : null}

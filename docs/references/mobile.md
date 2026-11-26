@@ -182,6 +182,7 @@ is connected to when you pick it.
 | A pine with `pine service` | An older pine is not reached: update it there with `pine update` |
 | A pine home there | `pine init` on that machine first |
 | A way from the phone to the machine | See "Making a machine reachable" |
+| A model | A pine with no model opens **Setup Pine** in the app too ([desktop.md](desktop.md#setup-pine-getting-started)); its **A model on the computer pine runs on** looks for model servers on that machine, not on the phone |
 
 The app runs `pine service` there, as the desktop app does: it attaches to the pine that runs,
 or starts one, which the connection then holds. Pick another machine at the foot of the side

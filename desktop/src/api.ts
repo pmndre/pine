@@ -434,6 +434,8 @@ export interface Provider {
 	id: string;
 	name?: string;
 	signedIn: boolean;
+	/** How it is signed in now: in the browser, or with a key. None while it is not. */
+	via?: "oauth" | "api_key";
 	models: number;
 	oauth: boolean;
 }

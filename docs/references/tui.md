@@ -514,7 +514,8 @@ Words of your own are your answer there too. `esc` leaves it for later (`/approv
 again, `/deny` tells the agent that there is no answer, and it goes on with an assumption that
 it names). If Telegram is set up, a question with answers to pick from arrives there too: with a
 button for each when one answer is asked for, and with the answers numbered when several may be
-picked, answered by your next message there ("1,3", or your own words). The tool is
+picked, answered by a reply to that message ("1,3", or your own words) or by a message of only
+its numbers; anything else you write to the bot reaches your agents as usual. The tool is
 there in every mode, `plan` too, and not in a run that an outside event started.
 
 ## How answers are drawn

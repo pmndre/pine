@@ -164,6 +164,17 @@ const SYNONYMS: string[][] = [
 	["type", "kind", "module", "custom", "own"],
 ];
 
+/**
+ * Phrases of a question that stopwords would take apart ("get", "set" and "up" are stopwords), read
+ * as what they mean in the manual's words. Only the question is read this way, not the manual.
+ */
+const PHRASES: Array<[RegExp, string]> = [
+	// "how do I get started", "getting started": what a newcomer asks, which Setup Pine answers.
+	[/\bget(?:ting)?\s+started\b/gi, "setup pine getting started"],
+	// "set up", "set pine up", "setting up". Not "set something up": the setup tools answer that.
+	[/\bset(?:ting)?\s+(pine\s+)?up\b/gi, "setup $1"],
+];
+
 const SYNONYM_MAP = new Map<string, Set<string>>();
 
 const STOP = new Set(
@@ -391,7 +402,8 @@ export function createManual(parts: Part[]): Manual {
 	return {
 		parts,
 		search(query, limit = 6) {
-			const direct = [...new Set(words(query).filter((w) => !STOP.has(w)).map(stem))];
+			const read = PHRASES.reduce((q, [phrase, meant]) => q.replace(phrase, meant), query);
+			const direct = [...new Set(words(read).filter((w) => !STOP.has(w)).map(stem))];
 			if (!direct.length) return { query, total: 0, hits: [] };
 			// [word, weight, the query word it stands for]
 			const weighted: Array<[string, number, number]> = direct.map((w, i) => [w, 1, i]);

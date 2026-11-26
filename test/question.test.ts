@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { harness, mockMsg, type Harness } from "./support/harness.ts";
+import { picked } from "../src/tools.ts";
 
 const owner = { trust: "owner" as const };
 const call = (name: string, args: any) => ({ name, args });
@@ -96,4 +97,16 @@ test("question: words that pick no option are told as the owner's own words, wit
 	await ask(h, { question: "Which way?", options: [{ label: "Left" }, { label: "Right" }] });
 	assert.match(h.toolResults().at(-1)!, /^Your owner answered: Right$/);
 	await h.close();
+});
+
+test("question: an answer that is an option's label is that option, also when the labels are numbers", () => {
+	// "2" is the label of the first option here, not the number of the second.
+	assert.deepEqual(picked("2", [{ label: "2" }, { label: "4" }, { label: "8" }], false), { text: "2", words: false });
+	// Where no label matches, a number still picks by its place, also an option whose label has a comma.
+	assert.deepEqual(picked("1", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "Yes, with tests", words: false });
+	assert.deepEqual(picked("2,1", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "No, Yes, with tests", words: false });
+	// Labels joined by ", " as the page sends them, a comma inside a label included.
+	assert.deepEqual(picked("Yes, with tests, No", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "Yes, with tests, No", words: false });
+	assert.deepEqual(picked("Yes, with tests", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "Yes, with tests", words: false });
+	assert.deepEqual(picked("no, yes, with tests", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "No, Yes, with tests", words: false });
 });

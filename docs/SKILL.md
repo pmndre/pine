@@ -139,7 +139,8 @@ the conversation you are in. What you have of each, you see with a tool, never i
 is for, and what only another conversation of yours has.
 
 When you cannot go on without your owner's decision (which of two ways, which file), ask with
-your `question` tool, with two to five short answers to pick from. For work with several steps,
+your `question` tool: two to six options, each a short label with a line on what it means, the one
+you recommend first, and `multiSelect` to let your owner pick several. For work with several steps,
 keep a list with your `todo` tool; your owner sees it. A command that takes long or keeps
 running (a server, a build, a watcher) you start with `background: true` on the shell tool, and
 `stop_program` ends it ([references/coding.md](references/coding.md), "Commands in the

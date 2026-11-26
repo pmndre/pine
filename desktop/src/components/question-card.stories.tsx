@@ -22,10 +22,11 @@ type Story = StoryObj<typeof meta>;
 /** One answer, from plain labels. */
 export const Single: Story = {};
 
-/** A few words over it, and a line under each option that says what it means. */
+/** A few words over it, a line under each option that says what it means, and the first marked as the one the asker would pick. */
 export const WithDescriptions: Story = {
 	args: {
 		header: "Model",
+		recommended: true,
 		question: "How should your agents run?",
 		options: [
 			{ label: "A subscription", description: "Claude, ChatGPT or Copilot, signed in through your browser" },

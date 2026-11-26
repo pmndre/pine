@@ -109,6 +109,9 @@ test("what answered on this computer is offered; a server that wants a key asks 
 	await sees(`${local} input[type=password][data-setup=key]`);
 	await fill("key", "sk-wrong", "Unlock");
 	await sees(`${local} [data-slot=alert] >> text=/did not accept that key/`);
+	// A wrong key asks for the key again, with what the server said: not for the server's address.
+	await sees(`${local} input[type=password][data-setup=key]`);
+	assert.equal(await page.$(`${local} [data-setup=address]`), null, "no address card");
 	await shot("setup-local-02-key");
 	await fill("key", KEY, "Unlock");
 	await sees("[data-slot=setup-model] >> text=/Your agents run on lmstudio\\/gemma/");
@@ -140,6 +143,13 @@ test("with nothing found, the owner types the address of a server, and it reache
 	await pick("A model on this computer");
 	await sees(`${local} >> text=/found no model server/`);
 	await shot("setup-local-03-nothing");
+	// The address card has no options: the composer says where to type, not to name an option.
+	await page.waitForFunction(
+		() => (document.querySelector("[data-slot=composer] textarea")?.getAttribute("placeholder") ?? "") === "Type the address in the field above",
+		undefined,
+		{ timeout: patient(5_000) },
+	);
+	assert.notEqual(await page.getAttribute("[data-slot=composer] textarea", "placeholder"), "Type an option's name to pick it…");
 	await fill("address", "http://127.0.0.1:1", "Connect");
 	await sees(`${local} [data-slot=alert] >> text=/no model server answers/`);
 	await fill("address", `http://127.0.0.1:${other.port}`, "Connect");

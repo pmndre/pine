@@ -30,7 +30,7 @@ const card = "[data-slot=composer-question] [data-slot=question-card]";
 const question = (text: string) => sees(`${card} [data-slot=question-card-question] >> text=${text}`);
 const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
 const options = () => page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
-const activeTab = () => page.textContent("[data-slot=tab][aria-selected=true]").catch(() => "");
+const activeTab = () => page.$$eval("[data-slot=tab][aria-selected=true]", (els: Element[]) => els[0]?.textContent ?? "");
 const visit = () =>
 	app.evaluate(({ BrowserWindow }: any) => {
 		const p = BrowserWindow.getAllWindows()[0].webContents;
@@ -124,12 +124,14 @@ test("ticking and sending posts the owner's message in setup, the main agent ans
 	assert.match(String(await activeTab()), /Setup Pine/);
 	await page.waitForSelector(card, { state: "detached" });
 	await shot("setup-next-02-sent");
-	// Done for good: after a reload, the steps end with the model, kept or not, and no card Next.
+	// Done for good: after a reload, the steps end with the model, kept, and no card at all: "Keep this
+	// model?" is not asked again once the setup went on from it.
 	await page.reload();
 	await notNow();
 	await sees("[data-slot=sidebar] >> text=Setup Pine");
 	await page.locator("[data-sidebar=menu-button]", { hasText: "Setup Pine" }).click();
-	await question("Keep this model?");
-	await pick("Go on");
-	await page.waitForSelector(card, { state: "detached" });
+	await sees("[data-slot=message-scroller-content] >> text=Help me set up the rest of pine");
+	await sees("[data-slot=setup-model]");
+	assert.equal(await page.$(card), null, "no card once the setup went on");
+	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=Keep this model?");
 });

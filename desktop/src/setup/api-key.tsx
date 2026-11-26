@@ -7,7 +7,7 @@
 import { KeyRoundIcon, TriangleAlertIcon } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Pulse } from "@/components/pulse";
-import { QuestionCard } from "@/components/question-card";
+import { type HostedCard, QuestionCard, useHostedCard } from "@/components/question-card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -93,6 +93,9 @@ async function another(ctx: SetupContext): Promise<void> {
 	picked.start(id, nameOf(id, all));
 }
 
+/** What the composer is told while the key's field is open. */
+const SECRET: HostedCard = { secret: true, placeholder: "Paste the key in the field above, not here" };
+
 /** The key's own card: a secret field, Save, and what the sign-in said when it did not take the key. */
 function KeyCard({ run, name, ctx }: { run: SignInRun; name: string; ctx: SetupContext }) {
 	const [typed, setTyped] = useState("");
@@ -100,6 +103,8 @@ function KeyCard({ run, name, ctx }: { run: SignInRun; name: string; ctx: SetupC
 	const field = useId();
 	const s = run.state;
 	const q = s?.done ? undefined : s?.question;
+	// The key goes into this card's field: what is typed in the composer below is neither shown nor kept.
+	useHostedCard(q?.options?.length ? undefined : SECRET);
 	const cancel = (
 		<Button
 			size="sm"
@@ -137,7 +142,7 @@ function KeyCard({ run, name, ctx }: { run: SignInRun; name: string; ctx: SetupC
 				<ItemDescription className="line-clamp-none">Paste the key you made on the provider's site. pine checks it when your agents first use it.</ItemDescription>
 			</ItemContent>
 			<ItemActions>{cancel}</ItemActions>
-			<ItemFooter className="flex-col items-stretch gap-3">
+			<ItemFooter className="flex-col items-stretch">
 				{error ? (
 					<Alert variant="destructive">
 						<TriangleAlertIcon />
@@ -156,7 +161,6 @@ function KeyCard({ run, name, ctx }: { run: SignInRun; name: string; ctx: SetupC
 							<InputGroupInput
 								id={`${field}-key`}
 								autoFocus
-								className="font-mono"
 								type={q && !q.secret ? "text" : "password"}
 								autoComplete="off"
 								spellCheck={false}
@@ -232,10 +236,9 @@ export const apiKey: SetupBranch = {
 	label: "An API key",
 	description: "A key from a provider such as Anthropic, OpenAI or Google. You pay for what your agents use.",
 	derive: (facts) => {
-		// A provider that is also a subscription (Claude, ChatGPT) is the subscription's to derive: the
-		// page is not told which way it was signed in to.
+		// Signed in with a key (`via`): one signed in to in the browser is the subscription's to derive.
 		const provider = facts.main.model?.split("/")[0] ?? "";
-		const p = facts.providers.find((x) => x.id === provider && x.signedIn);
+		const p = facts.providers.find((x) => x.id === provider && x.signedIn && x.via !== "oauth");
 		if (!p || facts.servers.some((s) => s.name === provider)) return undefined;
 		const name = nameOf(provider, facts.providers);
 		return [{ question: WHICH, answer: name }, savedLine(name)];

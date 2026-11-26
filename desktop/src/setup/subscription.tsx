@@ -106,7 +106,7 @@ export const subscription: SetupBranch = {
 	derive: (facts) => {
 		const provider = facts.main.model?.split("/")[0] ?? "";
 		const sub = SUBSCRIPTIONS[provider];
-		if (!sub || !facts.providers.some((p) => p.id === provider && p.signedIn)) return undefined;
+		if (!sub || !facts.providers.some((p) => p.id === provider && p.via === "oauth")) return undefined;
 		return [{ question: WHICH, answer: sub.title }];
 	},
 	Card,

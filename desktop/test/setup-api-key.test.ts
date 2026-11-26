@@ -92,3 +92,15 @@ test("a key typed in the card reaches a model, and the conversation says only th
 	// Where it went: pi's credentials in pine's home.
 	assert.ok(fs.readFileSync(path.join(home, "auth.json"), "utf8").includes(KEY), "the key is stored in auth.json");
 });
+
+test("after a reload, a key folds as the API key it is, not as a subscription of the same provider", async () => {
+	await page.reload();
+	await sees("[data-slot=setup-model] >> text=/Your agents run on anthropic\\//");
+	const answers = "[data-slot=message-scroller-content] [data-item=setup-answer]";
+	await sees(`${answers} >> text=An API key`);
+	await sees(`${answers} >> text=Key saved for Anthropic`);
+	const lines = await page.$$eval(answers, (els: Element[]) => els.map((e) => e.textContent ?? ""));
+	assert.ok(!lines.some((l) => /A subscription/.test(l)), `no subscription is said: ${lines.join(" | ")}`);
+	const anthropic = ((await api("GET", "/models/providers")) as any[]).find((p) => p.id === "anthropic");
+	assert.equal(anthropic.via, "api_key");
+});

@@ -20,7 +20,7 @@ const call = (name: string, args: any) => ({ name, args });
 /** Enough of the Telegram Bot API for the source: who the bot is, long polling, sending, buttons, a photo. */
 async function fakeTelegram() {
 	const queue: any[] = [];
-	const calls: Array<{ method: string; body: any }> = [];
+	const calls: Array<{ method: string; body: any; id?: number }> = [];
 	let updateId = 100;
 	let messageId = 500;
 	// As Telegram does: what was fetched once with a later offset is gone, also for a client that starts from nothing.
@@ -47,7 +47,9 @@ async function fakeTelegram() {
 		calls.push({ method: m[2], body });
 		// As Telegram does with HTML it cannot read: refused, and nothing is sent.
 		if (body.parse_mode === "HTML" && /UNREADABLE/.test(body.text ?? body.caption ?? "")) return reply("Bad Request: can't parse entities: unsupported start tag", false);
-		return reply(m[2] === "sendMessage" ? { message_id: messageId++ } : true);
+		if (m[2] !== "sendMessage") return reply(true);
+		calls.at(-1)!.id = messageId++;
+		return reply({ message_id: calls.at(-1)!.id });
 	});
 	await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
 	const from = (id: number) => ({ id, first_name: id === 1001 ? "Alex" : "Mallory", username: id === 1001 ? "alex" : "mallory" });
@@ -363,6 +365,21 @@ test("telegram: a question with one answer has a button for each option; one wit
 	await run;
 	assert.equal(h.toolResults().at(-1), "Your owner answered: The mode, Telegram");
 	assert.ok(tg.calls.some((c) => c.method === "editMessageReplyMarkup" && /Answered \(telegram:1001\)/.test(JSON.stringify(c.body))));
+
+	// While one waits, a message that is not a reply to it and not its numbers is a message, not the answer.
+	const third = tg.sent().length;
+	run = ask(true);
+	await until(() => tg.sent().slice(third).some((m) => /What shall we set up\?/.test(m.text)), 5000, "the third question");
+	const question = tg.calls.filter((c) => c.method === "sendMessage").slice(third).find((c) => /What shall we set up\?/.test(c.body.text))!;
+	assert.match(question.body.text, /reply to this message with their numbers, such as 1,3, or your own words/);
+	const events = () => h.pine.tasks.list({}).filter((x) => x.kind === "event" && /is it raining\?/.test(x.prompt)).length;
+	tg.message(1001, "is it raining?");
+	await until(() => events() === 1, 5000, "the message to arrive as a message");
+	assert.equal(h.pine.approvals.pending().length, 1, "the question still waits");
+	// A reply to the question answers it, in the owner's own words too.
+	tg.message(1001, "only the mode", { reply_to_message: { message_id: question.id } });
+	await run;
+	assert.match(h.toolResults().at(-1)!, /^Your owner answered in their own words: only the mode\n/);
 	await h.close();
 });
 

@@ -33,6 +33,7 @@ at an address of their choosing.
 | Disconnect | Disconnect lets go of the machine in use and goes back to the list of machines. The machine and its trusted host key stay, unlike Forget, and Use connects to it again. It is in the machines menu of the title bar, on the line of the machine in use in Settings > Environments, and on the start screen |
 | Forget a machine | Forget on its line. Its trusted host key goes with it |
 | What is remembered | In this browser only: its key, your machines, their trusted host keys, the one in use, and the page's own preferences (theme, the side panel's widths, what is folded). Clearing the site's data in the browser forgets all of it, the key included: add the new key to the server again |
+| A pine with no model | Opens **Setup Pine**, as the desktop app does ([desktop.md](desktop.md#setup-pine-getting-started)). Its **A model on the computer pine runs on** looks for model servers on the machine pine runs on, not on the computer in front of you |
 | Pictures, video and sound | Shown and played as in the desktop app |
 | Links in answers | Open in a new tab of the browser, with their address shown beside them. The page itself never goes anywhere |
 | A dropped connection | The network, a Wi-Fi change or a new deployment of the relay: the client connects again by itself, waiting a little longer each time, and the conversation goes on where it was. It tries at once when the network comes back or the tab is shown again |

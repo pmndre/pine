@@ -1284,6 +1284,7 @@ export class Store extends Model {
 		// The model was lost (signed out, a server removed): the setup conversation comes again, to connect one;
 		// behind the settings, where the owner may be setting it up already.
 		if (had && !this.hasModel && this.opened) void this.openSetup(this.active?.kind !== "settings");
+		if (this.hasModel) this.endNoModelNotice();
 		for (const a of list) learnHome(a.workspace);
 		// The pine had no agents when the page was loaded and has one now: the page is loaded, not left on that screen.
 		if (!this.opened && this.loadError === NO_AGENTS && list.length) {
@@ -1526,6 +1527,37 @@ export class Store extends Model {
 		this.pins.add(key);
 		this.touch();
 		await api.pinSession(main.id, SETUP, true).catch(() => {});
+	}
+
+	/** The toast that says the main agent has no model that answers: its id while shown, `closed` once the owner closed it. */
+	private noModel: { id?: string; closed?: boolean } = {};
+
+	/**
+	 * Say once, in a toast that stays (the stock Toaster, no timeout), that the main agent has no model
+	 * that answers, with the way to the setup conversation. Shown from `main`'s welcome card; gone when
+	 * a model answers, and not shown again for this page once the owner closed it.
+	 */
+	noModelNotice(text: { title: string; description: string }): void {
+		if (this.hasModel || this.noModel.id || this.noModel.closed) return;
+		const shown: { id?: string; closed?: boolean } = {};
+		this.noModel = shown;
+		shown.id = toast.add({
+			...text,
+			type: "warning",
+			timeout: 0,
+			actionProps: { children: "Set up a model…", onClick: () => void this.openSetup() },
+			onClose: () => {
+				// Closed by the owner, not because a model answers.
+				if (shown.id) shown.closed = true;
+				shown.id = undefined;
+			},
+		});
+	}
+
+	private endNoModelNotice(): void {
+		const id = this.noModel.id;
+		this.noModel = {};
+		if (id) toast.close(id);
 	}
 
 	/** Whether the main agent has a model that answers, as the daemon says it (`modelProblem`). */
@@ -2255,7 +2287,7 @@ export class Store extends Model {
 		if (fresh) this.endWork(tab);
 		tab.approvals.set(req.id, tab.add({ t: "approval", req, state: "open" }));
 		if (tab !== this.active) tab.unread = true;
-		if (fresh) this.attention("Pine", req.tool === "question" ? `${tab.agent} has a question for you` : `${tab.agent} needs your approval`, tab);
+		if (fresh) this.attention("Pine", isPick(req) ? `${tab.agent} has a question for you` : `${tab.agent} needs your approval`, tab);
 		tab.touch();
 		this.touch();
 		this.badge();
@@ -2900,24 +2932,64 @@ export class Store extends Model {
 
 	// ---- approvals and questions -------------------------------------------------------------------
 
-	async decide(id: string, allow: boolean, always = false, values?: Record<string, string>): Promise<void> {
+	/** True when the daemon took the decision; `quiet` says nothing when it did not (the caller does). */
+	async decide(id: string, allow: boolean, always = false, values?: Record<string, string>, quiet = false): Promise<boolean> {
 		const r = await this.attempt(() => api.decide(id, allow, always, values));
-		if (r && !r.decided) this.flash("That request was already answered.");
+		if (r && !r.decided && !quiet) this.flash("That request was already answered.");
+		return Boolean(r?.decided);
 	}
 
-	/** The question of a conversation whose card is shown above its composer: the first that is open and not put off. */
+	/**
+	 * Whether a question or an approval is this tab's own: asked in its conversation. A tab may hold one
+	 * of another conversation of the agent's, or of another agent's, when that has no tab (`holderFor`):
+	 * it is said in the line under the conversation then, never answered from this one.
+	 */
+	ownAsk(tab: Tab, req: Approval): boolean {
+		return tab.kind === "chat" && req.agent === tab.agent && (req.root === undefined || tab.roots.has(req.root));
+	}
+
+	/** The question of a conversation whose card is shown above its composer: the first of its own that is open and not put off. */
 	openQuestion(tab: Tab): Of<"approval"> | undefined {
-		return [...tab.approvals.values()].find((a) => isPick(a.req) && !this.later.has(a.req.id));
+		return [...tab.approvals.values()].find((a) => isPick(a.req) && !this.later.has(a.req.id) && this.ownAsk(tab, a.req));
+	}
+
+	/** "Setup Pine": the main agent's conversation `setup`. */
+	isSetup(tab: Tab): boolean {
+		return tab.kind === "chat" && tab.session === SETUP && Boolean(this.agent(tab.agent)?.main);
+	}
+
+	/**
+	 * Which card stands above a conversation's composer: its own open question first, else pine's own
+	 * step in "Setup Pine". The one place that decides it.
+	 */
+	cardAbove(tab: Tab): "question" | "setup" | undefined {
+		if (tab.kind !== "chat") return undefined;
+		if (this.openQuestion(tab)) return "question";
+		return this.isSetup(tab) ? "setup" : undefined;
+	}
+
+	/** Go to the conversation a question was asked in: its tab, or the conversation opened, which takes the question over (`rehome`). */
+	async goToAsk(req: Approval): Promise<void> {
+		const own = this.tabs.find((t) => this.ownAsk(t, req) && t.approvals.has(req.id)) ?? this.tabs.find((t) => this.ownAsk(t, req) && req.root !== undefined);
+		if (own) return this.activate(own);
+		const task = req.root !== undefined ? await this.attempt(() => api.taskRecord(req.root!)) : undefined;
+		if (task?.session) await this.openTab(req.agent, task.session);
 	}
 
 	/**
 	 * Answer the open question with what the owner typed in the composer: it shows as their message,
-	 * and the agent is told it as their own words (which may answer the question, or ask back).
+	 * and the agent is told it as their own words (which may answer the question, or ask back). When the
+	 * question was answered meanwhile elsewhere, the words are not lost: they go as an ordinary message.
 	 */
-	async answerInWords(item: Of<"approval">, text: string): Promise<void> {
+	async answerInWords(tab: Tab, item: Of<"approval">, text: string): Promise<void> {
+		tab.draft = "";
+		tab.touch();
+		const taken = await this.decide(item.req.id, true, false, { answer: text }, true);
+		if (!taken) return this.submit(tab, text);
 		item.answer = text;
-		this.tabs.find((t) => t.approvals.has(item.req.id))?.add({ t: "user", text });
-		await this.decide(item.req.id, true, false, { answer: text });
+		tab.inputs.push(text);
+		tab.add({ t: "user", text });
+		tab.touch();
 	}
 
 	/** Put a question off: its card goes, and the line under the conversation brings it back. */

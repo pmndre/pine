@@ -13,13 +13,13 @@ import { Kbd } from "@/components/ui/kbd";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { QuoteChip, QuoteReply } from "@/components/quote-chip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import type { ComposerCardSlot } from "@/components/question-card";
 import { useMediaQuery } from "usehooks-ts";
 import { api } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { COMMANDS, runSlash } from "./commands.ts";
 import { type Attachment, REASONING_ABOUT, store, type Tab, useModel, useSignal } from "./model.ts";
-import { setup } from "./setup/engine.tsx";
 import { baseName, MODES, shortcut, size, tilde } from "./text.ts";
 
 const MAX_FILE = 20 * 1024 * 1024;
@@ -30,6 +30,9 @@ const MAX_FILES = 10;
  * press says in a sentence what to install, and nothing is started.
  */
 const DICTATES = ["darwin", "win32", "linux"];
+/** For a composer with no card host (a story). */
+const noSubscribe = () => () => {};
+const noLooks = () => "";
 
 const toBase64 = (buf: ArrayBuffer) => {
 	const bytes = new Uint8Array(buf);
@@ -64,7 +67,8 @@ interface Suggestion {
 /** A key event that went through Base UI: `preventBaseUIHandler` keeps the combobox's own handling out of it. */
 type ListKeyEvent = React.KeyboardEvent<HTMLTextAreaElement> & { preventBaseUIHandler: () => void };
 
-export function Composer({ tab }: { tab: Tab }) {
+/** `host`: what the card above the composer says (`HostedCard`): whether it takes what is typed, and how. */
+export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 	useModel(tab);
 	useModel(store);
 	const area = useRef<HTMLTextAreaElement>(null);
@@ -207,33 +211,30 @@ export function Composer({ tab }: { tab: Tab }) {
 		});
 	};
 
-	// A sign-in's choice is answered by its options alone: words of the owner's would mean nothing to its flow.
-	const open = store.openQuestion(tab);
-	const asked = open?.req.tool === "question" ? open : undefined;
+	// The card above, as it says itself (`HostedCard`): drawn again only when what the composer shows of it changes.
+	useSyncExternalStore(host?.subscribe ?? noSubscribe, host?.looks ?? noLooks);
+	const card = host?.card;
 	const send = async (whenBusy: "steer" | "queue") => {
 		const value = text.trim();
 		const command = value.startsWith("/") && !value.startsWith("//");
 		if (!value && !tab.quotes.length) return;
 		recall.current = -1;
 		close();
+		const above = host?.card;
+		// A card with a secret field above: what was typed here may be that secret. It is neither shown, nor
+		// kept for the arrows, nor sent.
+		if (above?.secret && value) {
+			set("");
+			return store.flash("Paste the key in the field of the card above: what is typed here is not kept.", "warn", 7000);
+		}
 		if (command) {
 			tab.inputs.push(value);
 			set("");
 			return runSlash(value.slice(1), tab);
 		}
-		// While a question is open, what is typed answers it, in the owner's own words: it does not wait
-		// behind the work the question holds up. Its card has no field of its own.
-		if (asked && value) {
-			tab.inputs.push(value);
-			set("");
-			return store.answerInWords(asked, value);
-		}
-		// In "Setup Pine" before any model answers, what is typed answers pine's own card, and is never sent.
-		if (value && setup.type(tab, value)) {
-			tab.inputs.push(value);
-			set("");
-			return;
-		}
+		// The card above takes what is typed (an agent's question, in the owner's own words; pine's own
+		// step in "Setup Pine" before a model answers): it does not wait behind the work, and is the card's.
+		if (value && above?.type?.(value)) return set("");
 		await store.submit(tab, value, whenBusy);
 	};
 
@@ -327,7 +328,7 @@ export function Composer({ tab }: { tab: Tab }) {
 	return (
 		<>
 			{goal && goal.status !== "active" ? (
-				<Alert className="mb-2">
+				<Alert>
 					<ClockIcon />
 					<AlertTitle>Goal {goal.status === "paused" ? "paused" : goal.status === "blocked" ? "waits for you" : "limit reached"}</AlertTitle>
 					<AlertDescription className="truncate">{goal.note}</AlertDescription>
@@ -338,7 +339,7 @@ export function Composer({ tab }: { tab: Tab }) {
 				</Alert>
 			) : null}
 			{swarm ? (
-				<Alert className="mb-2">
+				<Alert>
 					<ClockIcon />
 					<AlertTitle>Swarm {swarm.status === "paused" ? "paused" : "limit reached"}</AlertTitle>
 					<AlertDescription className="truncate">{swarm.note}</AlertDescription>
@@ -349,7 +350,7 @@ export function Composer({ tab }: { tab: Tab }) {
 				</Alert>
 			) : null}
 			{voice !== "off" ? (
-				<Alert className="mb-2">
+				<Alert>
 					<MicIcon />
 					<AlertTitle>{voice === "starting" ? "getting ready to listen…" : "listening"}</AlertTitle>
 					<AlertDescription>{voice === "starting" ? "" : "speak · ↩ when you are done · esc to throw it away"}{voiceNote ? ` · ${voiceNote}` : ""}</AlertDescription>
@@ -443,7 +444,7 @@ export function Composer({ tab }: { tab: Tab }) {
 						<ComboboxPrimitive.Input
 							ref={area as unknown as React.Ref<HTMLInputElement>}
 							render={<InputGroupTextarea rows={1} className="max-h-48 p-3 leading-snug" />}
-							placeholder={asked ? `Answer ${asked.req.agent}'s question in your own words…` : tab.busy ? `Say something to ${tab.agent} while it works…` : `Message ${tab.agent} · / for commands · @ for files`}
+							placeholder={card?.placeholder && (card.type || card.secret) ? card.placeholder : tab.busy ? `Say something to ${tab.agent} while it works…` : `Message ${tab.agent} · / for commands · @ for files`}
 							onChange={(e) => {
 								// A key that types ends the listening: what was heard stays, and nothing more is put into the input.
 								if (voice !== "off") endVoice(true);
@@ -584,7 +585,7 @@ export function Composer({ tab }: { tab: Tab }) {
 				</InputGroup>
 			</div>
 			<input ref={picker} type="file" multiple hidden onChange={(e) => (void attach(tab, [...(e.target.files ?? [])]), (e.target.value = ""))} />
-			{tab.folder && !tab.items.length ? <div className="px-1 pt-1.5 text-faint text-xs">{tab.agent}'s tools start in {tilde(tab.folder)} and may read and change what is in it.</div> : null}
+			{tab.folder && !tab.items.length ? <div className="px-1 text-faint text-xs">{tab.agent}'s tools start in {tilde(tab.folder)} and may read and change what is in it.</div> : null}
 		</>
 	);
 }

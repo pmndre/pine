@@ -8,14 +8,14 @@
 // (`Setup.type`), and nothing is sent: there is nobody to send it to.
 import { CpuIcon } from "lucide-react";
 import { Fragment, useEffect } from "react";
-import { COMPOSER_QUESTION, QuestionCard, QuestionCardHost, QuestionTrace, type ShownQuestionCard } from "@/components/question-card";
+import { COMPOSER_QUESTION, type HostedCard, QuestionCard, QuestionCardHost, type QuestionCardHostValue, QuestionTrace, useHostedCard } from "@/components/question-card";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent } from "@/components/ui/message";
 import type { ModelServer, Provider } from "../api.ts";
 import { api } from "../api.ts";
-import { Model, SETUP, store, type Tab, useModel } from "../model.ts";
+import { Model, store, type Tab, useModel } from "../model.ts";
 import { AFTER, BRANCHES } from "./branches.ts";
 import type { SetupAnswer, SetupContext, SetupFacts } from "./types.ts";
 
@@ -41,29 +41,59 @@ class Setup extends Model {
 	finished = new Set<string>();
 	/** What the owner typed that named no option, each after the answers given before it. Kept as `answers` are. */
 	typed: Array<{ text: string; after: number }> = [];
-	/** The card on screen above the composer, whichever step drew it: what typed text is matched against. */
-	shown?: ShownQuestionCard;
+	/** The card a step drew above the composer, as it registered with the steps' host: what typed text is matched against. */
+	shown?: HostedCard;
 
-	show = (card: ShownQuestionCard): (() => void) => {
-		this.shown = card;
-		return () => {
-			if (this.shown === card) this.shown = undefined;
-		};
+	/**
+	 * The host the steps' cards register with, between them and the conversation's: it keeps the card
+	 * for `type`, and draws the steps again only when what the composer takes from it changes: whether it
+	 * holds a secret, and what the composer says under it.
+	 */
+	host: QuestionCardHostValue = {
+		register: (card) => {
+			this.shown = card;
+			this.looksChanged();
+			return () => {
+				if (this.shown !== card) return;
+				this.shown = undefined;
+				this.looksChanged();
+			};
+		},
 	};
+
+	/** Whether the card on screen holds a secret, as the steps were last drawn with it. */
+	secret = false;
+	/** What the card on screen asks the composer to say, as the steps were last drawn with it. */
+	placeholder?: string;
+	/** Whether the card on screen has options that typed text can name, as the steps were last drawn with it. */
+	pickable = false;
+
+	// Looked at once the effects have run: a card drawn again goes and comes back in one go, which changes nothing.
+	private looksChanged(): void {
+		queueMicrotask(() => {
+			const secret = Boolean(this.shown?.secret);
+			const placeholder = this.shown?.placeholder;
+			const pickable = Boolean(this.shown?.answer && this.shown.options?.length);
+			if (secret === this.secret && placeholder === this.placeholder && pickable === this.pickable) return;
+			this.secret = secret;
+			this.placeholder = placeholder;
+			this.pickable = pickable;
+			this.touch();
+		});
+	}
 
 	/**
 	 * What the owner typed in the composer of "Setup Pine" while no model answers: it picks the option
-	 * of the card on screen that it names, or gets pine's one line. Nothing is sent. False when a model
-	 * answers, or the tab is another conversation: the composer sends it as it would anywhere.
+	 * of the card on screen that it names, or gets pine's one line. Nothing is sent: there is nobody to
+	 * send it to. Offered to the composer only while no model answers (`SetupCard`).
 	 */
 	type(tab: Tab, text: string): boolean {
-		if (tab.kind !== "chat" || tab.session !== SETUP) return false;
-		const main = this.facts()?.main;
-		if (!main || main.id !== tab.agent || !main.modelProblem) return false;
+		tab.inputs.push(text.trim());
 		const card = this.shown;
-		const labels = card?.options.map((o) => plain(o.label)) ?? [];
+		// A card without options (an address, a number) is answered in its own field: typed text names nothing there.
+		const labels = card?.options?.map((o) => plain(o.label)) ?? [];
 		const named = (card?.multiple ? text.split(",") : [text]).map((part) => labels.indexOf(plain(part)) + 1);
-		if (card && named.every((n) => n > 0)) {
+		if (card?.answer && labels.length > 0 && named.every((n) => n > 0)) {
 			card.answer([...new Set(named)].sort((a, b) => a - b));
 			return true;
 		}
@@ -111,6 +141,15 @@ class Setup extends Model {
 
 export const setup = new Setup();
 
+/**
+ * Whether the model the agents run on was kept ("Keep this model?"): answered on this page, or
+ * derived, so that it is not asked again on every reload once the setup went on from there (the steps
+ * after it are done, or something was said in "Setup Pine").
+ */
+function keptNow(facts: SetupFacts, tab: Tab): boolean {
+	return setup.kept || tab.items.length > 0 || AFTER.every((s) => setup.finished.has(s.id) || s.done(facts));
+}
+
 /** The answers that led to the model the agents run on: given here, or derived from the daemon's state after a reload. */
 function answersNow(facts: SetupFacts): SetupAnswer[] {
 	if (setup.answers.length || facts.main.modelProblem) return setup.answers;
@@ -144,7 +183,7 @@ function Typed({ after }: { after: number }) {
 }
 
 /** pine's own lines at the top of "Setup Pine": its welcome, what was answered, and the model the agents run on once there is one. */
-export function SetupScript() {
+export function SetupScript({ tab }: { tab: Tab }) {
 	useModel(setup);
 	useModel(store);
 	const facts = setup.facts();
@@ -180,7 +219,7 @@ export function SetupScript() {
 					</Marker>
 				</div>
 			)}
-			{!problem && setup.kept ? <QuestionTrace data-item="setup-answer" question={KEEP} answer="Go on" answered by="you" /> : null}
+			{!problem && keptNow(facts, tab) ? <QuestionTrace data-item="setup-answer" question={KEEP} answer="Go on" answered by="you" /> : null}
 		</div>
 	);
 }
@@ -200,6 +239,15 @@ export function SetupCard({ tab }: { tab: Tab }) {
 			setup.touch();
 		}
 	}, [problem]);
+	// What the composer is told: before a model, typed text answers the card on screen (or gets pine's line);
+	// a card with a secret field keeps what is typed below from being shown or kept, model or not.
+	useHostedCard(
+		setup.secret
+			? { secret: true, placeholder: setup.placeholder }
+			: facts && problem
+				? { type: (text) => setup.type(tab, text), placeholder: setup.placeholder ?? (setup.pickable ? "Type an option's name to pick it…" : undefined) }
+				: undefined,
+	);
 	if (!facts) return null;
 	const ctx = setup.context(facts);
 	// The card takes the keyboard as it comes only when nothing is being typed in the composer.
@@ -212,6 +260,7 @@ export function SetupCard({ tab }: { tab: Tab }) {
 			<QuestionCard
 				key="first"
 				question={FIRST}
+				recommended
 				header="Model"
 				from="pine asks"
 				options={BRANCHES.map((b) => ({ label: b.label, description: b.description }))}
@@ -224,7 +273,7 @@ export function SetupCard({ tab }: { tab: Tab }) {
 				}}
 			/>
 		);
-	} else if (!setup.kept) {
+	} else if (!keptNow(facts, tab)) {
 		card = (
 			<QuestionCard
 				key="keep"
@@ -258,8 +307,8 @@ export function SetupCard({ tab }: { tab: Tab }) {
 	}
 	return (
 		<ScrollArea data-slot="composer-question" className={COMPOSER_QUESTION}>
-			{/* Whichever step drew the card, what the owner types is matched against it (`setup.type`). */}
-			<QuestionCardHost.Provider value={setup.show}>{card}</QuestionCardHost.Provider>
+			{/* Whichever step drew the card, what the owner types is matched against it (`setup.type`) while no model answers. */}
+			<QuestionCardHost.Provider value={setup.host}>{card}</QuestionCardHost.Provider>
 		</ScrollArea>
 	);
 }

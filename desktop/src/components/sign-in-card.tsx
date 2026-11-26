@@ -64,7 +64,7 @@ export function SignInCard({ provider, url, code, question, error, onOpen, onCop
 				</ItemDescription>
 			</ItemContent>
 			<ItemActions>{cancel}</ItemActions>
-			<ItemFooter className="flex-col items-stretch gap-3">
+			<ItemFooter className="flex-col items-stretch">
 				{error ? (
 					<Alert variant="destructive">
 						<TriangleAlertIcon />
@@ -73,7 +73,7 @@ export function SignInCard({ provider, url, code, question, error, onOpen, onCop
 				) : null}
 				{code ? (
 					<InputGroup>
-						<InputGroupInput data-sign-in="code" readOnly aria-label="The code to enter" className="font-mono" value={code} />
+						<InputGroupInput data-sign-in="code" readOnly aria-label="The code to enter" value={code} />
 						<InputGroupAddon align="inline-end">
 							<InputGroupButton onClick={() => (onCopy(code), setCopied(true))}>
 								{copied ? <CheckIcon data-icon="inline-start" /> : <CopyIcon data-icon="inline-start" />}
@@ -86,7 +86,7 @@ export function SignInCard({ provider, url, code, question, error, onOpen, onCop
 					<Field>
 						<FieldLabel htmlFor={`${field}-answer`}>{question.message}</FieldLabel>
 						<InputGroup>
-							<InputGroupInput id={`${field}-answer`} autoFocus className="font-mono" type={question.secret ? "password" : "text"} autoComplete="off" spellCheck={false} value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
+							<InputGroupInput id={`${field}-answer`} autoFocus type={question.secret ? "password" : "text"} autoComplete="off" spellCheck={false} value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} />
 							<InputGroupAddon align="inline-end">
 								<InputGroupButton variant="default" disabled={!typed.trim()} onClick={send}>Continue</InputGroupButton>
 							</InputGroupAddon>

@@ -1021,6 +1021,77 @@ test("a message typed while a question is open answers it in the owner's own wor
 	assert.equal(mock.state.requests.filter((q: any) => JSON.stringify(q.body.messages).includes("what is the difference?") && q.body.messages.at(-1)?.role === "user" && JSON.stringify(q.body.messages.at(-1)).includes("what is the difference?")).length, 0);
 });
 
+test("a question of another conversation is never answered from this one: no card here, the line says it waits elsewhere, and Go there opens it", async () => {
+	const card = "[data-slot=composer-question] [data-slot=question-card]";
+	const field = "[data-slot=composer] textarea";
+	await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=main");
+	// Asked in a conversation of main's that has no tab: this window shows it in a tab of main's (`holderFor`).
+	const ask = { tools: [{ name: "question", args: { question: "Which room?", options: [{ label: "kitchen" }, { label: "hall" }] } }] };
+	const started = await api("POST", "/agents/main/prompt", { prompt: mockMsg([ask, { text: "room chosen" }], "ask from elsewhere "), session: "elsewhere-q", wait: false });
+	assert.ok(started.ok, JSON.stringify(started));
+	const waits = page.locator("[data-slot=marker]", { hasText: /another conversation waits for you/ });
+	await waits.waitFor({ timeout: 20_000 });
+	assert.equal(await page.$(card), null, "no card for another conversation's question");
+	assert.doesNotMatch((await page.getAttribute(field, "placeholder")) ?? "", /answer/i);
+	// What is typed here is a message of this conversation, and the question stays open.
+	await page.fill(field, "just a message here");
+	await page.keyboard.press("Enter");
+	await sees('[data-item="user"] >> text=just a message here');
+	await sees("[data-slot=markdown] >> text=just a message here");
+	const open = (await api("GET", "/approvals")).data as any[];
+	assert.ok(open.some((a) => a.summary.includes("Which room?")), "the question is still open");
+	// Go there opens its conversation, where the card is, and it is answered there.
+	await waits.waitFor();
+	await waits.getByRole("button", { name: "Go there" }).click();
+	await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=elsewhere-q");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which room?"), card, { timeout: 10_000 });
+	await page.locator(card).getByRole("radio", { name: /hall/ }).click();
+	await sees("[data-slot=markdown] >> text=room chosen");
+	await page.click("[data-slot=tab][data-active] button[aria-label='Close this tab']");
+	await sees("[data-slot=tab][data-active] [data-slot=tab-name] >> text=main");
+});
+
+test("words typed for a question that was answered meanwhile elsewhere are not lost: they go as an ordinary message", async () => {
+	const card = "[data-slot=composer-question] [data-slot=question-card]";
+	const field = "[data-slot=composer] textarea";
+	const ask = { tools: [{ name: "question", args: { question: "Which tea?", options: [{ label: "green" }, { label: "black" }] } }] };
+	await page.fill(field, mockMsg([ask, { text: "tea chosen" }], "pick a tea "));
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which tea?"), card, { timeout: 10_000 });
+	// Answered on another device the moment before the owner's words reach the daemon.
+	await app.evaluate(({ ipcMain }: any) => {
+		const g = globalThis as any;
+		const call = ipcMain._invokeHandlers.get("pine:call");
+		ipcMain.removeHandler("pine:call");
+		ipcMain.handle("pine:call", async (e: unknown, method: string, url: string, body?: any) => {
+			if (method === "POST" && /^\/approvals\//.test(url) && body?.values?.answer) await call(e, method, url, { allow: true, always: false, values: { answer: "green" } });
+			return call(e, method, url, body);
+		});
+		g.unrace = () => {
+			ipcMain.removeHandler("pine:call");
+			ipcMain.handle("pine:call", call);
+		};
+	});
+	try {
+		await page.click(field);
+		await page.keyboard.type("oolong, please");
+		await page.keyboard.press("Enter");
+		await sees("[data-slot=markdown] >> text=tea chosen");
+		// The words went as a message of their own, which the agent answered (the scripted model echoes it).
+		let asked: any[] = [];
+		for (let i = 0; i < 100 && !asked.some((t) => t.prompt === "oolong, please"); i++) {
+			asked = (await api("GET", "/tasks?agent=main&session=main&limit=5")).data as any[];
+			await new Promise((r) => setTimeout(r, 100));
+		}
+		assert.ok(asked.some((t) => t.prompt === "oolong, please"), `sent as a message: ${JSON.stringify(asked.map((t) => t.prompt))}`);
+		await sees("[data-slot=markdown] >> text=oolong, please");
+		const bubbles = await page.$$eval('[data-item="user"]', (els: Element[]) => els.filter((e) => e.textContent?.includes("oolong, please")).length);
+		assert.equal(bubbles, 1, "shown once, as the owner's message");
+	} finally {
+		await app.evaluate(() => (globalThis as any).unrace());
+	}
+});
+
 test("in a short pane a question card keeps the composer in view and typable: its options scroll inside it, and the thread above still has room", async () => {
 	const long = "A line that says at length what this option means, so that three of them take more room than a short pane has to give.";
 	const ask = { tools: [{ name: "question", args: { question: "Which plan?", options: [{ label: "small", description: long }, { label: "medium", description: long }, { label: "large", description: long }] } }] };
@@ -1082,6 +1153,11 @@ test("in a short pane a question card keeps the composer in view and typable: it
 
 test("a sign-in's choices are a question card answered by a pick; what it then asks to be typed opens the approval dialog", async () => {
 	// Amazon Bedrock's sign-in in pi asks first how to sign in (a select), then for a token (a secret).
+	// The window is behind another app: what is asked is told in a notification.
+	const focus = (on: boolean) => app.evaluate(({ BrowserWindow }: any, on: boolean) => BrowserWindow.getAllWindows()[0].webContents.send("pine:focus", on), on);
+	const notified = () => app.evaluate(() => (globalThis as any).quiet.notified.map((n: any) => n.body) as string[]);
+	const had = (await notified()).length;
+	await focus(false);
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "sign_in", args: { provider: "amazon-bedrock", way: "key" } }] }, { text: "sign-in ended" }], "sign in to bedrock "));
 	await page.keyboard.press("Enter");
 	// The sign-in itself is put to the owner first, in the approval dialog as before.
@@ -1093,6 +1169,12 @@ test("a sign-in's choices are a question card answered by a pick; what it then a
 	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Bedrock authentication method"), card, { timeout: 10_000 });
 	assert.equal(await page.locator(dialog).count(), 0, "no dialog opens for a sign-in's choice");
 	assert.match(await page.textContent(card), /Bearer token[\s\S]*AWS profile[\s\S]*Existing AWS credential chain/);
+	// The flow's options are what it offers, not a recommendation of the agent's.
+	assert.equal(await page.locator(card).getByText("recommended").count(), 0, "no option of a sign-in is marked recommended");
+	// The choice is told as a question, the sign-in itself as an approval.
+	const told = (await notified()).slice(had);
+	assert.ok(told.includes("main has a question for you"), `told: ${JSON.stringify(told)}`);
+	await focus(true);
 	assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0, "the open choice is not drawn in the conversation as well");
 	await shot("03-sign-in-choice");
 	// A click answers it, and the card folds into a line that says what was picked.
@@ -1459,11 +1541,14 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await page.locator("[role=alertdialog]").getByRole("button", { name: "Sign out" }).click();
 	await sees("[data-slot=settings-page] [data-slot=model-notice] >> text=/main cannot answer: .* needs a sign-in to opencode/");
 	await page.click("[data-slot=tab]:has-text('pine-desktop-folder')");
-	await sees("[data-slot=empty] [data-slot=model-notice] >> text=/needs a sign-in to opencode/");
+	// The main agent's card says it in a toast that stays, not on the card.
+	const noModel = page.locator("[data-slot=toast]", { hasText: "Connect a model first" });
+	await noModel.waitFor({ timeout: 20_000 });
+	assert.equal(await page.$("[data-slot=empty] [data-slot=model-notice]"), null);
 	await shot("09-no-model");
-	// The notice leads to the one way to connect a model, the setup conversation ("Setup Pine", which
+	// The toast leads to the one way to connect a model, the setup conversation ("Setup Pine", which
 	// came in front by itself too when the model was lost); back to Settings from there.
-	await page.locator("[data-slot=empty] [data-slot=model-notice]").getByRole("button", { name: "Set up a model" }).click();
+	await noModel.getByRole("button", { name: "Set up a model…" }).click();
 	await sees("[data-slot=conversation-head] >> text=Setup Pine");
 	await sees("[data-slot=composer-question] [data-slot=question-card-question] >> text=How should your agents run?");
 	await menu("close");
@@ -1476,6 +1561,8 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await page.getByRole("option", { name: "mock/m" }).click();
 	await sees("[data-slot=toast] >> text=Your agents now run on mock/m");
 	await page.waitForSelector("[data-slot=settings-page] [data-slot=model-notice]", { state: "detached" });
+	// A model answers again: the toast is gone by itself.
+	await noModel.waitFor({ state: "detached", timeout: 10_000 });
 	assert.equal(JSON.parse(fs.readFileSync(path.join(home, "pine.json"), "utf8")).defaults.model, "mock/m");
 	// MCP servers: a remote one is added, pine says whether it connects, and "Sign in" runs pi's own
 	// sign-in for it (which for a server that wants none says so; a browser opens only where one is needed).

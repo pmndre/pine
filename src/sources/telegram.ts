@@ -330,8 +330,12 @@ export default async function telegram(source: SourceApi): Promise<void> {
 	source.onStop(() => typing.forEach((h) => clearInterval(h)));
 
 	// ---- approval requests, to answer from the phone ---------------------------------------------------
-	/** Questions with several answers that were sent here, oldest first: the owner's next message answers the last one. */
-	const typed: string[] = [];
+	/**
+	 * Questions with several answers that were sent here, oldest first, with the id of the message that
+	 * asked and how many options it numbered. A reply to that message answers it, and so does a message
+	 * of nothing but its numbers for the last one; anything else the owner writes is a message as usual.
+	 */
+	const typed: Array<{ id: string; message?: number; count: number }> = [];
 	if (o.approvals !== false) {
 		const asked = new Map<string, number>();
 		source.on("approval/requested", async (e) => {
@@ -341,7 +345,7 @@ export default async function telegram(source: SourceApi): Promise<void> {
 			const chat = ownerChat();
 			if (chat === undefined) return;
 			// A question of the agent's with answers to pick from. One answer: a button for each. Several:
-			// the options numbered, and the owner's next message is the answer ("1,3", or words of their own).
+			// the options numbered, and the owner's reply to it is the answer ("1,3", or words of their own).
 			const options: Array<{ label: string; description?: string }> = r.tool !== "question" ? [] : Array.isArray(r.options) && r.options.length ? r.options : Array.isArray(r.choices) ? r.choices.map((label: string) => ({ label })) : [];
 			if (options.length) {
 				const shown = options.slice(0, 6);
@@ -350,9 +354,10 @@ export default async function telegram(source: SourceApi): Promise<void> {
 				const noAnswer = [{ text: "No answer", callback_data: `ap:${r.id}:0` }];
 				if (r.multiSelect === true) {
 					const list = shown.map((x, i) => `${i + 1}. ${line(x)}`).join("\n");
-					typed.push(r.id);
-					const msg = await send(chat, `${head}\n\n${list}\n\nSeveral answers: write their numbers, such as 1,3, or your own words.`, { reply_markup: { inline_keyboard: [noAnswer] } });
-					if (msg?.message_id) asked.set(r.id, msg.message_id);
+					const waiting: (typeof typed)[number] = { id: r.id, count: shown.length };
+					typed.push(waiting);
+					const msg = await send(chat, `${head}\n\n${list}\n\nSeveral answers: reply to this message with their numbers, such as 1,3, or your own words.`, { reply_markup: { inline_keyboard: [noAnswer] } });
+					if (msg?.message_id) asked.set(r.id, (waiting.message = msg.message_id));
 					return;
 				}
 				const described = shown.some((x) => x.description) ? `\n\n${shown.map(line).join("\n")}` : "";
@@ -371,7 +376,8 @@ export default async function telegram(source: SourceApi): Promise<void> {
 			const d = e.payload as any;
 			const messageId = asked.get(d.id);
 			asked.delete(d.id);
-			if (typed.includes(d.id)) typed.splice(typed.indexOf(d.id), 1);
+			const done = typed.findIndex((q) => q.id === d.id);
+			if (done >= 0) typed.splice(done, 1);
 			if (messageId) await api("editMessageReplyMarkup", { chat_id: ownerChat(), message_id: messageId, reply_markup: { inline_keyboard: [[{ text: d.tool === "question" ? (d.allow ? `Answered (${d.by})` : `No answer (${d.by})`) : d.allow ? `Allowed (${d.by})` : `Denied (${d.by})`, callback_data: "noop" }]] } }).catch(() => {});
 		});
 	}
@@ -447,8 +453,11 @@ export default async function telegram(source: SourceApi): Promise<void> {
 			return void send(chatId, ok ? "Noted." : "No such open request.").catch(() => {});
 		}
 		// The answer to a question with several answers that was sent here: a message, not a button.
-		const waiting = typed.at(-1);
-		if (waiting && text && source.approvals.answer(waiting, text, `telegram:${userId}`)) return;
+		const replyTo = m.reply_to_message?.message_id;
+		const last = typed.at(-1);
+		const numbers = (q: (typeof typed)[number]) => /^\d+(\s*,\s*\d+)*$/.test(text) && text.split(",").every((n) => Number(n) >= 1 && Number(n) <= q.count);
+		const waiting = (replyTo !== undefined ? typed.find((q) => q.message === replyTo) : undefined) ?? (last && numbers(last) ? last : undefined);
+		if (waiting && text && source.approvals.answer(waiting.id, text, `telegram:${userId}`)) return;
 		source.emit("message", { text: text || "(a picture)", name, username: m.from?.username, chatId, messageId: m.message_id, images: images.length ? images : undefined }, { reply: { chatId } });
 	};
 

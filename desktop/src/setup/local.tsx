@@ -1,13 +1,14 @@
-// The way to a model on this computer: the daemon asks the usual ports (llama.cpp, Ollama, LM
-// Studio) what they serve (`GET /models/local`), the owner picks what answered, or gives an address
-// when nothing did; a server that wants a key asks for it in a secret field of the card. The server
+// The way to a model on the computer pine runs on (this one, for the Pine app on its own pine): the
+// daemon asks the usual ports (llama.cpp, Ollama, LM Studio) what they serve (`GET /models/local`),
+// the owner picks what answered, or gives an address when nothing did; a server that wants a key
+// asks for it in a secret field of the card. The server
 // is added through the route Settings > Models uses, so that the daemon chooses the agents' model as
 // it does there (`settleModel`). Pinecone (llama.cpp on 8080 with its MCP server on 8090) adds its
 // MCP server for all agents too, through the owner's own route for MCP servers.
 import { TriangleAlertIcon } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Pulse } from "@/components/pulse";
-import { QuestionCard } from "@/components/question-card";
+import { type HostedCard, QuestionCard, useHostedCard } from "@/components/question-card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -89,11 +90,15 @@ class Local extends Model {
 			this.needs = undefined;
 			await ctx.changed();
 		} catch (e) {
+			// What it still needs, as the daemon says it (`locked`, `unsized`), never read from its words:
+			// a key it refused asks for the key again, with what it said.
 			const text = errText(e);
-			if (e instanceof ApiError && e.status === 409 && /wants a key/.test(text)) this.needs = "key";
-			else if (/how much context/.test(text)) this.needs = "context";
+			const data = e instanceof ApiError ? e.data : undefined;
+			if (data?.locked) {
+				this.needs = "key";
+				if (c.key) this.error = text;
+			} else if (data?.unsized) this.needs = "context";
 			else this.error = text;
-			if (this.needs === "key" && c.key) this.error = text;
 		} finally {
 			this.busy = false;
 			this.touch();
@@ -114,6 +119,23 @@ class Local extends Model {
 }
 
 const local = new Local();
+
+/**
+ * Where pine looks: the computer its daemon runs on, which is this one only for the Pine app on its own
+ * pine. From the mobile app, the web client or another machine's pine, it is that machine.
+ */
+const where = () => (store.local && !store.remote ? "this computer" : "the computer pine runs on");
+
+/**
+ * What the composer says under each card: the value goes into the card's own field, and what is typed
+ * below picks nothing (these cards have no options). A key's card holds a secret: what is typed below
+ * is neither shown nor kept.
+ */
+const HOSTED: Record<"address" | "key" | "context", HostedCard> = {
+	address: { placeholder: "Type the address in the field above" },
+	key: { secret: true, placeholder: "Paste the key in the field above, not here" },
+	context: { placeholder: "Type the context in the field above" },
+};
 
 /** The usual name of a server given by its address, by its port, so that it reads like one that was found. */
 function idFor(url: string): string {
@@ -143,6 +165,7 @@ function AskCard({ title, about, field, label, help, secret, button, onSend, onB
 	onBack: () => void;
 }) {
 	useModel(local);
+	useHostedCard(HOSTED[field]);
 	const [typed, setTyped] = useState("");
 	const id = useId();
 	const send = () => {
@@ -160,7 +183,7 @@ function AskCard({ title, about, field, label, help, secret, button, onSend, onB
 			<ItemActions>
 				<Button size="sm" variant="ghost" onClick={onBack}>Back</Button>
 			</ItemActions>
-			<ItemFooter className="flex-col items-stretch gap-3">
+			<ItemFooter className="flex-col items-stretch">
 				{local.error ? (
 					<Alert variant="destructive">
 						<TriangleAlertIcon />
@@ -174,7 +197,6 @@ function AskCard({ title, about, field, label, help, secret, button, onSend, onB
 							id={id}
 							data-setup={field}
 							autoFocus
-							className="font-mono"
 							type={secret ? "password" : field === "context" ? "number" : "text"}
 							autoComplete="off"
 							spellCheck={false}
@@ -258,7 +280,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 	if (local.typing || (found && !found.length) || (chosen && local.error))
 		return (
 			<AskCard
-				title={found?.length || local.typing ? "The address of your model server" : "pine found no model server on this computer"}
+				title={found?.length || local.typing ? "The address of your model server" : `pine found no model server on ${where()}`}
 				about={found?.length || local.typing ? "A server that speaks OpenAI's API, as LM Studio, Ollama and llama.cpp do." : "It looked at the usual ports of llama.cpp (8080), Ollama (11434) and LM Studio (1234). If yours runs elsewhere, give its address."}
 				field="address"
 				label="Address"
@@ -275,7 +297,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 		return (
 			<Item variant="outline" size="sm" data-slot="setup-local">
 				<ItemContent>
-					<ItemTitle>{chosen ? `Adding ${chosen.title}` : "Looking for model servers on this computer"}</ItemTitle>
+					<ItemTitle>{chosen ? `Adding ${chosen.title}` : `Looking for model servers on ${where()}`}</ItemTitle>
 					<ItemDescription className="line-clamp-none">
 						<span className="flex items-center gap-2">
 							<Pulse label="Loading" />
@@ -295,7 +317,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 			from="pine asks"
 			options={[
 				...found.map((s) => ({ label: s.title, description: describe(s) })),
-				{ label: OTHER, description: "A server pine did not find here: you give its address." },
+				{ label: OTHER, description: `A server pine did not find on ${where()}: you give its address.` },
 			]}
 			autoFocus
 			actions={<Button size="sm" variant="ghost" onClick={back}>Back</Button>}
@@ -322,8 +344,13 @@ function describe(s: LocalServer): string {
 
 export const localBranch: SetupBranch = {
 	id: "local",
-	label: "A model on this computer",
-	description: "LM Studio, Ollama, llama.cpp or Pinecone, running here. Free and private, if this computer can run one.",
+	// Read when the first card is drawn: where pine runs is known by then.
+	get label() {
+		return `A model on ${where()}`;
+	},
+	get description() {
+		return where() === "this computer" ? "LM Studio, Ollama, llama.cpp or Pinecone, running here. Free and private, if this computer can run one." : "LM Studio, Ollama, llama.cpp or Pinecone, running on the computer pine runs on, not on this device. Free and private, if it can run one.";
+	},
 	derive: (facts) => {
 		const name = facts.main.model?.split("/")[0] ?? "";
 		const server = facts.servers.find((s) => s.name === name);

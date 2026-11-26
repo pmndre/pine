@@ -73,3 +73,32 @@ test("typing anything else shows pine's fixed line, keeps the card, and sends no
 	const conversations = (await api("GET", "/agents/main/sessions")) as any;
 	assert.doesNotMatch(JSON.stringify(conversations), /What is a model/);
 });
+
+test("while no model answers, the composer says that what is typed picks an option", async () => {
+	await question("How should your agents run?");
+	assert.match((await page.getAttribute(composer, "placeholder")) ?? "", /Type an option's name to pick it/);
+});
+
+test("while the key's field is open, what is typed in the composer is neither shown nor kept, and pine says to paste it in the field", async () => {
+	const typed = "sk-typed-in-the-wrong-place";
+	await type("an api key");
+	await question("Which provider?");
+	await type("anthropic");
+	await sees("[data-slot=setup-api-key][data-provider=anthropic] input[type=password]");
+	await page.waitForFunction((c: string) => /paste the key/i.test(document.querySelector(c)?.getAttribute("placeholder") ?? ""), composer, { timeout: patient(5000) });
+	await type(typed);
+	await sees("[data-slot=toast] >> text=/Paste the key in the field/");
+	assert.equal(await page.inputValue(composer), "");
+	const shown = await page.evaluate(() => document.body.innerText + [...document.querySelectorAll("input, textarea")].map((e) => (e as HTMLInputElement).value).join("\n"));
+	assert.ok(!shown.includes(typed), "not shown anywhere in the window");
+	// Not kept for the arrows: the earlier inputs come back, and this one is not among them.
+	await page.click(composer);
+	for (let i = 0; i < 4; i++) {
+		await page.press(composer, "ArrowUp");
+		assert.notEqual(await page.inputValue(composer), typed);
+	}
+	await page.fill(composer, "");
+	assert.equal(await prompts(), 0, "nothing went to the daemon");
+	await page.locator("[data-slot=setup-api-key]").getByRole("button", { name: "Cancel" }).click();
+	await question("How should your agents run?");
+});
