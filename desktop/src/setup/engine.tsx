@@ -3,20 +3,28 @@
 // derived from the daemon's state (the main agent's `modelProblem`, the providers signed in to, the
 // model servers) and written into no history, so that a reload draws them again and steps that are
 // done show as done. What the owner picked on this page (a branch, an answer) is kept only while
-// the page lives. The ways to a model, and the steps after one, are listed in branches.ts.
+// the page lives. The ways to a model, and the steps after one, are listed in branches.ts. Until a
+// model answers, what the owner types in the composer here is matched against the card on screen
+// (`Setup.type`), and nothing is sent: there is nobody to send it to.
 import { CpuIcon } from "lucide-react";
 import { Fragment, useEffect } from "react";
-import { QuestionCard, QuestionTrace } from "@/components/question-card";
+import { QuestionCard, QuestionCardHost, QuestionTrace, type ShownQuestionCard } from "@/components/question-card";
+import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent } from "@/components/ui/message";
 import type { ModelServer, Provider } from "../api.ts";
 import { api } from "../api.ts";
-import { Model, store, type Tab, useModel } from "../model.ts";
+import { Model, SETUP, store, type Tab, useModel } from "../model.ts";
 import { AFTER, BRANCHES } from "./branches.ts";
 import type { SetupAnswer, SetupContext, SetupFacts } from "./types.ts";
 
 const FIRST = "How should your agents run?";
 const KEEP = "Keep this model?";
+/** pine's one line for what the owner typed that names no option, while no model can answer it. */
+export const NO_MODEL_LINE = "There is no model yet to answer that. Pick one of the options, or type its name: what each one means is in its description.";
+
+/** Text and labels compared as the owner may type them: any case, spaces at the ends and in between not counted. */
+const plain = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
 
 /** What the steps hold while the page lives: what was picked here. Everything else is asked of the daemon. */
 class Setup extends Model {
@@ -30,6 +38,38 @@ class Setup extends Model {
 	kept = false;
 	/** The steps after the model that the owner finished here. */
 	finished = new Set<string>();
+	/** What the owner typed that named no option, each after the answers given before it. Kept as `answers` are. */
+	typed: Array<{ text: string; after: number }> = [];
+	/** The card on screen above the composer, whichever step drew it: what typed text is matched against. */
+	shown?: ShownQuestionCard;
+
+	show = (card: ShownQuestionCard): (() => void) => {
+		this.shown = card;
+		return () => {
+			if (this.shown === card) this.shown = undefined;
+		};
+	};
+
+	/**
+	 * What the owner typed in the composer of "Setup Pine" while no model answers: it picks the option
+	 * of the card on screen that it names, or gets pine's one line. Nothing is sent. False when a model
+	 * answers, or the tab is another conversation: the composer sends it as it would anywhere.
+	 */
+	type(tab: Tab, text: string): boolean {
+		if (tab.kind !== "chat" || tab.session !== SETUP) return false;
+		const main = this.facts()?.main;
+		if (!main || main.id !== tab.agent || !main.modelProblem) return false;
+		const card = this.shown;
+		const labels = card?.options.map((o) => plain(o.label)) ?? [];
+		const named = (card?.multiple ? text.split(",") : [text]).map((part) => labels.indexOf(plain(part)) + 1);
+		if (card && named.every((n) => n > 0)) {
+			card.answer([...new Set(named)].sort((a, b) => a - b));
+			return true;
+		}
+		this.typed.push({ text: text.trim(), after: this.answers.length });
+		this.touch();
+		return true;
+	}
 
 	async refresh(): Promise<void> {
 		const [providers, servers] = await Promise.all([api.providers().catch(() => undefined), api.modelServers().catch(() => undefined)]);
@@ -53,6 +93,7 @@ class Setup extends Model {
 		BRANCHES.find((b) => b.id === this.picked)?.leave?.();
 		this.picked = undefined;
 		this.answers = [];
+		this.typed = [];
 		this.touch();
 	}
 
@@ -79,6 +120,28 @@ function answersNow(facts: SetupFacts): SetupAnswer[] {
 	return [];
 }
 
+/** What the owner typed after the answers before it, each with pine's line: no model was there to answer it. */
+function Typed({ after }: { after: number }) {
+	return setup.typed
+		.filter((t) => t.after === after)
+		.map((t, i) => (
+			<Fragment key={i}>
+				<Message align="end" data-item="setup-typed">
+					<MessageContent>
+						<Bubble align="end" variant="muted">
+							<BubbleContent className="whitespace-pre-wrap select-text">{t.text}</BubbleContent>
+						</Bubble>
+					</MessageContent>
+				</Message>
+				<Message data-slot="setup-no-model">
+					<MessageContent className="select-text">
+						<p>{NO_MODEL_LINE}</p>
+					</MessageContent>
+				</Message>
+			</Fragment>
+		));
+}
+
 /** pine's own lines at the top of "Setup Pine": its welcome, what was answered, and the model the agents run on once there is one. */
 export function SetupScript() {
 	useModel(setup);
@@ -97,9 +160,11 @@ export function SetupScript() {
 					</p>
 				</MessageContent>
 			</Message>
+			<Typed after={0} />
 			{answersNow(facts).map((a, i) => (
 				<Fragment key={i}>
 					<QuestionTrace data-item="setup-answer" question={a.question} answer={a.answer} answered by="you" />
+					<Typed after={i + 1} />
 				</Fragment>
 			))}
 			{problem ? null : (
@@ -192,7 +257,8 @@ export function SetupCard({ tab }: { tab: Tab }) {
 	}
 	return (
 		<div data-slot="composer-question" className="mb-2">
-			{card}
+			{/* Whichever step drew the card, what the owner types is matched against it (`setup.type`). */}
+			<QuestionCardHost.Provider value={setup.show}>{card}</QuestionCardHost.Provider>
 		</div>
 	);
 }
