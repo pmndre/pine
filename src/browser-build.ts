@@ -4,8 +4,8 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-/** Playwright's own command, of the copy pine ships with. */
-export const playwrightCli = () => path.join(path.dirname(createRequire(import.meta.url).resolve("playwright-core")), "cli.js");
+/** Playwright's own command, of the copy pine ships with: the one @playwright/mcp brought along (pine does not depend on playwright-core itself). */
+export const playwrightCli = () => path.join(path.dirname(createRequire(createRequire(import.meta.url).resolve("@playwright/mcp")).resolve("playwright-core")), "cli.js");
 
 /**
  * The folders Playwright keeps what it needs in: the browser build of this Playwright and what

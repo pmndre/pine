@@ -120,9 +120,9 @@ export function browserPlan(m: Machine, cli = playwrightCli()): { step?: Step; c
 	return { step: { says: `install the ${lacks} the browser of the web tools lacks (apt-get, through Playwright)`, argv: [process.execPath, cli, "install-deps", "chromium"], elevates: true } };
 }
 
-/** Playwright's own command, of the copy pine ships with. */
+/** Playwright's own command, of the copy pine ships with: the one @playwright/mcp brought along. */
 function playwrightCli(): string {
-	return path.join(path.dirname(createRequire(import.meta.url).resolve("playwright-core")), "cli.js");
+	return path.join(path.dirname(createRequire(createRequire(import.meta.url).resolve("@playwright/mcp")).resolve("playwright-core")), "cli.js");
 }
 
 /** A step as the owner reads it. */
