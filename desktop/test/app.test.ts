@@ -890,12 +890,12 @@ test("an approval is asked in a dialog and answered from it; a question is a car
 	const card = "[data-slot=composer-question] [data-slot=question-card]";
 	await sees(card);
 	assert.equal(await page.locator("[data-slot=dialog-content]").count(), 0, "no dialog opens for a question");
-	assert.match(await page.textContent(card), /Database[\s\S]*Which database\?[\s\S]*1[\s\S]*the old one[\s\S]*Nothing to move[\s\S]*recommended[\s\S]*2[\s\S]*the new one[\s\S]*Faster, after a migration/);
+	assert.match(await page.textContent(card), /Database[\s\S]*Which database\?[\s\S]*the old one[\s\S]*recommended[\s\S]*Nothing to move[\s\S]*1[\s\S]*the new one[\s\S]*Faster, after a migration[\s\S]*2/);
 	// The open question is not drawn in the conversation as well.
 	assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0);
 	await shot("03-question");
 	// The composer was empty: the card has the keyboard, and a digit answers.
-	await page.waitForFunction(() => document.activeElement?.closest("[data-slot=question-card]"), null, { timeout: 5000 });
+	await page.waitForFunction(() => document.activeElement?.closest("[data-slot=composer-question] [data-slot=questionnaire]"), null, { timeout: 5000 });
 	await page.keyboard.press("2");
 	// Answered, the card folds into a line in the conversation that says what was answered.
 	await sees('[data-item="approval"][data-state="allowed"] >> text=Answered');
@@ -945,12 +945,12 @@ test("what is asked is answered from the conversation too: an approval by its bu
 	const shows = (question: string) => page.waitForFunction(([c, q]: string[]) => document.querySelector(c)?.textContent?.includes(q), [card, question], { timeout: 10_000 });
 	// A click answers.
 	await shows("Which color?");
-	await page.locator(card).getByRole("option", { name: /blue/ }).click();
+	await page.locator(card).getByRole("radio", { name: /blue/ }).click();
 	await answered(1);
 	assert.match(await last(), /Answered[\s\S]*Which color\?[\s\S]*blue/);
 	// The arrows and Enter answer.
 	await shows("Which border?");
-	await page.locator(card).getByRole("option", { name: /green/ }).focus();
+	await page.locator(card).getByRole("radio", { name: /green/ }).focus();
 	await page.keyboard.press("ArrowDown");
 	await page.keyboard.press("ArrowDown");
 	await page.keyboard.press("Enter");
@@ -960,7 +960,8 @@ test("what is asked is answered from the conversation too: an approval by its bu
 	await shows("Which colors?");
 	assert.equal(await page.locator(card).getAttribute("data-multiple"), "");
 	assert.ok(await page.locator(card).getByRole("button", { name: "Send" }).isDisabled(), "nothing ticked, nothing to send");
-	await page.locator(card).getByRole("option", { name: /green/ }).click();
+	assert.equal(await page.locator(card).getByText("recommended").count(), 0, "no option is the recommended one when several may be picked");
+	await page.locator(card).getByRole("checkbox", { name: /green/ }).click();
 	await page.keyboard.press("3");
 	await page.locator(card).getByRole("button", { name: "Send" }).click();
 	await answered(3);
@@ -972,7 +973,7 @@ test("what is asked is answered from the conversation too: an approval by its bu
 	const waits = page.locator("[data-slot=marker]", { hasText: "A question waits for your answer." });
 	await waits.waitFor();
 	await waits.getByRole("button", { name: "Open" }).click();
-	await page.locator(card).getByRole("option", { name: /green/ }).click();
+	await page.locator(card).getByRole("radio", { name: /green/ }).click();
 	await answered(4);
 	// No answer.
 	await shows("Which font?");
@@ -1010,7 +1011,7 @@ test("a message typed while a question is open answers it in the owner's own wor
 	assert.match((await page.$$eval('[data-item="approval"]:not([data-state="open"])', (els: Element[]) => els.at(-1)?.textContent)) ?? "", /Answered[\s\S]*Which store\?[\s\S]*what is the difference\?/);
 	// The agent read it as the owner's own words, and asks again: the second question is answered by a pick.
 	await page.waitForFunction((c: string) => document.querySelector(c), card, { timeout: 10_000 });
-	await page.locator(card).getByRole("option", { name: /sqlite/ }).click();
+	await page.locator(card).getByRole("radio", { name: /sqlite/ }).click();
 	await sees("[data-slot=markdown] >> text=store chosen");
 	const told = JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "tool"));
 	assert.ok(told.includes("Your owner answered in their own words: what is the difference?"), told.slice(-600));
@@ -1036,7 +1037,7 @@ test("a sign-in's choices are a question card answered by a pick; what it then a
 	assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0, "the open choice is not drawn in the conversation as well");
 	await shot("03-sign-in-choice");
 	// A click answers it, and the card folds into a line that says what was picked.
-	await page.locator(card).getByRole("option", { name: /Bearer token/ }).click();
+	await page.locator(card).getByRole("radio", { name: /Bearer token/ }).click();
 	await page.waitForSelector(card, { state: "detached" });
 	await sees('[data-item="approval"][data-state="allowed"] >> text=/Bearer token/');
 	// The token the flow asks next is typed: that request has only a field, and opens the approval dialog.

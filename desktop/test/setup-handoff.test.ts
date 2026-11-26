@@ -28,8 +28,8 @@ const shot = async (name: string) => {
 };
 const card = "[data-slot=composer-question] [data-slot=question-card]";
 const question = (text: string) => sees(`${card} [data-slot=question-card-question] >> text=${text}`);
-const pick = (label: string) => page.locator(`${card} [role=option]`, { hasText: label }).click();
-const options = () => page.$$eval(`${card} [role=option] [data-slot=item-title]`, (els: Element[]) => els.map((e) => e.textContent));
+const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
+const options = () => page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
 const activeTab = () => page.textContent("[data-slot=tab][aria-selected=true]").catch(() => "");
 const visit = () =>
 	app.evaluate(({ BrowserWindow }: any) => {

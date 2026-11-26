@@ -747,8 +747,10 @@ A question an agent asks with its `question` tool ([setup.md](setup.md)) is a ca
 input of its conversation, never a dialog that opens by itself, so that you can read the conversation
 while you decide. It shows the few words over the question (its `header`), the question, and the
 answers it offers, each with its number, its line that says what it means, and `recommended` on the
-first. A click, its digit, or the arrow keys and `↩` answer it. A question with several answers
-(`multiSelect`) is answered by ticking (a click, a digit, Space or `↩`) and **Send**. The card takes
+first when one answer is asked for. A click, its digit or Space answers it at once, with no button to
+send it; the arrow keys move between the answers and `↩` gives the one they reached. A question with
+several answers (`multiSelect`) is answered by ticking (a click, a digit or Space) and **Send** (or
+`↩` on a ticked answer); none of its answers is marked `recommended`. The card takes
 the keyboard when it appears only while the input is empty, so it never takes what you are typing.
 **No answer** tells the agent there is none, and it goes on with an assumption it names. **Later**
 puts the card away: the line above the input says that a question waits, and **Open** brings it

@@ -1,11 +1,19 @@
-import { Listbox, ListboxItem, ListboxItemIndicator } from "@ui-sdk/react/listbox";
 import { CheckIcon, MessageCircleQuestionIcon, XIcon } from "lucide-react";
 import { Trace, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { Kbd } from "@/components/ui/kbd";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from "@/components/ui/item";
+import {
+	Questionnaire,
+	QuestionnaireActions,
+	QuestionnaireChoice,
+	QuestionnaireChoiceDescription,
+	QuestionnaireChoices,
+	QuestionnaireItem,
+	QuestionnaireSubmit,
+	QuestionnaireTitle,
+} from "@/components/ui/questionnaire";
 
 /**
  * A question once it is settled, folded into one line of the conversation: what was asked, and what
@@ -54,12 +62,15 @@ export interface ShownQuestionCard {
 export const QuestionCardHost = createContext<((card: ShownQuestionCard) => () => void) | undefined>(undefined);
 
 /**
- * A question put to the owner, inline above the composer of its conversation (shadcn's Confirmation
- * pattern on an `Item`): a few words over it as a `Badge`, the question, and its options in ui-sdk's
- * `Listbox`, each a row with its number, its label, its line and, on the first, "recommended". One
- * answer is given by a click, its digit, or the arrows and Enter; several by ticking (a click, a digit,
- * Space or Enter) and Send. There is no field for the owner's own words: the composer below is that.
- * The same card for an agent's `question` and for what pine asks itself.
+ * A question put to the owner, inline above the composer of its conversation: shadcn's
+ * `Questionnaire` with one item, in an `Item` shell on the Confirmation pattern (a few words over it
+ * as a `Badge`, the question, Later and No answer), as shadcn's example puts a questionnaire in a
+ * card. The questionnaire brings the radios or checkboxes, each option's number and its key, the
+ * arrows and Enter. What is pine's: a single answer is given as soon as an option is picked by a
+ * click, its number or Space (the arrows only move, and Enter answers with the option they reached),
+ * so there is no Submit; several are ticked and sent with Send; "recommended" on the first option of
+ * a single answer. There is no field for the owner's own words: the composer below is that. The same
+ * card for an agent's `question` and for what pine asks itself.
  */
 export function QuestionCard({ question, header, from, options, multiple, autoFocus, actions, onAnswer, onNoAnswer, onLater }: {
 	question: string;
@@ -70,7 +81,7 @@ export function QuestionCard({ question, header, from, options, multiple, autoFo
 	options: QuestionCardOption[];
 	/** Several may be picked, and are sent together. */
 	multiple?: boolean;
-	/** Takes the keyboard as it is shown, on its first option. */
+	/** Takes the keyboard as it is shown: the arrows then reach the options, and a digit answers. */
 	autoFocus?: boolean;
 	/** Ways out other than an answer, before Later and No answer: "Back" in pine's own steps, "Cancel" in a sign-in. */
 	actions?: React.ReactNode;
@@ -79,78 +90,89 @@ export function QuestionCard({ question, header, from, options, multiple, autoFo
 	onNoAnswer?: () => void;
 	onLater?: () => void;
 }) {
-	const [ticked, setTicked] = useState<string[]>([]);
-	const list = useRef<HTMLDivElement>(null);
+	const title = useId();
+	const item = useRef<HTMLFieldSetElement>(null);
+	const [ticked, setTicked] = useState(false);
+	// The arrows check a radio as they move to it: only a pick by another hand answers at once.
+	const moving = useRef(false);
 	const host = useContext(QuestionCardHost);
 	useEffect(() => host?.({ options, multiple, answer: onAnswer }), [host, options, multiple, onAnswer]);
 	useEffect(() => {
-		if (autoFocus) list.current?.querySelector<HTMLElement>("[role=option]")?.focus();
+		// The questionnaire's own place for the keyboard: its item, from which the arrows reach the options.
+		if (autoFocus) item.current?.focus();
 	}, [autoFocus]);
-	const send = (values: string[]) => onAnswer(values.map(Number).sort((a, b) => a - b));
-	const onKeyDown = (e: React.KeyboardEvent) => {
-		if (e.metaKey || e.ctrlKey || e.altKey || !/^[1-9]$/.test(e.key) || Number(e.key) > options.length) return;
-		e.preventDefault();
-		if (!multiple) return onAnswer([Number(e.key)]);
-		setTicked((was) => (was.includes(e.key) ? was.filter((v) => v !== e.key) : [...was, e.key]));
+	// The card may stay on screen after an answer (a step that opens a dialog): it is cleared once the
+	// questionnaire has taken the pick in, so that the same option answers again.
+	const answer = (form: HTMLFormElement | null, picked: number[]) => {
+		onAnswer(picked);
+		setTimeout(() => form?.reset());
 	};
-	const rows = options.map((o, i) => (
-		<ListboxItem
-			key={i}
-			value={String(i + 1)}
-			label={o.label}
-			render={(props, state) => <Item {...props} size="xs" variant={state.highlighted ? "muted" : "default"} />}
-		>
-			<ItemMedia>
-				<Kbd>{i + 1}</Kbd>
-			</ItemMedia>
-			<ItemContent>
-				{/* An answer is read whole, however long: it is not cut to one line. */}
-				<ItemTitle className="line-clamp-none text-left">{o.label}</ItemTitle>
-				{o.description ? <ItemDescription className="line-clamp-none text-left">{o.description}</ItemDescription> : null}
-			</ItemContent>
-			{i === 0 || multiple ? (
-				<ItemActions>
-					{i === 0 ? <Badge variant="secondary">recommended</Badge> : null}
-					{multiple ? <ListboxItemIndicator><CheckIcon /></ListboxItemIndicator> : null}
-				</ItemActions>
-			) : null}
-		</ListboxItem>
-	));
 	return (
-		<Item variant="outline" size="sm" data-slot="question-card" data-multiple={multiple ? "" : undefined}>
-			<ItemMedia variant="icon">
-				<MessageCircleQuestionIcon />
-			</ItemMedia>
-			<ItemContent>
-				{header || from ? (
-					<ItemDescription className="flex items-center gap-2">
-						{header ? <Badge variant="outline">{header}</Badge> : null}
-						{from}
-					</ItemDescription>
-				) : null}
-				<ItemTitle className="line-clamp-none whitespace-pre-wrap select-text" data-slot="question-card-question">{question}</ItemTitle>
-			</ItemContent>
-			<ItemActions>
-				{actions}
-				{onLater ? <Button size="sm" variant="ghost" onClick={onLater}>Later</Button> : null}
-				{onNoAnswer ? <Button size="sm" variant="ghost" onClick={onNoAnswer}>No answer</Button> : null}
-			</ItemActions>
-			<ItemFooter className="flex-col items-stretch">
-				{multiple ? (
-					<Listbox ref={list} aria-label={question} multiple activation="manual" className="outline-none" value={ticked} onValueChange={(v) => setTicked((v as string[] | null) ?? [])} onKeyDown={onKeyDown} render={<ItemGroup />}>
-						{rows}
-					</Listbox>
-				) : (
-					<Listbox ref={list} aria-label={question} activation="manual" className="outline-none" value={null} onValueChange={(v) => typeof v === "string" && onAnswer([Number(v)])} onKeyDown={onKeyDown} render={<ItemGroup />}>
-						{rows}
-					</Listbox>
-				)}
-				{multiple ? (
-					<div className="flex justify-end">
-						<Button size="sm" disabled={!ticked.length} onClick={() => send(ticked)}>Send</Button>
-					</div>
-				) : null}
-			</ItemFooter>
-		</Item>
+		<Questionnaire
+			defaultItem="answer"
+			shortcuts="numbers"
+			onKeyDownCapture={(e) => {
+				moving.current = e.key.startsWith("Arrow");
+			}}
+			onPointerDownCapture={() => {
+				moving.current = false;
+			}}
+			onSubmit={(e) => {
+				e.preventDefault();
+				const picked = new FormData(e.currentTarget).getAll("answer").map(Number);
+				if (picked.length) answer(e.currentTarget, picked.sort((a, b) => a - b));
+			}}
+		>
+			<QuestionnaireItem ref={item} name="answer" multiple={multiple} aria-labelledby={title} onStatusChange={(status) => setTicked(status === "answered")}>
+				<Item variant="outline" size="sm" data-slot="question-card" data-multiple={multiple ? "" : undefined}>
+					<ItemMedia variant="icon">
+						<MessageCircleQuestionIcon />
+					</ItemMedia>
+					<ItemContent>
+						{header || from ? (
+							<ItemDescription className="flex items-center gap-2">
+								{header ? <Badge variant="outline">{header}</Badge> : null}
+								{from}
+							</ItemDescription>
+						) : null}
+						<QuestionnaireTitle id={title} render={<ItemTitle className="line-clamp-none whitespace-pre-wrap select-text" data-slot="question-card-question" />}>
+							{question}
+						</QuestionnaireTitle>
+					</ItemContent>
+					<ItemActions>
+						{actions}
+						{onLater ? <Button size="sm" variant="ghost" onClick={onLater}>Later</Button> : null}
+						{onNoAnswer ? <Button size="sm" variant="ghost" onClick={onNoAnswer}>No answer</Button> : null}
+					</ItemActions>
+					{options.length ? (
+						<ItemFooter className="flex-col items-stretch">
+							<QuestionnaireChoices>
+								{options.map((o, i) => (
+									<QuestionnaireChoice
+										key={i}
+										value={String(i + 1)}
+										onChange={(e) => {
+											if (!multiple && e.currentTarget.checked && !moving.current) answer(e.currentTarget.form, [i + 1]);
+										}}
+									>
+										<span className="flex flex-wrap items-center gap-2">
+											<span className="font-medium" data-slot="question-card-label">{o.label}</span>
+											{/* What the agent would pick: one option, so not on a question with several answers. */}
+											{i === 0 && !multiple ? <Badge variant="secondary">recommended</Badge> : null}
+										</span>
+										{o.description ? <QuestionnaireChoiceDescription>{o.description}</QuestionnaireChoiceDescription> : null}
+									</QuestionnaireChoice>
+								))}
+							</QuestionnaireChoices>
+							{multiple ? (
+								<QuestionnaireActions>
+									<QuestionnaireSubmit size="sm" disabled={!ticked}>Send</QuestionnaireSubmit>
+								</QuestionnaireActions>
+							) : null}
+						</ItemFooter>
+					) : null}
+				</Item>
+			</QuestionnaireItem>
+		</Questionnaire>
 	);
 }

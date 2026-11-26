@@ -31,7 +31,7 @@ const shot = async (name: string) => {
 const opened = () => app.evaluate(() => (globalThis as any).quiet.opened as string[]);
 const card = "[data-slot=composer-question] [data-slot=question-card]";
 const question = (text: string) => sees(`${card} [data-slot=question-card-question] >> text=${text}`);
-const pick = (label: string) => page.locator(`${card} [role=option]`, { hasText: label }).click();
+const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
 const activeTab = () => page.textContent("[data-slot=tab][aria-selected=true]").catch(() => "");
 
 before(async () => {
@@ -58,7 +58,7 @@ test("a home with no model opens Setup Pine, pinned and in front, with pine's we
 	await sees("[data-slot=conversation-head] >> text=Setup Pine");
 	await sees("[data-slot=setup-welcome]");
 	await question("How should your agents run?");
-	const options = await page.$$eval(`${card} [role=option] [data-slot=item-title]`, (els: Element[]) => els.map((e) => e.textContent));
+	const options = await page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
 	assert.deepEqual(options, ["A subscription", "An API key", "A model on this computer"]);
 	// Pinned: a star on its line in the side bar, and the daemon keeps the pin.
 	await sees("[data-sidebar=menu-button]:has-text('Setup Pine') svg.lucide-star");
@@ -101,7 +101,7 @@ test("a subscription reaches a model: pine names the one its agents run on now, 
 	fs.writeFileSync(browserDone, "sk-ant-not-a-real-key-0123456789");
 	await sees("[data-slot=setup-model] >> text=/Your agents run on anthropic\\//");
 	await question("Keep this model?");
-	const options = await page.$$eval(`${card} [role=option] [data-slot=item-title]`, (els: Element[]) => els.map((e) => e.textContent));
+	const options = await page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
 	assert.deepEqual(options, ["Go on", "Choose another model"]);
 	const agents = (await api("GET", "/agents")) as any[];
 	const main = agents.find((a) => a.main);

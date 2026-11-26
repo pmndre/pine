@@ -22,7 +22,7 @@ const sees = (selector: string, timeout = patient(20_000)) => page.waitForSelect
 const api = (method: string, url: string, body?: unknown) => page.evaluate(([m, u, b]: [string, string, unknown]) => (window as any).pine.call(m, u, b).then((r: any) => r.data), [method, url, body]);
 const card = "[data-slot=composer-question] [data-slot=question-card]";
 const question = (text: string) => sees(`${card} [data-slot=question-card-question] >> text=${text}`);
-const pick = (label: string) => page.locator(`${card} [role=option]`, { hasText: label }).click();
+const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
 /** Every file under a folder whose bytes hold the text. */
 const holding = (dir: string, text: string): string[] => {
 	if (!fs.existsSync(dir)) return [];
@@ -52,7 +52,7 @@ after(async () => {
 test("an API key: the most common providers, and Another… finds the others by search", async () => {
 	await pick("An API key");
 	await question("Which provider?");
-	const options = await page.$$eval(`${card} [role=option] [data-slot=item-title]`, (els: Element[]) => els.map((e) => e.textContent));
+	const options = await page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
 	assert.deepEqual(options, ["Anthropic", "OpenAI", "Google Gemini", "OpenRouter", "xAI", "Another…"]);
 	await pick("Another…");
 	await sees("[data-slot=dialog-content] [data-slot=command-input]");
