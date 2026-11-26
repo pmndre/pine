@@ -39,6 +39,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 	// [what is asked, a part that must be among the first four]
 	const cases: Array<[string, RegExp]> = [
 		["telegram pairing code", /^source-types#telegram$/],
+		["my owner typed a message instead of picking one of the answers I offered", /^(agents#a-message-while-the-agent-works|desktop#when-the-agent-asks-you-something|setup)/],
 		["install the mac app with brew", /^desktop#getting-it/],
 		["only wake the agent for mail that is probably urgent, as a number I can filter on", /^events#typed-questions/],
 		["a decision model service that answers with a probability instead of text", /^(events#typed-questions|configuration#decision-models)/],
@@ -48,6 +49,8 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["react to each click on my page with a script instead of waking the agent", /^(events#running-a-script|interfaces)/],
 		["can the agent use bold text and formatting in telegram messages, markdown", /^source-types#telegram$/],
 		["why do questions of one agent show up in the telegram bot of another agent", /^source-types#telegram$/],
+		["the agent asks me to pick several things, how do I tick more than one in the terminal", /^tui#when-the-agent-asks-you-something$/],
+		["answer a question with several choices from telegram", /^source-types#telegram/],
 		["how do sub-agents know which of them looks at which file", /^boards(#a-pool-of-sub-agents)?$/],
 		["ten agents on one project: how do they share what they found", /^boards/],
 		["more than four sub-agents at once", /^boards#a-pool-of-sub-agents$/],

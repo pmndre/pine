@@ -91,17 +91,29 @@ export function questionOptions(options: unknown, choices: unknown): QuestionOpt
 }
 
 /**
- * What the owner answered, as the agent is told it. A UI that picks by number ("2", or "1,3" for a
- * multiple answer) is given the labels, joined by ", ", in the order picked; anything else is the
- * owner's own words.
+ * What the owner answered, as the agent is told it. Options picked by their labels or their numbers
+ * ("2", or "1,3" for a multiple answer) are given as the labels, joined by ", ", in the order picked.
+ * Anything else is the owner's own words (`words`): what was typed in the composer while the
+ * question was open, which may answer it, or not.
  */
-export function picked(answer: string | undefined, options: QuestionOption[], multiSelect: boolean): string | undefined {
-	if (!answer || !options.length) return answer;
+export function picked(answer: string | undefined, options: QuestionOption[], multiSelect: boolean): { text: string; words: boolean } | undefined {
+	if (!answer) return undefined;
+	const words = { text: answer, words: true };
+	if (!options.length) return words;
+	const which = (part: string) => (/^\d+$/.test(part) ? Number(part) : options.findIndex((o) => o.label.toLowerCase() === part.toLowerCase()) + 1);
+	const whole = which(answer);
+	if (whole >= 1 && whole <= options.length) return { text: options[whole - 1].label, words: false };
 	const parts = answer.split(/\s*,\s*/);
-	if (!multiSelect && parts.length > 1) return answer;
-	const numbers = parts.map((n) => (/^\d+$/.test(n) ? Number(n) : 0));
-	if (!numbers.every((n) => n >= 1 && n <= options.length)) return answer;
-	return [...new Set(numbers)].map((n) => options[n - 1].label).join(", ");
+	if (!multiSelect) return words;
+	const numbers = parts.map(which);
+	if (!numbers.every((n) => n >= 1 && n <= options.length)) return words;
+	return { text: [...new Set(numbers)].map((n) => options[n - 1].label).join(", "), words: false };
+}
+
+/** What the agent is told when the owner answered its question. */
+export function answered(answer: { text: string; words: boolean }): string {
+	if (!answer.words) return `Your owner answered: ${answer.text}`;
+	return `Your owner answered in their own words: ${answer.text}\nIf this does not answer your question, respond to what they said. You may ask again.`;
 }
 
 export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live, profile: Profile, behalf?: { asker: string }): any[] {
@@ -740,8 +752,8 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 					);
 					const answer = picked(decision.values?.answer?.trim(), options, multiSelect);
 					// (A swarm's check of the answer is told what the owner said: a value they gave is given, not made up.)
-					if (decision.allow && answer) manager.swarms.heard(r.task.agent, r.task.session, text, answer);
-					if (decision.allow && answer) return ok(`Your owner answered: ${answer}`);
+					if (decision.allow && answer) manager.swarms.heard(r.task.agent, r.task.session, text, answer.text);
+					if (decision.allow && answer) return ok(answered(answer));
 					return ok(`Your owner did not answer (${decision.by}). Do not ask again now. Go on with the most reasonable assumption and say which one you made, or say what you need and stop.`);
 				},
 			}),

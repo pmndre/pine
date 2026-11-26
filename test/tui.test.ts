@@ -1676,7 +1676,7 @@ test("tui: an agent's question is a dialog with its answers to pick from; a numb
 	await t.sees("1  Yes");
 	t.term.type("only for the first file");
 	t.term.type([KEY.enter]);
-	await t.sees("FINAL:: Your owner answered: only for the first file");
+	await t.sees("FINAL:: Your owner answered in their own words: only for the first file");
 	await t.send(ask(["Left", "Right"]));
 	await t.sees("1  Left");
 	const row = t.app.screen().findIndex((l) => l.includes("1  Left"));
@@ -1694,6 +1694,35 @@ test("tui: an agent's question is a dialog with its answers to pick from; a numb
 	// A run that the owner did not start has nobody to ask: the tool is not there.
 	await t.h.pine.agents.run({ agent: "main", prompt: ask(["a", "b"]), trust: "untrusted" });
 	assert.match(t.h.toolResults().at(-1)!, /Tool question not found/);
+	await t.close();
+});
+
+test("tui: a question's options show their descriptions, and one with several answers is answered by their numbers", async () => {
+	const t = await open({ agents: { main: { agent: { mode: "plan" } } } }, [110, 34]);
+	await t.sees("type a message");
+	const options = [{ label: "The mode", description: "how far your agents reach" }, { label: "A folder", description: "where they work" }, { label: "Telegram" }];
+	const ask = (multiSelect: boolean) => mockMsg([{ tools: [{ name: "question", args: { question: "What shall we set up?", header: "Next", options, multiSelect } }] }]);
+
+	await t.send(ask(true));
+	await t.sees("main asks");
+	const screen = t.text();
+	assert.ok(screen.includes("Next"), screen);
+	assert.ok(screen.includes("1  The mode") && screen.includes("how far your agents reach") && screen.includes("where they work") && screen.includes("3  Telegram"), screen);
+	assert.ok(screen.includes("several answers"), screen);
+	// A digit is no answer by itself here: the numbers are typed, and enter sends them.
+	for (const k of "1,3") t.term.type(k);
+	await t.sees("1,3");
+	assert.ok(t.text().includes("main asks"), "one digit did not answer it");
+	t.term.type([KEY.enter]);
+	await t.sees("FINAL:: Your owner answered: The mode, Telegram");
+
+	// A single answer still goes with one digit, and its description stays on screen beside it.
+	await t.sees("answered (api)");
+	await t.send(ask(false));
+	await t.sees("main asks");
+	assert.ok(t.text().includes("2  A folder") && t.text().includes("where they work") && !t.text().includes("[ ]"), t.text());
+	t.term.type("2");
+	await t.sees("FINAL:: Your owner answered: A folder");
 	await t.close();
 });
 

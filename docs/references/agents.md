@@ -452,6 +452,14 @@ runs ends), and the work goes on with the message. Reading is not answering: a m
 long work may read a message and still keep going. Stop the work when you need the answer and
 it does not come. Other programs use `POST /tasks/<id>/now` ([operations.md](operations.md)).
 
+A message while the agent waits for your answer to its `question` ([setup.md](setup.md)) is no
+steered message: in the Pine app, what you send while the question's card is open answers it.
+The agent is told "Your owner answered in their own words: …", with a line that if this does not
+answer its question it should respond to what you said, and that it may ask again. So a reply
+that asks something back ("what does each mean?") gets an answer, and the question comes again.
+An answer that is one of the options it offered (its label, in any case, or its number) is told
+as that option, as a pick on the card is.
+
 ## Groups of conversations
 
 With many conversations, an agent's list is kept in order with groups: named groups directly

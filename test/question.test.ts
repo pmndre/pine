@@ -64,7 +64,7 @@ test("question: a single answer given by its number is that option's label; word
 	assert.match(h.toolResults().at(-1)!, /^Your owner answered: Right$/);
 	reply = "only for the first file";
 	await ask(h, { question: "Which way?", options: [{ label: "Left" }, { label: "Right" }] });
-	assert.match(h.toolResults().at(-1)!, /^Your owner answered: only for the first file$/);
+	assert.match(h.toolResults().at(-1)!, /^Your owner answered in their own words: only for the first file\n/);
 	await h.close();
 });
 
@@ -76,5 +76,24 @@ test("question: a sub-agent is told to assume and go on, whatever the shape", as
 	const told = h.mock.state.requests.filter((q: any) => JSON.stringify(q.body.messages).includes("Which one?")).at(-1);
 	assert.match(h.toolResults(told)[0], /You are a sub-agent: your owner is not asked on your behalf\. Go on with the most reasonable assumption/);
 	assert.equal(asked.length, 0);
+	await h.close();
+});
+
+test("question: words that pick no option are told as the owner's own words, with what to do if they ask something back", async () => {
+	const h = await harness({ agents: { main: {} } });
+	let reply = "what is the difference?";
+	answering(h, () => ({ allow: true, values: { answer: reply } }));
+	await ask(h, { question: "Which way?", options: [{ label: "Left" }, { label: "Right" }] });
+	const told = h.toolResults().at(-1)!;
+	assert.match(told, /^Your owner answered in their own words: what is the difference\?\n/);
+	assert.match(told, /If this does not answer your question, respond to what they said\. You may ask again\./);
+	// A question with nothing to pick is always answered in the owner's own words.
+	reply = "the blue one";
+	await ask(h, { question: "Which file?" });
+	assert.match(h.toolResults().at(-1)!, /^Your owner answered in their own words: the blue one\n/);
+	// An option's label, typed as it is or picked, is a plain answer.
+	reply = "right";
+	await ask(h, { question: "Which way?", options: [{ label: "Left" }, { label: "Right" }] });
+	assert.match(h.toolResults().at(-1)!, /^Your owner answered: Right$/);
 	await h.close();
 });

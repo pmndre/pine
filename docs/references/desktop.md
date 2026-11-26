@@ -742,9 +742,14 @@ first. A click, its digit, or the arrow keys and `↩` answer it. A question wit
 the keyboard when it appears only while the input is empty, so it never takes what you are typing.
 **No answer** tells the agent there is none, and it goes on with an assumption it names. **Later**
 puts the card away: the line above the input says that a question waits, and **Open** brings it
-back (so does `/approve`). A question that offers nothing to pick is answered by typing in the
-input, whose placeholder says so. Once answered, the card folds into one line in the conversation
-that says what was asked and what you answered. An approval (a permission) still opens its dialog.
+back (so does `/approve`). While the card is there, what you send from the input answers the
+question in your own words, instead of waiting behind the work the question holds up: the
+placeholder says so, your message shows as yours in the conversation, and the agent is told that
+you answered in your own words. That is also how a question that offers nothing to pick is
+answered, and how you ask something back ("what is the difference?"): the agent responds to it
+and may ask again. A `/command` stays a command. Once answered, the card folds into one line in the
+conversation that says what was asked and what you answered. An approval (a permission) still opens
+its dialog. With no question open, the input sends as before (into the work, or after it).
 
 ### What the app adds
 

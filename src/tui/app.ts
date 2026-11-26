@@ -1152,14 +1152,17 @@ class ApprovalDialog implements Component {
 }
 
 /**
- * A question of the agent's (its `question` tool): the answers it offers, one to a line, and a
- * line for the owner's own words. Arrows and enter or a click pick an answer, a digit picks by
- * number; anything typed is an answer of the owner's own.
+ * A question of the agent's (its `question` tool): the answers it offers, one to a line with the
+ * line that says what each means under it, and a line for the owner's own words. Arrows and enter
+ * or a click pick an answer, a digit picks by number; anything typed is an answer of the owner's
+ * own. Where several may be picked, a digit is no answer by itself: the owner types the numbers
+ * ("1,3"), which the daemon turns into the labels, or words of their own.
  */
 class QuestionDialog implements Component {
 	private req: any;
 	private done: (answer: string | undefined, dismissed?: boolean) => void;
-	private choices: string[];
+	private options: Array<{ label: string; description?: string }>;
+	private multi: boolean;
 	private at = 0;
 	private own = "";
 	private rows: Array<{ row: number; index: number }> = [];
@@ -1167,15 +1170,29 @@ class QuestionDialog implements Component {
 	constructor(req: any, done: (answer: string | undefined, dismissed?: boolean) => void) {
 		this.req = req;
 		this.done = done;
-		this.choices = (Array.isArray(req.choices) ? req.choices : []).map((x: unknown) => String(x));
+		// `options` carries the descriptions; `choices` alone is what a request of the old shape has.
+		const given = Array.isArray(req.options) && req.options.length ? req.options : Array.isArray(req.choices) ? req.choices.map((label: unknown) => ({ label })) : [];
+		this.options = given.map((o: any) => ({ label: String(o?.label ?? ""), ...(o?.description ? { description: String(o.description) } : {}) }));
+		this.multi = req.multiSelect === true && this.options.length > 0;
 	}
 
 	invalidate(): void {}
 
 	handleMouse(e: any) {
 		const hit = this.rows.find((r) => r.row === e.y);
-		if (hit && e.type === "click" && e.button === "left") this.done(this.choices[hit.index]);
+		if (hit && e.type === "click" && e.button === "left") {
+			// A click on an answer of several adds its number to what is typed, and takes it away again.
+			if (this.multi) this.toggle(hit.index + 1);
+			else this.done(this.options[hit.index].label);
+		}
 		return { handled: true, render: true };
+	}
+
+	/** Adds a number to the typed answer, or takes it away, while that answer is numbers only. */
+	private toggle(n: number): void {
+		const parts = this.own.split(/\s*,\s*/).filter(Boolean);
+		if (!parts.every((x) => /^\d+$/.test(x))) return;
+		this.own = (parts.includes(String(n)) ? parts.filter((x) => x !== String(n)) : [...parts, String(n)]).join(",");
 	}
 
 	handleInput(data: string): void {
@@ -1184,26 +1201,40 @@ class QuestionDialog implements Component {
 		if (matchesKey(data, "escape")) return this.done(undefined);
 		if (matchesKey(data, "enter")) {
 			if (this.own.trim()) return this.done(this.own.trim());
-			return this.choices.length ? this.done(this.choices[this.at]) : undefined;
+			return this.options.length && !this.multi ? this.done(this.options[this.at].label) : undefined;
 		}
-		if (matchesKey(data, "up") || matchesKey(data, "shift+tab")) this.at = (this.at + Math.max(1, this.choices.length) - 1) % Math.max(1, this.choices.length);
-		else if (matchesKey(data, "down") || matchesKey(data, "tab")) this.at = (this.at + 1) % Math.max(1, this.choices.length);
+		const count = Math.max(1, this.options.length);
+		if (matchesKey(data, "up") || matchesKey(data, "shift+tab")) this.at = (this.at + count - 1) % count;
+		else if (matchesKey(data, "down") || matchesKey(data, "tab")) this.at = (this.at + 1) % count;
 		else if (matchesKey(data, "backspace")) this.own = this.own.slice(0, -1);
 		else if (matchesKey(data, "ctrl+u")) this.own = "";
-		else if (!this.own && /^[1-9]$/.test(data) && Number(data) <= this.choices.length) return this.done(this.choices[Number(data) - 1]);
+		else if (!this.multi && !this.own && /^[1-9]$/.test(data) && Number(data) <= this.options.length) return this.done(this.options[Number(data) - 1].label);
 		else if (data.length === 1 && data >= " " && data !== "\x7f") this.own += data;
 	}
 
 	render(width: number): readonly string[] {
 		const inner = Math.max(20, width - 4);
-		const body = [c.bold(c.accent(`${this.req.agent} asks`)), "", ...asText(this.req.summary).split("\n").flatMap((l) => wrapTextWithAnsi(l, inner)).slice(0, 14), ""];
+		const header = String(this.req.header ?? "").trim();
+		const title = c.bold(c.accent(`${this.req.agent} asks`));
+		const body = [header ? `${title}  ${c.inverse(` ${asText(header)} `)}` : title, "", ...asText(this.req.summary).split("\n").flatMap((l) => wrapTextWithAnsi(l, inner)).slice(0, 14), ""];
 		this.rows = [];
-		this.choices.forEach((choice, i) => {
+		const ticked = new Set(this.multi ? this.own.split(/\s*,\s*/).filter((x) => /^\d+$/.test(x)).map(Number) : []);
+		this.options.forEach((option, i) => {
 			this.rows.push({ row: 1 + body.length, index: i });
-			const label = truncateToWidth(`${i + 1}  ${asText(choice)}`, inner - 2);
-			body.push(i === this.at && !this.own ? c.bgAccent(` ${label} `) : ` ${label}`);
+			const mark = this.multi ? (ticked.has(i + 1) ? "[x] " : "[ ] ") : "";
+			const label = truncateToWidth(`${mark}${i + 1}  ${asText(option.label)}`, inner - 2);
+			body.push(i === this.at && !this.own && !this.multi ? c.bgAccent(` ${label} `) : ` ${label}`);
+			if (option.description) {
+				const indent = " ".repeat(mark.length + 4);
+				for (const l of wrapTextWithAnsi(asText(option.description), inner - indent.length - 1).slice(0, 2)) {
+					this.rows.push({ row: 1 + body.length, index: i });
+					body.push(c.gray(`${indent}${l}`));
+				}
+			}
 		});
-		body.push("", `${c.gray(this.choices.length ? "or in your own words:" : "your answer:")} ${c.yellow(this.own.slice(-(inner - 26)))}${c.inverse(" ")}`, "", c.gray(this.choices.length ? "enter or a click answers · 1-9 picks by number · esc: later" : "enter answers · esc: later"));
+		const prompt = !this.options.length ? "your answer:" : this.multi ? "the numbers, or your own words:" : "or in your own words:";
+		const hint = !this.options.length ? "enter answers · esc: later" : this.multi ? "several answers: type their numbers, such as 1,3, or click them · enter answers · esc: later" : "enter or a click answers · 1-9 picks by number · esc: later";
+		body.push("", `${c.gray(prompt)} ${c.yellow(this.own.slice(-(inner - 34)))}${c.inverse(" ")}`, "", c.gray(hint));
 		const pad = (l: string) => `${c.accent("│")} ${l}${" ".repeat(Math.max(0, inner - visibleWidth(l)))} ${c.accent("│")}`;
 		return [c.accent(`╭${"─".repeat(inner + 2)}╮`), ...body.map((l) => pad(truncateToWidth(l, inner))), c.accent(`╰${"─".repeat(inner + 2)}╯`)];
 	}
