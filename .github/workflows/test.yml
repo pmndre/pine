@@ -12,6 +12,19 @@ name: Test
 # and are not skipped. On Windows pine has no sandbox yet: those tests skip themselves, each with
 # the reason why.
 #
+# The tests are cut into shards, each on a runner of its own (`--test-shard`, which deals the test
+# files out in turn by their place in the sorted list): three on macOS, two on Linux and on Windows.
+# No file holds more than a tenth of the time, so dealing them out in turn gives shards within about
+# a quarter of each other. macOS has the most to gain, from close to half an hour to about ten
+# minutes, but its runners are the scarcest: three at once is a bet that GitHub has them, and more
+# would ask too much (see the note above `jobs:`; the desktop job wants one more when it runs). On
+# Linux and Windows every shard repeats `npm ci`, the type check and, on Linux, `pine init`, close to
+# a minute, so a third shard would cost more runner time than it saves.
+#
+# timing: how long this run's tests took on each system, all shards from the first start to the
+# last end and the runner time they used, beside the last run of a push to next, in the run's
+# summary. It only reads, and it never fails the run.
+#
 # The Pine app (desktop/): its tests drive the real app through its window, on macOS and on Linux
 # under a virtual screen. They run when the app or the parts of pine it talks to change.
 
@@ -38,12 +51,23 @@ concurrency:
 jobs:
   pine:
     if: github.event_name != 'pull_request' || github.head_ref != 'next' || github.event.pull_request.head.repo.full_name != github.repository
+    name: pine (${{ matrix.runner }}, ${{ matrix.shard }}/${{ matrix.of }})
     strategy:
       fail-fast: false
       matrix:
-        runner: ${{ fromJSON(github.event_name == 'pull_request' && github.base_ref != 'main' && '["ubuntu-24.04"]' || '["ubuntu-24.04", "ubuntu-24.04-arm", "macos-15", "windows-latest"]') }}
+        # Each entry is one shard: the runner, which shard it is, and how many that runner's suite is cut into.
+        include: >-
+          ${{ fromJSON(github.event_name == 'pull_request' && github.base_ref != 'main' && '[
+            {"runner": "ubuntu-24.04", "shard": 1, "of": 2}, {"runner": "ubuntu-24.04", "shard": 2, "of": 2}
+          ]' || '[
+            {"runner": "ubuntu-24.04", "shard": 1, "of": 2}, {"runner": "ubuntu-24.04", "shard": 2, "of": 2},
+            {"runner": "ubuntu-24.04-arm", "shard": 1, "of": 2}, {"runner": "ubuntu-24.04-arm", "shard": 2, "of": 2},
+            {"runner": "macos-15", "shard": 1, "of": 3}, {"runner": "macos-15", "shard": 2, "of": 3}, {"runner": "macos-15", "shard": 3, "of": 3},
+            {"runner": "windows-latest", "shard": 1, "of": 2}, {"runner": "windows-latest", "shard": 2, "of": 2}
+          ]') }}
     runs-on: ${{ matrix.runner }}
-    # macOS's runners take the longest: close to half an hour for the whole suite.
+    # macOS's runners take the longest: close to half an hour for the whole suite, about ten minutes
+    # for a third of it. The limit is kept for a slow day.
     timeout-minutes: 45
     steps:
       # The files as they are in the repository, with the line ends they have there (git on
@@ -70,9 +94,64 @@ jobs:
           node --input-type=module -e 'import { sandboxKind, sandboxMissing } from "./src/security.ts"; console.log(`sandbox: ${sandboxKind() ?? "none"} on ${process.platform} ${sandboxMissing()}`)'
       # A test that hangs fails after three minutes, instead of holding the job until its own limit.
       # The runners are slower than a computer at a desk: the tests' waits are four times as long.
-      - run: node scripts/test.mjs --test-force-exit --test-timeout=180000 "test/*.test.ts"
+      # The shard comes before the files' pattern: what follows the pattern is not read as an option,
+      # and the whole suite would run in every shard.
+      - run: node scripts/test.mjs --test-force-exit --test-timeout=180000 --test-shard=${{ matrix.shard }}/${{ matrix.of }} "test/*.test.ts"
         env:
           PINE_TEST_PATIENCE: "4"
+
+  timing:
+    needs: pine
+    if: always() && needs.pine.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # A table in a summary is no reason for a red run: whatever goes wrong here is only said.
+    continue-on-error: true
+    permissions:
+      actions: read
+    steps:
+      - name: How long the tests took, beside the last push to next
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.run_id }}
+          ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          # The jobs of the pine job, grouped by the runner they asked for (so that a run whose jobs
+          # were not yet cut into shards, named "pine (macos-15)", is grouped as well as one whose
+          # jobs were): from the first start to the last end, and the time of all of them added up.
+          per_runner='[.[] | select((.name | startswith("pine (")) and .conclusion != "skipped" and .started_at != null and .completed_at != null)
+            | {runner: .labels[0], start: (.started_at | fromdate), end: (.completed_at | fromdate)}]
+            | group_by(.runner)
+            | map({key: .[0].runner, value: {wall: ((map(.end) | max) - (map(.start) | min)), used: (map(.end - .start) | add), jobs: length}})
+            | from_entries'
+          now=$(gh api --paginate "repos/$REPO/actions/runs/$RUN/attempts/$ATTEMPT/jobs?per_page=100" --jq '.jobs[]' | jq -s "$per_runner")
+          base_run=$(gh api "repos/$REPO/actions/workflows/test.yml/runs?branch=next&event=push&status=success&per_page=1" --jq '.workflow_runs[0].id // empty')
+          if [ -n "$base_run" ]; then
+            base=$(gh api --paginate "repos/$REPO/actions/runs/$base_run/jobs?per_page=100" --jq '.jobs[]' | jq -s "$per_runner")
+          else
+            base='{}'
+          fi
+          {
+            echo "## How long pine's tests took"
+            echo
+            if [ -n "$base_run" ]; then
+              echo "Beside the last successful push to next: [run $base_run](https://github.com/$REPO/actions/runs/$base_run)."
+            else
+              echo "No successful push to next was found to compare with."
+            fi
+            echo
+            echo "| Runner | Last push to next | This run, first start to last end | This run, runner time | Change |"
+            echo "|---|---|---|---|---|"
+            jq -n -r --argjson now "$now" --argjson base "$base" '
+              def t: if . == null then "-" else "\(. / 60 | floor)m \(. % 60)s" end;
+              (($now | keys) + ($base | keys) | unique)[] as $r
+              | ($now[$r]) as $n | ($base[$r]) as $b
+              | "| \($r) | \($b.wall | t) | \($n.wall | t) (\($n.jobs // 0) \(if $n.jobs == 1 then "job" else "jobs" end)) | \($n.used | t) | "
+                + (if $n == null or $b == null then "-" else "\(($n.wall - $b.wall) | if . < 0 then "-" + (-. | t) else "+" + t end) (\((($n.wall - $b.wall) * 100 / $b.wall) | round | if . > 0 then "+\(.)" else tostring end)%)" end)
+                + " |"'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   desktop-changed:
     if: github.event_name != 'pull_request' || github.head_ref != 'next' || github.event.pull_request.head.repo.full_name != github.repository

@@ -37,7 +37,10 @@ const files = failed();
 if (code !== 0 && plain && files.length && files.length <= 4) {
 	console.log(`\nFailed: ${short(files)}. Running ${files.length === 1 ? "it" : "them"} again, one at a time, to tell a broken test from a wait that ran out on a busy computer.\n`);
 	fs.rmSync(failedList, { force: true });
-	const flags = given.filter((a) => a.startsWith("--") && !a.startsWith("--test-concurrency"));
+	// The files are named one by one, so the second run takes neither the concurrency given nor a
+	// shard (--test-shard): node would cut the named files into shards again and could leave out
+	// the very file that failed.
+	const flags = given.filter((a) => a.startsWith("--") && !a.startsWith("--test-concurrency") && !a.startsWith("--test-shard"));
 	code = await run(["--test-concurrency=1", ...flags, ...files]);
 	if (code === 0) console.log(`\nPassed alone: ${short(files)}. The failures above came with running beside other work; a test that fails this way often is worth a look all the same.`);
 	else console.log(`\nFailed again, alone: ${short(failed())}.`);
