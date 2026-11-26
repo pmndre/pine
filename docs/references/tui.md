@@ -504,11 +504,17 @@ one in work among them.
 ### When the agent asks you something
 
 An agent that cannot go on without your decision asks with its `question` tool. A dialog shows
-the question and the answers it offers, the one it recommends first. A digit, `enter` on the
-highlighted line or a click picks one; anything you type instead is your own answer, sent with
-`enter`. `esc` leaves it for later (`/approve` opens it again, `/deny` tells the agent that
-there is no answer, and it goes on with an assumption that it names). If Telegram is set up, a
-question with answers to pick from arrives there too, with a button for each. The tool is
+the question, with its few words over it when the agent gave them, and the answers it offers,
+the one it recommends first, each with the line that says what it means under it. A digit,
+`enter` on the highlighted line or a click picks one; anything you type instead is your own
+answer, sent with `enter`. Where several answers may be picked, each has a box (`[ ]`) and a
+digit picks nothing by itself: type their numbers, such as `1,3`, or click them to tick and
+untick them, and send with `enter`; the agent is told the answers by name, joined by commas.
+Words of your own are your answer there too. `esc` leaves it for later (`/approve` opens it
+again, `/deny` tells the agent that there is no answer, and it goes on with an assumption that
+it names). If Telegram is set up, a question with answers to pick from arrives there too: with a
+button for each when one answer is asked for, and with the answers numbered when several may be
+picked, answered by your next message there ("1,3", or your own words). The tool is
 there in every mode, `plan` too, and not in a run that an outside event started.
 
 ## How answers are drawn
