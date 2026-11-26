@@ -1157,6 +1157,11 @@ test("a sign-in's choices are a question card answered by a pick; what it then a
 	const focus = (on: boolean) => app.evaluate(({ BrowserWindow }: any, on: boolean) => BrowserWindow.getAllWindows()[0].webContents.send("pine:focus", on), on);
 	const notified = () => app.evaluate(() => (globalThis as any).quiet.notified.map((n: any) => n.body) as string[]);
 	const had = (await notified()).length;
+	// In a conversation of its own: the app says the same thing of one conversation once in two seconds (`recentNotifs`
+	// in electron/main.ts), and the test before this one had main's main conversation ask a question a moment ago.
+	const tabs = await page.locator("[data-slot=tab]").count();
+	await menu("new");
+	await page.waitForFunction((n) => document.querySelectorAll("[data-slot=tab]").length > n, tabs);
 	await focus(false);
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "sign_in", args: { provider: "amazon-bedrock", way: "key" } }] }, { text: "sign-in ended" }], "sign in to bedrock "));
 	await page.keyboard.press("Enter");
@@ -1190,6 +1195,8 @@ test("a sign-in's choices are a question card answered by a pick; what it then a
 	await page.locator(dialog).waitFor({ state: "detached" });
 	await sees("[data-slot=markdown] >> text=sign-in ended");
 	assert.match(JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "tool")), /not signed in/);
+	await menu("close");
+	await page.waitForFunction((n) => document.querySelectorAll("[data-slot=tab]").length === n, tabs);
 });
 
 test("a folder is opened for a conversation: changes, and a file edited and saved", async () => {
