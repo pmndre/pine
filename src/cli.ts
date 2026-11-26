@@ -384,7 +384,8 @@ async function mcpCommand(cfg: PineConfig, argv: string[], out: (v: unknown) => 
 async function installBrowser(): Promise<number> {
 	const { spawnSync } = await import("node:child_process");
 	const { createRequire } = await import("node:module");
-	const cli = path.join(path.dirname(createRequire(import.meta.url).resolve("playwright-core")), "cli.js");
+	// The copy @playwright/mcp brought along, whose browser the web tools drive.
+	const cli = path.join(path.dirname(createRequire(createRequire(import.meta.url).resolve("@playwright/mcp")).resolve("playwright-core")), "cli.js");
 	return spawnSync(process.execPath, [cli, "install", "chromium"], { stdio: "inherit" }).status ?? 1;
 }
 
