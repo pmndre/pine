@@ -334,7 +334,7 @@ TypeSafe's API (`POST /v1/systemone`) and are kept by name under `decisions` in 
   Settings > Models, Decision models, with `pine login typesafe`, or by asking the main agent
   (`sign_in` with `typesafe`; you type the key into pine's dialog). It is checked and kept as
   `TYPESAFE_API_KEY`; `pine logout typesafe` removes it. Then add `{ "server": "typesafe" }`.
-- **Adding one:** Settings > Models, Decision models, or ask an agent in your own conversation (`add_decision_model`).
+- **Adding one:** Settings > Models, Decision models, or ask the main agent (`add_decision_model`). Every agent's routes can then ask it.
   You are told, when you confirm it and each route that asks it, where the text goes.
 
 A chat model is asked in words with a route's `call`; only a decision model answers typed

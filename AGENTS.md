@@ -283,7 +283,8 @@ These are invariants. A change that breaks one needs a test that shows why it is
    own (`of` on the route, `checkRoute` with `own`): on its own sources' events or its own state,
    acting only within itself (its own source to answer through, its own state, its own sandbox,
    waking only itself, never `trust`), put to the owner, and taken along by `eraseAgent` and
-   `renameAgent`. Removing something must leave things as they were
+   `renameAgent`. Such a route asks the decision models there are; adding and removing one
+   (`add_decision_model`, `remove_decision_model`) is the main agent's alone. Removing something must leave things as they were
    before it was added.
    The main agent is pine's administrator: besides `create_agent` it has `agents`,
    `update_agent`, `rename_agent`, `remove_agent`, `settings`, `set_setting`, `routes`, `add_route` and

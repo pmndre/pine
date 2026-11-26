@@ -58,7 +58,7 @@ export interface SourceConfig {
 	session?: string;
 	/** Who its events speak for. "untrusted" (default): outside content, the subscriber wakes with its reduced tool set. "owner": your own device or schedule. */
 	trust: "owner" | "untrusted";
-	/** "subscribed" (default): runs only while an agent is subscribed. "always": runs from start, for routes that use its events. */
+	/** "subscribed" (default): runs while an agent is subscribed or a route names it (`source/<name>/...`). "always": runs from start, for sending through it (`out/source/<name>`) or a route that matches it only by a wildcard. */
 	start: "subscribed" | "always";
 	enabled: boolean;
 	options: Record<string, any>;

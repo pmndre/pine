@@ -326,9 +326,10 @@ wishes need none: a subscription is a route pine makes for you.
 | `add_decision_model` `name` (`server` [`model`] or `url` `model` [`local`] [`key`]) | Adds a decision model that routes ask by name: one a model server of pine's serves (`server`, such as Pinecone), TypeSafe's Jev (`server: "typesafe"`, after `sign_in` `typesafe`), or another server with TypeSafe's API (`url`; with `key`, pine's dialog asks for it). You confirm ([configuration.md](configuration.md), "Decision models"). |
 | `remove_decision_model` `name` | Takes one out, not while a route asks it. You confirm. |
 
-The main agent has these for every route. Any other agent has them in your own conversations for
-routes of its own: on its own sources' events or its own shared state, acting only within itself,
-never with `trust` ([events.md](events.md), "Routes").
+The main agent has these for every route. Any other agent has `routes`, `add_route` and
+`remove_route` in your own conversations for routes of its own: on its own sources' events or its
+own shared state, acting only within itself, never with `trust` ([events.md](events.md), "Routes").
+It asks the decision models there are; only the main agent adds and removes them.
 
 `trust: "owner"` makes every event on the route count as your words, giving whoever can cause
 one the agent's full tools; the question says so. `reply`, `whenBusy`, `priority`, `key` and

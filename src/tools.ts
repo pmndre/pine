@@ -1626,6 +1626,8 @@ ${found.description}`, `this takes away something ${found.scope === "global" ? "
 						return ok(`Your owner confirmed it. The route "${p.name}" is added and works from now on:\n${checked.lines.join("\n")}\nTo change it, remove it and add it again.`);
 					},
 				}),
+				// Decision models are pine's, for every agent's routes: only the main agent adds and removes them.
+				...(own ? [] : [
 				defineTool({
 					name: "add_decision_model",
 					label: "Add a decision model",
@@ -1666,6 +1668,7 @@ ${found.description}`, `this takes away something ${found.scope === "global" ? "
 						return ok(`Removed the decision model "${p.name}".`);
 					},
 				}),
+				]),
 				defineTool({
 					name: "remove_route",
 					label: "Remove route",

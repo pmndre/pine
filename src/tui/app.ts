@@ -2849,7 +2849,7 @@ export class PineTui {
 				},
 			},
 			{
-				name: "voice", description: "Dictate the message instead of typing it (on a Mac; ctrl+r does the same)", argumentHint: "[language, for example de-DE]",
+				name: "voice", description: "Dictate the message instead of typing it (ctrl+r does the same)", argumentHint: "[language, for example de-DE]",
 				run: async (args) => {
 					if (!chat()) return;
 					await this.dictate(args.trim() || undefined);
@@ -3125,7 +3125,7 @@ export class PineTui {
 		const cmds = this.commands.filter((x) => x.name !== "exit").map((x) => `  ${c.accent(`/${x.name}`)}${x.argumentHint ? c.gray(` ${x.argumentHint}`) : ""}${" ".repeat(Math.max(1, 24 - x.name.length - (x.argumentHint?.length ?? -1) - 2))}${x.description}`);
 		const keys = [
 			["enter", "send; while the agent works, the message goes into that work at the agent's next step"], ["alt+enter", "send, but let it wait until the agent is done with what it is doing"], ["shift+enter", "new line"], ["esc", "stop the agent"], ["tab", "next tab (when the input is empty)"], ["shift+tab", "next mode: auto, plan, safe, manual, bypass (when the input is empty)"],
-			["alt+1..9", "go to tab"], ["ctrl+t", "new conversation"], ["ctrl+w", "close tab"], ["ctrl+g", "open or close the code pane (changes, files, tool output)"], ["ctrl+r", "dictate the message instead of typing it (on a Mac); enter ends it"], ["pgup / pgdn", "scroll"], ["mouse", "click a tab, its ×, +, ▤ code, a web address, a thought (to open it, and anywhere on it to close it), or agent / conversation / folder / model / reasoning / mode in the bottom bar; drop files to attach"], ["ctrl+c twice, ctrl+d", "quit"],
+			["alt+1..9", "go to tab"], ["ctrl+t", "new conversation"], ["ctrl+w", "close tab"], ["ctrl+g", "open or close the code pane (changes, files, tool output)"], ["ctrl+r", "dictate the message instead of typing it; enter ends it"], ["pgup / pgdn", "scroll"], ["mouse", "click a tab, its ×, +, ▤ code, a web address, a thought (to open it, and anywhere on it to close it), or agent / conversation / folder / model / reasoning / mode in the bottom bar; drop files to attach"], ["ctrl+c twice, ctrl+d", "quit"],
 		].map(([k, d]) => `  ${c.accent(k.padEnd(22))} ${d}`);
 		this.say(this.active, [c.bold("Commands"), ...cmds, "", c.bold("Keys"), ...keys].join("\n"));
 	}

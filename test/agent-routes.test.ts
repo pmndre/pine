@@ -51,12 +51,13 @@ test("agent routes: an agent wires its own chat to a decision model and answers 
 					call("add_route", { ...route, name: "state", publish_topic: undefined, publish_payload: undefined, set: JSON.stringify({ "house/mode": "{{answers.reply.choice}}" }) }),
 					call("add_route", { name: "script", on: "source/ball@eightball/message", run_command: "true", run_agent: "main" }),
 					call("remove_route", { name: "mains" }),
+					call("add_route", { ...route, name: "own-topic", publish_topic: "agent/eightball/said" }),
 				],
 			},
 		]),
 		trust: "owner",
 	});
-	const [made, spy, wake, trusted, elsewhere, state, script, removed] = h.toolResults().slice(-8);
+	const [made, spy, wake, trusted, elsewhere, state, script, removed, ownTopic] = h.toolResults().slice(-9);
 	assert.match(made, /^Your owner confirmed it\. The route "eightball" is added/);
 	assert.match(spy, /"source\/#" is not an event of yours\. A route of yours listens to your own sources \(source\/<name>@eightball\/\.\.\., the sources tool lists them: ball@eightball\)/);
 	assert.match(wake, /wakes only you \(eightball\)/);
@@ -65,6 +66,7 @@ test("agent routes: an agent wires its own chat to a decision model and answers 
 	assert.match(state, /"house\/mode" is not your shared state/);
 	assert.match(script, /runs its command only in your own sandbox/);
 	assert.match(removed, /there is no route called "mains"/, "a route of the main agent's is not the agent's to remove");
+	assert.match(ownTopic, /publishes only through your own sources \(out\/source\/<name>@eightball[^)]*\)\. To keep what it found, write your shared state/, "agent/ is pine's own, also under the agent's own id");
 	assert.equal(asked.length, 1, "you are asked about the one that is the agent's to make");
 	assert.match(asked[0].summary, /add the route "eightball"\non source\/ball@eightball\/message\na route of eightball's\nask the decision model decider/);
 	assert.deepEqual(JSON.parse(fs.readFileSync(path.join(h.home, "pine.json"), "utf8")).routes.find((r: any) => r.name === "eightball").of, "eightball");
@@ -81,6 +83,9 @@ test("agent routes: an agent wires its own chat to a decision model and answers 
 	// The agent sees its own routes, and they go with it.
 	await h.pine.agents.run({ agent: "eightball", prompt: mockMsg([{ tools: [call("routes", {})] }]), trust: "owner" });
 	assert.match(h.toolResults().at(-1)!, /^1 route of yours\.\n- eightball: on source\/ball@eightball\/message/);
+	// It uses the decision models pine has; adding and removing one is the main agent's.
+	const offered = h.toolsOffered(h.mock.state.requests.at(-1));
+	assert.ok(offered.includes("add_route") && !offered.includes("add_decision_model") && !offered.includes("remove_decision_model"), offered.join(", "));
 	const store = { kv: h.pine.agents.kv, tasks: h.pine.tasks };
 	renameAgent(h.pine.cfg, store, "eightball", "oracle");
 	const renamed = JSON.parse(fs.readFileSync(path.join(h.home, "pine.json"), "utf8")).routes.find((r: any) => r.name === "eightball");

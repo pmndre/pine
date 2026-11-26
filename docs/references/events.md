@@ -73,7 +73,7 @@ name, set `"start": "always"` on it.
 
 **An agent's own routes.** Any agent can make routes with `add_route` on its own sources' events
 (`source/<name>@<agent>/...`) or its own shared state (`state/agent/<agent>/...`), acting only
-within itself: ask a decision model, run a script in its sandbox, answer through its own source
+within itself: ask a decision model (the main agent adds those), run a script in its sandbox, answer through its own source
 (`out/source/<name>@<agent>`), write its own state (`agent/<agent>/...`), or wake itself; never
 with `trust`. You confirm each; `of` in the route ties it to the agent, so it goes with it when
 the agent is removed or renamed. A chat that answers on its own:

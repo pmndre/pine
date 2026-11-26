@@ -65,7 +65,7 @@ Talking to a running daemon
   pine approvals                  open approval requests
   pine approve <id> [--always] | pine deny <id>     --always: do not ask again in that conversation
   pine reset <agent> [session]    forget a conversation (also clears the taint)
-  pine mode <agent> [auto|plan|manual|bypass]
+  pine mode <agent> [auto|safe|manual|bypass|plan]
                                   show or change how much an agent may do without asking
 
 Event sources

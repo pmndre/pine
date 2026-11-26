@@ -195,6 +195,6 @@ export function removeDecision(cfg: PineConfig, name: string): boolean {
 /** The decision models as lines, for the main agent's list. */
 export function decisionsText(cfg: PineConfig): string {
 	const all = Object.entries(cfg.decisions);
-	if (!all.length) return "No decision models. A route's typed questions go to a chat model then. add_decision_model adds one: a model a model server of pine's serves (such as Pinecone), or TypeSafe's Jev (sign_in typesafe first).";
+	if (!all.length) return "No decision models. A route with typed questions needs one. The main agent adds one with add_decision_model: a model a model server of pine's serves (such as Pinecone), or TypeSafe's Jev (sign_in typesafe first).";
 	return all.map(([name, d]) => `- ${name}: ${d.model}, ${whereIs(d)}${usersOf(cfg, name).length ? ` · asked by the routes ${usersOf(cfg, name).join(", ")}` : ""}`).join("\n");
 }

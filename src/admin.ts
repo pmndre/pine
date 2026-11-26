@@ -597,7 +597,7 @@ export function checkRoute(cfg: PineConfig, input: RouteInput, models: string[],
 		const outside = keys.find((k) => !k.startsWith(`agent/${own}/`));
 		if (outside) throw new Error(`"${outside}" is not your shared state: a route of yours writes keys under agent/${own}/`);
 		const topic = input.publish_topic?.trim();
-		if (topic && !ownSource(topic, "out/source/") && !topic.startsWith(`agent/${own}/`)) throw new Error(`a route of yours publishes only through your own sources (out/source/<name>@${own}, a source that can send) or on agent/${own}/...`);
+		if (topic && !ownSource(topic, "out/source/")) throw new Error(`a route of yours publishes only through your own sources (out/source/<name>@${own}, a source that can send). To keep what it found, write your shared state with "set" (keys under agent/${own}/)`);
 		entry.of = own;
 		lines.push(`a route of ${own}'s`);
 	}
@@ -640,7 +640,7 @@ export function checkRoute(cfg: PineConfig, input: RouteInput, models: string[],
 		const wrong = askProblem(ask);
 		if (wrong) throw new Error(wrong);
 		const decider = input.ask_model ? cfg.decisions[input.ask_model] : undefined;
-		if (!decider) throw new Error(input.ask_model ? `there is no decision model "${input.ask_model}". ${Object.keys(cfg.decisions).join(", ") || "There is none: add_decision_model adds one"}` : `typed questions need "ask_model": the decision model that answers, by its name. ${Object.keys(cfg.decisions).join(", ") || "There is none: add_decision_model adds one"}`);
+		if (!decider) throw new Error(input.ask_model ? `there is no decision model "${input.ask_model}". ${Object.keys(cfg.decisions).join(", ") || "There is none: the main agent adds one with add_decision_model"}` : `typed questions need "ask_model": the decision model that answers, by its name. ${Object.keys(cfg.decisions).join(", ") || "There is none: the main agent adds one with add_decision_model"}`);
 		if (!input.publish_topic && !input.set && !input.run_command) throw new Error('typed questions need "run_command" (a script acts on the answers, with no model), "publish_topic" (the answers go out as an event, and a second route filters on payload.answers.<name>) or "set" (the answers go into shared state: {"agent/main/answer": "{{answers}}"})');
 		entry.ask = ask;
 		const questions = ask.questions as AskQuestions;
