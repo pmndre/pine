@@ -980,11 +980,42 @@ test("what is asked is answered from the conversation too: an approval by its bu
 	await sees("[data-slot=markdown] >> text=answered from the line");
 	const told = JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "tool"));
 	for (const said of ["Your owner answered: blue", "Your owner answered: red", "Your owner answered: green, red", "Your owner answered: green", "Your owner did not answer"]) assert.ok(told.includes(said), said);
+	// The composer is as before once nothing is asked (whether or not the turn has ended yet).
+	assert.match((await page.getAttribute("[data-slot=composer] textarea", "placeholder")) ?? "", /^(Message |Say something to main while it works)/);
 	// The call the approval was for ended after its card closed the group it stood in: it is drawn as ended, and
 	// nothing in the window pulses once the agent is idle.
 	await page.waitForFunction(() => !document.querySelector("[data-slot=pulse]"), null, { timeout: 5000 }).catch(async () => {
 		throw new Error(`still pulsing: ${await page.locator("[data-slot=pulse]").evaluateAll((els) => els.map((el) => el.parentElement?.textContent?.slice(0, 80)).join(" | "))}`);
 	});
+});
+
+test("a message typed while a question is open answers it in the owner's own words; one that asks back is answered, and the agent asks again", async () => {
+	const ask = { tools: [{ name: "question", args: { question: "Which store?", options: [{ label: "files" }, { label: "sqlite" }] } }] };
+	await page.fill("[data-slot=composer] textarea", mockMsg([ask, ask, { text: "store chosen" }], "pick a store "));
+	await page.keyboard.press("Enter");
+	const card = "[data-slot=composer-question] [data-slot=question-card]";
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which store?"), card, { timeout: 10_000 });
+	// While it is open, the composer says that what is typed answers it.
+	const field = "[data-slot=composer] textarea";
+	assert.match((await page.getAttribute(field, "placeholder")) ?? "", /answer[\s\S]*question/i);
+	const before = await page.locator('[data-item="approval"]:not([data-state="open"])').count();
+	await page.click(field);
+	await page.keyboard.type("what is the difference?");
+	await page.keyboard.press("Enter");
+	// The message is the owner's, and the card folds as answered with it.
+	await sees('[data-item="user"] >> text=what is the difference?');
+	await page.waitForFunction((n: number) => document.querySelectorAll('[data-item="approval"]:not([data-state="open"])').length === n, before + 1, { timeout: 10_000 });
+	assert.match((await page.$$eval('[data-item="approval"]:not([data-state="open"])', (els: Element[]) => els.at(-1)?.textContent)) ?? "", /Answered[\s\S]*Which store\?[\s\S]*what is the difference\?/);
+	// The agent read it as the owner's own words, and asks again: the second question is answered by a pick.
+	await page.waitForFunction((c: string) => document.querySelector(c), card, { timeout: 10_000 });
+	await page.locator(card).getByRole("option", { name: /sqlite/ }).click();
+	await sees("[data-slot=markdown] >> text=store chosen");
+	const told = JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "tool"));
+	assert.ok(told.includes("Your owner answered in their own words: what is the difference?"), told.slice(-600));
+	assert.ok(told.includes("If this does not answer your question, respond to what they said. You may ask again."));
+	assert.ok(told.includes("Your owner answered: sqlite"));
+	// Nothing was sent as a message besides the answer: the conversation had one turn.
+	assert.equal(mock.state.requests.filter((q: any) => JSON.stringify(q.body.messages).includes("what is the difference?") && q.body.messages.at(-1)?.role === "user" && JSON.stringify(q.body.messages.at(-1)).includes("what is the difference?")).length, 0);
 });
 
 test("a folder is opened for a conversation: changes, and a file edited and saved", async () => {

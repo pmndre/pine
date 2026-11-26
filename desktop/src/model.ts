@@ -2871,9 +2871,13 @@ export class Store extends Model {
 		return [...tab.approvals.values()].find((a) => a.req.tool === "question" && !this.later.has(a.req.id));
 	}
 
-	/** Answer a question that offers nothing to pick, with what the owner typed in the composer. */
+	/**
+	 * Answer the open question with what the owner typed in the composer: it shows as their message,
+	 * and the agent is told it as their own words (which may answer the question, or ask back).
+	 */
 	async answerInWords(item: Of<"approval">, text: string): Promise<void> {
 		item.answer = text;
+		this.tabs.find((t) => t.approvals.has(item.req.id))?.add({ t: "user", text });
 		await this.decide(item.req.id, true, false, { answer: text });
 	}
 

@@ -1676,7 +1676,7 @@ test("tui: an agent's question is a dialog with its answers to pick from; a numb
 	await t.sees("1  Yes");
 	t.term.type("only for the first file");
 	t.term.type([KEY.enter]);
-	await t.sees("FINAL:: Your owner answered: only for the first file");
+	await t.sees("FINAL:: Your owner answered in their own words: only for the first file");
 	await t.send(ask(["Left", "Right"]));
 	await t.sees("1  Left");
 	const row = t.app.screen().findIndex((l) => l.includes("1  Left"));
