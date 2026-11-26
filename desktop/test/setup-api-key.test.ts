@@ -62,8 +62,8 @@ test("an API key: the most common providers, and Another… finds the others by 
 	assert.match(found[0] ?? "", /kimi|moonshot/i, `Moonshot's providers come first: ${found.join(" | ")}`);
 	assert.ok(found.some((t) => t.startsWith("Moonshot AI")), `Moonshot AI is found by "kimi": ${found.join(" | ")}`);
 	await page.locator("[data-slot=dialog-content] [data-slot=command-item]", { hasText: /^Moonshot AI/ }).first().click();
-	await sees("[data-slot=setup-api-key][data-provider^=moonshotai] input[type=password]");
-	await page.locator("[data-slot=setup-api-key]").getByRole("button", { name: "Cancel" }).click();
+	await sees("[data-card=setup-api-key][data-provider^=moonshotai] input[type=password]");
+	await page.locator("[data-card=setup-api-key]").getByRole("button", { name: "Cancel" }).click();
 	await question("How should your agents run?");
 });
 
@@ -71,10 +71,10 @@ test("a key typed in the card reaches a model, and the conversation says only th
 	await pick("An API key");
 	await question("Which provider?");
 	await pick("Anthropic");
-	const field = "[data-slot=setup-api-key][data-provider=anthropic] input[type=password]";
+	const field = "[data-card=setup-api-key][data-provider=anthropic] input[type=password]";
 	await sees(field);
 	await page.fill(field, KEY);
-	await page.locator("[data-slot=setup-api-key]").getByRole("button", { name: "Save" }).click();
+	await page.locator("[data-card=setup-api-key]").getByRole("button", { name: "Save" }).click();
 	await sees("[data-slot=setup-model] >> text=/Your agents run on anthropic\\//");
 	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=Key saved for Anthropic");
 	const main = ((await api("GET", "/agents")) as any[]).find((a) => a.main);

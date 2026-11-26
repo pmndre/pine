@@ -1171,8 +1171,13 @@ test("a sign-in's choices are a question card answered by a pick; what it then a
 	assert.match(await page.textContent(card), /Bearer token[\s\S]*AWS profile[\s\S]*Existing AWS credential chain/);
 	// The flow's options are what it offers, not a recommendation of the agent's.
 	assert.equal(await page.locator(card).getByText("recommended").count(), 0, "no option of a sign-in is marked recommended");
-	// The choice is told as a question, the sign-in itself as an approval.
-	const told = (await notified()).slice(had);
+	// The choice is told as a question, the sign-in itself as an approval. The notification goes to the
+	// main process after the card is drawn: it is waited for, not read once.
+	let told: string[] = [];
+	for (let i = 0; i < 50 && !told.includes("main has a question for you"); i++) {
+		if (i) await new Promise((r) => setTimeout(r, 100));
+		told = (await notified()).slice(had);
+	}
 	assert.ok(told.includes("main has a question for you"), `told: ${JSON.stringify(told)}`);
 	await focus(true);
 	assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0, "the open choice is not drawn in the conversation as well");

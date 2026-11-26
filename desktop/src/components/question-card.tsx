@@ -47,9 +47,11 @@ export function QuestionTrace({ question, answer, answered, by, ...props }: Reac
  * view, a small window) it gets what the thread and the composer leave and scrolls inside, so that the
  * composer is never pushed out of the pane; the column under the thread is a flex column down to it,
  * whose gap stands it apart from the composer. A cut option fades out (stock `scroll-fade-y` on the
- * viewport) rather than ending at a hard edge.
+ * viewport) rather than ending at a hard edge. The viewport clips what it holds, a field's focus ring
+ * too: it is padded by the ring's width (stock `ring-3`), and the slot reaches out by as much, so
+ * that the card keeps the column's edges and its ring is whole.
  */
-export const COMPOSER_QUESTION = "flex min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade-y";
+export const COMPOSER_QUESTION = "-m-[3px] flex min-h-0 flex-col *:data-[slot=scroll-area-viewport]:p-[3px] *:data-[slot=scroll-area-viewport]:scroll-fade-y";
 
 /** One answer a question offers: a label, and a line that says what it means. */
 export interface QuestionCardOption {
@@ -188,7 +190,8 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 	useHostedCard({ options, multiple, answer: onAnswer, type, placeholder });
 	useEffect(() => {
 		// The questionnaire's own place for the keyboard: its item, from which the arrows reach the options.
-		if (autoFocus) item.current?.focus();
+		// Without scrolling: in a short pane the card's slot would otherwise start scrolled, its top cut and faded.
+		if (autoFocus) item.current?.focus({ preventScroll: true });
 	}, [autoFocus]);
 	// The card may stay on screen after an answer (a step that opens a dialog): it is cleared once the
 	// questionnaire has taken the pick in, so that the same option answers again.
@@ -241,16 +244,28 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 				) : null}
 			</QuestionnaireItem>
 			{actions || onLater || onNoAnswer || multiple ? (
-				// The stock row is a grid of three places (Previous, Skip, Next); this one holds more, so it
-				// flows, with the asker's own ways out at the start where Previous stands. Plain buttons take
-				// the stock buttons' touch height on a narrow screen, so that the row keeps one height.
-				<QuestionnaireActions className="flex flex-wrap justify-end [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-0">
-					{actions ? <div className="me-auto flex flex-wrap items-center gap-2">{actions}</div> : null}
+				<CardActions start={actions}>
 					{onLater ? <Button size="sm" variant="ghost" onClick={onLater}>Later</Button> : null}
 					{onNoAnswer ? <QuestionnaireSkip size="sm">No answer</QuestionnaireSkip> : null}
 					{multiple ? <QuestionnaireSubmit size="sm" disabled={!ticked}>Send</QuestionnaireSubmit> : null}
-				</QuestionnaireActions>
+				</CardActions>
 			) : null}
 		</Questionnaire>
+	);
+}
+
+/**
+ * The actions row at the bottom of a card above the composer: stock `QuestionnaireActions`, whose
+ * grid has three places (Previous, Skip, Next). A card here holds more, so the row flows instead,
+ * with the asker's own ways out (`start`: Back, Cancel) at the start where Previous stands, and the
+ * rest at the end. Plain buttons take the stock buttons' touch height on a narrow screen, so that the
+ * row keeps one height.
+ */
+export function CardActions({ start, children }: { start?: React.ReactNode; children?: React.ReactNode }) {
+	return (
+		<QuestionnaireActions className="flex flex-wrap justify-end [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-0">
+			{start ? <div className="me-auto flex flex-wrap items-center gap-2">{start}</div> : null}
+			{children}
+		</QuestionnaireActions>
 	);
 }

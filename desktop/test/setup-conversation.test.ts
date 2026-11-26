@@ -84,24 +84,24 @@ test("a subscription: which one, the sign-in card (page opened once, its code wi
 	// A list of what pine offers: none of it is marked as the one to pick.
 	assert.equal(await page.locator(card).getByText("recommended").count(), 0);
 	await pick("Claude");
-	await sees("[data-slot=sign-in-card] [data-sign-in=code][value=PINE-1234]");
-	await sees("[data-slot=sign-in-card] >> text=/Waiting for you to sign in/");
+	await sees("[data-card=sign-in-card] [data-sign-in=code][value=PINE-1234]");
+	await sees("[data-card=sign-in-card] >> text=/Waiting for you to sign in/");
 	await shot("setup-02-sign-in");
 	for (let i = 0; i < 50 && !(await opened()).length; i++) await new Promise((r) => setTimeout(r, 100));
 	assert.deepEqual(await opened(), ["https://sign-in.example/device"], "the sign-in page is opened once, by itself");
-	await page.locator("[data-slot=sign-in-card]").getByRole("button", { name: "Open the sign-in page again" }).click();
+	await page.locator("[data-card=sign-in-card]").getByRole("button", { name: "Open the sign-in page again" }).click();
 	assert.equal((await opened()).length, 2);
-	await page.locator("[data-slot=sign-in-card]").getByRole("button", { name: "Copy" }).click();
-	await page.locator("[data-slot=sign-in-card]").getByRole("button", { name: "Cancel" }).click();
+	await page.locator("[data-card=sign-in-card]").getByRole("button", { name: "Copy" }).click();
+	await page.locator("[data-card=sign-in-card]").getByRole("button", { name: "Cancel" }).click();
 	await question("How should your agents run?");
-	assert.equal(await page.$("[data-slot=sign-in-card]"), null);
+	assert.equal(await page.$("[data-card=sign-in-card]"), null);
 });
 
 test("a subscription reaches a model: pine names the one its agents run on now, and offers to change it", async () => {
 	await pick("A subscription");
 	await question("Which subscription?");
 	await pick("Claude");
-	await sees("[data-slot=sign-in-card] [data-sign-in=code]");
+	await sees("[data-card=sign-in-card] [data-sign-in=code]");
 	// The owner signs in in the browser.
 	fs.writeFileSync(browserDone, "sk-ant-not-a-real-key-0123456789");
 	await sees("[data-slot=setup-model] >> text=/Your agents run on anthropic\\//");

@@ -53,11 +53,11 @@ test("typing an option's label, in any case, picks it", async () => {
 	await question("Which subscription?");
 	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=A subscription");
 	await type("claude");
-	await sees("[data-slot=sign-in-card] [data-sign-in=code]");
+	await sees("[data-card=sign-in-card] [data-sign-in=code]");
 	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=Claude");
 	assert.equal(await page.inputValue(composer), "", "the composer is emptied, as after any message");
 	assert.equal(await prompts(), 0, "nothing went to the daemon");
-	await page.locator("[data-slot=sign-in-card]").getByRole("button", { name: "Cancel" }).click();
+	await page.locator("[data-card=sign-in-card]").getByRole("button", { name: "Cancel" }).click();
 	await question("How should your agents run?");
 });
 
@@ -84,7 +84,7 @@ test("while the key's field is open, what is typed in the composer is neither sh
 	await type("an api key");
 	await question("Which provider?");
 	await type("anthropic");
-	await sees("[data-slot=setup-api-key][data-provider=anthropic] input[type=password]");
+	await sees("[data-card=setup-api-key][data-provider=anthropic] input[type=password]");
 	await page.waitForFunction((c: string) => /paste the key/i.test(document.querySelector(c)?.getAttribute("placeholder") ?? ""), composer, { timeout: patient(5000) });
 	await type(typed);
 	await sees("[data-slot=toast] >> text=/Paste the key in the field/");
@@ -99,6 +99,6 @@ test("while the key's field is open, what is typed in the composer is neither sh
 	}
 	await page.fill(composer, "");
 	assert.equal(await prompts(), 0, "nothing went to the daemon");
-	await page.locator("[data-slot=setup-api-key]").getByRole("button", { name: "Cancel" }).click();
+	await page.locator("[data-card=setup-api-key]").getByRole("button", { name: "Cancel" }).click();
 	await question("How should your agents run?");
 });

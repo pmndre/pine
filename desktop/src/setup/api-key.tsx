@@ -4,15 +4,11 @@
 // (`/models/login` with `api_key`), so that the daemon chooses the agents' model as it does there.
 // The key is held by the field alone and handed to the sign-in: what the conversation shows is
 // that a key was saved for the provider, never a character of it.
-import { KeyRoundIcon, TriangleAlertIcon } from "lucide-react";
-import { useEffect, useId, useState } from "react";
-import { Pulse } from "@/components/pulse";
+import { useEffect, useState } from "react";
+import { FieldCard, FormCard } from "@/components/field-card";
 import { type HostedCard, QuestionCard, useHostedCard } from "@/components/question-card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import type { Provider } from "../api.ts";
 import { Model, store, useModel } from "../model.ts";
 import { KEY_PROVIDERS, providerAbout, providerName, providerWords } from "../providers.ts";
@@ -98,9 +94,7 @@ const SECRET: HostedCard = { secret: true, placeholder: "Paste the key in the fi
 
 /** The key's own card: a secret field, Save, and what the sign-in said when it did not take the key. */
 function KeyCard({ run, name, ctx }: { run: SignInRun; name: string; ctx: SetupContext }) {
-	const [typed, setTyped] = useState("");
 	const [sent, setSent] = useState(false);
-	const field = useId();
 	const s = run.state;
 	const q = s?.done ? undefined : s?.question;
 	// The key goes into this card's field: what is typed in the composer below is neither shown nor kept.
@@ -123,61 +117,30 @@ function KeyCard({ run, name, ctx }: { run: SignInRun; name: string; ctx: SetupC
 		return <QuestionCard question={q.message} header="API key" from={name} options={options.map((o) => ({ label: o.label, description: o.description }))} autoFocus actions={cancel} onAnswer={([n]) => void run.answer(options[n - 1].id)} />;
 	}
 	const error = run.error ?? s?.error;
-	const ready = Boolean(q) && !sent;
-	const save = () => {
-		const key = typed.trim();
-		if (!key || !ready) return;
-		setTyped("");
-		setSent(true);
-		picked.sent(ctx.said);
-		void run.answer(key).then(() => setSent(false));
+	const card = {
+		"data-card": "setup-api-key",
+		"data-provider": run.provider,
+		title: `Your API key for ${name}`,
+		about: "Paste the key you made on the provider's site. pine checks it when your agents first use it.",
+		error,
+		start: cancel,
 	};
+	// The sign-in ended without the key (refused, or cancelled elsewhere): another try starts it again.
+	if (s?.done) return <FormCard {...card} end={<Button size="sm" variant="outline" onClick={() => picked.start(run.provider, name)}>Try again</Button>} />;
 	return (
-		<Item variant="outline" size="sm" data-slot="setup-api-key" data-provider={run.provider}>
-			<ItemMedia variant="icon">
-				<KeyRoundIcon />
-			</ItemMedia>
-			<ItemContent>
-				<ItemTitle>Your API key for {name}</ItemTitle>
-				<ItemDescription className="line-clamp-none">Paste the key you made on the provider's site. pine checks it when your agents first use it.</ItemDescription>
-			</ItemContent>
-			<ItemActions>{cancel}</ItemActions>
-			<ItemFooter className="flex-col items-stretch">
-				{error ? (
-					<Alert variant="destructive">
-						<TriangleAlertIcon />
-						<AlertDescription className="select-text">{error}</AlertDescription>
-					</Alert>
-				) : null}
-				{s?.done ? (
-					// The sign-in ended without the key (refused, or cancelled elsewhere): another try starts it again.
-					<div className="flex flex-wrap items-center gap-2">
-						<Button size="sm" variant="outline" onClick={() => picked.start(run.provider, name)}>Try again</Button>
-					</div>
-				) : (
-					<Field>
-						<FieldLabel htmlFor={`${field}-key`}>{q && !q.secret ? q.message : "API key"}</FieldLabel>
-						<InputGroup>
-							<InputGroupInput
-								id={`${field}-key`}
-								autoFocus
-								type={q && !q.secret ? "text" : "password"}
-								autoComplete="off"
-								spellCheck={false}
-								value={typed}
-								onChange={(e) => setTyped(e.target.value)}
-								onKeyDown={(e) => e.key === "Enter" && save()}
-							/>
-							<InputGroupAddon align="inline-end">
-								{ready ? null : <Pulse label="Loading" />}
-								<InputGroupButton variant="default" disabled={!typed.trim() || !ready} onClick={save}>Save</InputGroupButton>
-							</InputGroupAddon>
-						</InputGroup>
-						<FieldDescription>It is not shown, and goes straight to pine's store of keys: no agent and no model reads it.</FieldDescription>
-					</Field>
-				)}
-			</ItemFooter>
-		</Item>
+		<FieldCard
+			{...card}
+			label={q && !q.secret ? q.message : "API key"}
+			type={q && !q.secret ? "text" : "password"}
+			help="It is not shown, and goes straight to pine's store of keys: no agent and no model reads it."
+			button="Save"
+			waiting={!q || sent}
+			onSend={(key) => {
+				setSent(true);
+				picked.sent(ctx.said);
+				void run.answer(key).then(() => setSent(false));
+			}}
+		/>
 	);
 }
 

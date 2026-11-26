@@ -43,7 +43,7 @@ const card = "[data-slot=composer-question] [data-slot=questionnaire]";
 const question = (text: string) => sees(`${card} [data-slot=questionnaire-title] >> text=${text}`);
 const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
 const options = () => page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
-const local = "[data-slot=setup-local]";
+const local = "[data-card=setup-local]";
 const fill = async (field: string, text: string, button: string) => {
 	await sees(`${local} [data-setup=${field}]`);
 	await page.fill(`${local} [data-setup=${field}]`, text);
@@ -108,7 +108,7 @@ test("what answered on this computer is offered; a server that wants a key asks 
 	await pick("LM Studio");
 	await sees(`${local} input[type=password][data-setup=key]`);
 	await fill("key", "sk-wrong", "Unlock");
-	await sees(`${local} [data-slot=alert] >> text=/did not accept that key/`);
+	await sees(`${local} [data-slot=field-error] >> text=/did not accept that key/`);
 	// A wrong key asks for the key again, with what the server said: not for the server's address.
 	await sees(`${local} input[type=password][data-setup=key]`);
 	assert.equal(await page.$(`${local} [data-setup=address]`), null, "no address card");
@@ -140,8 +140,34 @@ test("with nothing found, the owner types the address of a server, and it reache
 	await new Promise((r) => llama.server.close(r));
 	await new Promise((r) => studio.server.close(r));
 	const other = await listen(models("phi"));
-	await pick("A model on this computer");
-	await sees(`${local} >> text=/found no model server/`);
+	// In a short pane, where the card scrolls inside its slot: the field takes the keyboard without
+	// scrolling it, so the card starts at its title, with no fade over the top.
+	// The field's focus ring (stock, 3 pixels) lies inside the slot, which clips what it holds: whole on
+	// both sides, and under the field where the field is in view.
+	const ring = () =>
+		page.$eval("[data-slot=composer-question] [data-slot=scroll-area-viewport]", (v: Element) => {
+			const f = v.querySelector("[data-setup=address]")!.getBoundingClientRect();
+			const r = v.getBoundingClientRect();
+			return { top: v.scrollTop, scroll: v.scrollHeight, client: v.clientHeight, left: f.left - 3 - r.left, right: r.right - (f.right + 3), bottom: r.bottom - (f.bottom + 3) };
+		});
+	await page.setViewportSize({ width: 1280, height: 420 });
+	try {
+		await pick("A model on this computer");
+		await sees(`${local} >> text=/found no model server/`);
+		await page.waitForFunction(() => document.activeElement?.getAttribute("data-setup") === "address", undefined, { timeout: patient(5_000) });
+		const slot = await ring();
+		assert.ok(slot.scroll > slot.client, `the card does not scroll in a short pane: ${JSON.stringify(slot)}`);
+		assert.equal(slot.top, 0, `the card's slot starts scrolled: ${JSON.stringify(slot)}`);
+		assert.ok(slot.left >= 0 && slot.right >= 0, `the focus ring is cut at a side: ${JSON.stringify(slot)}`);
+	} finally {
+		await page.setViewportSize({ width: 1280, height: 820 });
+	}
+	await page.waitForFunction(() => {
+		const v = document.querySelector("[data-slot=composer-question] [data-slot=scroll-area-viewport]");
+		return v && v.scrollHeight <= v.clientHeight;
+	}, undefined, { timeout: patient(5_000) });
+	const whole = await ring();
+	assert.ok(whole.left >= 0 && whole.right >= 0 && whole.bottom >= 0, `the focus ring is cut: ${JSON.stringify(whole)}`);
 	await shot("setup-local-03-nothing");
 	// The address card has no options: the composer says where to type, not to name an option.
 	await page.waitForFunction(
@@ -151,7 +177,7 @@ test("with nothing found, the owner types the address of a server, and it reache
 	);
 	assert.notEqual(await page.getAttribute("[data-slot=composer] textarea", "placeholder"), "Type an option's name to pick it…");
 	await fill("address", "http://127.0.0.1:1", "Connect");
-	await sees(`${local} [data-slot=alert] >> text=/no model server answers/`);
+	await sees(`${local} [data-slot=field-error] >> text=/no model server answers/`);
 	await fill("address", `http://127.0.0.1:${other.port}`, "Connect");
 	await sees("[data-slot=setup-model] >> text=/Your agents run on .*\\/phi/");
 });
