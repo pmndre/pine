@@ -1,16 +1,17 @@
-import { CheckIcon, MessageCircleQuestionIcon, XIcon } from "lucide-react";
+import { CheckIcon, XIcon } from "lucide-react";
 import { Trace, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
 import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from "@/components/ui/item";
 import {
 	Questionnaire,
 	QuestionnaireActions,
 	QuestionnaireChoice,
 	QuestionnaireChoiceDescription,
 	QuestionnaireChoices,
+	QuestionnaireDescription,
 	QuestionnaireItem,
+	QuestionnaireSkip,
 	QuestionnaireSubmit,
 	QuestionnaireTitle,
 } from "@/components/ui/questionnaire";
@@ -139,19 +140,22 @@ export class ComposerCardSlot implements QuestionCardHostValue {
 
 /**
  * A question put to the owner, inline above the composer of its conversation: shadcn's
- * `Questionnaire` with one item, in an `Item` shell on the Confirmation pattern (a few words over it
- * as a `Badge`, the question, Later and No answer), as shadcn's example puts a questionnaire in a
- * card. The questionnaire brings the radios or checkboxes, each option's number and its key, the
- * arrows and Enter. What is pine's: a single answer is given as soon as an option is picked by a
- * click, its number or Space (the arrows only move, and Enter answers with the option they reached),
- * so there is no Submit; several are ticked and sent with Send; "recommended" on the first option of
- * a single answer where the asker orders its options so (`recommended`). There is no field for the
- * owner's own words: the composer below is that (`type`, through the host). The same card for an
- * agent's `question` and for what pine asks itself.
+ * `Questionnaire` with one item, laid out flat as shadcn's examples lay one out, with no frame of its
+ * own: the question as its title, who asks (with the few words the asker put to it, such as "Model")
+ * as its description, the options as its rows, and its actions row at the bottom: the asker's own
+ * ways out ("Back", "Cancel") at the start, where Previous stands, then Later, No answer (the
+ * questionnaire's Skip: skipping its one item submits it with nothing picked) and, for several
+ * answers, Send. The questionnaire brings the radios or checkboxes, each option's number and its
+ * key, the arrows and Enter. What is pine's: a single answer is given as soon as an option is picked
+ * by a click, its number or Space (the arrows only move, and Enter answers with the option they
+ * reached), so there is no Submit; several are ticked and sent with Send; "recommended" on the first
+ * option of a single answer where the asker orders its options so (`recommended`). There is no field
+ * for the owner's own words: the composer below is that (`type`, through the host). The same card
+ * for an agent's `question` and for what pine asks itself.
  */
 export function QuestionCard({ question, header, from, options, multiple, recommended, autoFocus, actions, type, placeholder, onAnswer, onNoAnswer, onLater }: {
 	question: string;
-	/** A few words over the question, such as "Database". */
+	/** A few words about the question, such as "Database", said with who asks. */
 	header?: string;
 	/** Who asks, such as "main asks". */
 	from?: string;
@@ -188,10 +192,12 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 	}, [autoFocus]);
 	// The card may stay on screen after an answer (a step that opens a dialog): it is cleared once the
 	// questionnaire has taken the pick in, so that the same option answers again.
-	const answer = (form: HTMLFormElement | null, picked: number[]) => {
-		onAnswer(picked);
+	const settle = (form: HTMLFormElement | null, picked: number[]) => {
+		if (picked.length) onAnswer(picked);
+		else onNoAnswer?.();
 		setTimeout(() => form?.reset());
 	};
+	const about = [header, from].filter(Boolean).join(" · ");
 	return (
 		<Questionnaire
 			defaultItem="answer"
@@ -204,60 +210,47 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 			}}
 			onSubmit={(e) => {
 				e.preventDefault();
-				const picked = new FormData(e.currentTarget).getAll("answer").map(Number);
-				if (picked.length) answer(e.currentTarget, picked.sort((a, b) => a - b));
+				// Submitted with nothing picked is the questionnaire's Skip: Send and Enter submit only an answer.
+				settle(e.currentTarget, new FormData(e.currentTarget).getAll("answer").map(Number).sort((a, b) => a - b));
 			}}
 		>
 			<QuestionnaireItem ref={item} name="answer" multiple={multiple} aria-labelledby={title} onStatusChange={(status) => setTicked(status === "answered")}>
-				<Item variant="outline" size="sm" data-slot="question-card" data-multiple={multiple ? "" : undefined}>
-					<ItemMedia variant="icon">
-						<MessageCircleQuestionIcon />
-					</ItemMedia>
-					<ItemContent>
-						{header || from ? (
-							<ItemDescription className="flex items-center gap-2">
-								{header ? <Badge variant="outline">{header}</Badge> : null}
-								{from}
-							</ItemDescription>
-						) : null}
-						<QuestionnaireTitle id={title} render={<ItemTitle className="line-clamp-none whitespace-pre-wrap select-text" data-slot="question-card-question" />}>
-							{question}
-						</QuestionnaireTitle>
-					</ItemContent>
-					<ItemActions>
-						{actions}
-						{onLater ? <Button size="sm" variant="ghost" onClick={onLater}>Later</Button> : null}
-						{onNoAnswer ? <Button size="sm" variant="ghost" onClick={onNoAnswer}>No answer</Button> : null}
-					</ItemActions>
-					{options.length ? (
-						<ItemFooter className="flex-col items-stretch">
-							<QuestionnaireChoices>
-								{options.map((o, i) => (
-									<QuestionnaireChoice
-										key={i}
-										value={String(i + 1)}
-										onChange={(e) => {
-											if (!multiple && e.currentTarget.checked && !moving.current) answer(e.currentTarget.form, [i + 1]);
-										}}
-									>
-										<span className="flex flex-wrap items-center gap-2">
-											<span className="font-medium" data-slot="question-card-label">{o.label}</span>
-											{/* What the agent would pick: one option, so not on a question with several answers. */}
-											{i === 0 && recommended && !multiple ? <Badge variant="secondary">recommended</Badge> : null}
-										</span>
-										{o.description ? <QuestionnaireChoiceDescription>{o.description}</QuestionnaireChoiceDescription> : null}
-									</QuestionnaireChoice>
-								))}
-							</QuestionnaireChoices>
-							{multiple ? (
-								<QuestionnaireActions>
-									<QuestionnaireSubmit size="sm" disabled={!ticked}>Send</QuestionnaireSubmit>
-								</QuestionnaireActions>
-							) : null}
-						</ItemFooter>
-					) : null}
-				</Item>
+				<QuestionnaireTitle id={title} className="whitespace-pre-wrap select-text">
+					{question}
+				</QuestionnaireTitle>
+				{about ? <QuestionnaireDescription>{about}</QuestionnaireDescription> : null}
+				{options.length ? (
+					<QuestionnaireChoices>
+						{options.map((o, i) => (
+							<QuestionnaireChoice
+								key={i}
+								value={String(i + 1)}
+								onChange={(e) => {
+									if (!multiple && e.currentTarget.checked && !moving.current) settle(e.currentTarget.form, [i + 1]);
+								}}
+							>
+								<span className="flex flex-wrap items-center gap-2">
+									<span className="font-medium" data-slot="question-card-label">{o.label}</span>
+									{/* What the agent would pick: one option, so not on a question with several answers. */}
+									{i === 0 && recommended && !multiple ? <Badge variant="secondary">recommended</Badge> : null}
+								</span>
+								{o.description ? <QuestionnaireChoiceDescription>{o.description}</QuestionnaireChoiceDescription> : null}
+							</QuestionnaireChoice>
+						))}
+					</QuestionnaireChoices>
+				) : null}
 			</QuestionnaireItem>
+			{actions || onLater || onNoAnswer || multiple ? (
+				// The stock row is a grid of three places (Previous, Skip, Next); this one holds more, so it
+				// flows, with the asker's own ways out at the start where Previous stands. Plain buttons take
+				// the stock buttons' touch height on a narrow screen, so that the row keeps one height.
+				<QuestionnaireActions className="flex flex-wrap justify-end [&_[data-slot=button]]:min-h-11 sm:[&_[data-slot=button]]:min-h-0">
+					{actions ? <div className="me-auto flex flex-wrap items-center gap-2">{actions}</div> : null}
+					{onLater ? <Button size="sm" variant="ghost" onClick={onLater}>Later</Button> : null}
+					{onNoAnswer ? <QuestionnaireSkip size="sm">No answer</QuestionnaireSkip> : null}
+					{multiple ? <QuestionnaireSubmit size="sm" disabled={!ticked}>Send</QuestionnaireSubmit> : null}
+				</QuestionnaireActions>
+			) : null}
 		</Questionnaire>
 	);
 }

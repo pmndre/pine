@@ -26,8 +26,8 @@ const shot = async (name: string) => {
 	fs.mkdirSync(process.env.PINE_DESKTOP_SHOTS, { recursive: true });
 	await page.screenshot({ path: path.join(process.env.PINE_DESKTOP_SHOTS, `${name}.png`) });
 };
-const card = "[data-slot=composer-question] [data-slot=question-card]";
-const question = (text: string) => sees(`${card} [data-slot=question-card-question] >> text=${text}`);
+const card = "[data-slot=composer-question] [data-slot=questionnaire]";
+const question = (text: string) => sees(`${card} [data-slot=questionnaire-title] >> text=${text}`);
 const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
 const options = () => page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
 const activeTab = () => page.$$eval("[data-slot=tab][aria-selected=true]", (els: Element[]) => els[0]?.textContent ?? "");
@@ -85,7 +85,7 @@ test("once a model answers and is kept, the card Next offers what to set up, Pin
 	await question("Keep this model?");
 	await pick("Go on");
 	await question("What would you like to set up now?");
-	assert.equal(await page.getAttribute(card, "data-multiple"), "");
+	assert.equal(await page.getAttribute(`${card} [data-slot=questionnaire-item]`, "data-multiple"), "");
 	const offered = await options();
 	const everywhere = ["The mode", "A working folder", "Telegram", "A first agent", "The theme"];
 	assert.deepEqual(offered, process.platform === "darwin" ? [...everywhere, "Pinecone"] : everywhere);

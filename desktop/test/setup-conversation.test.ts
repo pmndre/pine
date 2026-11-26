@@ -29,8 +29,8 @@ const shot = async (name: string) => {
 	await page.screenshot({ path: path.join(process.env.PINE_DESKTOP_SHOTS, `${name}.png`) });
 };
 const opened = () => app.evaluate(() => (globalThis as any).quiet.opened as string[]);
-const card = "[data-slot=composer-question] [data-slot=question-card]";
-const question = (text: string) => sees(`${card} [data-slot=question-card-question] >> text=${text}`);
+const card = "[data-slot=composer-question] [data-slot=questionnaire]";
+const question = (text: string) => sees(`${card} [data-slot=questionnaire-title] >> text=${text}`);
 const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
 const activeTab = () => page.$$eval("[data-slot=tab][aria-selected=true]", (els: Element[]) => els[0]?.textContent ?? "");
 
