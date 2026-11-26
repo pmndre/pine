@@ -47,7 +47,7 @@ export interface QuestionCardOption {
  * Space or Enter) and Send. There is no field for the owner's own words: the composer below is that.
  * The same card for an agent's `question` and for what pine asks itself.
  */
-export function QuestionCard({ question, header, from, options, multiple, autoFocus, onAnswer, onNoAnswer, onLater }: {
+export function QuestionCard({ question, header, from, options, multiple, autoFocus, actions, onAnswer, onNoAnswer, onLater }: {
 	question: string;
 	/** A few words over the question, such as "Database". */
 	header?: string;
@@ -58,6 +58,8 @@ export function QuestionCard({ question, header, from, options, multiple, autoFo
 	multiple?: boolean;
 	/** Takes the keyboard as it is shown, on its first option. */
 	autoFocus?: boolean;
+	/** Ways out other than an answer, before Later and No answer: "Back" in pine's own steps, "Cancel" in a sign-in. */
+	actions?: React.ReactNode;
 	/** The answer: the numbers of the options picked, counted from 1, in the order shown. */
 	onAnswer: (picked: number[]) => void;
 	onNoAnswer?: () => void;
@@ -113,6 +115,7 @@ export function QuestionCard({ question, header, from, options, multiple, autoFo
 				<ItemTitle className="line-clamp-none whitespace-pre-wrap select-text" data-slot="question-card-question">{question}</ItemTitle>
 			</ItemContent>
 			<ItemActions>
+				{actions}
 				{onLater ? <Button size="sm" variant="ghost" onClick={onLater}>Later</Button> : null}
 				{onNoAnswer ? <Button size="sm" variant="ghost" onClick={onNoAnswer}>No answer</Button> : null}
 			</ItemActions>

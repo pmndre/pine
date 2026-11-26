@@ -4,7 +4,7 @@ import { ModelNotice } from "./model-notice.tsx";
 const meta = {
 	component: ModelNotice,
 	decorators: [(Story) => <div className="mx-auto max-w-xl p-7"><Story /></div>],
-	args: { agent: "main", problem: "No model yet.", onModels: () => {} },
+	args: { agent: "main", problem: "No model yet.", onSetup: () => {} },
 } satisfies Meta<typeof ModelNotice>;
 export default meta;
 
@@ -25,5 +25,5 @@ export const AfterAMessage: Story = {
 
 /** In Settings > Models, where the way there is not needed. */
 export const InSettings: Story = {
-	args: { agent: "books", model: "opencode/big-pickle", problem: "opencode/big-pickle needs a sign-in to opencode or a key for it, and there is none.", onModels: undefined },
+	args: { agent: "books", model: "opencode/big-pickle", problem: "opencode/big-pickle needs a sign-in to opencode or a key for it, and there is none.", onSetup: undefined },
 };

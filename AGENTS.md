@@ -1040,6 +1040,10 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   (`term.type("text")` does) and wait with `sees()`, not with sleeps.
 - `pine init` downloads the browser. A test that runs it sets `PINE_SKIP_DOWNLOADS=1` (see
   `test/cli.test.ts`); the variable exists for tests only and is not a user option.
+- A browser sign-in to a model provider cannot happen in a test. The daemon of one of the app's
+  tests is given `PINE_LOGIN_STAND_IN=<file>` instead (`browserStandIn` in `src/owner.ts`, for tests
+  only, not a user option): it shows a page and a device code, and once the test writes a key into
+  that file it stores it through pi's own sign-in with a key (`desktop/test/setup-conversation.test.ts`).
 - `npm test` passes `--test-force-exit`, so a leaked handle cannot hang the run; a test that
   fails must still not leave a daemon behind (see the `after` hooks in `test/support/harness.ts`).
 - The source types are tested on stand-ins that run on any system and need no network: a web

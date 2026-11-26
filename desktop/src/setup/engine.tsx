@@ -1,0 +1,198 @@
+// "Setup Pine": the main agent's conversation `setup`, which leads a new owner to a model, and on
+// from there. Until a model answers, the steps are pine's own: a few lines and question cards,
+// derived from the daemon's state (the main agent's `modelProblem`, the providers signed in to, the
+// model servers) and written into no history, so that a reload draws them again and steps that are
+// done show as done. What the owner picked on this page (a branch, an answer) is kept only while
+// the page lives. The ways to a model, and the steps after one, are listed in branches.ts.
+import { CpuIcon } from "lucide-react";
+import { Fragment, useEffect } from "react";
+import { QuestionCard, QuestionTrace } from "@/components/question-card";
+import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
+import { Message, MessageContent } from "@/components/ui/message";
+import type { ModelServer, Provider } from "../api.ts";
+import { api } from "../api.ts";
+import { Model, store, type Tab, useModel } from "../model.ts";
+import { AFTER, BRANCHES } from "./branches.ts";
+import type { SetupAnswer, SetupContext, SetupFacts } from "./types.ts";
+
+const FIRST = "How should your agents run?";
+const KEEP = "Keep this model?";
+
+/** What the steps hold while the page lives: what was picked here. Everything else is asked of the daemon. */
+class Setup extends Model {
+	providers: Provider[] = [];
+	servers: ModelServer[] = [];
+	/** The branch picked on the first card, while no model answers. */
+	picked?: string;
+	/** What the owner answered here, in order. */
+	answers: SetupAnswer[] = [];
+	/** "Go on" was answered on the model that was chosen. */
+	kept = false;
+	/** The steps after the model that the owner finished here. */
+	finished = new Set<string>();
+
+	async refresh(): Promise<void> {
+		const [providers, servers] = await Promise.all([api.providers().catch(() => undefined), api.modelServers().catch(() => undefined)]);
+		if (providers) this.providers = providers;
+		if (servers) this.servers = servers;
+		this.touch();
+	}
+
+	facts(): SetupFacts | undefined {
+		const main = store.agents.find((a) => a.main);
+		return main && { main, providers: this.providers, servers: this.servers };
+	}
+
+	said(question: string, answer: string): void {
+		this.answers.push({ question, answer });
+		this.touch();
+	}
+
+	/** Back to the first card: the branch picked lets go of what it had under way. */
+	back(): void {
+		BRANCHES.find((b) => b.id === this.picked)?.leave?.();
+		this.picked = undefined;
+		this.answers = [];
+		this.touch();
+	}
+
+	/** A sign-in ended, a server was added: the daemon is asked again, the agents first. */
+	changed = async (): Promise<void> => {
+		await store.refreshAgents();
+		await this.refresh();
+	};
+
+	context(facts: SetupFacts): SetupContext {
+		return { facts, said: (q, a) => this.said(q, a), back: () => this.back(), changed: this.changed };
+	}
+}
+
+export const setup = new Setup();
+
+/** The answers that led to the model the agents run on: given here, or derived from the daemon's state after a reload. */
+function answersNow(facts: SetupFacts): SetupAnswer[] {
+	if (setup.answers.length || facts.main.modelProblem) return setup.answers;
+	for (const b of BRANCHES) {
+		const more = b.derive?.(facts);
+		if (more) return [{ question: FIRST, answer: b.label }, ...more];
+	}
+	return [];
+}
+
+/** pine's own lines at the top of "Setup Pine": its welcome, what was answered, and the model the agents run on once there is one. */
+export function SetupScript() {
+	useModel(setup);
+	useModel(store);
+	const facts = setup.facts();
+	const problem = facts?.main.modelProblem;
+	// Asked when the conversation is shown, and again whenever the model comes or goes.
+	useEffect(() => void setup.refresh(), [problem]);
+	if (!facts) return null;
+	return (
+		<div className="flex flex-col gap-4">
+			<Message data-slot="setup-welcome">
+				<MessageContent className="select-text">
+					<p>
+						This conversation sets pine up. Your agents need a model to think with, and that is the one thing pine needs before they can answer you: choose below how they should run. Once a model answers, {facts.main.id} takes over here for the rest, as far as you want to go today.
+					</p>
+				</MessageContent>
+			</Message>
+			{answersNow(facts).map((a, i) => (
+				<Fragment key={i}>
+					<QuestionTrace data-item="setup-answer" question={a.question} answer={a.answer} answered by="you" />
+				</Fragment>
+			))}
+			{problem ? null : (
+				<div data-slot="setup-model">
+					<Marker className="select-text">
+						<MarkerIcon>
+							<CpuIcon />
+						</MarkerIcon>
+						<MarkerContent>
+							Your agents run on <b className="font-mono">{facts.main.model}</b> now.
+						</MarkerContent>
+					</Marker>
+				</div>
+			)}
+			{!problem && setup.kept ? <QuestionTrace data-item="setup-answer" question={KEEP} answer="Go on" answered by="you" /> : null}
+		</div>
+	);
+}
+
+/** The step that is open, as a card above the composer of "Setup Pine": nothing once every step is done. */
+export function SetupCard({ tab }: { tab: Tab }) {
+	useModel(setup);
+	useModel(store);
+	const facts = setup.facts();
+	const problem = facts?.main.modelProblem;
+	const branch = BRANCHES.find((b) => b.id === setup.picked);
+	// A model answers now: the branch that was picked has nothing more to do.
+	useEffect(() => {
+		if (!problem && setup.picked) {
+			BRANCHES.find((b) => b.id === setup.picked)?.leave?.();
+			setup.picked = undefined;
+			setup.touch();
+		}
+	}, [problem]);
+	if (!facts) return null;
+	const ctx = setup.context(facts);
+	// The card takes the keyboard as it comes only when nothing is being typed in the composer.
+	const free = !tab.draft.trim();
+	let card;
+	if (problem) {
+		card = branch ? (
+			<branch.Card ctx={ctx} />
+		) : (
+			<QuestionCard
+				key="first"
+				question={FIRST}
+				header="Model"
+				from="pine asks"
+				options={BRANCHES.map((b) => ({ label: b.label, description: b.description }))}
+				autoFocus={free}
+				onAnswer={([n]) => {
+					const b = BRANCHES[n - 1];
+					setup.answers = [{ question: FIRST, answer: b.label }];
+					setup.picked = b.id;
+					setup.touch();
+				}}
+			/>
+		);
+	} else if (!setup.kept) {
+		card = (
+			<QuestionCard
+				key="keep"
+				question={KEEP}
+				header="Model"
+				from="pine asks"
+				options={[
+					{ label: "Go on", description: "Keep it. You can change it at any time in Settings › Models." },
+					{ label: "Choose another model", description: "Pick among the models your agents can use now." },
+				]}
+				autoFocus={free}
+				onAnswer={([n]) => {
+					if (n === 2) return void store.chooseDefaultModel().then(() => setup.refresh());
+					setup.kept = true;
+					setup.touch();
+				}}
+			/>
+		);
+	} else {
+		const next = AFTER.find((s) => !setup.finished.has(s.id) && !s.done(facts));
+		if (!next) return null;
+		card = (
+			<next.Card
+				ctx={ctx}
+				finish={() => {
+					setup.finished.add(next.id);
+					setup.touch();
+				}}
+			/>
+		);
+	}
+	return (
+		<div data-slot="composer-question" className="mb-2">
+			{card}
+		</div>
+	);
+}

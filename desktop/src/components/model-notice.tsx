@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 /**
  * What pine says wherever an agent cannot answer for want of a model that answers: on its card at the top of a
  * conversation, after a message of yours that failed for it, and in Settings > Models. One notice, worded one way.
- * With no model at all it says what to do; with a model that cannot answer, why first.
+ * With no model at all it says what to do; with a model that cannot answer, why first. Its button leads to the
+ * one way to connect a model, the setup conversation ("Setup Pine").
  */
-export function ModelNotice({ agent, model, problem, retry, onModels }: {
+export function ModelNotice({ agent, model, problem, retry, onSetup }: {
 	agent: string;
 	/** The model it is set to run on, if any. */
 	model?: string;
@@ -15,8 +16,8 @@ export function ModelNotice({ agent, model, problem, retry, onModels }: {
 	problem: string;
 	/** A message was not answered for it: say to send it again. */
 	retry?: boolean;
-	/** The way to Settings > Models; left out where that page is already open. */
-	onModels?: () => void;
+	/** The way to the setup conversation; left out where it would lead nowhere new (Settings > Models). */
+	onSetup?: () => void;
 }) {
 	return (
 		<Alert className="select-text" data-slot="model-notice">
@@ -32,9 +33,9 @@ export function ModelNotice({ agent, model, problem, retry, onModels }: {
 				)}
 				{retry ? " Then send your message again." : null}
 			</AlertDescription>
-			{onModels ? (
+			{onSetup ? (
 				<AlertAction>
-					<Button variant="outline" size="xs" onClick={onModels}>Models…</Button>
+					<Button variant="outline" size="xs" onClick={onSetup}>Set up a model…</Button>
 				</AlertAction>
 			) : null}
 		</Alert>

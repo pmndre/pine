@@ -20,10 +20,14 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "cn";
 import { type ComponentProps, Fragment, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
-import { type AgentDetail, api, type AskQuestion, type Decisions, type LoginState, type ModelServer, type Provider, type Route, type Setting, type SourceType } from "./api.ts";
+import { type AgentDetail, api, type AskQuestion, type Decisions, type ModelServer, type Provider, type Route, type Setting, type SourceType } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { Editor } from "./CodePanel.tsx";
-import { store, type UpdatePhase, useModel, useSignal } from "./model.ts";
+import { Model, store, type UpdatePhase, useModel, useSignal } from "./model.ts";
+import { SignInRun } from "./sign-in.ts";
+
+/** What a part follows while what it follows is not there yet. */
+const IDLE = new Model();
 import { ago, errText, MODES, newApp, plural, REASONING, SCROLLS, short, tilde } from "./text.ts";
 import type { DialogRootActions } from "@base-ui/react/dialog";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -883,49 +887,21 @@ function Agents() {
  * content of a stock Dialog, which unmounts it when it closes: a sign-in that is not done then is cancelled.
  */
 function SignIn({ provider, type, reload }: { provider: string; type?: "api_key" | "oauth"; reload: () => void }) {
-	const [id, setId] = useState<string>();
-	const [state, setState] = useState<LoginState>();
+	const [run, setRun] = useState<SignInRun>();
 	const [answer, setAnswer] = useState("");
-	const [error, setError] = useState<string>();
-	const opened = useRef<string>(undefined);
 	const field = useId();
 	useEffect(() => {
-		let live = true;
-		// A dialog closed before the sign-in had started still ends it: nothing else knows its id.
-		api.login(provider, type).then((r) => (live ? setId(r.id) : void api.loginAnswer(r.id, { cancel: true }).catch(() => {})), (e) => live && setError(errText(e)));
-		return () => {
-			live = false;
-		};
+		// A dialog closed before the sign-in is done cancels it (`end`).
+		const started = new SignInRun(provider, type);
+		setRun(started);
+		return () => started.end();
 	}, [provider, type]);
-	useEffect(() => {
-		if (!id) return;
-		let live = true;
-		let done = false;
-		const look = async () => {
-			try {
-				const next = await api.loginState(id);
-				if (!live) return;
-				done = next.done;
-				setState(next);
-				// The page is opened here, where the owner sits; once.
-				if (next.url && opened.current !== next.url) (opened.current = next.url), void bridge.open(next.url);
-				if (!next.done) timer = window.setTimeout(look, 700);
-			} catch (e) {
-				if (live) setError(errText(e));
-			}
-		};
-		let timer = window.setTimeout(look, 150);
-		return () => {
-			live = false;
-			window.clearTimeout(timer);
-			if (!done) void api.loginAnswer(id, { cancel: true }).catch(() => {});
-		};
-	}, [id]);
+	useModel(run ?? IDLE);
+	const state = run?.state;
+	const error = run?.error;
 	const send = async (text: string) => {
-		if (!id) return;
 		setAnswer("");
-		setError(undefined);
-		await api.loginAnswer(id, { answer: text }).catch((e) => setError(errText(e)));
+		await run?.answer(text);
 	};
 	const q = state?.question;
 	return (

@@ -39,6 +39,8 @@ const SYNONYMS: string[][] = [
 	["subscribe", "subscription", "listen", "follow", "wake", "notify", "notification"],
 	["unsubscribe", "stop", "mute", "silence"],
 	["introduce", "introduction", "hello", "hatch", "greet", "greeting", "welcome", "onboarding", "meet"],
+	// Setup Pine: what a newcomer says who has just installed pine.
+	["setup", "onboarding", "newcomer", "beginner", "installed", "install"],
 	["mcp", "server", "connector", "integration", "plugin", "extension", "tool"],
 	["skill", "procedure", "howto", "recipe", "playbook", "instruction", "knowhow"],
 	["secret", "token", "password", "key", "credential", "apikey", "env"],
