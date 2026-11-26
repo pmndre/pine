@@ -5,15 +5,12 @@
 // is added through the route Settings > Models uses, so that the daemon chooses the agents' model as
 // it does there (`settleModel`). Pinecone (llama.cpp on 8080 with its MCP server on 8090) adds its
 // MCP server for all agents too, through the owner's own route for MCP servers.
-import { TriangleAlertIcon } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect } from "react";
+import { FieldCard, FormCard } from "@/components/field-card";
 import { Pulse } from "@/components/pulse";
 import { type HostedCard, QuestionCard, useHostedCard } from "@/components/question-card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemTitle } from "@/components/ui/item";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item";
 import { api, ApiError, type LocalServer } from "../api.ts";
 import { Model, store, useModel } from "../model.ts";
 import { errText } from "../text.ts";
@@ -166,60 +163,24 @@ function AskCard({ title, about, field, label, help, secret, button, onSend, onB
 }) {
 	useModel(local);
 	useHostedCard(HOSTED[field]);
-	const [typed, setTyped] = useState("");
-	const id = useId();
-	const send = () => {
-		const text = typed.trim();
-		if (!text || local.busy) return;
-		if (secret) setTyped("");
-		onSend(text);
-	};
 	return (
-		<Item variant="outline" size="sm" data-slot="setup-local">
-			<ItemContent>
-				<ItemTitle>{title}</ItemTitle>
-				<ItemDescription className="line-clamp-none select-text">{about}</ItemDescription>
-			</ItemContent>
-			<ItemActions>
-				<Button size="sm" variant="ghost" onClick={onBack}>Back</Button>
-			</ItemActions>
-			<ItemFooter className="flex-col items-stretch">
-				{local.error ? (
-					<Alert variant="destructive">
-						<TriangleAlertIcon />
-						<AlertDescription className="select-text">{local.error}</AlertDescription>
-					</Alert>
-				) : null}
-				<Field>
-					<FieldLabel htmlFor={id}>{label}</FieldLabel>
-					<InputGroup>
-						<InputGroupInput
-							id={id}
-							data-setup={field}
-							autoFocus
-							type={secret ? "password" : field === "context" ? "number" : "text"}
-							autoComplete="off"
-							spellCheck={false}
-							value={typed}
-							onChange={(e) => setTyped(e.target.value)}
-							onKeyDown={(e) => e.key === "Enter" && send()}
-						/>
-						<InputGroupAddon align="inline-end">
-							<InputGroupButton variant="default" disabled={!typed.trim() || local.busy} onClick={send}>{button}</InputGroupButton>
-						</InputGroupAddon>
-					</InputGroup>
-					{help ? <FieldDescription>{help}</FieldDescription> : null}
-				</Field>
-				{local.busy ? (
-					<span className="flex items-center gap-2 text-muted-foreground">
-						<Pulse label="Loading" />
-						Asking the server…
-					</span>
-				) : null}
-			</ItemFooter>
-		</Item>
+		<FieldCard
+			data-card="setup-local"
+			title={title}
+			about={about}
+			error={local.error}
+			label={label}
+			type={secret ? "password" : field === "context" ? "number" : field === "address" ? "url" : "text"}
+			input={{ "data-setup": field }}
+			help={help}
+			button={button}
+			busy={local.busy ? "Asking the server…" : undefined}
+			start={<Button size="sm" variant="ghost" onClick={onBack}>Back</Button>}
+			onSend={onSend}
+		/>
 	);
 }
+
 
 function Card({ ctx }: { ctx: SetupContext }) {
 	useModel(local);
@@ -295,20 +256,13 @@ function Card({ ctx }: { ctx: SetupContext }) {
 		);
 	if (!found || chosen)
 		return (
-			<Item variant="outline" size="sm" data-slot="setup-local">
-				<ItemContent>
-					<ItemTitle>{chosen ? `Adding ${chosen.title}` : `Looking for model servers on ${where()}`}</ItemTitle>
-					<ItemDescription className="line-clamp-none">
-						<span className="flex items-center gap-2">
-							<Pulse label="Loading" />
-							{chosen ? "Asking it what it serves…" : "llama.cpp, Ollama, LM Studio and Pinecone, on their usual ports…"}
-						</span>
-					</ItemDescription>
-				</ItemContent>
-				<ItemActions>
-					<Button size="sm" variant="ghost" onClick={back}>Back</Button>
-				</ItemActions>
-			</Item>
+			<FormCard
+				data-card="setup-local"
+				title={chosen ? `Adding ${chosen.title}` : `Looking for model servers on ${where()}`}
+				about={chosen ? "Asking it what it serves…" : "llama.cpp, Ollama, LM Studio and Pinecone, on their usual ports…"}
+				start={<Button size="sm" variant="ghost" onClick={back}>Back</Button>}
+				end={<Pulse label="Loading" />}
+			/>
 		);
 	return (
 		<QuestionCard

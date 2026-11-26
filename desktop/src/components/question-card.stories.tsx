@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { Button } from "@/components/ui/button";
 import { QuestionCard, QuestionTrace } from "./question-card.tsx";
 
 // A question put to the owner, as it stands above the composer, and the line it folds into once answered.
@@ -22,7 +23,7 @@ type Story = StoryObj<typeof meta>;
 /** One answer, from plain labels. */
 export const Single: Story = {};
 
-/** A few words over it, a line under each option that says what it means, and the first marked as the one the asker would pick. */
+/** A few words said with who asks, a line under each option that says what it means, and the first marked as the one the asker would pick. */
 export const WithDescriptions: Story = {
 	args: {
 		header: "Model",
@@ -36,10 +37,25 @@ export const WithDescriptions: Story = {
 	},
 };
 
+/** One of pine's own steps: a way back at the start of the actions row, before Later and No answer. */
+export const WithBack: Story = {
+	args: {
+		header: "API key",
+		from: "pine asks",
+		question: "Which provider is your key for?",
+		options: [{ label: "Anthropic" }, { label: "OpenAI" }, { label: "OpenRouter" }],
+		actions: <Button size="sm" variant="ghost">Back</Button>,
+	},
+};
+
 /** Several may be ticked, and are sent together. */
 export const Multiple: Story = {
 	args: {
 		header: "Next",
+		from: "pine asks",
+		actions: <Button size="sm" variant="ghost">Nothing for now</Button>,
+		onNoAnswer: undefined,
+		onLater: undefined,
 		question: "What do you want to set up now?",
 		multiple: true,
 		options: [{ label: "The mode", description: "How much your agents ask before they act" }, { label: "A working folder" }, { label: "Telegram", description: "Talk to your agents from your phone" }, { label: "A first agent" }],
