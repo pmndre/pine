@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-pine (PI neural engine) runs AI agents that react to events as well as to chat. It is a daemon
+pine runs AI agents that react to events as well as to chat. It is a daemon
 built on the pi coding agent, with a desktop app, a terminal UI, a phone app and a web client.
 
 ## Install
