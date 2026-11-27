@@ -581,7 +581,7 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 		case "swarm": {
 			const w = item.swarm;
 			return (
-				<Marker className="select-text">
+				<Marker className="select-text" data-item="swarm" data-state={w.status === "active" && w.checking ? "checking" : w.status}>
 					<MarkerIcon>{w.status === "done" ? <CheckIcon /> : w.status === "active" ? <UsersIcon /> : <ClockIcon />}</MarkerIcon>
 					<MarkerContent>
 						swarm · {w.note}

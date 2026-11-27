@@ -1033,6 +1033,10 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
 
 ## Tests
 
+- [`TESTS.md`](TESTS.md) is the ground rules for every test: stable over fragile, assert on
+  behaviour and state (`data-slot`, `data-state`, routes, tool calls, data the test supplied) and
+  on established invariants, never on pixels, layout or exact UI copy. Fragile pixel/copy tests are
+  forbidden, and every new test must meet it. Read it before writing or reviewing a test.
 - Every test builds its own home in a temp folder with `harness()` and talks to the scripted
   model server from `baseline/tests/mock.mjs`. A prompt containing `<<MOCK {"steps":[...]}>>`
   scripts the model's next replies; `@@REF:name@@` refers to `mock.state.scripts[name]` (use it

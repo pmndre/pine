@@ -41,7 +41,8 @@ test("the first screen during a pairing: what to do before the computer answered
 	// The computer's own name, once it gave it with the digits (a computer found on the network was only "Pine").
 	const named = firstScreen({ status: "starting", pairing: { code: "4821", name: "Pine on Pixel 9", computer: "Studio Mac" } }, "phone");
 	assert.equal(named?.title, "Confirm on Studio Mac");
-	assert.match(named?.about ?? "", /^Studio Mac asks whether "Pine on Pixel 9" may connect/);
+	// The requesting device's name reaches the prompt; the computer's name is checked on the title above.
+	assert.match(named?.about ?? "", /Pine on Pixel 9/);
 	// No pairing: the first screen is drawn as before.
 	assert.equal(firstScreen({ status: "starting" }), undefined);
 	assert.equal(firstScreen({ status: "starting", host: PAIRED }), undefined);
