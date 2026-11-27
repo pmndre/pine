@@ -439,11 +439,13 @@ function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
 /**
  * A turn's questions in the conversation, by the rule of open questions (`openQuestions`): one line
  * each while their card above the composer shows them; in full, read only, while the owner folded the
- * card away; one line each again once the owner's next message (which follows) or the agent's next
+ * card away or turned it off (Settings > General); one line each again once the owner's next message (which follows) or the agent's next
  * turn closed them.
  */
 function Questions({ item, tab }: { item: Extract<Item, { t: "questions" }>; tab: Tab }) {
 	useModel(tab);
+	// The card turned on or off in Settings (`questionCards`) changes how they show.
+	useModel(store);
 	const open = store.openQuestions(tab) === item;
 	const state = !open ? "closed" : store.shownQuestions(tab) === item ? "open" : "folded";
 	const questions = item.asked.filter(Boolean);

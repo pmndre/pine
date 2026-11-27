@@ -76,7 +76,8 @@ type ListKeyEvent = React.KeyboardEvent<HTMLTextAreaElement> & { preventBaseUIHa
  */
 function QuestionToggle({ tab }: { tab: Tab }) {
 	const choice = store.openChoice(tab) ?? store.hiddenChoice(tab);
-	const questions = choice ? undefined : store.openQuestions(tab);
+	// With the card turned off (Settings > General) there is nothing to fold: the thread shows the questions in full.
+	const questions = choice || !store.questionCards ? undefined : store.openQuestions(tab);
 	if (!choice && !questions) return null;
 	const open = choice ? choice === store.openChoice(tab) : Boolean(store.shownQuestions(tab));
 	const what = choice || questions!.asked.filter(Boolean).length < 2 ? "question" : "questions";
@@ -85,7 +86,7 @@ function QuestionToggle({ tab }: { tab: Tab }) {
 	return (
 		<HoverTooltip>
 			{/* Outline as stock, but its dark tint mixed into the page color: it sits on the composer's border, which a see-through fill would show. */}
-			<TooltipTrigger render={<Button variant="outline" size="icon-xs" className="absolute end-3 -top-3 dark:bg-[color-mix(in_oklch,var(--input)_30%,var(--background))] dark:hover:bg-[color-mix(in_oklch,var(--input)_50%,var(--background))]" aria-expanded={open} aria-label={label} onClick={toggle} />}>
+			<TooltipTrigger render={<Button data-question-toggle variant="outline" size="icon-xs" className="absolute end-3 -top-3 dark:bg-[color-mix(in_oklch,var(--input)_30%,var(--background))] dark:hover:bg-[color-mix(in_oklch,var(--input)_50%,var(--background))]" aria-expanded={open} aria-label={label} onClick={toggle} />}>
 				{open ? <ChevronDownIcon /> : <ChevronUpIcon />}
 			</TooltipTrigger>
 			<TooltipContent>{label}</TooltipContent>

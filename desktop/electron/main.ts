@@ -93,6 +93,8 @@ interface Prefs {
 	/** The one of them the app uses; none: the pine of this computer. */
 	use?: string;
 	notify: boolean;
+	/** Whether an agent's open questions get their card above the composer (Settings > General); off: the thread shows them in full. */
+	questionCards: boolean;
 	/** Whether GitHub is asked for a newer app when this one starts. */
 	updates: boolean;
 	/** Whether a newer app is downloaded and installed when the app restarts or quits; off: the owner gets the link to its page. */
@@ -114,7 +116,7 @@ interface Prefs {
 }
 
 const prefsFile = () => path.join(app.getPath("userData"), "prefs.json");
-let prefs: Prefs = { keepRunning: false, hosts: [], notify: true, updates: true, autoUpdate: true, commandTried: false, access: readAccessPrefs(undefined) };
+let prefs: Prefs = { keepRunning: false, hosts: [], notify: true, questionCards: true, updates: true, autoUpdate: true, commandTried: false, access: readAccessPrefs(undefined) };
 
 /** Preferences shape exposed to renderer pages (omits main-process window geometry and snapshots). */
 const publicPrefs = () => ({ ...prefs, bounds: undefined, layout: undefined, windows: undefined });
@@ -142,6 +144,7 @@ function loadPrefs(): void {
 			hosts,
 			use: undefined,
 			notify: raw.notify !== false,
+			questionCards: raw.questionCards !== false,
 			updates: raw.updates !== false,
 			autoUpdate: raw.autoUpdate !== false,
 			commandTried: raw.commandTried === true,
@@ -1530,6 +1533,10 @@ function wire(): void {
 		let globalChanged = false;
 		if (typeof change.notify === "boolean") {
 			prefs.notify = change.notify;
+			globalChanged = true;
+		}
+		if (typeof change.questionCards === "boolean") {
+			prefs.questionCards = change.questionCards;
 			globalChanged = true;
 		}
 		if (typeof change.updates === "boolean") {

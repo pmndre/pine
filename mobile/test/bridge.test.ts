@@ -46,7 +46,7 @@ test("state: the plugin's connection and stored machines, with no local machine 
 	assert.equal(s.home, "box:~/.pine");
 	assert.equal(s.updates, false);
 	assert.deepEqual(s.versions, { app: "1.2.3", electron: "none" });
-	assert.deepEqual(s.prefs, { keepRunning: false, hosts: ["me@box"], use: "me@box", notify: true, updates: false });
+	assert.deepEqual(s.prefs, { keepRunning: false, hosts: ["me@box"], use: "me@box", notify: true, updates: false, questionCards: true });
 });
 
 test("mediaBase: the address on the app's origin that the plugin answers", () => {
@@ -162,7 +162,7 @@ test("machines: use, add and forget go to the plugin, and the prefs come back wi
 	assert.equal(added.notify, true);
 	await b.use("pi");
 	const forgotten = await b.forgetHost("me@box");
-	assert.deepEqual(forgotten, { keepRunning: false, hosts: ["pi"], use: "pi", notify: true, updates: false });
+	assert.deepEqual(forgotten, { keepRunning: false, hosts: ["pi"], use: "pi", notify: true, updates: false, questionCards: true });
 	assert.deepEqual(
 		calls.filter(([m]) => m !== "state" && m !== "loadPrefs" && m !== "systemBars"),
 		[
@@ -304,10 +304,16 @@ test("prefs: each value checked as the desktop's main process checks it, then st
 	assert.deepEqual(after.hosts, ["me@box"]);
 	assert.equal(after.use, "me@box");
 	const saved = calls.find(([m]) => m === "savePrefs")?.[1] as { prefs: Record<string, unknown> };
-	assert.deepEqual(Object.keys(saved.prefs).sort(), ["keepRunning", "look", "notify", "updates"], "machines are the plugin's own, not saved with the page's prefs");
+	assert.deepEqual(Object.keys(saved.prefs).sort(), ["keepRunning", "look", "notify", "questionCards", "updates"], "machines are the plugin's own, not saved with the page's prefs");
+	assert.equal(after.questionCards, true, "the questions' card is on unless turned off");
+	const off = await b.prefs({ questionCards: false });
+	assert.equal(off.questionCards, false);
+	assert.equal((calls.filter(([m]) => m === "savePrefs").at(-1)?.[1] as { prefs: Record<string, unknown> }).prefs.questionCards, false);
+	const on = await b.prefs({ questionCards: true });
+	assert.equal(on.questionCards, true);
 
-	const refused = await b.prefs({ notify: "yes", updates: 1, keepRunning: null, home: "/etc", hosts: ["evil"], use: "evil", extra: 1 });
-	assert.deepEqual(refused, after, "nothing that is not a value the desktop accepts changes, and no machine is set this way");
+	const refused = await b.prefs({ notify: "yes", updates: 1, keepRunning: null, questionCards: "no", home: "/etc", hosts: ["evil"], use: "evil", extra: 1 });
+	assert.deepEqual(refused, on, "nothing that is not a value the desktop accepts changes, and no machine is set this way");
 
 	const reset = await b.prefs({ look: undefined });
 	assert.equal(reset.look, undefined, "no theme is pine's default: none stored");

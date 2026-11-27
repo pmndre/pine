@@ -3063,6 +3063,13 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 						</FieldContent>
 						<Switch id={`${field}-notify`} checked={s.prefs.notify} onCheckedChange={(notify) => void set({ notify })} />
 					</Field>
+					<Field orientation="horizontal" data-find="question-cards">
+						<FieldContent>
+							<FieldLabel htmlFor={`${field}-question-cards`}>Answer questions with a card</FieldLabel>
+							<FieldDescription>When an agent asks you something, its choices show in a card above the box you type in. Off: the question shows in the conversation, and you answer by typing.</FieldDescription>
+						</FieldContent>
+						<Switch id={`${field}-question-cards`} checked={s.prefs.questionCards !== false} onCheckedChange={(questionCards) => void set({ questionCards })} />
+					</Field>
 				</FieldGroup>
 			</Section>
 			<FieldSeparator />

@@ -136,6 +136,7 @@ In Settings > General:
 | Keep pine running after the app quits | Schedules fire, sources report and Telegram answers after you close the app; the next start attaches again |
 | Home folder | A pine home other than `~/.pine` (another home is another pine) |
 | Notifications | When an agent is done, fails, needs your approval or asks you something while the window is not in front. Always in pine's own words ("main is done"), never the agent's |
+| Answer questions with a card | On by default. Off: an agent's questions get no card above the input; the conversation shows them in full and you answer by typing. Kept by the app (`prefs.json`), not a setting of pine's |
 
 On a Mac, closing the window doesn't quit the app or a daemon it started (`⌘Q` does). On Linux and
 Windows, closing the last window quits. If the app is newer than the attached pine, a page that
@@ -322,6 +323,7 @@ The card takes the keyboard only while the input is empty.
 | Typed instead of picking | A message typed instead of picking an answer is an ordinary message: your answer in your own words, a question back, or something else |
 | When it goes | At your next message, and when the agent's next turn begins; until then it comes back when you open the conversation again |
 | Fold | A small button on the input's top edge folds the card away (chevron down) and brings it back (chevron up); the conversation then shows the questions in full |
+| No card at all | Settings > General > **Answer questions with a card**, off: no card and no button; the conversation shows each open question in full, read only, until your next message answers it. On again, an open question has its card back |
 | Outside content | When the conversation has read outside content, the card says so |
 
 In the conversation each question is one line ("Asked · Which database?"). An approval (a

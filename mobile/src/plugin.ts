@@ -43,6 +43,8 @@ export interface PagePrefs {
 	notify: boolean;
 	updates: boolean;
 	keepRunning: boolean;
+	/** Whether an agent's open questions get their card above the composer (the bridge reads what an older app stored, without it, as on). */
+	questionCards: boolean;
 	/** The theme the page was last drawn in, as cleanLook made it safe; none: pmndre. */
 	look?: Look;
 }

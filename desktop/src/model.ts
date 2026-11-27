@@ -330,7 +330,7 @@ export class Store extends Model {
 	/** Why the agents of the pine that answered could not be loaded, until they are asked again: the gate says it and offers to try again. */
 	loadError?: string;
 	connected = false;
-	prefs: Prefs = { keepRunning: false, hosts: [], notify: true, updates: true };
+	prefs: Prefs = { keepRunning: false, hosts: [], notify: true, updates: true, questionCards: true };
 	/** The themes in the themes folder of pine's home, and the one in force (`ui.theme`, pmndre when none is chosen). */
 	themes: ThemeEntry[] = [];
 	/** Whether `refreshThemes` has answered once, read or not: Settings draws skeletons until then. */
@@ -3059,8 +3059,14 @@ export class Store extends Model {
 		return tab.items.slice(at + 1).some((it) => it.t === "user") ? undefined : item;
 	}
 
-	/** The open questions whose card stands above the composer: those the owner did not fold away. */
+	/** Whether an agent's open questions get their card above the composer (Settings > General); off, the thread shows them in full. */
+	get questionCards(): boolean {
+		return this.prefs.questionCards !== false;
+	}
+
+	/** The open questions whose card stands above the composer: those the owner did not fold away, while the card is on at all. */
 	shownQuestions(tab: Tab): Of<"questions"> | undefined {
+		if (!this.questionCards) return undefined;
 		const open = this.openQuestions(tab);
 		return open && tab.folded !== open.task ? open : undefined;
 	}

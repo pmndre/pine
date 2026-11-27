@@ -16,7 +16,7 @@ function standIn(): Omit<Bridge, "mediaBase" | AccessCalls | UpdateCalls | Brows
 	const on = (set: Set<Listener>) => (fn: Listener) => (set.add(fn), () => void set.delete(fn));
 	const never = () => () => undefined;
 	const tell = (set: Set<Listener>, ...args: unknown[]) => set.forEach((fn) => fn(...args));
-	let prefs: Record<string, unknown> = { keepRunning: false, hosts: [], notify: false, updates: false };
+	let prefs: Record<string, unknown> = { keepRunning: false, hosts: [], notify: false, updates: false, questionCards: true };
 
 	const service = async () => {
 		const res = await fetch("/__pine/state");
