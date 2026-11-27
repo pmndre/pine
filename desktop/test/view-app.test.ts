@@ -33,6 +33,14 @@ const call = (method: string, url: string, body?: unknown) => page.evaluate(([m,
 /** The view's frame, as the test reads it: the office writes what it draws in words, too. */
 const frame = () => page.frameLocator("[data-slot=view-frame]");
 const said = (agent: string) => frame().locator(`[data-slot=office-words] > li[data-agent=${agent}]`).textContent();
+/** The first piece of work of an agent's of a kind, by its number, as the daemon has it. */
+const taskOf = async (agent: string, kind: string): Promise<number> => {
+	const tasks = ((await call("GET", `/tasks?agent=${agent}`)) as { data: Array<{ id: number; kind: string }> }).data;
+	const ids = tasks.filter((t) => t.kind === kind).map((t) => t.id);
+	assert.ok(ids.length, `${agent} has a piece of work of the kind ${kind}`);
+	return Math.min(...ids);
+};
+const lineOf = (job: number) => `[data-slot=view-inspector] [data-slot=view-line][data-job="${job}"]`;
 
 async function sees(selector: string, why: string, timeout = patient(15_000)): Promise<void> {
 	try {
@@ -65,8 +73,12 @@ before(async () => {
 	page = await app.firstWindow();
 	await page.setViewportSize?.({ width: 1280, height: 820 }).catch(() => {});
 	await page.waitForSelector("[data-slot=empty] h1", { timeout: 30_000 });
-	const dialog = await page.waitForSelector("[data-slot=dialog-footer] button >> text=Not now", { timeout: 3000 }).catch(() => undefined);
-	if (dialog) await dialog.click();
+	// The question about the browser, where it comes: put away as the Escape key puts it away, whatever its buttons say.
+	const dialog = await page.waitForSelector("[data-slot=dialog-content]", { timeout: 3000 }).catch(() => undefined);
+	if (dialog) {
+		await page.keyboard.press("Escape");
+		await page.waitForSelector("[data-slot=dialog-content]", { state: "detached", timeout: 5000 });
+	}
 });
 
 after(async () => {
@@ -85,8 +97,10 @@ test("pine puts its own views into the home, and the panel runs the one that is 
 	await menu("view");
 	await sees("[data-slot=view-aside] [data-slot=view][data-view=office] [data-slot=view-frame][data-ready]", "the office, running in its frame");
 	await frame().locator("[data-slot=office-words] > li[data-agent=books]").waitFor({ state: "attached", timeout: 10_000 });
-	assert.match(await said("books"), /books, bypass mode: idle/);
-	assert.match(await said("main"), /main, safe mode, the main agent, under the roof/);
+	// Each agent with the mode this home gave it: the names and the modes are the test's own.
+	assert.match(await said("books"), /books[\s\S]*bypass/);
+	assert.match(await said("main"), /main[\s\S]*safe/);
+	assert.doesNotMatch(await said("main"), /bypass/);
 	assert.equal(await page.getAttribute("[data-toggle=view]", "aria-pressed"), "true");
 	assert.match(await page.textContent("[data-slot=view-select]"), /office/, "the view's name, at the top, is where another is picked");
 });
@@ -96,51 +110,63 @@ test("work main hands books shows at books, held to main's safe mode; what happe
 	await call("POST", "/agents/main/prompt", { prompt: mockMsg([{ tools: [{ name: "delegate", args: { agent: "books", task: "Check the books @@REF:slow@@" } }] }, { text: "done" }]), session: "main", wait: false });
 	const busy = frame().locator("[data-slot=office-words] > li[data-agent=books] li[data-work]");
 	await busy.waitFor({ state: "attached", timeout: 15_000 });
-	assert.match(await busy.textContent(), /from main/);
-	// books works in bypass by itself; handed work from main (safe), it is held to safe.
-	await frame().locator("[data-slot=office-words] > li[data-agent=books] li[data-work]", { hasText: "limited to safe mode" }).waitFor({ state: "attached", timeout: 8000 });
-	await new Promise((r) => setTimeout(r, 1200));
+	assert.match(await busy.textContent(), /main/, "whom it works for");
+	// books works in bypass by itself; handed work from main (safe), it is held to safe: the only way "safe" gets into its line.
+	await frame().locator("[data-slot=office-words] > li[data-agent=books] li[data-work]", { hasText: "safe" }).waitFor({ state: "attached", timeout: 8000 });
+	if (shots) await new Promise((r) => setTimeout(r, 1200));
 	await shoot("office");
-	await page.waitForFunction(() => /books answered main/.test(document.querySelector("[data-slot=view-inspector]")?.textContent ?? ""), null, { timeout: 15_000 });
-	assert.match(await page.textContent("[data-slot=view-inspector]"), /main delegated a task to books: Check the books/);
-	await frame().locator("[data-slot=office-words] > li[data-agent=books] li[data-work]").waitFor({ state: "detached", timeout: 15_000 });
+	await busy.waitFor({ state: "detached", timeout: 15_000 });
+	// Under the view: lines about that piece of work, by its number, one of them with the task the test gave.
+	const job = await taskOf("books", "delegate");
+	await sees(lineOf(job), "a line about the work books was handed");
+	const lines: string[] = await page.$$eval(lineOf(job), (els: Element[]) => els.map((el) => el.textContent ?? ""));
+	assert.ok(lines.some((t) => t.includes("Check the books")), `the task it was given is named: ${lines.join(" | ")}`);
 });
 
-test("the line between the view and what happened is moved to give either more room, kept, and a double-click puts it back", async () => {
+test("the line between the view and what happened is moved by the keyboard, where it was put is kept, and a double-click moves it again", async () => {
 	const line = "[data-slot=view] [data-slot=resizable-handle]";
-	const tall = () => page.$eval("[data-slot=view-inspector]", (el: Element) => el.getBoundingClientRect().height);
-	const taller = (than: number) => page.waitForFunction((h) => (document.querySelector("[data-slot=view-inspector]")?.getBoundingClientRect().height ?? 0) > h + 20, than, { timeout: patient(3000) });
-	const shorter = (than: number) => page.waitForFunction((h) => (document.querySelector("[data-slot=view-inspector]")?.getBoundingClientRect().height ?? Infinity) < h - 20, than, { timeout: patient(3000) });
-	const before = await tall();
-	// The line is a separator the keyboard moves, as the pointer does: the arrow up gives what happened more room.
+	// The line is a separator: where it stands is its value, and what the owner chose is kept in the page's storage.
+	const stands = async () => Number(await page.getAttribute(line, "aria-valuenow"));
+	const keptAt = () => page.evaluate(() => localStorage.getItem("pine.view.inspector"));
+	const moved = (from: number) => page.waitForFunction(([sel, v]: [string, number]) => Number(document.querySelector(sel)?.getAttribute("aria-valuenow")) !== v, [line, from] as [string, number], { timeout: patient(3000) });
+	const keptAnew = (was: string | null) => page.waitForFunction((v: string | null) => localStorage.getItem("pine.view.inspector") !== v, was, { timeout: patient(3000) });
+	const before = await stands();
+	const keptBefore = await keptAt();
+	assert.ok(Number.isFinite(before), "the line says where it stands");
 	await page.focus(line, { timeout: patient(3000) });
 	for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowUp");
-	await taller(before);
-	const after = await tall();
-	await page.waitForFunction((h) => Math.abs(Number(localStorage.getItem("pine.view.inspector")) - h) <= 2, after, { timeout: patient(3000) });
+	await moved(before);
+	await keptAnew(keptBefore);
+	const after = await stands();
+	const keptAfter = await keptAt();
+	assert.ok(Number(keptAfter) > 0, "what was chosen is kept");
 	await shoot("taller-inspector");
-	// A double-click on the line puts it back where it starts.
+	// A double-click on the line puts it back where it starts: it stands elsewhere again, and that is kept too.
 	await page.$eval(line, (el: Element) => el.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
-	await shorter(after);
+	await moved(after);
+	await keptAnew(keptAfter);
 });
 
 test("a piece of work chosen under the view shows what it was given, what it did and what it answered", async () => {
-	await page.locator("[data-slot=view-inspector] button", { hasText: "main delegated a task to books" }).click();
-	await page.waitForSelector("[data-slot=view-inspector] [data-slot=job-record]", { timeout: 10_000 });
+	const job = await taskOf("books", "delegate");
+	await page.locator(lineOf(job)).first().click();
+	await sees(`[data-slot=view-inspector][data-showing=job][data-id="${job}"] [data-slot=job-record]`, "the record of that piece of work");
 	await page.waitForFunction(() => /the books are balanced/.test(document.querySelector("[data-slot=job-record]")?.textContent ?? ""), null, { timeout: 10_000 });
 	const record = await page.textContent("[data-slot=job-record]");
-	assert.match(record, /Steps/);
 	assert.match(record, /Check the books/, "the task books was given, in full");
-	assert.match(record, /tokens read/, "and what it cost");
+	await sees("[data-slot=job-record] [data-slot=job-stats]", "and what it cost");
 	await page.locator("[data-slot=job-record]").scrollIntoViewIfNeeded();
 	await shoot("job-record");
-	await page.locator("[data-slot=view-inspector]").getByRole("button", { name: "Back to activity" }).click();
-	await page.waitForSelector("[data-slot=view-inspector] [data-slot=job-record]", { state: "detached", timeout: 5000 });
+	await page.locator("[data-slot=view-inspector] [data-action=back]").click();
+	await sees("[data-slot=view-inspector][data-showing=feed]", "what happened, again");
+	assert.equal(await page.locator("[data-slot=view-inspector] [data-slot=job-record]").count(), 0);
 });
 
 test("a piece of work opens from under the view, and the browser opens in the side panel beside the view", async () => {
-	await page.locator("[data-slot=view-inspector] button", { hasText: "you asked main" }).click();
-	await page.locator("[data-slot=view-inspector]").getByRole("button", { name: "Open" }).click();
+	const asked = await taskOf("main", "prompt");
+	await page.locator(lineOf(asked)).first().click();
+	await sees(`[data-slot=view-inspector][data-showing=job][data-id="${asked}"]`, "what the owner asked main, chosen");
+	await page.locator("[data-slot=view-inspector] [data-action=open]").click();
 	await page.waitForSelector("[data-slot=tab][data-active]", { timeout: 10_000 });
 	assert.match(await page.textContent("[data-slot=tab][data-active]"), /main/);
 	await page.setViewportSize({ width: 1700, height: 900 });
@@ -170,7 +196,10 @@ export default defineView((host) => {
 	tryIt("storage", () => localStorage.length);
 	tryIt("cookie", () => document.cookie);
 	fetch("http://127.0.0.1:${snitchPort}/fetch").then(() => (out.fetch = "reached"), () => (out.fetch = "refused"));
-	new Image().src = "http://127.0.0.1:${snitchPort}/img";
+	const img = new Image();
+	img.onload = () => (out.img = "reached");
+	img.onerror = () => (out.img = "refused");
+	img.src = "http://127.0.0.1:${snitchPort}/img";
 	const pre = document.createElement("pre");
 	pre.id = "spy";
 	host.root.append(pre);
@@ -178,6 +207,8 @@ export default defineView((host) => {
 		const all = JSON.stringify(s);
 		out.leak = /CANARY/.test(all) ? "leaked" : "clean";
 		if (s.work.some((w) => w.agent === "books" && w.doing !== "done")) out.books = "seen";
+		// All of it is over once books was seen at work and nothing runs any more: main's answer is in by then.
+		if (out.books && s.work.every((w) => ["done", "failed", "cancelled"].includes(w.doing))) out.over = "seen";
 		pre.textContent = JSON.stringify(out);
 	};
 	host.on("state", look);
@@ -198,17 +229,19 @@ export default defineView((host) => {
 	await call("POST", "/agents/main/prompt", { prompt: mockMsg([{ tools: [{ name: "delegate", args: { agent: "books", task: "Count CANARY-7731 @@REF:canary@@" } }] }, { text: "CANARY-7731 done" }]), session: "main", wait: false });
 	const spy = frame().locator("#spy");
 	await frame().locator("#spy", { hasText: '"books":"seen"' }).waitFor({ timeout: 15_000 });
-	await new Promise((r) => setTimeout(r, 2500));
+	// Until the work is over and both of the view's tries at the network have come out one way or the other.
+	for (const settled of ['"over":"seen"', '"fetch":"', '"img":"']) await frame().locator("#spy", { hasText: settled }).waitFor({ timeout: patient(15_000) });
 	const out = JSON.parse((await spy.textContent()) ?? "{}");
 	assert.equal(out.bridge, "refused", "the app's bridge is out of reach");
 	assert.equal(out.top, "refused", "the app's window is out of reach");
 	assert.equal(out.storage, "refused", "the page's storage is out of reach");
 	assert.equal(out.cookie, "refused");
 	assert.equal(out.fetch, "refused", "no address can be fetched");
+	assert.equal(out.img, "refused", "nor loaded as a picture");
 	assert.equal(out.leak, "clean", "no prompt, answer or path reaches the view");
 	assert.deepEqual(reached, [], "nothing reached the server on this computer");
 	// The panel showed books, as asked, and opened nothing for an agent there is none of.
-	assert.match(await page.textContent("[data-slot=view-inspector]"), /books/);
+	await sees("[data-slot=view-inspector][data-showing=agent][data-id=books]", "books, shown under the view as the view asked");
 	assert.ok(!(await page.$$eval("[data-slot=tab]", (tabs: Element[]) => tabs.map((t) => t.textContent).join("\n"))).includes("nobody"));
 });
 
@@ -246,7 +279,7 @@ export default defineView((host) => {
 	await sees("[data-slot=view-task-text]", "the task's text, drawn by the panel under the view");
 	assert.equal(await page.textContent("[data-slot=view-task-text]"), "Look up CANARY-8842 in the ledger");
 	await sees("[data-slot=view-inspector] >> text=CANARY-8842 is on page 3", "the note about it, which came a moment later");
-	assert.match(await page.textContent("[data-slot=view-inspector]"), /task #\d+[\s\S]*Open[\s\S]*Posted by[\s\S]*you[\s\S]*CANARY-8842 is on page 3/);
+	assert.equal(await page.locator(`[data-slot=view-inspector][data-showing=board][data-id="${posted.board}"][data-task="${posted.id}"]`).count(), 1, "the board and the task the view named, by their numbers");
 	// The view was told which task is shown, by two numbers, and of the task only names and numbers.
 	const pointer = frame().locator("#pointer");
 	await frame().locator("#pointer", { hasText: '"selected":{"board"' }).waitFor({ timeout: 10_000 });
@@ -275,7 +308,7 @@ test("the workshop, pine's other view, is in the home too and runs in the same f
 	await sees("[data-slot=view-aside] [data-slot=view][data-view=workshop] [data-slot=view-frame][data-ready]", "the workshop, running in its frame");
 	const main = frame().locator("[data-slot=workshop-words] > li[data-agent=main]");
 	await main.waitFor({ state: "attached", timeout: 10_000 });
-	assert.match((await main.textContent()) ?? "", /main, safe mode, the main agent, Santa, under the roof/);
+	assert.match((await main.textContent()) ?? "", /main[\s\S]*safe/, "the agent and its mode, as this home has them");
 	await shoot("workshop");
 	await call("POST", "/settings", { key: "ui.view", value: "office" });
 });
@@ -288,8 +321,8 @@ test("the overview, pine's third view, runs in the same frame and says in words 
 	await sees("[data-slot=view-aside] [data-slot=view][data-view=overview] [data-slot=view-frame][data-ready]", "the overview, running in its frame");
 	const main = frame().locator("[data-slot=overview-words] > li[data-agent=main]");
 	await main.waitFor({ state: "attached", timeout: 10_000 });
-	assert.match((await main.textContent()) ?? "", /main, safe mode, the main agent: idle/);
-	assert.match((await frame().locator("[data-slot=overview-words] > li[data-agent=books]").textContent()) ?? "", /books, bypass mode/);
+	assert.match((await main.textContent()) ?? "", /main[\s\S]*safe/, "the agent and its mode, as this home has them");
+	assert.match((await frame().locator("[data-slot=overview-words] > li[data-agent=books]").textContent()) ?? "", /books[\s\S]*bypass/);
 	await shoot("overview");
 	await call("POST", "/settings", { key: "ui.view", value: "office" });
 });

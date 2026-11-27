@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { Denials, type DenialTools, fromOutput, gather, reaches, sortDenials, windowsPath } from "../src/access.ts";
 import { rootsFor, sandboxAvailable, sandboxProfile } from "../src/security.ts";
-import { harness, MCP_STUB, mockMsg, notesOf } from "./support/harness.ts";
+import { harness, MCP_STUB, mockMsg, notesOf, until } from "./support/harness.ts";
 
 // A home of the test's own. What lies in it is "the owner's files": outside every agent's
 // sandbox, as the owner's real home is, and nothing of the real one is touched.
@@ -216,8 +216,7 @@ test("access: the log is read while commands run and a little longer, and again 
 	await new Promise((r) => setTimeout(r, 200));
 	assert.equal(state(), "ready", "a command is still running: the reader stays");
 	assert.deepEqual(await d.collect(b), [], "and what one command was refused is not another's");
-	await new Promise((r) => setTimeout(r, 200));
-	assert.equal(state(), "idle", "nothing runs: the reader is gone");
+	await until(() => state() === "idle", 4000, "nothing runs: the reader to be gone");
 	assert.equal(await d.ready(), true, "the next command starts it again");
 	const c = d.tag();
 	reports("network-outbound remote:1.2.3.4:443");

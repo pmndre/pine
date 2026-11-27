@@ -35,7 +35,7 @@ export function Page({ title, lead, children, actions, back }: { title: ReactNod
 				) : null}
 				<div className="flex flex-wrap items-start gap-x-4 gap-y-3">
 					<div className="flex min-w-0 grow basis-80 flex-col gap-1">
-						<h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+						<h1 data-slot="settings-title" className="text-xl font-semibold tracking-tight">{title}</h1>
 						{lead ? <p className="max-w-2xl text-muted-foreground">{lead}</p> : null}
 					</div>
 					{actions ? <div className="flex flex-none items-center gap-2">{actions}</div> : null}

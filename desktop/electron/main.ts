@@ -1206,6 +1206,8 @@ function menuTarget(bw?: Electron.BaseWindow): ManagedWindow {
 
 /** A menu item that asks the focused window's page to do something: the page knows which conversation is in front. */
 const item = (label: string, command: string, accelerator?: string, more: MenuItemConstructorOptions = {}): MenuItemConstructorOptions => ({
+	// The command is the item's id: what it does can be found whatever its label says.
+	id: command,
 	label,
 	accelerator,
 	click: (_m, bw) => {

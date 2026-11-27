@@ -88,7 +88,8 @@ test("browser access in the app: off at first, nothing written; on, it waits; a 
 	assert.deepEqual(first.devices, []);
 	assert.equal(first.problem, undefined, `no problem: ${JSON.stringify(first.problem)}`);
 	assert.ok(!fs.existsSync(path.join(data, "access.bin")), "no host key before it is turned on");
-	await assert.rejects(bridge("openPairing"), /Turn browser access on first/);
+	await assert.rejects(bridge("openPairing"), "no pairing is opened while browser access is off");
+	assert.equal((await bridge("access")).pairing, undefined);
 
 	const on = await bridge("setAccess", { enabled: true, openAtLogin: true });
 	assert.equal(on.enabled, true);
@@ -107,7 +108,8 @@ test("browser access in the app: off at first, nothing written; on, it waits; a 
 	const { request } = (await told()).at(-1);
 	assert.equal(request.name, "Stand-in phone");
 	assert.match(request.code, /^\d{4}$/);
-	await assert.rejects(bridge("answerPairing", true, "not-this-one"), /no longer the one asking/);
+	await assert.rejects(bridge("answerPairing", true, "not-this-one"), "an answer to another question allows nothing");
+	assert.deepEqual({ asked: (await bridge("access")).request?.id, devices: (await bridge("access")).devices }, { asked: request.id, devices: [] });
 	await bridge("answerPairing", true, request.id);
 	await until("the device is connected", async () => (await told()).at(-1)?.devices[0]?.connected !== undefined);
 	const now = (await told()).at(-1);
@@ -115,10 +117,10 @@ test("browser access in the app: off at first, nothing written; on, it waits; a 
 	assert.deepEqual(now.devices[0].connected, { path: "lan" });
 	assert.equal(now.request, undefined);
 	// The window is not in front (a test's never is): the question was said by the system too, with the digits and no Allow; then the device added.
-	assert.deepEqual((await noted()).notified, [
-		{ title: "Stand-in phone wants to connect", body: `Allow it in Pine if the device shows ${request.code}.` },
-		{ title: "Browser access", body: "Stand-in phone can now access Pine." },
-	]);
+	const notified = (await noted()).notified.map((n: { title: string; body: string }) => `${n.title}\n${n.body}`);
+	assert.equal(notified.length, 2, JSON.stringify(notified));
+	assert.ok(notified[0].includes(request.name) && notified[0].includes(request.code), `the question names the device and its digits: ${notified[0]}`);
+	assert.ok(notified[1].includes(request.name) && !notified[1].includes(request.code), `then the device added: ${notified[1]}`);
 
 	assert.equal(await bridge("removeDevice", now.devices[0].id), true);
 	assert.deepEqual((await bridge("access")).devices, []);
@@ -165,29 +167,29 @@ const menu = (command: string) => app.evaluate(({ BrowserWindow }: any, c: strin
 test("Settings > Browser access through the window: turned on with open at login offered, a device added by its QR code and allowed, listed as connected now, removed", async () => {
 	const section = "[data-slot=settings-page]";
 	// The test home has no browser build: that is asked once at the start, and put off.
-	await page.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" }).click();
+	await page.click("[data-dialog=browser-ask] [data-action=later]");
 	await menu("settings");
-	await page.locator("[data-sidebar=menu-button]", { hasText: "Browser access" }).click();
-	await sees(`${section} h1 >> text=Browser access`);
+	await page.click("[data-section=access]");
+	await sees("[data-section=access][aria-current=page]");
 	await sees(`${section} [data-slot=access-status][data-state=off]`);
 
 	// Turned on the first time: "Open Pine at login" is offered, checked.
 	await page.locator(`${section} [data-slot=access-switch]`).click();
 	await sees("[data-slot=access-turn-on] [data-slot=checkbox][data-checked]");
-	await page.locator("[data-slot=access-turn-on]").getByRole("button", { name: "Turn on" }).click();
+	await page.click("[data-slot=access-turn-on] [data-action=confirm]");
 	await page.waitForSelector("[data-slot=access-turn-on]", { state: "detached" });
 	await sees(`${section} [data-slot=access-status][data-state=waiting]`);
 	assert.equal((await bridge("access")).openAtLogin, true);
 	assert.deepEqual((await noted()).login.at(-1), { openAtLogin: true });
 
 	// Add a device: the QR code says the pairing link, Copy link puts it on the clipboard, and the time left is shown.
-	await page.locator(section).getByRole("button", { name: "Add a device" }).click();
+	await page.click(`${section} [data-action=add-device]`);
 	await sees("[data-slot=pairing-dialog] [data-slot=qr-code]");
 	const { pairing } = await bridge("access");
 	assert.ok(pairing?.link.startsWith(`${SERVICE}/#pair=`), JSON.stringify(pairing));
 	assert.equal(await scanned("[data-slot=pairing-dialog] [data-slot=qr-code]"), pairing.link);
-	await sees("[data-slot=pairing-dialog] [data-slot=pairing-time] >> text=/\\d:\\d\\d/");
-	await page.locator("[data-slot=pairing-dialog]").getByRole("button", { name: "Copy link" }).click();
+	assert.ok(((await page.textContent("[data-slot=pairing-dialog] [data-slot=pairing-time]")) ?? "").trim(), "the time left is said");
+	await page.click("[data-slot=pairing-dialog] [data-action=copy]");
 	await until("the link is on the clipboard", async () => (await app.evaluate(({ clipboard }: any) => clipboard.readText())) === pairing.link, 3000);
 
 	// The stand-in phone uses the link: the computer asks, with the device's name and its four digits.
@@ -195,21 +197,23 @@ test("Settings > Browser access through the window: turned on with open at login
 	const { request } = await bridge("access");
 	await sees(`[data-slot=pairing-request] [data-slot=pairing-device] >> text=${request.name}`);
 	assert.equal(await page.textContent("[data-slot=pairing-request] [data-slot=pairing-code]"), request.code);
-	await page.locator("[data-slot=pairing-request]").getByRole("button", { name: "Allow" }).click();
+	// (Allow waits a moment before it can be pressed, so that a press meant for something else allows nothing.)
+	await page.click("[data-slot=pairing-request] [data-slot=pairing-allow]:not([disabled])");
 	await page.waitForSelector("[data-slot=pairing-request], [data-slot=pairing-dialog]", { state: "detached" });
-	await sees(`${section} [data-slot=access-device] >> text=Stand-in phone`);
-	await sees(`${section} [data-slot=access-device] >> text=connected now`);
-	await sees(`${section} [data-slot=access-device] >> text=same network`);
+	// Listed under the name it gave, as connected now, over the stand-in's path (the same network).
+	await sees(`${section} [data-slot=access-device][data-connected=lan] >> text=${request.name}`);
+	assert.equal(await page.getAttribute(`${section} [data-slot=access-device]`, "data-device"), (await bridge("access")).devices[0].id);
 
 	// Remove asks once, then the device is gone.
-	await page.locator(`${section} [data-slot=access-device]`).getByRole("button", { name: "Remove" }).click();
-	await page.locator("[data-slot=alert-dialog-content]").getByRole("button", { name: "Remove" }).click();
+	await page.click(`${section} [data-slot=access-device] [data-action=remove]`);
+	assert.deepEqual((await bridge("access")).devices.length, 1, "not removed before the owner confirmed");
+	await page.click("[data-slot=alert-dialog-content] [data-action=confirm]");
 	await page.waitForSelector("[data-slot=alert-dialog-content]", { state: "detached" });
 	await page.waitForSelector(`${section} [data-slot=access-device]`, { state: "detached" });
 	assert.deepEqual((await bridge("access")).devices, []);
 
 	// A dialog closed cancels its pairing.
-	await page.locator(section).getByRole("button", { name: "Add a device" }).click();
+	await page.click(`${section} [data-action=add-device]`);
 	await sees("[data-slot=pairing-dialog] [data-slot=qr-code]");
 	await page.keyboard.press("Escape");
 	await page.waitForSelector("[data-slot=pairing-dialog]", { state: "detached" });
@@ -222,20 +226,20 @@ test("Settings > Browser access through the window: turned on with open at login
 
 test("Settings > Browser access: the open-at-login switch and the service address are changed in the section", async () => {
 	const section = "[data-slot=settings-page]";
-	await sees(`${section} h1 >> text=Browser access`);
+	await sees("[data-section=access][aria-current=page]");
 	await page.locator(`${section} [data-slot=access-login]`).click();
 	await until("open at login is off", async () => (await bridge("access")).openAtLogin === false);
 	const address = page.locator(`${section} [data-setting=access-service] input`);
 	await address.fill("ftp://nowhere");
-	await page.locator(`${section} [data-setting=access-service]`).getByRole("button", { name: "Save" }).click();
+	await page.click(`${section} [data-setting=access-service] [data-action=save]`);
 	await sees(`${section} [data-setting=access-service] [data-slot=field-error] >> text=https://`);
 	await address.fill("https://pine.other.invalid");
-	await page.locator(`${section} [data-setting=access-service]`).getByRole("button", { name: "Save" }).click();
+	await page.click(`${section} [data-setting=access-service] [data-action=save]`);
 	await until("the address is kept", async () => (await bridge("access")).service === "https://pine.other.invalid");
 	// The page has it too (nothing left to save): what is typed before that is put back to what the page is told was kept.
-	await page.locator(`${section} [data-setting=access-service] button:disabled`, { hasText: "Save" }).waitFor();
+	await sees(`${section} [data-setting=access-service] [data-action=save]:disabled`);
 	await address.fill(SERVICE);
-	await page.locator(`${section} [data-setting=access-service]`).getByRole("button", { name: "Save" }).click();
+	await page.click(`${section} [data-setting=access-service] [data-action=save]`);
 	await until("the address is back", async () => (await bridge("access")).service === SERVICE);
 });
 
@@ -244,13 +248,12 @@ test("Settings > Browser access: a relay server is saved from its fields and tri
 	try {
 		const section = "[data-slot=settings-page]";
 		const relay = `${section} [data-setting=access-relay]`;
-		await sees(`${relay} >> text=Relay server (TURN)`);
-		await sees(`${relay} >> text=Used when a direct connection is not possible, for example on some mobile networks. Leave this empty if you have no relay.`);
+		await sees(`${relay} [data-slot=relay-address]`);
 		await page.locator(`${relay} [data-slot=relay-address]`).fill(`turn:127.0.0.1:${turn.port}`);
 		await page.locator(`${relay} [data-slot=relay-username]`).fill(TURN_USER);
 		await page.locator(`${relay} [data-slot=relay-password]`).fill(TURN_PASSWORD);
-		await page.locator(relay).getByRole("button", { name: "Save" }).click();
-		await sees(`${relay} [data-slot=relay-check][data-result=usable] >> text=This relay works`);
+		await page.click(`${relay} [data-action=save]`);
+		await sees(`${relay} [data-slot=relay-check][data-result=usable]`);
 
 		// The password field is empty again, and says one is kept; nothing on the page or in the page's state holds it.
 		assert.equal(await page.locator(`${relay} [data-slot=relay-password]`).inputValue(), "");
@@ -267,14 +270,14 @@ test("Settings > Browser access: a relay server is saved from its fields and tri
 
 		// A wrong password: the relay is kept, and the line says what is wrong.
 		await page.locator(`${relay} [data-slot=relay-password]`).fill("not-the-password");
-		await page.locator(relay).getByRole("button", { name: "Save" }).click();
-		await sees(`${relay} [data-slot=relay-check][data-result=failed] >> text=refused the user name or password`);
+		await page.click(`${relay} [data-action=save]`);
+		await sees(`${relay} [data-slot=relay-check][data-result=failed][data-why=refused]`);
 		assert.equal((await bridge("access")).relay.address, `turn:127.0.0.1:${turn.port}`);
 
 		// Saved empty, the relay is gone.
 		await page.locator(`${relay} [data-slot=relay-address]`).fill("");
 		await page.locator(`${relay} [data-slot=relay-username]`).fill("");
-		await page.locator(relay).getByRole("button", { name: "Save" }).click();
+		await page.click(`${relay} [data-action=save]`);
 		await until("the relay is removed", async () => (await bridge("access")).relay === undefined);
 		assert.equal(JSON.parse(fs.readFileSync(path.join(data, "prefs.json"), "utf8")).access.relay, undefined);
 	} finally {
@@ -331,7 +334,7 @@ test("adding a device from anywhere: pine://pair opens a pairing and its link in
 	await new Promise((r) => setTimeout(r, 200));
 	assert.equal(await page.evaluate(() => document.activeElement?.closest("[data-slot=composer]") !== null), true, "the toast took no focus");
 	assert.equal((await bridge("access")).request?.code, request.code, "still asked");
-	await page.locator("[data-slot=pairing-request]").getByRole("button", { name: "Refuse" }).click();
+	await page.click("[data-slot=pairing-request] [data-slot=pairing-refuse]");
 	await page.waitForSelector("[data-slot=pairing-request]", { state: "detached" });
 	assert.deepEqual((await bridge("access")).devices, []);
 

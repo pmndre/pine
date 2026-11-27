@@ -114,7 +114,7 @@ function ThoughtText({ text, live }: { text: string; live: boolean }) {
 	return (
 		<MessageScrollerProvider autoScroll={live} defaultScrollPosition={from}>
 			<MessageScroller>
-				<MessageScrollerViewport aria-label="Thinking" className="max-h-80">
+				<MessageScrollerViewport aria-label="Thinking" data-part="thought-text" className="max-h-80">
 					<MessageScrollerContent className="gap-0">
 						<MessageScrollerItem className="whitespace-pre-wrap select-text">{text}</MessageScrollerItem>
 					</MessageScrollerContent>
@@ -244,7 +244,7 @@ function Work({ item }: { item: Extract<Item, { t: "work" }> }) {
 	const description = item.done ? (item.ms !== undefined ? took(item.ms) : "") : !open && parts.length > 6 ? "show all" : "";
 	// While the turn runs its last lines show under the head; a click shows all of them, another folds it.
 	return (
-		<TraceCollapsible open={shown.length > 0} onOpenChange={() => ((item.open = !open), setOpen(!open))} data-item="work" data-open={open || undefined}>
+		<TraceCollapsible open={shown.length > 0} onOpenChange={() => ((item.open = !open), setOpen(!open))} data-item="work" data-open={open || undefined} data-tools={parts.filter((p) => p.p === "tool").length}>
 			<TraceCollapsibleTrigger>
 				<TraceLine status={item.done ? undefined : "running"}>
 					<TraceIcon>{item.done ? <ListChecksIcon /> : <Pulse />}</TraceIcon>
@@ -283,7 +283,7 @@ export function OwnerTurn({ text, from, files, menu, skeleton, footer, quotes, o
 		);
 	const body = text ?? "";
 	return (
-		<Message align="end" data-item="user" data-quote-task={quoteTask} data-quote-part={quoteTask === undefined ? undefined : "prompt"} onContextMenu={menu ? (e) => (e.preventDefault(), menu()) : undefined}>
+		<Message align="end" data-item="user" data-from={from} data-quote-task={quoteTask} data-quote-part={quoteTask === undefined ? undefined : "prompt"} onContextMenu={menu ? (e) => (e.preventDefault(), menu()) : undefined}>
 			<MessageContent>
 				{from ? <MessageHeader>{from}</MessageHeader> : null}
 				<Bubble align="end" variant="muted">
@@ -337,14 +337,14 @@ export function OwnerTurn({ text, from, files, menu, skeleton, footer, quotes, o
  * can be sent now, which stops the step the work is on (a long command, say) so that it reads it.
  */
 function SteerLine({ tab, steer }: { tab: Tab; steer: Steer }) {
-	if (steer.read) return <span>read {new Date(steer.read).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span>;
+	if (steer.read) return <span data-slot="steer" data-state="read">read {new Date(steer.read).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span>;
 	// Work that ended without reading it: it is answered on its own, next.
 	if (!tab.running.has(steer.into)) return null;
 	return (
-		<span className="flex items-center gap-1">
+		<span data-slot="steer" data-state="unread" className="flex items-center gap-1">
 			not read yet ·
 			<HoverTooltip>
-				<TooltipTrigger render={<Button variant="link" size="xs" onClick={() => void store.sendNow(tab, steer)} />}>send now</TooltipTrigger>
+				<TooltipTrigger render={<Button variant="link" size="xs" data-action="send-now" onClick={() => void store.sendNow(tab, steer)} />}>send now</TooltipTrigger>
 				<TooltipContent>Interrupts the agent, hands it this message, and lets it continue</TooltipContent>
 			</HoverTooltip>
 		</span>
@@ -421,14 +421,14 @@ function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
 				<ItemActions>
 					{typed ? (
 						<>
-							<Button size="sm" variant="outline" onClick={() => void store.decide(req.id, false)}>Deny</Button>
-							<Button size="sm" onClick={() => store.ask(req.id)}>Decide…</Button>
+							<Button size="sm" variant="outline" data-action="deny" onClick={() => void store.decide(req.id, false)}>Deny</Button>
+							<Button size="sm" data-action="decide" onClick={() => store.ask(req.id)}>Decide…</Button>
 						</>
 					) : (
 						<>
-							<Button size="sm" variant="outline" onClick={() => void store.decide(req.id, false)}>Deny</Button>
-							{req.remember ? <Button size="sm" variant="outline" onClick={() => void store.decide(req.id, true, true)}>Always here</Button> : null}
-							<Button size="sm" onClick={() => void store.decide(req.id, true)}>{req.holds ? "Allow" : "Allow once"}</Button>
+							<Button size="sm" variant="outline" data-action="deny" onClick={() => void store.decide(req.id, false)}>Deny</Button>
+							{req.remember ? <Button size="sm" variant="outline" data-action="always" onClick={() => void store.decide(req.id, true, true)}>Always here</Button> : null}
+							<Button size="sm" data-action="allow" onClick={() => void store.decide(req.id, true)}>{req.holds ? "Allow" : "Allow once"}</Button>
 						</>
 					)}
 				</ItemActions>
@@ -534,7 +534,7 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 			const ToneIcon = TONE_ICON[item.tone];
 			return (
 				// The tone is said as data too: the tests find a note by it.
-				<Marker data-tone={item.tone} className="select-text">
+				<Marker data-tone={item.tone} data-kind={item.kind} className="select-text">
 					<MarkerIcon className={NOTE_TONE[item.tone]}>
 						<ToneIcon />
 					</MarkerIcon>
@@ -718,7 +718,7 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 					<AgentAvatar agent={{ id: tab.agent, color: info?.color, main: info?.main }} size="lg" />
 				</EmptyMedia>
 				<EmptyTitle>
-					<h1>{tab.agent}</h1>
+					<h1 data-slot="welcome-name">{tab.agent}</h1>
 				</EmptyTitle>
 				{/* A long path is broken where the line ends, not pushed out of it. */}
 				<EmptyDescription className="wrap-anywhere">{info?.description || "One of your agents."}</EmptyDescription>
@@ -784,13 +784,14 @@ function FindBar({ root, close, initial }: { root: () => HTMLElement | null; clo
 	const step = (by: number) => count && setAt((at + by + count) % count);
 	return (
 		// Placed over the top right corner of the conversation, under its head.
-		<InputGroup className="absolute top-11.5 right-5.5 z-5 w-auto bg-card shadow-md">
+		<InputGroup data-find="conversation" data-count={query ? count : undefined} className="absolute top-11.5 right-5.5 z-5 w-auto bg-card shadow-md">
 			<InputGroupAddon>
 				<SearchIcon />
 			</InputGroupAddon>
 			<InputGroupInput
 				autoFocus
 				className="w-55"
+				data-field="find"
 				aria-label="Find in this conversation"
 				placeholder="Find in this conversation"
 				value={query}
@@ -835,8 +836,8 @@ function StatusLine({ tab }: { tab: Tab }) {
 	const goal = tab.goal?.status === "active" ? tab.goal : undefined;
 	const swarm = tab.swarm?.status === "active" ? tab.swarm : undefined;
 	// Nothing to say, no line: the input sits at the bottom, so the line grows the block upward and the input never moves.
-	const line = (icon: ReactNode, text: string, action?: ReactNode, warn?: boolean) => (
-		<Marker className="min-h-7.5 py-1.5">
+	const line = (icon: ReactNode, text: string, action?: ReactNode, warn?: boolean, state?: string) => (
+		<Marker data-line="status" data-state={state} className="min-h-7.5 py-1.5">
 			{/* A grid centers the dot of Pulse, which would otherwise sit on the text's baseline in the icon's box. */}
 			{icon ? <MarkerIcon className={cn("grid place-items-center", warn && "text-warn")}>{icon}</MarkerIcon> : null}
 			<MarkerContent className="min-w-0 flex-1">{text}</MarkerContent>
@@ -845,14 +846,14 @@ function StatusLine({ tab }: { tab: Tab }) {
 	);
 	// A question put off ("Later"), with no other card above the composer: this line brings it back, while the agent waits too.
 	const putOff = waiting.find((a) => isPick(a.req) && store.later.has(a.req.id));
-	if (putOff && !store.openQuestion(tab)) return line(<TriangleAlertIcon />, "A question is waiting for your answer.", <Button variant="outline" size="xs" onClick={() => store.ask(putOff.req.id)}>Open</Button>, true);
+	if (putOff && !store.openQuestion(tab)) return line(<TriangleAlertIcon />, "A question is waiting for your answer.", <Button variant="outline" size="xs" data-action="open" onClick={() => store.ask(putOff.req.id)}>Open</Button>, true, "question-later");
 	if (!tab.busy) {
-		if (waiting.length) return line(<TriangleAlertIcon />, isPick(waiting[0].req) ? "A question is waiting for your answer." : "A request is waiting for your approval.", <Button variant="outline" size="xs" onClick={() => store.ask(waiting[0].req.id)}>Open</Button>, true);
-		if (swarm) return line(<UsersIcon />, `swarm · round ${swarm.round} of ${swarm.until} · ${swarm.checking ? "checking the answer" : "looking at the board"}`, <Button variant="outline" size="xs" onClick={() => void store.setSwarm(tab, "pause")}>Pause</Button>);
-		if (goal) return line(<TargetIcon />, `goal · round ${goal.round} of ${goal.until} · checking whether it is met`, <Button variant="outline" size="xs" onClick={() => void store.setGoal(tab, "pause")}>Pause</Button>);
-		if (held) return line(<TriangleAlertIcon />, `${held.req.agent} has a question for you in another conversation.`, <Button variant="outline" size="xs" onClick={() => void store.goToAsk(held.req)}>Go there</Button>, true);
-		if (elsewhere) return line(<TriangleAlertIcon />, `${elsewhere.agent} · ${elsewhere.session} is waiting for you.`, <Button variant="outline" size="xs" onClick={() => store.activate(elsewhere)}>Go there</Button>, true);
-		if (tab.programs.length) return line(<PlayIcon />, `${plural(tab.programs.length, "program")} still running`, <Button variant="ghost" size="xs" onClick={() => void store.command("code-running")}>Show</Button>);
+		if (waiting.length) return line(<TriangleAlertIcon />, isPick(waiting[0].req) ? "A question is waiting for your answer." : "A request is waiting for your approval.", <Button variant="outline" size="xs" data-action="open" onClick={() => store.ask(waiting[0].req.id)}>Open</Button>, true, isPick(waiting[0].req) ? "question" : "approval");
+		if (swarm) return line(<UsersIcon />, `swarm · round ${swarm.round} of ${swarm.until} · ${swarm.checking ? "checking the answer" : "looking at the board"}`, <Button variant="outline" size="xs" data-action="pause" onClick={() => void store.setSwarm(tab, "pause")}>Pause</Button>, false, "swarm");
+		if (goal) return line(<TargetIcon />, `goal · round ${goal.round} of ${goal.until} · checking whether it is met`, <Button variant="outline" size="xs" data-action="pause" onClick={() => void store.setGoal(tab, "pause")}>Pause</Button>, false, "goal");
+		if (held) return line(<TriangleAlertIcon />, `${held.req.agent} has a question for you in another conversation.`, <Button variant="outline" size="xs" data-action="go" onClick={() => void store.goToAsk(held.req)}>Go there</Button>, true, "question-elsewhere");
+		if (elsewhere) return line(<TriangleAlertIcon />, `${elsewhere.agent} · ${elsewhere.session} is waiting for you.`, <Button variant="outline" size="xs" data-action="go" onClick={() => store.activate(elsewhere)}>Go there</Button>, true, "waiting-elsewhere");
+		if (tab.programs.length) return line(<PlayIcon />, `${plural(tab.programs.length, "program")} still running`, <Button variant="ghost" size="xs" data-action="show" onClick={() => void store.command("code-running")}>Show</Button>, false, "programs");
 		return null;
 	}
 	const secs = Math.max(0, Math.round((Date.now() - tab.startedAt) / 1000));
@@ -871,7 +872,7 @@ function StatusLine({ tab }: { tab: Tab }) {
 		tab.tokens.output ? `${count(total)}↑${tab.tokens.cached ? ` (${Math.round((100 * tab.tokens.cached) / Math.max(1, total))}% cached)` : ""} ${count(tab.tokens.output)}↓` : "",
 		speedText(tab.speed),
 	].filter(Boolean);
-	return line(<Pulse />, parts.join(" · "), waiting.length ? <Button variant="outline" size="xs" onClick={() => store.ask(waiting[0].req.id)}>Open</Button> : null, waiting.length > 0);
+	return line(<Pulse />, parts.join(" · "), waiting.length ? <Button variant="outline" size="xs" data-action="open" onClick={() => store.ask(waiting[0].req.id)}>Open</Button> : null, waiting.length > 0, waiting.length ? "waiting" : tab.thinking ? "thinking" : "working");
 }
 
 /** How full the conversation's context window is (Context): the share in the head, the rest on hover. */
@@ -947,7 +948,7 @@ function ConvHead({ tab }: { tab: Tab }) {
 		</HoverTooltip>
 	) : null;
 	return (
-		<div data-slot="conversation-head" className="flex h-10 min-w-0 shrink-0 items-center gap-2 pr-2 pl-4 text-xs">
+		<div data-slot="conversation-head" data-agent={tab.agent} data-session={tab.session} className="flex h-10 min-w-0 shrink-0 items-center gap-2 pr-2 pl-4 text-xs">
 			<Breadcrumb className="min-w-0 shrink">
 				<BreadcrumbList className="flex-nowrap">
 					{above(tab).map((c) => (
@@ -1248,8 +1249,8 @@ export function Conversation({ tab }: { tab: Tab }) {
 			<ConvHead tab={tab} />
 			{selected && chat && source ? (
 				<SelectionToolbar rect={selected.rect}>
-					<SelectionToolbarButton icon={QuoteIcon} label="Quote" onClick={() => quote(false)} />
-					<SelectionToolbarButton icon={ReplyIcon} label="Reply" hint="Quote the selected text and reply to it" onClick={() => quote(true)} />
+					<SelectionToolbarButton icon={QuoteIcon} label="Quote" data-action="quote" onClick={() => quote(false)} />
+					<SelectionToolbarButton icon={ReplyIcon} label="Reply" data-action="reply" hint="Quote the selected text and reply to it" onClick={() => quote(true)} />
 					<SelectionToolbarButton icon={BookmarkIcon} label="Bookmark" hint={streaming ? "Bookmark it once the answer is done" : undefined} disabled={streaming} onClick={bookmark} />
 				</SelectionToolbar>
 			) : null}

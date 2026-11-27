@@ -602,7 +602,7 @@ function Inspector({ sel, pick }: { sel: Sel; pick: (s: Sel) => void }) {
 	const w = useWorld();
 	const now = useNow(1000);
 	return (
-		<ScrollArea data-slot="view-inspector" className="h-full *:data-[slot=scroll-area-viewport]:scroll-fade">
+		<ScrollArea data-slot="view-inspector" data-showing={sel?.k === "board" ? "board" : sel?.k === "job" && w.jobs.get(sel.id) ? "job" : sel?.k === "agent" && w.places.get(sel.id) ? "agent" : "feed"} data-id={sel?.id} data-task={sel?.k === "board" ? sel.task : undefined} className="h-full *:data-[slot=scroll-area-viewport]:scroll-fade">
 			<div className="flex flex-col gap-1.5 p-3 text-xs">
 				{sel?.k === "board" ? <BoardDetail key={`${sel.id}:${sel.task ?? ""}`} id={sel.id} task={sel.task} pick={pick} /> : sel?.k === "job" && w.jobs.get(sel.id) ? <JobDetail j={w.jobs.get(sel.id)!} now={now} pick={pick} /> : sel?.k === "agent" && w.places.get(sel.id) ? (isSeeded() ? <AgentDetail id={sel.id} now={now} pick={pick} /> : <AgentDetail skeleton />) : <Feed now={now} pick={pick} />}
 			</div>
@@ -623,7 +623,7 @@ function Feed({ now, pick }: { now: number; pick: (s: Sel) => void }) {
 				[0, 1, 2].map((i) => <JobLine key={i} skeleton />)
 			) : lines.length ? (
 				lines.map((l, i) => (
-					<button key={`${l.at}:${i}`} type="button" disabled={l.job === undefined || !w.jobs.has(l.job)} onClick={() => l.job !== undefined && pick({ k: "job", id: l.job })} onDoubleClick={() => l.job !== undefined && w.jobs.has(l.job) && openJob(w.jobs.get(l.job)!)} className="flex items-baseline gap-2 rounded-sm text-start hover:enabled:bg-accent">
+					<button key={`${l.at}:${i}`} type="button" data-slot="view-line" data-job={l.job} data-tone={l.tone} disabled={l.job === undefined || !w.jobs.has(l.job)} onClick={() => l.job !== undefined && pick({ k: "job", id: l.job })} onDoubleClick={() => l.job !== undefined && w.jobs.has(l.job) && openJob(w.jobs.get(l.job)!)} className="flex items-baseline gap-2 rounded-sm text-start hover:enabled:bg-accent">
 						<span className="w-8 flex-none text-end text-faint tabular-nums">{ago(now + w.skew - l.at)}</span>
 						<span className={cn("min-w-0 flex-1 truncate", l.tone === "ask" && "text-warn", l.tone === "bad" && "text-destructive")}>{l.text}</span>
 					</button>
@@ -670,8 +670,8 @@ function AgentDetailLive({ id, now, pick }: { id: string; now: number; pick: (s:
 				{a.main ? <Badge variant="secondary">main</Badge> : null}
 				<ModeBadge mode={a.mode} />
 				<span className="min-w-0 flex-1" />
-				<Button variant="outline" size="xs" onClick={() => void store.openTab(id, "main")}><ExternalLinkIcon data-icon="inline-start" />Open</Button>
-				<Button variant="ghost" size="icon-xs" aria-label="Back to activity" onClick={() => pick(undefined)}><XIcon /></Button>
+				<Button variant="outline" size="xs" data-action="open" onClick={() => void store.openTab(id, "main")}><ExternalLinkIcon data-icon="inline-start" />Open</Button>
+				<Button variant="ghost" size="icon-xs" aria-label="Back to activity" data-action="back" onClick={() => pick(undefined)}><XIcon /></Button>
 			</div>
 			{a.description ? <p className="text-muted-foreground">{a.description}</p> : null}
 			<span className="mt-1 font-medium text-muted-foreground">{working.length ? `Working: ${working.length}` : "Idle"}</span>
@@ -736,7 +736,7 @@ function BoardDetail({ id, task, pick }: { id: number; task?: number; pick: (s: 
 			<ClipboardListIcon className="size-4 flex-none text-muted-foreground" />
 			<span className="min-w-0 flex-1 truncate text-sm font-medium">{v ? boardLabel(v.board) : "Board"}{t ? ` · task #${t.id}` : ""}</span>
 			{t ? <Button variant="outline" size="xs" onClick={() => pick({ k: "board", id })}>The whole board</Button> : null}
-			<Button variant="ghost" size="icon-xs" aria-label="Back to activity" onClick={() => pick(undefined)}><XIcon /></Button>
+			<Button variant="ghost" size="icon-xs" aria-label="Back to activity" data-action="back" onClick={() => pick(undefined)}><XIcon /></Button>
 		</div>
 	);
 	if (!v)
@@ -801,8 +801,8 @@ function JobDetail({ j, now, pick }: { j: Job; now: number; pick: (s: Sel) => vo
 			<div className="flex items-center gap-2">
 				<AgentAvatar agent={{ id: j.agent, color: colorOf(j.agent), main: store.agent(j.agent)?.main }} size="sm" />
 				<span className="min-w-0 flex-1 truncate text-sm font-medium">{j.label || "(no text)"}</span>
-				<Button variant="outline" size="xs" onClick={() => openJob(j)}><ExternalLinkIcon data-icon="inline-start" />Open</Button>
-				<Button variant="ghost" size="icon-xs" aria-label="Back to activity" onClick={() => pick(undefined)}><XIcon /></Button>
+				<Button variant="outline" size="xs" data-action="open" onClick={() => openJob(j)}><ExternalLinkIcon data-icon="inline-start" />Open</Button>
+				<Button variant="ghost" size="icon-xs" aria-label="Back to activity" data-action="back" onClick={() => pick(undefined)}><XIcon /></Button>
 			</div>
 			<dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
 				<dt className="text-muted-foreground">Agent</dt>
@@ -850,7 +850,7 @@ function JobRecord({ j }: { j: Job }) {
 		<section data-slot="job-record" className="mt-1 flex flex-col gap-1.5">
 			<div className="flex items-baseline gap-2">
 				<span className="font-medium text-muted-foreground">Steps</span>
-				{stats ? <span className="min-w-0 flex-1 truncate text-end text-faint tabular-nums">{count(stats.input)} tokens read · {count(stats.output)} written · {stats.turns} turn{stats.turns === 1 ? "" : "s"}</span> : null}
+				{stats ? <span data-slot="job-stats" className="min-w-0 flex-1 truncate text-end text-faint tabular-nums">{count(stats.input)} tokens read · {count(stats.output)} written · {stats.turns} turn{stats.turns === 1 ? "" : "s"}</span> : null}
 			</div>
 			{entries.length ? entries.map((e, i) => <Entry key={i} entry={e} agent={j.agent} />) : <span className="text-faint">Nothing yet.</span>}
 			{got.data.task.error && !entries.some((e) => e.kind === "text") ? <span className="text-destructive">{got.data.task.error}</span> : null}

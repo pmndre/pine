@@ -176,15 +176,15 @@ function SoundLine({ src, name, id, bytes, auto, className }: SoundProps) {
 	const bars = !bytes || failed || now?.levels === null ? undefined : heights(now?.levels ?? FLAT, state === "idle" ? -1 : at);
 
 	return (
-		<span data-slot="sound" data-sound={state} className={cn("inline-flex max-w-full items-center gap-2.5 align-middle text-sm", className)}>
-			<Button variant="outline" size="icon-sm" className="shrink-0" disabled={!audio || failed} aria-label={`${state === "playing" ? "Pause" : "Play"} ${name}`} onClick={() => audio && (state === "playing" ? audio.pause() : play(key, audio, bytes))}>
+		<span data-slot="sound" data-sound={state} data-at={Math.floor(at)} data-length={total ? Math.round(total) : undefined} className={cn("inline-flex max-w-full items-center gap-2.5 align-middle text-sm", className)}>
+			<Button variant="outline" size="icon-sm" className="shrink-0" disabled={!audio || failed} data-action={state === "playing" ? "pause" : "play"} aria-label={`${state === "playing" ? "Pause" : "Play"} ${name}`} onClick={() => audio && (state === "playing" ? audio.pause() : play(key, audio, bytes))}>
 				{state === "playing" ? <PauseIcon /> : <PlayIcon />}
 			</Button>
 			{bars ? (
 				// One bar for each range of pitch, low to high. The lowest a bar gets is an eighth, the flat row of the terminal.
 				<span data-slot="sound-bars" aria-hidden className={cn("flex h-6 shrink-0 items-end gap-px", state === "idle" ? "text-muted-foreground/40" : "text-primary")}>
 					{bars.map((level, i) => (
-						<span key={i} className="w-1 rounded-xs bg-current transition-[height] duration-100 ease-linear" style={{ height: `${((1 + (level / 255) * 7) / 8) * 100}%` }} />
+						<span key={i} data-level={level} className="w-1 rounded-xs bg-current transition-[height] duration-100 ease-linear" style={{ height: `${((1 + (level / 255) * 7) / 8) * 100}%` }} />
 					))}
 				</span>
 			) : null}

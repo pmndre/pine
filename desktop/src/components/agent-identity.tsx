@@ -30,9 +30,9 @@ export function AgentColorPicker({ agent, onChange, trigger, nativeButton = true
 					<PopoverDescription>The color of the agent's avatar throughout the app.</PopoverDescription>
 				</PopoverHeader>
 				<ToggleGroup aria-label={`Color of ${agent.id}`} variant="outline" size="sm" className="flex-wrap" value={[choice]} onValueChange={(v) => v[0] && v[0] !== "other" && onChange(v[0])}>
-					<ToggleGroupItem value="none">None</ToggleGroupItem>
+					<ToggleGroupItem value="none" data-color="none">None</ToggleGroupItem>
 					{AGENT_COLORS.map((c) => (
-						<ToggleGroupItem key={c.hex} value={c.hex} aria-label={c.name} title={c.name}>
+						<ToggleGroupItem key={c.hex} value={c.hex} data-color={c.hex} aria-label={c.name} title={c.name}>
 							<AgentAvatar agent={{ id: agent.id, color: c.hex, main: agent.main }} size="sm" />
 						</ToggleGroupItem>
 					))}
@@ -65,6 +65,7 @@ export function AgentNameInput({ id, onDone, className }: { id: string; onDone: 
 	return (
 		<Input
 			autoFocus
+			data-field="rename"
 			aria-label={`New name for ${id}`}
 			aria-invalid={!valid || undefined}
 			className={className}

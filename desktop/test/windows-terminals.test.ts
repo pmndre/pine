@@ -6,8 +6,9 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import type { ElectronApplication, Page } from "playwright-core";
 import { startMock } from "../../baseline/tests/mock.mjs";
+import { browserPlaces } from "../../src/browser-build.ts";
 import { sandboxMissing } from "../../src/security.ts";
-import { clickMenu, launchApp, waitForWindow, windowCount } from "./support/app.ts";
+import { launchApp, patient, sendMenuTo, waitForWindow, windowCount } from "./support/app.ts";
 
 let mock: any;
 let home: string;
@@ -20,19 +21,59 @@ const write = (file: string, content: string) => {
 	fs.writeFileSync(file, content);
 };
 
-async function dismissBrowserAsk(p: Page, expectDialog = true): Promise<void> {
-	await p.waitForSelector("[data-slot=empty] h1, [data-slot=no-tab]", { timeout: 25_000 });
-	const btn = p.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" });
-	if (expectDialog) {
-		await btn.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
-	}
-	if (await btn.isVisible().catch(() => false)) {
-		await btn.click();
-		await p.waitForSelector("[data-slot=dialog-content]", { state: "detached", timeout: 5000 }).catch(() => {});
-	}
+/**
+ * A menu item's click, found by its key and not by its wording, for the window at `index` (in the order the windows
+ * were made). The items that only send the page a command are sent as that command instead (`sendMenuTo`).
+ */
+async function menuKey(launched: ElectronApplication, accelerator: string, index: number): Promise<void> {
+	await launched.evaluate(
+		({ BrowserWindow, Menu }: any, [key, idx]: [string, number]) => {
+			const target = [...BrowserWindow.getAllWindows()].sort((a: any, b: any) => a.id - b.id)[idx];
+			if (!target || target.isDestroyed()) throw new Error(`no window ${idx}`);
+			target.emit("focus");
+			const find = (items: any[]): any => {
+				for (const i of items) {
+					if (i.accelerator === key && typeof i.click === "function") return i;
+					const below = i.submenu ? find(i.submenu.items) : undefined;
+					if (below) return below;
+				}
+			};
+			const found = find(Menu.getApplicationMenu()?.items ?? []);
+			if (!found) throw new Error(`no menu item with the key ${key}`);
+			found.click(found, target, undefined);
+		},
+		[accelerator, index] as [string, number],
+	);
+}
+const NEW_WINDOW = "CmdOrCtrl+N";
+const CLOSE_WINDOW = "CmdOrCtrl+Shift+W";
+
+/** Waits until the app has that many windows. */
+async function windowsAre(launched: ElectronApplication, expected: number): Promise<void> {
+	await launched.evaluate(
+		({ BrowserWindow }: any, [n, ms]: [number, number]) =>
+			new Promise<void>((resolve, reject) => {
+				const deadline = Date.now() + ms;
+				const check = () => (BrowserWindow.getAllWindows().length === n ? resolve() : Date.now() > deadline ? reject(new Error(`expected ${n} windows, got ${BrowserWindow.getAllWindows().length}`)) : setTimeout(check, 50));
+				check();
+			}),
+		[expected, patient(10_000)] as [number, number],
+	);
 }
 
-async function startPineApp(expectBrowserDialog = false): Promise<{ app: ElectronApplication; page: Page }> {
+/** An agent's main conversation, opened from the side bar by the agent's name. */
+const openAgent = async (p: Page, agent: string) => {
+	await p.locator("[data-slot=sidebar] [data-slot=agent-label]").getByText(agent, { exact: true }).first().click();
+	await p.locator("[data-slot=tab][data-active] [data-slot=tab-name]", { hasText: agent }).waitFor();
+};
+/** What a window shows first: a conversation, or that it has no tab. */
+const FIRST = "[data-slot=no-tab], [data-slot=tab][data-active]";
+
+const call = (p: Page, method: string, url: string, body?: unknown) => p.evaluate(([m, u, b]: [string, string, unknown]) => (window as any).pine.call(m, u, b), [method, url, body] as [string, string, unknown]);
+/** Who is subscribed to a source, as the daemon says. */
+const subscribers = async (p: Page, source: string): Promise<string[]> => (await call(p, "GET", "/sources")).data.find((s: any) => s.name === source)?.subscribers ?? [];
+
+async function startPineApp(): Promise<{ app: ElectronApplication; page: Page }> {
 	const launched = await launchApp({
 		...process.env,
 		PLAYWRIGHT_BROWSERS_PATH: browsers,
@@ -44,24 +85,17 @@ async function startPineApp(expectBrowserDialog = false): Promise<{ app: Electro
 		PINE_DESKTOP_SHELL: process.platform === "win32" ? undefined : "/bin/sh",
 	});
 	const first = await launched.firstWindow();
-	await dismissBrowserAsk(first, expectBrowserDialog);
+	await first.waitForSelector(FIRST, { timeout: patient(30_000) });
 	return { app: launched, page: first };
 }
 
 async function openTerminal(p: Page, winIndex: number): Promise<void> {
-	await clickMenu(app!, ["View", "Terminal"], winIndex);
-	await p.waitForSelector("[data-slot=terminal-cwd]", { timeout: 15_000 });
-	await p.waitForFunction(
-		() => {
-			const el = document.querySelector("[data-slot=terminal-cwd]");
-			return Boolean(el && el.textContent && !el.textContent.includes("Starting"));
-		},
-		undefined,
-		{ timeout: 15_000 },
-	);
+	await sendMenuTo(app!, winIndex, "code-terminal");
+	// The shell is up once the terminal says where it is.
+	await p.waitForSelector("[data-slot=terminal-cwd][data-state=ready]", { timeout: patient(20_000) });
 }
 
-async function waitForTerminalText(p: Page, text: string, timeout = 10_000): Promise<void> {
+async function waitForTerminalText(p: Page, text: string, timeout = patient(15_000)): Promise<void> {
 	await p.waitForFunction(
 		(needle: string) => (document.querySelector("[data-slot=terminal]")?.textContent ?? "").includes(needle),
 		text,
@@ -74,8 +108,10 @@ before(async () => {
 	mock = await startMock({ strip: /<pine-note>[\s\S]*?<\/pine-note>\s*/g });
 	home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-mw-term-")));
 	dataDir = path.join(home, "desktop-data");
+	// The browser of the web tools counts as there, so that the app's question about it lies over nothing here (app.test.ts tests it).
 	browsers = path.join(home, "browsers");
 	fs.mkdirSync(browsers, { recursive: true });
+	for (const place of (await browserPlaces()) ?? []) write(path.join(browsers, path.basename(place), "INSTALLATION_COMPLETE"), "");
 	write(
 		path.join(home, "models.json"),
 		JSON.stringify({
@@ -104,25 +140,28 @@ after(async () => {
 });
 
 test("Move to New Window preserves unsent draft, tab-scoped subscription, and live local shell terminal", async () => {
-	const started = await startPineApp(true);
+	const started = await startPineApp();
 	app = started.app;
 	const win1 = started.page;
 
 	await win1.waitForSelector("[data-slot=tab][data-active]");
 
 	// Create a webhook source and open scout:move-me subscribed to it.
-	const srcRes = await win1.evaluate(() => (window as any).pine.call("POST", "/sources", { name: "mw-move-src", type: "webhook", options: {} }));
+	const srcRes = await call(win1, "POST", "/sources", { name: "mw-move-src", type: "webhook", options: {} });
 	assert.equal(srcRes.ok, true, JSON.stringify(srcRes));
 
-	await win1.locator("[data-slot=sidebar-menu-item]:has([data-slot=agent-label])", { has: win1.locator("[data-slot=agent-label] > :first-child", { hasText: /^scout$/ }) }).locator("[data-slot=agent-label]").click();
-	await win1.waitForSelector("[data-slot=tab][data-active] [data-slot=tab-name] >> text=scout");
+	await openAgent(win1, "scout");
 	await win1.fill("[data-slot=composer] textarea", "/new move-me");
 	await win1.keyboard.press("Enter");
 	await win1.waitForSelector("[data-slot=tab][data-active] [data-slot=tab-name] >> text=move-me");
 
 	await win1.fill("[data-slot=composer] textarea", "/subscribe local mw-move-src");
 	await win1.keyboard.press("Enter");
-	await win1.waitForSelector("text=subscribed to mw-move-src", { timeout: 10_000 });
+	// Subscribed once the daemon says so.
+	for (const end = Date.now() + patient(15_000); !(await subscribers(win1, "mw-move-src")).includes("scout/move-me"); ) {
+		assert.ok(Date.now() < end, "the conversation did not subscribe to the source");
+		await new Promise((r) => setTimeout(r, 100));
+	}
 
 	// Start a local shell in scout:move-me and set a shell variable so we can verify the exact live PTY moved.
 	if (process.platform !== "win32") {
@@ -134,11 +173,12 @@ test("Move to New Window preserves unsent draft, tab-scoped subscription, and li
 	// Type an unsent draft in the composer.
 	await win1.fill("[data-slot=composer] textarea", "unsent draft carried over");
 
-	// Right-click the scout:move-me tab and choose "Move to New Window".
+	// The tab's own menu moves it to a new window.
 	const moveTab = win1.locator("[data-slot=tab]", { hasText: "move-me" }).first();
 	await moveTab.click({ button: "right" });
-	await win1.waitForSelector("[data-slot=context-menu-content]");
-	const win2 = await waitForWindow(app, () => win1.locator("[data-slot=context-menu-content]").getByRole("menuitem", { name: "Move to New Window", exact: true }).click());
+	const move = win1.locator("[data-slot=context-menu-content] [data-action=move-to-window]");
+	await move.waitFor();
+	const win2 = await waitForWindow(app, () => move.click());
 
 	// Source window closed the moved tab without ending its tab-scoped subscription.
 	await win1.waitForFunction(() => ![...document.querySelectorAll("[data-slot=tab]")].some((el) => el.textContent?.includes("move-me")));
@@ -149,9 +189,7 @@ test("Move to New Window preserves unsent draft, tab-scoped subscription, and li
 	await win2.waitForFunction(() => (document.querySelector("[data-slot=composer] textarea") as HTMLTextAreaElement | null)?.value === "unsent draft carried over");
 
 	// Subscription stayed alive across the move.
-	const sourcesAfterMove = await win2.evaluate(() => (window as any).pine.call("GET", "/sources"));
-	const mwSrc = sourcesAfterMove.data.find((s: any) => s.name === "mw-move-src");
-	assert.ok(mwSrc?.subscribers?.includes("scout/move-me"), `expected subscription to survive Move to New Window: ${JSON.stringify(mwSrc)}`);
+	assert.ok((await subscribers(win2, "mw-move-src")).includes("scout/move-me"), "the subscription went away with the move to a new window");
 
 	// Live PTY transferred to win2: opening Terminal in win2 shows prior output and still holds $MW_MOVED!
 	if (process.platform !== "win32") {
@@ -162,15 +200,8 @@ test("Move to New Window preserves unsent draft, tab-scoped subscription, and li
 	}
 
 	// Close win2 so subsequent tests start cleanly with win1.
-	await clickMenu(app, ["File", "Close Window"], 1);
-	await app.evaluate(
-		({ BrowserWindow }: any) =>
-			new Promise<void>((resolve, reject) => {
-				const deadline = Date.now() + 5000;
-				const check = () => (BrowserWindow.getAllWindows().length === 1 ? resolve() : Date.now() > deadline ? reject(new Error("win2 did not close")) : setTimeout(check, 50));
-				check();
-			}),
-	);
+	await menuKey(app, CLOSE_WINDOW, 1);
+	await windowsAre(app, 1);
 });
 
 test("sidebar Open in New Window opens conversation in a new window and cross-window tab drag is a safe no-op", async () => {
@@ -179,15 +210,14 @@ test("sidebar Open in New Window opens conversation in a new window and cross-wi
 	await win1.waitForSelector("[data-slot=tab][data-active]");
 
 	// Open scout and create a pinned conversation "side-open" so it is listed as a conversation row in the sidebar.
-	await win1.locator("[data-slot=sidebar-menu-item]:has([data-slot=agent-label])", { has: win1.locator("[data-slot=agent-label] > :first-child", { hasText: /^scout$/ }) }).locator("[data-slot=agent-label]").click();
-	await win1.waitForSelector("[data-slot=tab][data-active] [data-slot=tab-name] >> text=scout");
+	await openAgent(win1, "scout");
 	await win1.fill("[data-slot=composer] textarea", "/new side-open");
 	await win1.keyboard.press("Enter");
 	await win1.waitForSelector("[data-slot=tab][data-active] [data-slot=tab-name] >> text=side-open");
 	await win1.fill("[data-slot=composer] textarea", "/pin");
 	await win1.keyboard.press("Enter");
 
-	// Intercept native context menu in main to verify "Open in New Window" is offered and select it.
+	// The side bar's menu is the system's, which the driver cannot click in: the test notes what it offers and says what is picked.
 	await app.evaluate(({ ipcMain }: any) => {
 		const g = globalThis as any;
 		g.sidebarMenus = [];
@@ -198,17 +228,14 @@ test("sidebar Open in New Window opens conversation in a new window and cross-wi
 		});
 	});
 
-	// Right-click "side-open" in the sidebar and pick "Open in New Window".
+	// The conversation's menu in the side bar offers a new window for it, and picking that opens one.
 	const sideRow = win1.locator("[data-slot=sidebar-menu-item]", { hasText: /side-open/ }).first();
 	await sideRow.waitFor({ state: "visible", timeout: 10_000 });
 	const win2 = await waitForWindow(app, () => sideRow.click({ button: "right" }));
 
-	const menus: Array<Array<{ id: string; label: string }>> = await app.evaluate(() => (globalThis as any).sidebarMenus);
+	const menus: Array<Array<{ id: string }>> = await app.evaluate(() => (globalThis as any).sidebarMenus);
 	assert.ok(menus.length >= 1, "expected sidebar context menu to be invoked");
-	assert.ok(
-		menus[0].some((i) => i.id === "open-in-new-window" && i.label === "Open in New Window"),
-		`expected Open in New Window item in ${JSON.stringify(menus[0])}`,
-	);
+	assert.ok(menus[0].some((i) => i.id === "open-in-new-window"), `the menu offers a new window for the conversation: ${JSON.stringify(menus[0])}`);
 
 	// New window opened directly on scout:side-open.
 	await win2.waitForSelector("[data-slot=tab][data-active] [data-slot=tab-name] >> text=side-open", { timeout: 20_000 });
@@ -229,15 +256,8 @@ test("sidebar Open in New Window opens conversation in a new window and cross-wi
 	assert.deepEqual(tabsAfterForeignDrop, tabsBefore, "foreign-window tab drop must be a no-op");
 
 	// Close win2.
-	await clickMenu(app, ["File", "Close Window"], 1);
-	await app.evaluate(
-		({ BrowserWindow }: any) =>
-			new Promise<void>((resolve, reject) => {
-				const deadline = Date.now() + 5000;
-				const check = () => (BrowserWindow.getAllWindows().length === 1 ? resolve() : Date.now() > deadline ? reject(new Error("win2 did not close")) : setTimeout(check, 50));
-				check();
-			}),
-	);
+	await menuKey(app, CLOSE_WINDOW, 1);
+	await windowsAre(app, 1);
 });
 
 test("per-window local terminal isolation: two windows have independent shells and closing one preserves the other", { skip: process.platform === "win32" && "POSIX shell test" }, async () => {
@@ -247,9 +267,9 @@ test("per-window local terminal isolation: two windows have independent shells a
 	await win1.waitForSelector("[data-slot=tab][data-active] [data-slot=tab-name] >> text=main");
 
 	// Open a second local window directly on main:main via File > New Window + Open main.
-	const win2 = await waitForWindow(app, () => clickMenu(app!, ["File", "New Window"], 0));
-	await win2.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
-	await win2.locator("[data-slot=no-tab]").getByRole("button", { name: /Open main/i }).click();
+	const win2 = await waitForWindow(app, () => menuKey(app!, NEW_WINDOW, 0));
+	await win2.waitForSelector("[data-slot=no-tab]", { timeout: patient(20_000) });
+	await win2.locator("[data-slot=no-tab] [data-action=open-main]").click();
 	await win2.waitForSelector("[data-slot=tab][data-active] [data-slot=tab-name] >> text=main");
 
 	// Open Terminal in both windows for the same conversation (main:main).
@@ -269,15 +289,8 @@ test("per-window local terminal isolation: two windows have independent shells a
 	assert.ok(!term2Text.includes("ISO_ONE_from-win-one"), `win1 output leaked into win2: ${term2Text}`);
 
 	// Close win2: win1's shell must stay alive with its $MW_ISO intact.
-	await clickMenu(app, ["File", "Close Window"], 1);
-	await app.evaluate(
-		({ BrowserWindow }: any) =>
-			new Promise<void>((resolve, reject) => {
-				const deadline = Date.now() + 5000;
-				const check = () => (BrowserWindow.getAllWindows().length === 1 ? resolve() : Date.now() > deadline ? reject(new Error("win2 did not close")) : setTimeout(check, 50));
-				check();
-			}),
-	);
+	await menuKey(app, CLOSE_WINDOW, 1);
+	await windowsAre(app, 1);
 
 	await win1.evaluate(() => (window as any).pine.termWrite("main:main", "echo STILL_ALIVE_$MW_ISO\r"));
 	await waitForTerminalText(win1, "STILL_ALIVE_from-win-one");

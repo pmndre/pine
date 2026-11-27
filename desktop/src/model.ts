@@ -63,7 +63,7 @@ export type Item = Base &
 		| { t: "user"; text: string; from?: string; files?: string[]; quotes?: SentQuote[]; /** The owner's message as a task, to branch from. */ task?: number; /** It was given to work that was running (`into`), as task `task`: when that work read it. */ steer?: Steer }
 		| { t: "answer"; task: number; agent: string; text: string; live: boolean; /** It arrived while the owner was looking at its conversation: its first sound plays by itself, once. */ arrived?: { heard: boolean } }
 		| { t: "work"; parts: Part[]; done: boolean; open: boolean; startedAt: number; ms?: number }
-		| { t: "note"; tone: Tone; text: string; lines?: Array<{ text: string; tone?: Tone }>; action?: { label: string; run: () => void } }
+		| { t: "note"; tone: Tone; text: string; kind?: string; lines?: Array<{ text: string; tone?: Tone }>; action?: { label: string; run: () => void } }
 		| { t: "event"; label: string; body: string; /** A note of pine's to the agent (`notify`): what it reports, never the owner's words. */ pine?: boolean }
 		/** A message was not answered because the agent has no model that answers (`ModelNotice`). */
 		| { t: "model"; agent: string }
@@ -2668,7 +2668,7 @@ export class Store extends Model {
 		const history = (await api.history(tab.agent, tab.session).catch(() => [] as Task[])).filter((t) => t.depth === 0).reverse();
 		for (const t of history) (this.past(tab, t), tab.roots.add(t.id));
 		const said = undoLines(r, redo);
-		tab.note(`${redo ? "↷" : "↶"} ${said.head}`, "accent", { lines: said.lines });
+		tab.note(`${redo ? "↷" : "↶"} ${said.head}`, "accent", { lines: said.lines, kind: redo ? "redo" : "undo" });
 		if (!redo) {
 			tab.draft = r.quotes?.length ? (r.body ?? "") : r.prompt;
 			tab.quotes = (r.quotes ?? []).map((q) => ({ id: quoteId(), text: q.text, tab: tab.key, source: q.source, ...(q.reply ? { reply: q.reply } : {}) }));

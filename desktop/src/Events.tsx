@@ -53,7 +53,7 @@ export function Events({ tab }: { tab: Tab }) {
 				<span className="truncate text-faint">{shown.length} shown · text deltas are hidden</span>
 				<span className="min-w-0 flex-1" />
 				<Button variant="outline" size="xs" onClick={() => (setFrozen([...tab.log]), setPaused(!paused))}>{paused ? <PlayIcon data-icon="inline-start" /> : <SquareIcon data-icon="inline-start" />}{paused ? "Follow" : "Pause"}</Button>
-				<Button variant="outline" size="xs" onClick={() => store.setPublishing(true)}><ZapIcon data-icon="inline-start" />Publish…</Button>
+				<Button variant="outline" size="xs" data-action="publish" onClick={() => store.setPublishing(true)}><ZapIcon data-icon="inline-start" />Publish…</Button>
 				<HoverTooltip>
 					<TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Clear the view" onClick={() => ((tab.log = []), tab.touch())} />}><Trash2Icon /></TooltipTrigger>
 					<TooltipContent>Clear the view</TooltipContent>
@@ -63,7 +63,7 @@ export function Events({ tab }: { tab: Tab }) {
 			    is an item of the scroller, held at a line's height (not a message's) while it is out of sight. */}
 			<MessageScrollerProvider autoScroll={open === undefined} defaultScrollPosition="end">
 				<MessageScroller className="flex-1">
-					<MessageScrollerViewport aria-label="Events">
+					<MessageScrollerViewport data-log="events" aria-label="Events">
 						<MessageScrollerContent className="cursor-auto gap-0 py-1.5 font-mono text-xs select-text">
 							{shown.length ? (
 								shown.map((e, i) => (

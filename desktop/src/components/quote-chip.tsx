@@ -18,7 +18,7 @@ export function QuoteChip({ text, reply, replying, onOpen, onReply, onRemove, cl
 	return (
 		<Attachment size="sm" data-slot="quote-chip" data-replying={replying || undefined} className={cn("max-w-72 min-w-0", replying && "border-primary/60", className)}>
 			<HoverTooltip>
-				<TooltipTrigger render={<AttachmentTrigger onClick={onOpen} aria-label={`Go to the quoted text: ${opening(text)}`} />} />
+				<TooltipTrigger render={<AttachmentTrigger onClick={onOpen} data-action="open" aria-label={`Go to the quoted text: ${opening(text)}`} />} />
 				<TooltipContent className="max-w-sm">
 					<QuoteText text={text} />
 				</TooltipContent>
@@ -48,7 +48,7 @@ export function QuoteChip({ text, reply, replying, onOpen, onReply, onRemove, cl
 					) : null}
 					{onRemove ? (
 						<HoverTooltip>
-							<TooltipTrigger render={<AttachmentAction onClick={onRemove} aria-label="Remove quote" />}><XIcon /></TooltipTrigger>
+							<TooltipTrigger render={<AttachmentAction onClick={onRemove} data-action="remove" aria-label="Remove quote" />}><XIcon /></TooltipTrigger>
 							<TooltipContent>Remove quote</TooltipContent>
 						</HoverTooltip>
 					) : null}

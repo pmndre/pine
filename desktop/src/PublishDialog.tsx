@@ -83,7 +83,7 @@ export function PublishDialog({ topic: firstTopic = "", payload: firstPayload = 
 					</FieldGroup>
 					<DialogFooter>
 						<Button type="button" variant="outline" onClick={close}>Cancel</Button>
-						<Button disabled={sending} onClick={() => void send()}>{sending ? <Pulse label="Loading" data-icon="inline-start" /> : null}Publish <Kbd>{shortcut("⌘↩")}</Kbd></Button>
+						<Button data-action="send" disabled={sending} onClick={() => void send()}>{sending ? <Pulse label="Loading" data-icon="inline-start" /> : null}Publish <Kbd>{shortcut("⌘↩")}</Kbd></Button>
 					</DialogFooter>
 				</div>
 			</DialogContent>

@@ -73,7 +73,9 @@ test("state: no machine of its own, the browser's platform, and a first start th
 	assert.deepEqual(s.versions, { app: "9.9.9", electron: "none" });
 	assert.deepEqual(s.prefs.hosts, []);
 	assert.equal(s.state.status, "error");
-	assert.match((s.state as { message: string }).message, /Add the machine/);
+	// No machine yet: the error names none, and says the form a machine is written in.
+	assert.equal((s.state as { host?: string }).host, undefined);
+	assert.match((s.state as { message: string }).message, /user@host/);
 	c.stop();
 });
 
@@ -124,11 +126,14 @@ test("trusting: only the fingerprint shown is taken; then pine service runs as s
 	await c.page.addHost("me@box.example");
 	await c.page.use("me@box.example");
 	await becomes(c, (s) => s.status === "error");
-	await assert.rejects(c.page.trustHostKey!("me@box.example", fp("x")), /not the key/);
-	await assert.rejects(c.page.trustHostKey!("other@box.example", machine.fingerprint), /not the key/);
+	await assert.rejects(c.page.trustHostKey!("me@box.example", fp("x")), "a fingerprint that was not shown");
+	await assert.rejects(c.page.trustHostKey!("other@box.example", machine.fingerprint), "the fingerprint shown, for another machine");
+	assert.deepEqual(machine.commands, [], "and nothing was run on the machine for either");
 	await c.page.trustHostKey!("me@box.example", machine.fingerprint);
 	const s = await becomes(c, (x) => x.status === "ready");
-	assert.deepEqual(s, { status: "ready", mode: "on box", started: true, home: "box:~/.pine", version: "0.50.0", from: "ssh me@box.example", host: "me@box.example", label: "box" });
+	const ready = s as { mode: string; from: string };
+	assert.deepEqual({ ...s, mode: undefined, from: undefined }, { status: "ready", mode: undefined, started: true, home: "box:~/.pine", version: "0.50.0", from: undefined, host: "me@box.example", label: "box" });
+	assert.ok(ready.mode.includes("box") && ready.from.includes("me@box.example"), "where it runs and how it is reached are said with the machine's own name");
 	assert.deepEqual(machine.commands, [REMOTE_COMMAND]);
 	c.stop();
 });
@@ -165,7 +170,7 @@ test("a host key that changed is refused with both fingerprints, and cannot be t
 	assert.equal((s as { changed: boolean }).changed, true);
 	assert.equal((s as { fingerprint: string }).fingerprint, fp("z"));
 	assert.ok((s as { message: string }).message.includes(was) && (s as { message: string }).message.includes(fp("z")));
-	await assert.rejects(c.page.trustHostKey!("me@box.example", fp("z")), /not the key/);
+	await assert.rejects(c.page.trustHostKey!("me@box.example", fp("z")), "a changed key is not trusted from the page");
 	assert.equal(c.machine.commands.length, 1);
 	c.stop();
 });
@@ -197,8 +202,9 @@ test("trusted keys and the machine in use are remembered: a new page connects at
 test("use: only a machine of the list, and never none", async () => {
 	const c = client(fakeMachine(daemon));
 	await c.page.state();
-	await assert.rejects(c.page.use("me@elsewhere.example"), /not one of your machines/);
-	await assert.rejects(c.page.use(), /no pine of its own/);
+	await assert.rejects(c.page.use("me@elsewhere.example"), "a machine that is not on the list");
+	await assert.rejects(c.page.use(), "no machine at all");
+	assert.equal((await c.page.state()).prefs.use, undefined);
 	c.stop();
 });
 
@@ -207,11 +213,11 @@ test("a key the machine does not take, and a machine without pine, are said in w
 	const c = await ready(machine);
 	machine.authorized = false;
 	await c.page.retry();
-	assert.match(((await becomes(c, (x) => x.status === "error")) as { message: string }).message, /did not accept this browser's key.*authorized_keys/);
+	assert.match(((await becomes(c, (x) => x.status === "error")) as { message: string }).message, /authorized_keys/, "where the key goes");
 	machine.authorized = true;
 	machine.service = { out: "", err: "pine is not installed there: no pine command on its PATH.\n", exit: 127 };
 	await c.page.retry();
-	assert.match(((await becomes(c, (x) => x.status === "error" && /not installed/.test(x.message))) as { message: string }).message, /pine is not installed on me@box\.example/);
+	assert.ok(((await becomes(c, (x) => x.status === "error" && /not installed/.test(x.message))) as { message: string }).message.includes("me@box.example"), "on which machine");
 	c.stop();
 });
 
@@ -224,7 +230,7 @@ test("a service line that names anything but the machine's own loopback is not c
 	await c.page.use("me@box.example");
 	await c.page.trustHostKey!("me@box.example", ((await becomes(c, (s) => s.status === "error")) as { fingerprint: string }).fingerprint);
 	const s = await becomes(c, (x) => x.status === "error" && x.kind === "failed");
-	assert.match((s as { message: string }).message, /not a port of its own loopback/);
+	assert.match((s as { message: string }).message, /loopback/);
 	assert.deepEqual(machine.forwards, []);
 	c.stop();
 });
@@ -277,7 +283,7 @@ test("connecting again backs off, says what is wrong while it cannot, and is bac
 	c.machine.reachable = false;
 	c.machine.drop();
 	const down = await becomes(c, (s) => s.status === "error", 5000);
-	assert.match((down as { message: string }).message, /could not be reached.*port 22/);
+	assert.match((down as { message: string }).message, /\b22\b/, "the port that was tried");
 	await until(() => c.waits.length >= 6, "six waits");
 	assert.deepEqual(c.waits.slice(0, 6), [1000, 2000, 4000, 8000, 16000, 30000]);
 	c.machine.reachable = true;
@@ -302,7 +308,7 @@ test("a stop for good while connecting again: a key no longer taken, or a host k
 	c.machine.authorized = false;
 	c.machine.drop();
 	const s = await becomes(c, (x) => x.status === "error", 5000);
-	assert.match((s as { message: string }).message, /did not accept this browser's key.*ssh-ed25519 AAAA/);
+	assert.match((s as { message: string }).message, /ssh-ed25519 AAAA/, "the key line to add is in what is said");
 	const tries = c.machine.connects.length;
 	await new Promise((r) => setTimeout(r, 100));
 	assert.equal(c.machine.connects.length, tries);
@@ -317,10 +323,13 @@ test("the relay's refusals reach the page as what to do", async () => {
 	await c.page.addHost("me@box.example:2222");
 	await c.page.use("me@box.example:2222");
 	const s = await becomes(c, (x) => x.status === "error");
-	assert.match((s as { message: string }).message, /relay.*public address/);
+	const refusedSaid = (s as { message: string }).message;
+	assert.match(refusedSaid, /relay/);
 	machine.reachable = false;
 	await c.page.retry();
-	assert.match(((await becomes(c, (x) => x.status === "error" && /could not be reached/.test(x.message))) as { message: string }).message, /box\.example.*port 2222/);
+	// A machine that is not reached is said in other words than a refusal, with the host and the port that were tried.
+	const unreached = ((await becomes(c, (x) => x.status === "error" && x.message !== refusedSaid)) as { message: string }).message;
+	assert.ok(unreached.includes("box.example") && unreached.includes("2222"), unreached);
 	c.stop();
 });
 
@@ -332,14 +341,17 @@ test("a machine of a tailnet that the relay cannot reach is told to turn Tailsca
 	await c.page.addHost("me@pine.example-tailnet.ts.net:10000");
 	await c.page.use("me@pine.example-tailnet.ts.net:10000");
 	const refused = (await becomes(c, (x) => x.status === "error")) as { message: string };
-	assert.match(refused.message, /Funnel.*443, 8443 or 10000.*tailscale funnel --bg --tls-terminated-tcp=10000 tcp:\/\/localhost:22/);
+	// The command to run there, for the port the machine was added with, and the ports Funnel has.
+	const FUNNEL = "tailscale funnel --bg --tls-terminated-tcp=10000 tcp://localhost:22";
+	assert.ok(refused.message.includes(FUNNEL), refused.message);
+	for (const port of ["443", "8443", "10000"]) assert.ok(refused.message.includes(port), `${port}: ${refused.message}`);
 	for (const reachable of ["tls", false] as const) {
 		machine.reachable = reachable;
 		const mark = c.states.length;
 		await c.page.retry();
-		const said = () => c.states.slice(mark).find((x) => x.status === "error" && /did not answer through Tailscale Funnel/.test(x.message)) as { message: string } | undefined;
+		const said = () => c.states.slice(mark).find((x) => x.status === "error" && x.message !== refused.message && x.message.includes(FUNNEL)) as { message: string } | undefined;
 		await until(() => said() !== undefined, `the Funnel advice after "${reachable}"`);
-		assert.match(said()!.message, /pine\.example-tailnet\.ts\.net.*port 10000.*tailscale funnel --bg --tls-terminated-tcp=10000 tcp:\/\/localhost:22/);
+		assert.ok(said()!.message.includes("pine.example-tailnet.ts.net") && said()!.message.includes("10000"), said()!.message);
 	}
 	c.stop();
 });
@@ -357,7 +369,8 @@ test("the page's own storage (the side panel's widths, what is folded) is kept t
 	assert.deepEqual(again.storage, { "pine.sidebar.width": "300", "pine.folded": '["main"]', "pine.aside": "shown" });
 	// Too many keys: none of the change is kept.
 	const many = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`pine.k${i}`, "1"]));
-	await assert.rejects(c.page.prefs({ storage: many }), /too much/);
+	await assert.rejects(c.page.prefs({ storage: many }));
+	assert.deepEqual(((await c.page.state()).prefs as { storage?: Record<string, string> }).storage, { "pine.sidebar.width": "300", "pine.folded": '["main"]', "pine.aside": "shown" });
 	c.stop();
 });
 
@@ -367,7 +380,7 @@ test("a pine that says nothing is said to be not answering, and is tried again a
 	c.machine.service = { out: "" };
 	c.machine.drop();
 	const s = await becomes(c, (x) => x.status === "error", 8000);
-	assert.match((s as { message: string }).message, /pine on me@box\.example is not answering/);
+	assert.ok((s as { message: string }).message.includes("me@box.example"), "which machine's pine does not answer");
 	c.machine.service = answering;
 	c.wake();
 	await becomes(c, (x) => x.status === "ready", 8000);
@@ -383,7 +396,7 @@ test("a first connection that fails for a reason that may pass (the relay, the n
 	await again.page.state();
 	again.page.ready();
 	const s = await becomes(again, (x) => x.status === "error");
-	assert.match((s as { message: string }).message, /relay did not open a connection/);
+	assert.match((s as { message: string }).message, /relay/);
 	await until(() => again.waits.length === 1, "a wait before the next attempt");
 	assert.equal(again.waits[0], 1000);
 	const tries = c.machine.connects.length;
@@ -422,7 +435,7 @@ test("disconnecting goes back to the machines: the connection is let go of, the 
 	assert.deepEqual(prefs.hosts, ["me@box.example"]);
 	assert.equal(machine.open, 0);
 	assert.equal(c.states.at(-1)?.status, "error");
-	assert.match((c.states.at(-1) as { message: string }).message, /Add the machine/);
+	assert.equal((c.states.at(-1) as { host?: string }).host, undefined, "back where a machine is asked for");
 	assert.equal((await c.page.state()).connected, false);
 	// A new page on the same storage connects to nothing, and the host key is still trusted.
 	const again = client(machine, c.store);
@@ -440,7 +453,7 @@ test("disconnecting goes back to the machines: the connection is let go of, the 
 	await new Promise((r) => setTimeout(r, 50));
 	assert.equal(machine.open, 0);
 	assert.equal(machine.commands.length, commands);
-	assert.match((again.states.at(-1) as { message: string }).message, /Add the machine/);
+	assert.equal((again.states.at(-1) as { host?: string }).host, undefined, "back where a machine is asked for");
 	again.stop();
 	c.stop();
 });

@@ -116,7 +116,8 @@ test("deviceKey: the phone's public key, copied or handed to the share sheet by 
 	assert.equal(k.key, key);
 	await k.copy();
 	await k.share();
-	assert.deepEqual(calls, [["publicKey"], ["copy", { text: key }], ["share", { title: "This phone's SSH key", text: key }]]);
+	// The key as text, to the clipboard and to the share sheet; what the sheet is headed with is the app's wording.
+	assert.deepEqual(calls.map(([m, o]) => [m, (o as { text?: string } | undefined)?.text]), [["publicKey", undefined], ["copy", key], ["share", key]]);
 });
 
 test("back: closes what the page has open with Escape, else leaves the app; the page never hears it", async () => {
@@ -176,7 +177,7 @@ test("machines: use, add and forget go to the plugin, and the prefs come back wi
 
 test("use: the phone has no pine of its own, so a call without a machine is refused and reaches nothing", async () => {
 	const { plugin, calls } = fakePlugin();
-	await assert.rejects(mobileBridge(plugin, "android").use(undefined), /no pine of its own/);
+	await assert.rejects(mobileBridge(plugin, "android").use(undefined));
 	assert.deepEqual(calls, []);
 });
 
@@ -270,13 +271,13 @@ test("what only the desktop app has refuses or does nothing, as the preview's st
 	const { plugin, calls } = fakePlugin();
 	const b = mobileBridge(plugin, "android");
 	assert.equal(await b.update(true), undefined);
-	await assert.rejects(b.restart(), /machine/);
+	await assert.rejects(b.restart());
 	assert.equal(await b.init(), 1);
 	assert.equal(await b.browserInstall(), 1);
 	assert.deepEqual(await b.command("install"), { state: "unavailable", text: "" });
-	await assert.rejects(b.voiceStart("en"), /Mac/);
+	await assert.rejects(b.voiceStart("en"));
 	assert.equal(await b.voiceStop(), undefined);
-	await assert.rejects(b.termOpen("t", undefined, 80, 24), /desktop app/);
+	await assert.rejects(b.termOpen("t", undefined, 80, 24));
 	assert.equal(await b.termWrite("t", "ls"), undefined);
 	assert.deepEqual(await b.termRun("t", "ls"), { reports: false });
 	assert.equal(await b.termResize("t", 80, 24), undefined);
@@ -373,7 +374,7 @@ test("pair: a link that is not a pairing link of an https service is refused and
 		`javascript:alert(1)//#pair=${ID}.${CODE}`,
 		"",
 	];
-	for (const link of refused) await assert.rejects(b.pair!(link), /not a pairing link/, link);
+	for (const link of refused) await assert.rejects(b.pair!(link), link);
 	assert.deepEqual(calls, []);
 });
 

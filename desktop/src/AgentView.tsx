@@ -44,7 +44,7 @@ export function AgentRow({ media, title, about, tag, onOpen }: { media: ReactNod
 			</ItemContent>
 			{tag || onOpen ? (
 				<ItemActions>
-					{tag ? <Badge variant="secondary">{tag}</Badge> : null}
+					{tag ? <Badge variant="secondary" data-row-tag="">{tag}</Badge> : null}
 					{onOpen ? <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" /> : null}
 				</ItemActions>
 			) : null}
@@ -57,12 +57,12 @@ export function AgentRow({ media, title, about, tag, onOpen }: { media: ReactNod
  * line when it has none (`empty`). With `skeleton` it draws bars of a row's shape while it first loads; with
  * `error` it says why it failed, so that a failure reads apart from loading and from empty.
  */
-export function AgentSection({ title, manage, skeleton = false, error, empty, children }: { title: ReactNode; manage?: () => void; skeleton?: boolean; error?: string; empty?: ReactNode; children?: ReactNode }) {
+export function AgentSection({ title, part, manage, skeleton = false, error, empty, children }: { title: ReactNode; /** Which part it is, for whoever looks for it by more than its heading. */ part?: string; manage?: () => void; skeleton?: boolean; error?: string; empty?: ReactNode; children?: ReactNode }) {
 	return (
-		<section className="flex min-w-0 flex-col gap-1" data-slot="agent-section">
+		<section className="flex min-w-0 flex-col gap-1" data-slot="agent-section" data-part={part} data-empty={!skeleton && !error && empty ? "" : undefined}>
 			<div className={cn("flex h-7 items-center justify-between gap-2", INSET)}>
 				<h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
-				{manage ? <Button variant="ghost" size="xs" className="-mr-1.5" onClick={manage}>Manage</Button> : null}
+				{manage ? <Button variant="ghost" size="xs" className="-mr-1.5" data-action="manage" onClick={manage}>Manage</Button> : null}
 			</div>
 			{skeleton ? (
 				<Item size="xs">
@@ -187,7 +187,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 					</AgentSection>
 				) : null}
 
-				<AgentSection title="MCP servers" manage={manage("mcp")} {...state(servers)} empty={tools.length ? undefined : "No MCP servers."}>
+				<AgentSection title="MCP servers" part="mcp" manage={manage("mcp")} {...state(servers)} empty={tools.length ? undefined : "No MCP servers."}>
 					<ItemGroup>
 						{tools.map((x) => (
 							<AgentRow
@@ -204,6 +204,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 
 				<AgentSection
 					title="Sources"
+					part="sources"
 					manage={manage("sources")}
 					{...state(sources)}
 					empty={listens.length ? undefined : `Nothing wakes ${id} yet. ${could > 0 ? `It could listen to ${plural(could, "source")}: ask it to watch one, or press Manage.` : "Ask it to watch something, such as “tell me when a file lands in ~/Scans”."}`}
@@ -223,7 +224,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 					</ItemGroup>
 				</AgentSection>
 
-				<AgentSection title="Schedules" manage={manage("schedules")} {...state(schedules)} empty={timed.length ? undefined : `Nothing is scheduled. Ask ${id}, for example “every morning at seven…”.`}>
+				<AgentSection title="Schedules" part="schedules" manage={manage("schedules")} {...state(schedules)} empty={timed.length ? undefined : `Nothing is scheduled. Ask ${id}, for example “every morning at seven…”.`}>
 					<ItemGroup>
 						{timed.map((x) => <AgentRow key={`${x.scope}:${x.name}`} media={<ClockIcon />} title={x.name} about={`${whenShort(x)}${x.task ? ` · ${oneLine(x.task)}` : ""}`} tag={forWhom(x.scope, x.session)} onOpen={() => openThing({ kind: "schedule", schedule: x })} />)}
 					</ItemGroup>
@@ -242,7 +243,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 				) : null}
 
 				{/* The agent's own files, as on its page in Settings: read, changed and saved here too. */}
-				<AgentSection title="Instructions" manage={manage("instructions")} error={state(detail).error}>
+				<AgentSection title="Instructions" part="instructions" manage={manage("instructions")} error={state(detail).error}>
 					<div className={INSET}>
 						{detail.data ? <AgentFiles id={id} files={detail.data.files} texts={texts} onText={(key, v) => setTexts((was) => ({ ...was, [key]: v }))} onSave={() => void save()} /> : <FilesSkeleton />}
 					</div>

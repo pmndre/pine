@@ -103,6 +103,7 @@ function KeyCard({ run, name, ctx }: { run: SignInRun; name: string; ctx: SetupC
 		<Button
 			size="sm"
 			variant="ghost"
+			data-action="cancel"
 			onClick={() => {
 				picked.stop();
 				ctx.back();
@@ -126,7 +127,7 @@ function KeyCard({ run, name, ctx }: { run: SignInRun; name: string; ctx: SetupC
 		start: cancel,
 	};
 	// The sign-in ended without the key (refused, or cancelled elsewhere): another try starts it again.
-	if (s?.done) return <FormCard {...card} end={<Button size="sm" variant="outline" onClick={() => picked.start(run.provider, name)}>Try again</Button>} />;
+	if (s?.done) return <FormCard {...card} end={<Button size="sm" variant="outline" data-action="retry" onClick={() => picked.start(run.provider, name)}>Try again</Button>} />;
 	return (
 		<FieldCard
 			{...card}
@@ -161,12 +162,13 @@ function Card({ ctx }: { ctx: SetupContext }) {
 		const ids = common(ctx.facts.providers);
 		return (
 			<QuestionCard
+				id="provider"
 				question={WHICH}
 				header="API key"
 				from="pine asks"
-				options={[...ids.map((id) => ({ label: KEY_PROVIDERS[id].title, description: KEY_PROVIDERS[id].about })), { label: ANOTHER, description: "Search all providers pine knows." }]}
+				options={[...ids.map((id) => ({ id, label: KEY_PROVIDERS[id].title, description: KEY_PROVIDERS[id].about })), { id: "another", label: ANOTHER, description: "Search all providers pine knows." }]}
 				autoFocus
-				actions={<Button size="sm" variant="ghost" onClick={ctx.back}>Back</Button>}
+				actions={<Button size="sm" variant="ghost" data-action="back" onClick={ctx.back}>Back</Button>}
 				onAnswer={([n]) => {
 					const id = ids[n - 1];
 					if (!id) return void another(ctx);

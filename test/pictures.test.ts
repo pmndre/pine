@@ -122,7 +122,11 @@ async function open(spec: Parameters<typeof harness>[0]) {
 		await sleep(15);
 	};
 	const sees = (what: string | RegExp, ms = 5000) => until(() => (typeof what === "string" ? text().includes(what) : what.test(text())), ms, `the screen to show ${what}\n--- screen ---\n${text()}`);
-	return { h, term, app, text, send, sees, close: async () => (await app.stop(), await h.close()) };
+	// The UI by its own state (PineTui.state()), for what is no picture: that it is drawn, which dialog is open.
+	const ready = () => until(() => app.state().tabs.length > 0 && app.screen().some((l) => l.trim() !== ""), 4000, "the UI to be drawn");
+	const dialog = (kind: "conversations" | undefined) => until(() => app.state().dialog === kind, 4000, `${kind ?? "no"} dialog`);
+	const tab = (session: string) => until(() => app.state().tabs[app.state().front]?.session === session, 4000, `the conversation ${session} in front`);
+	return { h, term, app, text, send, sees, ready, dialog, tab, close: async () => (await app.stop(), await h.close()) };
 }
 
 test("pictures: an agent is told, in the tool's answer, that the picture a server made is already shown", async (t) => {
@@ -154,17 +158,17 @@ test("pictures: an agent is told, in the tool's answer, that the picture a serve
 
 test("tui: pictures from a tool, in an answer and attached to a message are drawn; a web picture waits for a click", mac, async () => {
 	const t = await open({ agents: { main: {} } });
-	await t.sees("type a message");
+	await t.ready();
 	const ws = t.h.workspace("main");
 	fs.writeFileSync(path.join(ws, "chart.png"), png(64, 40));
 
 	// The agent reads a picture (a tool result) and points at it in its answer. A picture on the web is only named.
 	await t.send(mockMsg([{ tools: [{ name: "read", args: { path: "chart.png" } }] }]));
-	await t.sees("from read · 64×40 · click to enlarge");
+	await t.sees(/from read\b.*64×40/);
 	await t.send(mockMsg([{ text: "Here it is: ![the chart](chart.png) and one from the web ![logo](https://example.com/logo.png) and ![gone](nope.png)" }]));
-	await t.sees("the chart · 64×40 · click to enlarge");
-	await t.sees("▸ load picture https://example.com/logo.png");
-	await t.sees("(no picture at nope.png in the workspace)");
+	await t.sees(/the chart\b.*64×40/);
+	await t.sees(/load picture\b.*https:\/\/example\.com\/logo\.png/);
+	await t.sees(/no picture\b.*nope\.png/);
 	const blocks = (s: string) => s.split("▀").length - 1;
 	const thumbnails = blocks(t.text());
 	assert.ok(thumbnails >= 44 * 14 && thumbnails % 44 === 0, `thumbnails are 44 cells wide and at most 14 lines high (${thumbnails})`);
@@ -174,19 +178,21 @@ test("tui: pictures from a tool, in an answer and attached to a message are draw
 
 	// A click enlarges, another shrinks.
 	const row = () => t.app.screen().findIndex((l) => l.includes("the chart · 64×40"));
+	// (Counted in the picture's own lines, the ones above its caption: the window may have moved with its size.)
+	const drawn = () => blocks(t.app.screen().slice(0, Math.max(0, row())).join("\n"));
+	const small = drawn();
 	t.term.click(5, row() - 3);
-	await t.sees("the chart · 64×40 · click to shrink");
-	assert.ok(blocks(t.text()) > thumbnails, "the enlarged picture takes more room");
+	await until(() => drawn() > small, 4000, "the enlarged picture to take more room");
 	t.term.click(5, row() - 3);
-	await t.sees("the chart · 64×40 · click to enlarge");
+	await until(() => drawn() <= small, 4000, "the picture to be small again");
 
 	// A dropped picture shows under the message it goes out with, and again when the conversation is reopened.
 	const photo = path.join(fs.realpathSync(os.tmpdir()), `pine-photo-${Date.now()}.png`);
 	fs.writeFileSync(photo, png(40, 40, [10, 200, 90], [10, 200, 90]));
 	t.term.paste(photo);
-	await t.sees("attached:");
+	await t.sees(path.basename(photo));
 	await t.send("what is this");
-	await t.sees(`${path.basename(photo)} · 40×40 · click to enlarge`);
+	await t.sees(new RegExp(`${path.basename(photo).replace(/\./g, "\\.")}\\b.*40×40`));
 	await t.sees("ECHO[what is this");
 	fs.rmSync(photo);
 	await t.app.stop();
@@ -203,10 +209,10 @@ test("tui: on a terminal with the Kitty graphics protocol the real picture is se
 	setCapabilities({ ...before, images: "kitty" });
 	try {
 		const t = await open({ agents: { main: {} } });
-		await t.sees("type a message");
+		await t.ready();
 		fs.writeFileSync(path.join(t.h.workspace("main"), "chart.png"), png(64, 40));
 		await t.send(mockMsg([{ text: "![the chart](chart.png)" }]));
-		await t.sees("the chart · 64×40 · click to enlarge");
+		await t.sees(/the chart\b.*64×40/);
 		t.app.screen();
 		assert.ok(t.term.written.includes("\x1b_G"), "a Kitty graphics command was written");
 		assert.ok(!t.text().includes("▀"));
@@ -221,13 +227,13 @@ test("tui: a menu opened over a real picture is not covered by it; the picture i
 	setCapabilities({ ...before, images: "kitty" });
 	try {
 		const t = await open({ agents: { main: {} } });
-		await t.sees("type a message");
+		await t.ready();
 		// pine's welcome stands above an empty main conversation: in a new one the menu lies over the picture.
 		await t.send("/new pics");
-		await t.sees("session pics");
+		await t.tab("pics");
 		fs.writeFileSync(path.join(t.h.workspace("main"), "chart.png"), png(64, 40));
 		await t.send(mockMsg([{ text: "![the chart](chart.png)" }]));
-		await t.sees("the chart · 64×40 · click to enlarge");
+		await t.sees(/the chart\b.*64×40/);
 		const raw = () => (t.app.screen(), t.app.tui.getScreenLines());
 		const real = (lines: string[]) => lines.filter((l) => l.includes("\x1b_G")).length;
 		assert.equal(real(raw()), 1, "the real picture is on screen");
@@ -235,18 +241,18 @@ test("tui: a menu opened over a real picture is not covered by it; the picture i
 
 		// The list of conversations opens in the middle of the screen, across the picture.
 		await t.send("/sessions");
-		await t.sees("│ Conversations of main");
+		await t.dialog("conversations");
 		const under = raw();
 		assert.equal(real(under), 0, "no real picture lies under the menu");
 		const shown = t.app.screen();
 		assert.ok(shown.some((l) => l.includes("▀") && /[╭│]/.test(l)), "the menu really is over the picture, which is still there as text");
-		const title = shown.findIndex((l) => l.includes("Conversations of main"));
+		const title = shown.findIndex((l) => l.includes("╭")) + 1;
 		const bottom = shown.findIndex((l) => l.includes("╰"));
 		assert.ok(shown.slice(title, bottom).every((l) => (l.match(/│/g) ?? []).length === 2), "every line of the menu is whole");
 
 		// Closing the menu brings the real picture back.
 		t.term.type([KEY.esc]);
-		await until(() => !t.text().includes("Conversations of main"), 3000, "the menu to close");
+		await t.dialog(undefined);
 		assert.equal(real(raw()), 1, "the real picture is back");
 		assert.ok(!t.text().includes("▀"));
 		await t.close();
@@ -285,25 +291,26 @@ test("tui: a video plays by itself when it arrives, at the size it is shown; pau
 	// It arrives and plays by itself, in the room a thumbnail takes.
 	term.type(mockMsg([{ text: "Here is the clip: ![test pattern](clip.mp4)" }]));
 	term.type([KEY.enter]);
-	await sees(/‖ pause · test pattern · 0:00 \/ 0:01 · no sound · click the picture to enlarge\s+▸ open in player/);
+	await sees(/‖ pause\b.*test pattern\b.*0:00 \/ 0:01/);
 	await until(() => blocks() > 0, 3000, "a frame");
 	const small = blocks();
 	assert.ok(small <= 44 * 14 && small % 44 === 0, `frames are thumbnail-sized (${small})`);
 
+	// (Played to its end, the line names the clip's length alone, no place in it.)
+	const ENDED = /▶ play\b[^\n/]*test pattern[^\n/]*0:01/;
 	// Pause holds the frame; play goes on from there.
 	clickWord("‖ pause");
-	await sees(/▶ play · test pattern · 0:00 \/ 0:01/);
+	await sees(/▶ play\b.*test pattern\b.*0:0\d \/ 0:01/);
 	const held = text();
 	await sleep(350);
 	assert.equal(text(), held, "nothing moves while it is paused");
 	clickWord("▶ play");
 	await sees("‖ pause");
-	await sees(/▶ play · test pattern · 0:01 · click the picture to enlarge/, 8000);
+	await sees(ENDED, 8000);
 	assert.equal(blocks(), small, "at the end the still is back, the same size");
 
 	// A click on the picture enlarges it and does not start it. Play then plays it large.
 	term.click(6, row() - 2);
-	await sees("click the picture to shrink");
 	await until(() => blocks() > small, 3000, "the larger still");
 	assert.match(caption(), /▶ play/);
 	const large = blocks();
@@ -312,9 +319,8 @@ test("tui: a video plays by itself when it arrives, at the size it is shown; pau
 	await until(() => /0:00 \/ 0:01/.test(caption()) && blocks() >= large, 3000, "large frames");
 	// Shrinking while it plays keeps it playing.
 	term.click(6, row() - 2);
-	await sees("click the picture to enlarge");
-	assert.match(caption(), /‖ pause|▶ play/);
-	await sees(/▶ play · test pattern · 0:01 · click the picture to enlarge/, 8000);
+	await until(() => blocks() > 0 && blocks() <= small, 3000, "the small frames again");
+	await sees(ENDED, 8000);
 
 	// "open in player" hands over a file with the video in it.
 	clickWord("open in player");
@@ -328,7 +334,7 @@ test("tui: a video plays by itself when it arrives, at the size it is shown; pau
 	const again = new PineTui({ client, terminal: new FakeTerminal(110, 60) });
 	apps.push(again);
 	await again.start();
-	await until(() => again.screen().join("\n").includes("▶ play · test pattern · 0:01"), 6000, "the video after reopening");
+	await until(() => /▶ play\b[^\n/]*test pattern[^\n/]*0:01/.test(again.screen().join("\n")), 6000, "the video after reopening");
 	await sleep(300);
 	assert.ok(!again.screen().join("\n").includes("‖ pause"));
 	await again.stop();
@@ -479,7 +485,8 @@ test("sound: the line shows the levels as bars that follow the clock while it pl
 	fs.writeFileSync(path.join(dir, "two.wav"), wav(2, [[[500, 0.5]], [[2000, 0.5]]]));
 	const [low, high] = [bandOf(500, 8000), bandOf(2000, 8000)];
 	/** The bars a line shows, and which of them stands highest. */
-	const shown = (text: string) => /^ (?:‖ pause|▶ play) {2}([▁▂▃▄▅▆▇█]{8,24}) {2}♪/.exec(plain(text))?.[1];
+	// The bars of a line, wherever the line puts them.
+	const shown = (text: string) => /[▁▂▃▄▅▆▇█]{8,24}/.exec(plain(text))?.[0];
 	const top = (text: string) => shown(text)?.indexOf("█");
 	const prepared = await prepareSound(path.join(dir, "two.wav"), "two tones");
 	await prepared.measured;
@@ -492,14 +499,14 @@ test("sound: the line shows the levels as bars that follow the clock while it pl
 	const click = (word: string) => sound.handleMouse({ button: "left", type: "click", x: plain(line()).indexOf(word) + 1, y: 0 });
 
 	// Before it plays the bars lie flat, in grey.
-	assert.equal(plain(line()), ` ▶ play  ${FLAT}  ♪ two tones · 0:02   ▸ open in player`);
-	assert.ok(line().includes(c.gray(FLAT)));
+	assert.ok(plain(line()).includes("▶ play") && /two tones\b.*0:02/.test(plain(line())), plain(line()));
+	assert.ok(shown(line()) === FLAT && line().includes(c.gray(FLAT)), plain(line()));
 
 	// Playing: the bars are the levels at the place the clock is at, in the accent color, and the line is drawn again ten times a second.
 	sound.play();
 	assert.equal(top(line()), low, plain(line()));
 	assert.ok(line().includes(c.accent(bars(prepared.levels!, 0))));
-	assert.match(plain(line()), /^ ‖ pause {2}\S{24} {2}♪ two tones · 0:00 \/ 0:02 {3}▸ open in player$/);
+	assert.match(plain(line()), /‖ pause\b.*two tones\b.*0:00 \/ 0:02/);
 	// Twice a second would be once in the first half second: twice there is the bars' pace. (until stretches the time on a slow runner.)
 	const before = redraws;
 	await until(() => redraws - before >= 2, 450, "the line to be drawn again as the bars move, not twice a second");
@@ -509,7 +516,7 @@ test("sound: the line shows the levels as bars that follow the clock while it pl
 	assert.equal(shown(line(79))?.length, 23);
 	assert.deepEqual([shown(line(64))?.length, top(line(64))], [8, Math.floor(low / 3)], "eight bars, three bands each");
 	assert.equal(plain(line(64)).length, 64);
-	assert.match(plain(line(63)), /^ ‖ pause · ♪ two tones · 0:00 \/ 0:02 {3}▸ open in player$/);
+	assert.ok(shown(line(63)) === undefined && /‖ pause\b.*two tones/.test(plain(line(63))), plain(line(63)));
 
 	// A pause holds them where they are.
 	click("‖ pause");
@@ -523,14 +530,14 @@ test("sound: the line shows the levels as bars that follow the clock while it pl
 	click("▶ play");
 	assert.equal(sound.state, "playing");
 	await until(() => top(line()) === high, 3000, "the bars of the second tone");
-	assert.match(plain(line()), /♪ two tones · 0:01 \/ 0:02/);
+	assert.match(plain(line()), /two tones\b.*0:01 \/ 0:02/);
 
 	// "open in player" is found behind the bars, and at the end the bars lie flat again.
 	click("▸ open in player");
 	assert.deepEqual(opened, [path.join(dir, "two.wav")]);
 	assert.equal(sound.state, "playing", "a click on the bars or the name does nothing");
 	sound.stop();
-	assert.equal(plain(line()), ` ▶ play  ${FLAT}  ♪ two tones · 0:02   ▸ open in player`);
+	assert.ok(plain(line()).includes("▶ play") && shown(line()) === FLAT, plain(line()));
 
 	// A file that nothing can decode plays (or not) as before, and its line has no bars.
 	fs.writeFileSync(path.join(dir, "odd.mp3"), "this is only named like a sound");
@@ -539,9 +546,9 @@ test("sound: the line shows the levels as bars that follow the clock while it pl
 	assert.equal(odd.levels, undefined);
 	const bare = new Sound(odd, player, () => {}, () => {});
 	t.after(() => bare.stop());
-	assert.equal(plain(bare.render(100)[0]), " ▶ play · ♪ odd one   ▸ open in player");
+	assert.ok(shown(bare.render(100)[0]) === undefined && /▶ play\b.*odd one/.test(plain(bare.render(100)[0])), plain(bare.render(100)[0]));
 	bare.play();
-	assert.equal(plain(bare.render(100)[0]), " ‖ pause · ♪ odd one · 0:00   ▸ open in player");
+	assert.ok(shown(bare.render(100)[0]) === undefined && /‖ pause\b.*odd one/.test(plain(bare.render(100)[0])), plain(bare.render(100)[0]));
 });
 
 test("tui: a sound an answer points at is played when it arrives, by the system's player; pause and play go on where it was", { skip: process.platform === "win32" && "the stand-in player is found and held with ps and SIGSTOP, which Windows does not have" }, async (t) => {
@@ -590,30 +597,32 @@ test("tui: a sound an answer points at is played when it arrives, by the system'
 	const sentAt = Date.now();
 	term.type(mockMsg([{ text: "Here it is: ![hello world](hello.wav) and ![gone](nope.wav)" }]));
 	term.type([KEY.enter]);
-	await sees(new RegExp(`‖ pause  ${FLAT}  ♪ hello world · 0:00 / 0:02\\s+▸ open in player`));
+	await sees(new RegExp(`‖ pause\\b.*${FLAT}.*hello world\\b.*0:0\\d / 0:02`));
 	await until(() => played().length === 1, 3000, "the player to start");
 	assert.deepEqual(played()[0].slice(1, 2), ["0.0"]);
 	assert.equal(played()[0].at(-1), String(sound.length));
 	assert.match(played()[0].at(-2)!, /\.wav$/);
-	assert.ok(text().includes("(no sound file at nope.wav in the workspace)"), text());
+	assert.match(text(), /no sound file\b.*nope\.wav/);
 
 	// Pause ends the player and keeps the place; play starts one from there, not from the beginning.
 	await sleep(300);
 	const pausedAt = Date.now();
 	clickWord("‖ pause");
-	await sees(`▶ play  ${FLAT}  ♪ hello world · 0:00 / 0:02`);
+	// (Where the clock stands at the pause is the computer's pace; that it stands is what is held to.)
+	await sees(new RegExp(`▶ play\\b.*${FLAT}.*hello world\\b.*0:0\\d / 0:02`));
 	await until(() => !playing(), 3000, "the player to be gone");
+	const paused = line();
 	await sleep(1100);
-	assert.ok(line().includes(`▶ play  ${FLAT}  ♪ hello world · 0:00 / 0:02`), "the pause outlasts the player's own time, and nothing moves");
+	assert.equal(line(), paused, "the pause outlasts the player's own time, and nothing moves");
 	clickWord("▶ play");
-	await sees(`‖ pause  ${FLAT}  ♪ hello world`);
+	await sees(new RegExp(`‖ pause\\b.*${FLAT}.*hello world`));
 	await until(() => played().length === 2, 3000, "a player to go on");
 	const from = Number(played()[1][1]);
 	// Not before the 0.3 s it played, and not past the time from the message to the pause (a busy computer starts the player late, so the bound is measured).
 	assert.ok(from >= 0.3 && from <= (pausedAt - sentAt) / 1000 + 0.1, `it goes on where it was (${from}, paused ${pausedAt - sentAt} ms after the message)`);
 
 	// When the player is done, the line is back at the start, and a click plays it from there.
-	await sees(new RegExp(`▶ play  ${FLAT}  ♪ hello world · 0:02\\s+▸ open in player`));
+	await sees(new RegExp(`▶ play\\b[^\\n/]*${FLAT}[^\\n/]*hello world[^\\n/]*0:02`));
 	clickWord("▶ play");
 	await until(() => played().length === 3, 3000, "the player to start again");
 	assert.equal(played()[2][1], "0.0");
@@ -633,7 +642,7 @@ test("tui: a sound an answer points at is played when it arrives, by the system'
 	await again.start();
 	const line2 = () => again.screen().find((l) => l.includes("♪ hello world")) ?? "";
 	const click2 = (word: string) => term2.click(line2().indexOf(word) + 1, again.screen().findIndex((l) => l.includes("♪ hello world")));
-	await until(() => line2().includes(`▶ play  ${FLAT}  ♪ hello world`), 6000, "the conversation to be drawn again");
+	await until(() => line2().includes("▶ play") && line2().includes(FLAT), 6000, "the conversation to be drawn again");
 	await sleep(200);
 	assert.equal(played().length, 3, "nothing plays by itself that was there before");
 	click2("▶ play");
@@ -661,28 +670,28 @@ test("tui: on a terminal with the Kitty graphics protocol a video plays as real 
 	setCapabilities({ ...before, images: "kitty" });
 	try {
 		const t = await open({ agents: { main: {} } });
-		await t.sees("type a message");
+		await t.ready();
 		// pine's welcome stands above an empty main conversation: in a new one the menu lies over the video.
 		await t.send("/new pics");
-		await t.sees("session pics");
+		await t.tab("pics");
 		execFileSync(ffmpeg!, ["-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x90:rate=10", "-t", "1", "-pix_fmt", "yuv420p", path.join(t.h.workspace("main"), "clip.mp4")]);
 		await t.send(mockMsg([{ text: "![test pattern](clip.mp4)" }]));
-		await t.sees("‖ pause · test pattern");
+		await t.sees(/‖ pause\b.*test pattern/);
 		// A menu over a paused frame: the frame is drawn as text under it, and is a real picture again afterwards.
 		const raw = () => (t.app.screen(), t.app.tui.getScreenLines());
-		t.term.click(2, t.app.screen().findIndex((l) => l.includes("‖ pause · test pattern")));
-		await t.sees(/▶ play · test pattern · 0:0\d \/ /);
+		t.term.click(2, t.app.screen().findIndex((l) => /‖ pause\b.*test pattern/.test(l)));
+		await t.sees(/▶ play\b.*test pattern\b.*0:0\d \/ /);
 		assert.ok(raw().some((l) => l.includes("\x1b_G")), "the paused frame is a real picture");
 		await t.send("/sessions");
-		await t.sees("│ Conversations of main");
+		await t.dialog("conversations");
 		const under = raw();
 		const shown = t.app.screen();
 		assert.ok(shown.some((l) => l.includes("▀") && /[╭│]/.test(l)), "the menu is over the video");
 		assert.ok(!under.some((l) => l.includes("\x1b_G")) && t.text().includes("▀"), "the frame is text while the menu is over it");
 		t.term.type([KEY.esc]);
-		await until(() => !t.text().includes("Conversations of main"), 3000, "the menu to close");
+		await t.dialog(undefined);
 		assert.ok(raw().some((l) => l.includes("\x1b_G")) && !t.text().includes("▀"), "the real frame is back");
-		t.term.click(2, t.app.screen().findIndex((l) => l.includes("▶ play · test pattern")));
+		t.term.click(2, t.app.screen().findIndex((l) => /▶ play\b.*test pattern/.test(l)));
 		// Count the pictures sent while it plays, and under which image ids.
 		const sent = new Map<string, number>();
 		let seen = 0;
@@ -693,7 +702,7 @@ test("tui: on a terminal with the Kitty graphics protocol a video plays as real 
 			for (const m of fresh.matchAll(/\x1b_Ga=T[^;]*?i=(\d+)/g)) sent.set(m[1], (sent.get(m[1]) ?? 0) + 1);
 			assert.ok(!t.text().includes("▀"), "no half blocks on a terminal that shows real pictures");
 		};
-		await until(() => (collect(), t.text().includes("▶ play · test pattern · 0:01")), 8000, "the video to play to its end");
+		await until(() => (collect(), /▶ play\b[^\n/]*test pattern[^\n/]*0:01/.test(t.text())), 8000, "the video to play to its end");
 		const most = Math.max(...sent.values());
 		assert.ok(most >= 5, `frames were sent as pictures under one image id (${[...sent.values()].join(", ")})`);
 		await t.close();

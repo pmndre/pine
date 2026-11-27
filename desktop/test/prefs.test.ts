@@ -23,7 +23,8 @@ test("prefs.json: a first start finds nothing, a whole file is read, a half-writ
 	fs.writeFileSync(file, HALF);
 	assert.match(readPrefsFile(file).unreadable ?? "", /JSON/);
 	fs.writeFileSync(file, "[1, 2]");
-	assert.equal(readPrefsFile(file).unreadable, "it is not a JSON object");
+	assert.ok(readPrefsFile(file).unreadable, "a list is not a file of preferences");
+	assert.equal(readPrefsFile(file).raw, undefined);
 	fs.writeFileSync(file, "");
 	assert.ok(readPrefsFile(file).unreadable);
 });
@@ -78,7 +79,7 @@ test("the app: a prefs.json it cannot read is set aside and noted, never written
 		await page.waitForFunction(() => Boolean((window as any).pine?.state));
 		assert.deepEqual((await page.evaluate(() => (window as any).pine.state())).prefs.hosts, []);
 		assert.equal(fs.readFileSync(path.join(data, "prefs.json.unreadable"), "utf8"), HALF);
-		assert.match(fs.readFileSync(path.join(data, "prefs.log"), "utf8"), /prefs\.json could not be read \(.+\): set aside as prefs\.json\.unreadable/);
+		assert.match(fs.readFileSync(path.join(data, "prefs.log"), "utf8"), /prefs\.json\.unreadable/, "the log names the file it was set aside as");
 	} finally {
 		await app.close();
 	}

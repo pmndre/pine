@@ -43,7 +43,7 @@ function TaskIcon({ task }: { task: BoardItem }) {
 }
 
 /** One line to type into, with a button: a task to add, an answer to give. */
-function Entry({ label, placeholder, icon: Icon, send }: { label: string; placeholder: string; icon: typeof PlusIcon; send: (text: string) => Promise<unknown> | void }) {
+function Entry({ entry, label, placeholder, icon: Icon, send }: { entry: "answer" | "add"; label: string; placeholder: string; icon: typeof PlusIcon; send: (text: string) => Promise<unknown> | void }) {
 	const [text, setText] = useState("");
 	const go = () => {
 		const said = text.trim();
@@ -53,7 +53,7 @@ function Entry({ label, placeholder, icon: Icon, send }: { label: string; placeh
 	};
 	return (
 		<InputGroup>
-			<InputGroupInput aria-label={label} placeholder={placeholder} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && go()} />
+			<InputGroupInput data-entry={entry} aria-label={label} placeholder={placeholder} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && go()} />
 			<InputGroupAddon align="inline-end">
 				<InputGroupButton size="icon-xs" aria-label={label} disabled={!text.trim()} onClick={go}>
 					<Icon />
@@ -120,7 +120,7 @@ export function BoardList({ view, actions }: { view: BoardView; actions: BoardAc
 							const about = notesOf(t.id);
 							const result = t.result ? <p className="whitespace-pre-wrap text-muted-foreground select-text">{t.result}</p> : null;
 							return (
-								<Item size="sm" key={t.id} data-task={t.id} data-state={t.state}>
+								<Item size="sm" key={t.id} data-task={t.id} data-state={t.state} data-by={t.by}>
 									<ItemMedia variant="icon">
 										<TaskIcon task={t} />
 									</ItemMedia>
@@ -143,11 +143,11 @@ export function BoardList({ view, actions }: { view: BoardView; actions: BoardAc
 											{about.map((n) => <Note note={n} key={n.id} />)}
 										</CollapsibleContent>
 										{!shown && t.state === "failed" ? result : null}
-										{t.state === "blocked" ? <Entry label={`Answer task ${t.id}`} placeholder="Your answer" icon={SendIcon} send={(text) => actions.act(t.id, "answer", text)} /> : null}
+										{t.state === "blocked" ? <Entry entry="answer" label={`Answer task ${t.id}`} placeholder="Your answer" icon={SendIcon} send={(text) => actions.act(t.id, "answer", text)} /> : null}
 									</Collapsible>
 									<ItemActions>
 										<DropdownMenu>
-											<DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Actions for task ${t.id}`} />}>
+											<DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" data-action="task-menu" aria-label={`Actions for task ${t.id}`} />}>
 												<EllipsisIcon />
 											</DropdownMenuTrigger>
 											<DropdownMenuContent align="end">
@@ -158,7 +158,7 @@ export function BoardList({ view, actions }: { view: BoardView; actions: BoardAc
 												</DropdownMenuGroup>
 												<DropdownMenuSeparator />
 												<DropdownMenuGroup>
-													<DropdownMenuItem variant="destructive" onClick={() => void actions.act(t.id, "remove")}>
+													<DropdownMenuItem variant="destructive" data-action="remove" onClick={() => void actions.act(t.id, "remove")}>
 														Remove
 													</DropdownMenuItem>
 												</DropdownMenuGroup>
@@ -228,7 +228,7 @@ export function BoardTab({ tab }: { tab: Tab }) {
 	};
 	const add = (
 		<div className="flex-none border-t border-line-soft p-2">
-			<Entry label="Add a task" placeholder="Add a task for whoever takes it next" icon={PlusIcon} send={actions.post} />
+			<Entry entry="add" label="Add a task" placeholder="Add a task for whoever takes it next" icon={PlusIcon} send={actions.post} />
 		</div>
 	);
 	if (!board)
@@ -272,7 +272,7 @@ export function BoardTab({ tab }: { tab: Tab }) {
 				)}
 				<span className="min-w-0 flex-1 truncate">{countsLine(board)}</span>
 				<AlertDialog>
-					<AlertDialogTrigger render={<Button variant="ghost" size="xs" />}>Clear</AlertDialogTrigger>
+					<AlertDialogTrigger render={<Button variant="ghost" size="xs" data-action="clear" />}>Clear</AlertDialogTrigger>
 					<AlertDialogContent>
 						<AlertDialogHeader>
 							<AlertDialogTitle>Remove this board?</AlertDialogTitle>

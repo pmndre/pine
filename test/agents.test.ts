@@ -223,15 +223,12 @@ test("sub-agents run on the model and at the reasoning level their conversation 
 });
 
 test("sub-agents run in parallel with fresh contexts, even when only one model slot exists", async () => {
-	const took: Record<number, number> = {};
 	for (const maxConcurrentRuns of [1, 3]) {
 		const h = await harness({ pine: { limits: { maxConcurrentRuns } }, agents: { main: { files: { "AGENTS.md": "WS-MAIN\n" } } } });
 		const children = () => h.mock.state.requests.filter((q: any) => users(q)[0]?.includes("@@REF:s") && !users(q)[0].includes("<<MOCK"));
 		// With one slot each takes its time, one after the other; with three, each answers once all three are at the model.
 		for (const n of [1, 2, 3]) h.mock.state.scripts[`s${n}`] = [maxConcurrentRuns === 1 ? { delayMs: 300, text: `answer ${n}` } : { until: () => children().length >= 3, text: `answer ${n}` }];
-		const t0 = Date.now();
 		const r = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "subagent", args: { tasks: ["@@REF:s1@@", "@@REF:s2@@", "@@REF:s3@@"] } }] }], "PARENT-CONTEXT "), ...owner });
-		const ms = Date.now() - t0;
 		assert.equal(r.status, "done");
 		for (const n of [1, 2, 3]) assert.ok(r.text.includes(`## Sub-task ${n}: done\nanswer ${n}`), r.text);
 		assert.equal(children().length, 3);
@@ -242,10 +239,8 @@ test("sub-agents run in parallel with fresh contexts, even when only one model s
 		}
 		// Counted at the model server, not timed: the turn's own work around the sub-agents (the
 		// folder recorded for undo before its first tool call and after it) is no part of this.
-		if (maxConcurrentRuns === 1) {
-			assert.equal(h.mock.state.maxInflight, 1, "one slot: one request at a time");
-			assert.ok(ms >= 450, `one slot: sequential (${ms} ms)`);
-		} else assert.equal(h.mock.state.maxInflight, 3, `three slots: the three sub-agents at once (${ms} ms)`);
+		if (maxConcurrentRuns === 1) assert.equal(h.mock.state.maxInflight, 1, "one slot: one request at a time");
+		else assert.equal(h.mock.state.maxInflight, 3, "three slots: the three sub-agents at once");
 		assert.equal(h.pine.agents.limiter.stats.active, 0);
 		await h.close();
 	}

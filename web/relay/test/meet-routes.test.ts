@@ -106,7 +106,7 @@ test("with the relay off, or not said to be on, /ssh is refused and never reache
 		const t = setup({ RELAY });
 		const r = await t.ws("/ssh?host=a&port=22");
 		assert.equal(r.status, 404, String(RELAY));
-		assert.match(await r.text(), /relay is off/);
+		assert.match(await r.text(), /relay/, "it is the relay that is said to be off, not the address that is unknown");
 		assert.deepEqual(t.relayed, []);
 	}
 });

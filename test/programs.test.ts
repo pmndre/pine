@@ -152,16 +152,15 @@ test("tui: the code pane lists what the agent left running and stops it on a cli
 	};
 
 	await send("/code running");
-	await sees(/Changes\s+Files\s+Output\s+Running/);
-	await sees("Nothing is running.");
+	await until(() => app.state().pane, 5000, "the pane to open");
+	assert.deepEqual(await client.programs("main", "main"), []);
 	await send(mockMsg([{ tools: [call("bash", { command: leave(303) })] }, { text: "started" }]));
-	await sees("started");
+	await until(async () => (await client.programs("main", "main")).length === 1, 8000, "the program that was left running");
 	// It follows what the agent does, like the other views.
 	await sees("● sleep 303");
 	await sees(/running for \d+ s/);
-	await sees("1 running");
 	await click("■ stop");
-	await sees("Nothing is running.");
-	assert.deepEqual(await client.programs("main", "main"), []);
+	await until(async () => (await client.programs("main", "main")).length === 0, 6000, "the program to be stopped");
+	await until(() => !text().includes("● sleep 303"), 5000, "its line to go");
 	await h.close();
 });

@@ -147,7 +147,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 						<InputGroup>
 							<InputGroupInput id={`${field}-service`} className="font-mono" placeholder="https://" value={service} aria-invalid={serviceError ? true : undefined} onChange={(e) => setService(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void saveService()} />
 							<InputGroupAddon align="inline-end">
-								<InputGroupButton variant="outline" disabled={service.trim() === state.service} onClick={() => void saveService()}>Save</InputGroupButton>
+								<InputGroupButton variant="outline" data-action="save" disabled={service.trim() === state.service} onClick={() => void saveService()}>Save</InputGroupButton>
 							</InputGroupAddon>
 						</InputGroup>
 						<FieldDescription>The address where browsers open the web client and find this {computer}. If you change it, browsers paired through the old address have to pair again.</FieldDescription>
@@ -156,11 +156,11 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 				</FieldGroup>
 			</Section>
 			<FieldSeparator />
-			<Section title="Devices" data-find="access-devices" actions={<Button variant="outline" disabled={state.status === "off"} onClick={actions.add}><PlusIcon data-icon="inline-start" />Add a device</Button>}>
+			<Section title="Devices" data-find="access-devices" actions={<Button variant="outline" data-action="add-device" disabled={state.status === "off"} onClick={actions.add}><PlusIcon data-icon="inline-start" />Add a device</Button>}>
 				{state.devices.length ? (
 					<ItemGroup>
 						{state.devices.map((d) => (
-							<Item key={d.id} variant="outline" size="sm" data-slot="access-device">
+							<Item key={d.id} variant="outline" size="sm" data-slot="access-device" data-device={d.id} data-connected={d.connected ? (d.connected.path ?? "yes") : "no"}>
 								<ItemMedia variant="icon"><LaptopIcon /></ItemMedia>
 								<ItemContent className="min-w-0">
 									{/* `flex` again after `line-clamp-none`, which sets `display: block`: the badge keeps its gap, and goes under a long name. */}
@@ -172,7 +172,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 								</ItemContent>
 								<ItemActions>
 									<AlertDialog>
-										<AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>Remove</AlertDialogTrigger>
+										<AlertDialogTrigger render={<Button variant="ghost" size="sm" data-action="remove" />}>Remove</AlertDialogTrigger>
 										<AlertDialogContent>
 											<AlertDialogHeader>
 												<AlertDialogTitle className="wrap-anywhere">Remove {d.name}?</AlertDialogTitle>
@@ -180,7 +180,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 											</AlertDialogHeader>
 											<AlertDialogFooter>
 												<AlertDialogCancel>Cancel</AlertDialogCancel>
-												<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" />} onClick={() => actions.remove(d.id)}>Remove</AlertDialogPrimitive.Close>
+												<AlertDialogPrimitive.Close render={<AlertDialogAction variant="destructive" data-action="confirm" />} onClick={() => actions.remove(d.id)}>Remove</AlertDialogPrimitive.Close>
 											</AlertDialogFooter>
 										</AlertDialogContent>
 									</AlertDialog>
@@ -210,8 +210,8 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 					</Field>
 					{/* Save, and beside it how the relay was tried: a failed try is said as an error, like a refused save. */}
 					<Field orientation="horizontal">
-						<Button variant="outline" disabled={!relayChanged} onClick={() => void saveRelay()}>Save</Button>
-						{relayError ? <FieldError>{relayError}</FieldError> : check?.result === "failed" ? <FieldError data-slot="relay-check" data-result={check.result}>{check.message}</FieldError> : check ? <FieldDescription data-slot="relay-check" data-result={check.result}>{check.message}</FieldDescription> : null}
+						<Button variant="outline" data-action="save" disabled={!relayChanged} onClick={() => void saveRelay()}>Save</Button>
+						{relayError ? <FieldError>{relayError}</FieldError> : check?.result === "failed" ? <FieldError data-slot="relay-check" data-result={check.result} data-why={check.why}>{check.message}</FieldError> : check ? <FieldDescription data-slot="relay-check" data-result={check.result}>{check.message}</FieldDescription> : null}
 					</Field>
 				</FieldGroup>
 			</Section>
@@ -230,7 +230,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 						</Field>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							<AlertDialogPrimitive.Close render={<AlertDialogAction />} onClick={() => change({ enabled: true, openAtLogin: login })}>Turn on</AlertDialogPrimitive.Close>
+							<AlertDialogPrimitive.Close render={<AlertDialogAction data-action="confirm" />} onClick={() => change({ enabled: true, openAtLogin: login })}>Turn on</AlertDialogPrimitive.Close>
 						</AlertDialogFooter>
 					</div>
 				</AlertDialogContent>

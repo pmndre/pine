@@ -1,8 +1,9 @@
 // Multi-environment desktop UX end-to-end tests: simultaneous local + loopback SSH windows,
-// concurrent chat, per-window pine-media:, reactive document.title, title bar environment pill,
-// Settings > Environments Open in new window / in another window badge / Forget confirmation,
-// machine menu CmdOrCtrl-click & Open in new window, local OS folder routing, per-window themes,
-// and global preference broadcasts.
+// concurrent chat, per-window pine-media:, a window's title, the title bar's environment pill,
+// Settings > Environments (a window of its own for a machine, the mark of one open in another window, forgetting one),
+// the machine menu's new window, local OS folder routing, per-window themes,
+// and global preference broadcasts. What is asserted is which machine a part is about and what the app then does,
+// never how a part words it.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -10,12 +11,12 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import type { ElectronApplication, Page } from "playwright-core";
 import { startMock } from "../../baseline/tests/mock.mjs";
+import { browserPlaces } from "../../src/browser-build.ts";
 import { sandboxMissing } from "../../src/security.ts";
-import { clickMenu, launchApp, sendMenuTo, waitForWindow, windowCount } from "./support/app.ts";
+import { launchApp, patient, sendMenuTo, waitForWindow, windowCount } from "./support/app.ts";
 import { daemonGone } from "./support/daemon.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
-const HERE = process.platform === "darwin" ? "Mac" : "computer";
 
 let mock: any;
 let home: string;
@@ -40,17 +41,49 @@ const daemonOf = (dir: string) => ({
 	token: fs.readFileSync(path.join(dir, "data", "http-token"), "utf8").trim(),
 });
 
-async function dismissBrowserAsk(p: Page, expectDialog = true): Promise<void> {
-	await p.waitForSelector("[data-slot=empty] h1, [data-slot=no-tab]", { timeout: 25_000 });
-	const btn = p.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" });
-	if (expectDialog) await btn.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
-	if (await btn.isVisible().catch(() => false)) {
-		await btn.click();
-		await p.waitForSelector("[data-slot=dialog-content]", { state: "detached", timeout: 5000 }).catch(() => {});
-	}
+/**
+ * A menu item's click, found by its key and not by its wording, for the window at `index` (in the order the windows
+ * were made). The items that only send the page a command are sent as that command instead (`sendMenuTo`).
+ */
+async function menuKey(launched: ElectronApplication, accelerator: string, index: number): Promise<void> {
+	await launched.evaluate(
+		({ BrowserWindow, Menu }: any, [key, idx]: [string, number]) => {
+			const target = [...BrowserWindow.getAllWindows()].sort((a: any, b: any) => a.id - b.id)[idx];
+			if (!target || target.isDestroyed()) throw new Error(`no window ${idx}`);
+			target.emit("focus");
+			const find = (items: any[]): any => {
+				for (const i of items) {
+					if (i.accelerator === key && typeof i.click === "function") return i;
+					const below = i.submenu ? find(i.submenu.items) : undefined;
+					if (below) return below;
+				}
+			};
+			const found = find(Menu.getApplicationMenu()?.items ?? []);
+			if (!found) throw new Error(`no menu item with the key ${key}`);
+			found.click(found, target, undefined);
+		},
+		[accelerator, index] as [string, number],
+	);
+}
+const CLOSE_WINDOW = "CmdOrCtrl+Shift+W";
+
+/** What a window shows first: a conversation, or that it has no tab. */
+const FIRST = "[data-slot=no-tab], [data-slot=tab][data-active]";
+
+/** The agents a window's side bar lists, in its order. */
+const agentsIn = (p: Page) => p.$$eval("[data-slot=sidebar] [data-slot=agent-label]", (els: Element[]) => els.map((e) => e.getAttribute("data-agent")).join());
+/** Waits until a window's side bar lists exactly these agents: which pine the window is on. */
+const listsAgents = (p: Page, agents: string) =>
+	p.waitForFunction((want: string) => [...document.querySelectorAll("[data-slot=sidebar] [data-slot=agent-label]")].map((e) => e.getAttribute("data-agent")).join() === want, agents, { timeout: patient(60_000) });
+/** Adds a machine in Settings > Environments, as the owner types it. */
+async function addMachine(p: Page, host: string): Promise<void> {
+	await p.waitForSelector("[data-slot=settings-page] [data-environment=local]");
+	await p.fill("[data-slot=settings-page] [data-field=host]", host);
+	await p.press("[data-slot=settings-page] [data-field=host]", "Enter");
+	await p.waitForSelector(`[data-environment='${host}']`);
 }
 
-async function waitForWindowCount(launched: ElectronApplication, expected: number, timeout = 10_000): Promise<void> {
+async function waitForWindowCount(launched: ElectronApplication, expected: number, timeout = patient(10_000)): Promise<void> {
 	await launched.evaluate(
 		({ BrowserWindow }: any, [n, ms]: [number, number]) =>
 			new Promise<void>((resolve, reject) => {
@@ -70,8 +103,10 @@ before(async () => {
 	localFolder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-mw-env-folder-")));
 	write(path.join(localFolder, "README.md"), "# Local Folder\n");
 	dataDir = path.join(home, "desktop-data");
+	// The browser of the web tools counts as there, so that the app's question about it lies over nothing here (app.test.ts tests it).
 	browsers = path.join(home, "browsers");
 	fs.mkdirSync(browsers, { recursive: true });
+	for (const place of (await browserPlaces()) ?? []) write(path.join(browsers, path.basename(place), "INSTALLATION_COMPLETE"), "");
 
 	const modelsJson = JSON.stringify({
 		providers: {
@@ -151,7 +186,7 @@ if (args.includes("-O")) {
 		PINE_DESKTOP_SSH: sshPath,
 	});
 	const win1 = await app.firstWindow();
-	await dismissBrowserAsk(win1, true);
+	await win1.waitForSelector(FIRST, { timeout: patient(30_000) });
 });
 
 after(async () => {
@@ -165,63 +200,61 @@ test("simultaneous local and SSH windows: Open in new window, concurrent chat, p
 	const win1 = app.windows()[0];
 	await win1.waitForSelector("[data-slot=tab][data-active]");
 
-	// Reactive document.title on local window: "<tab> — Pine".
-	assert.equal(await win1.title(), "main — Pine");
+	// The window's title names the tab in front, and no other machine.
+	const localTitle = await win1.title();
+	assert.ok(localTitle.includes("main"), `the title names the tab in front: ${localTitle}`);
+	assert.ok(!localTitle.includes("elsewhere"), localTitle);
 
 	// On local window with sidebar open, title bar environment pill is hidden.
 	assert.equal(await win1.locator("[data-slot=window-environment]").count(), 0);
 
-	// Open Settings > Environments and add you@elsewhere.
+	// Open Settings > Environments and add you@elsewhere. The title follows the tab in front.
 	await sendMenuTo(app, 0, "settings:environments");
-	await win1.waitForSelector("[data-slot=settings-page] h1 >> text=Environments");
-	assert.equal(await win1.title(), "Settings — Pine");
+	await win1.waitForSelector("[data-slot=settings-page] [data-environment=local]");
+	await win1.waitForFunction((was: string) => document.title !== was, localTitle);
+	await addMachine(win1, "you@elsewhere");
 
-	const hostInput = win1.locator("[data-slot=settings-page] input[placeholder='you@server']");
-	await hostInput.fill("you@elsewhere");
-	await win1.locator("[data-slot=settings-page]").getByRole("button", { name: "Add", exact: true }).click();
-	await win1.waitForSelector("[data-environment='you@elsewhere']");
-
-	// Every row (including local/current and remote) has an "Open in new window" button.
-	await win1.locator("[data-environment='local']").getByRole("button", { name: "Open in new window" }).waitFor();
-	const openRemoteBtn = win1.locator("[data-environment='you@elsewhere']").getByRole("button", { name: "Open in new window" });
+	// Every row (this computer's and the other machine's) offers a window of its own.
+	await win1.locator("[data-environment='local'] [data-slot=open-in-new-window]").waitFor();
+	const openRemoteBtn = win1.locator("[data-environment='you@elsewhere'] [data-slot=open-in-new-window]");
 	await openRemoteBtn.waitFor();
 
-	// Click "Open in new window" on you@elsewhere -> Window 2 opens on remote while Window 1 stays local.
+	// Taken for you@elsewhere, Window 2 opens on that machine's pine while Window 1 stays on this computer's.
 	const win2 = await waitForWindow(app, () => openRemoteBtn.click());
-	await win2.waitForFunction(() => [...document.querySelectorAll("[data-slot=agent-label] > :first-child")].map((e) => e.textContent?.trim()).join() === "main,helper", undefined, { timeout: 60_000 });
+	await listsAgents(win2, "main,helper");
 	assert.equal(await windowCount(app), 2);
 
-	// Window 1 still shows local agents (main, scout) and now shows "in another window" badge on you@elsewhere.
-	const localAgents = await win1.$$eval("[data-slot=agent-label] > :first-child", (els: Element[]) => els.map((e) => e.textContent?.trim()).join());
-	assert.equal(localAgents, "main,scout");
-	await win1.locator("[data-environment='you@elsewhere'] [data-slot=in-another-window]", { hasText: "in another window" }).waitFor({ timeout: 5000 });
+	// Window 1 still lists this computer's agents (main, scout), and marks you@elsewhere as open in another window.
+	assert.equal(await agentsIn(win1), "main,scout");
+	await win1.locator("[data-environment='you@elsewhere'] [data-slot=in-another-window]").waitFor({ timeout: patient(10_000) });
+	assert.equal(await win1.locator("[data-environment='local'] [data-slot=in-another-window]").count(), 0);
 
-	// Window 2 reactive title includes remote host: "<tab> — <host> — Pine".
+	// Window 2's title names its tab and the machine it is on.
 	await win2.waitForSelector("[data-slot=tab][data-active]");
-	assert.equal(await win2.title(), "main — elsewhere — Pine");
+	await win2.waitForFunction(() => document.title.includes("main") && document.title.includes("elsewhere"), undefined, { timeout: patient(10_000) });
 
-	// Window 2 (remote) shows clickable title bar environment pill even with sidebar open.
+	// Window 2 (on another machine) has the title bar's environment pill even with its side bar open: it says which machine, and opens the list of machines.
 	const pill2 = win2.locator("[data-slot=window-environment]");
 	await pill2.waitFor({ state: "visible" });
-	assert.match((await pill2.textContent()) ?? "", /elsewhere/);
+	assert.equal(await pill2.getAttribute("data-host"), "you@elsewhere");
 	await pill2.click();
 	await win2.locator("[data-slot=dropdown-menu-radio-item][data-host='you@elsewhere']").waitFor();
 	await win2.keyboard.press("Escape");
 
-	// Collapsing sidebar on local Window 1 reveals the environment pill showing "This Mac"/"This computer".
-	await clickMenu(app, ["View", "Toggle Sidebar"], 0);
+	// With its side bar put away, local Window 1 has the pill too, for this computer.
+	await sendMenuTo(app, 0, "sidebar");
 	await win1.waitForSelector("#sidebar-panel [data-slot=sidebar]", { state: "detached" });
 	const pill1 = win1.locator("[data-slot=window-environment]");
 	await pill1.waitFor({ state: "visible" });
-	assert.match((await pill1.textContent()) ?? "", new RegExp(`This ${HERE}`));
+	assert.equal(await pill1.getAttribute("data-host"), "local");
 	// Restore sidebar on Window 1.
-	await clickMenu(app, ["View", "Toggle Sidebar"], 0);
+	await sendMenuTo(app, 0, "sidebar");
 	await win1.waitForSelector("#sidebar-panel [data-slot=sidebar]");
 	assert.equal(await win1.locator("[data-slot=window-environment]").count(), 0);
 
-	// Per-window themes: Window 1 is dark (pmndre), Window 2 is light (github-light); focusing syncs nativeTheme.themeSource.
-	await win2.waitForFunction(() => document.documentElement.classList.contains("light") || !document.documentElement.classList.contains("dark"), undefined, { timeout: 10_000 });
-	assert.equal(await win1.evaluate(() => document.documentElement.classList.contains("dark")), true);
+	// Per-window themes: each window is in the theme its own pine names (pmndre here, github-light there); focusing a window makes its kind the system's.
+	await win2.waitForFunction(() => document.documentElement.dataset.theme === "github-light", undefined, { timeout: patient(10_000) });
+	assert.equal(await win1.evaluate(() => document.documentElement.dataset.theme), "pmndre");
 	await app.evaluate(({ BrowserWindow }: any) => {
 		const wins = [...BrowserWindow.getAllWindows()].sort((a: any, b: any) => a.id - b.id);
 		wins[1].emit("focus");
@@ -248,8 +281,8 @@ test("simultaneous local and SSH windows: Open in new window, concurrent chat, p
 			await win2.keyboard.press("Enter");
 		})(),
 	]);
-	await win1.waitForSelector("[data-slot=markdown] >> text=ECHO[hello local side]", { timeout: 20_000 });
-	await win2.waitForSelector("[data-slot=markdown] >> text=ECHO[hello remote side]", { timeout: 20_000 });
+	await win1.waitForSelector("[data-slot=markdown] >> text=ECHO[hello local side]", { timeout: patient(20_000) });
+	await win2.waitForSelector("[data-slot=markdown] >> text=ECHO[hello remote side]", { timeout: patient(20_000) });
 
 	// Per-window pine-media: each window loads images from its own environment daemon via <img>.
 	const loadImg = (p: Page, file: string) =>
@@ -273,18 +306,19 @@ test("simultaneous local and SSH windows: Open in new window, concurrent chat, p
 	await win1.evaluate((v: boolean) => (window as any).pine.prefs({ notify: v }), !beforeNotify);
 	await win2.waitForFunction((expected: boolean) => (window as any).pine.state().then((s: any) => s.prefs.notify === expected), !beforeNotify, { timeout: 5000 });
 
-	// Forget confirmation dialog on host open in another window: Cancel keeps it, Confirm closes Window 2 and stops remote daemon.
+	// Forgetting a machine that is open in another window asks first: backing out keeps it, going on closes Window 2 and stops the daemon there.
 	const farPort = daemonOf(far).port;
 	await sendMenuTo(app, 0, "settings:environments");
 	await win1.waitForSelector("[data-environment='you@elsewhere']");
-	await win1.locator("[data-environment='you@elsewhere']").getByRole("button", { name: "Forget" }).click();
-	await win1.locator("[role=alertdialog]").getByRole("button", { name: "Close the window and forget" }).waitFor();
-	await win1.locator("[role=alertdialog]").getByRole("button", { name: "Cancel" }).click();
+	await win1.locator("[data-environment='you@elsewhere'] [data-action=forget]").click();
+	await win1.locator("[role=alertdialog] [data-slot=alert-dialog-action]").waitFor();
+	await win1.locator("[role=alertdialog] [data-slot=alert-dialog-cancel]").click();
+	await win1.locator("[role=alertdialog]").waitFor({ state: "detached" });
 	assert.equal(await windowCount(app), 2);
 	assert.equal(await win1.locator("[data-environment='you@elsewhere']").count(), 1);
 
-	await win1.locator("[data-environment='you@elsewhere']").getByRole("button", { name: "Forget" }).click();
-	await win1.locator("[role=alertdialog]").getByRole("button", { name: "Close the window and forget" }).click();
+	await win1.locator("[data-environment='you@elsewhere'] [data-action=forget]").click();
+	await win1.locator("[role=alertdialog] [data-slot=alert-dialog-action]").click();
 	await waitForWindowCount(app, 1);
 	await win1.locator("[data-environment='you@elsewhere']").waitFor({ state: "detached" });
 	assert.equal(await daemonGone(farPort, far), true);
@@ -296,21 +330,18 @@ test("machine menu opens environment in new window and local OS open-file spawns
 
 	// Re-add you@elsewhere and switch Window 1 to it so ONLY a remote window is open.
 	await sendMenuTo(app, 0, "settings:environments");
-	await win1.waitForSelector("[data-slot=settings-page] input[placeholder='you@server']");
-	await win1.fill("[data-slot=settings-page] input[placeholder='you@server']", "you@elsewhere");
-	await win1.locator("[data-slot=settings-page]").getByRole("button", { name: "Add", exact: true }).click();
-	await win1.waitForSelector("[data-environment='you@elsewhere']");
+	await addMachine(win1, "you@elsewhere");
 
-	// Open the sidebar machine menu and use the per-row "Open in new window" button on you@elsewhere.
+	// The side bar's machine menu has a button for a window of its own on each row: taken for you@elsewhere.
 	await win1.click("[data-slot=service-status]");
 	const openNewBtn = win1.locator("[data-slot=dropdown-menu-content] [data-slot=open-in-new-window][data-host='you@elsewhere']");
 	await openNewBtn.waitFor({ state: "visible" });
 	const win2 = await waitForWindow(app, () => openNewBtn.click());
-	await win2.waitForFunction(() => [...document.querySelectorAll("[data-slot=agent-label] > :first-child")].map((e) => e.textContent?.trim()).join() === "main,helper", undefined, { timeout: 60_000 });
+	await listsAgents(win2, "main,helper");
 	assert.equal(await windowCount(app), 2);
 
 	// Close Window 1 (local), leaving ONLY Window 2 (remote SSH) open.
-	await clickMenu(app, ["File", "Close Window"], 0);
+	await menuKey(app, CLOSE_WINDOW, 0);
 	await waitForWindowCount(app, 1);
 
 	// Trigger OS open-file with localFolder while only the SSH window is open -> must spawn a new local window!
@@ -319,10 +350,9 @@ test("machine menu opens environment in new window and local OS open-file spawns
 			electronApp.emit("open-file", { preventDefault() {} }, dir);
 		}, localFolder),
 	);
-	await winLocal.waitForSelector("[data-slot=tab][data-active]", { timeout: 25_000 });
+	await winLocal.waitForSelector("[data-slot=tab][data-active]", { timeout: patient(30_000) });
 	assert.equal(await windowCount(app), 2);
-	// New window is on local computer (main, scout) and opened the folder.
-	await winLocal.waitForFunction(() => [...document.querySelectorAll("[data-slot=agent-label] > :first-child")].map((e) => e.textContent?.trim()).includes("scout"), undefined, { timeout: 20_000 });
-	assert.match(await winLocal.title(), /Pine$/);
+	// The new window is on this computer's pine (main, scout), not on the other machine's.
+	await listsAgents(winLocal, "main,scout");
 	assert.doesNotMatch(await winLocal.title(), /elsewhere/);
 });

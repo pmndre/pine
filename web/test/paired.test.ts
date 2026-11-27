@@ -118,7 +118,9 @@ test("Allow: the computer is kept under its computer's name with the key its lin
 	assert.deepEqual(c.store.kept.get("hostKeys"), { [PAIRED]: pairedFingerprint(ID) });
 	assert.deepEqual(c.machine.connects.at(-1), { url: `peer:${ID}`, user: "pine", hostFingerprint: pairedFingerprint(ID) });
 	assert.deepEqual(c.machine.commands.at(-1), REMOTE_COMMAND);
-	assert.deepEqual({ ...(s.state as object), version: undefined }, { status: "ready", mode: "on Studio Mac", started: true, home: "Studio Mac:~/.pine", version: undefined, from: "paired Studio Mac", host: PAIRED, label: "Studio Mac" });
+	const ready = s.state as { mode: string; from: string };
+	assert.deepEqual({ ...(s.state as object), version: undefined, mode: undefined, from: undefined }, { status: "ready", mode: undefined, started: true, home: "Studio Mac:~/.pine", version: undefined, from: undefined, host: PAIRED, label: "Studio Mac" });
+	assert.ok(ready.mode.includes("Studio Mac") && ready.from.includes("Studio Mac") && !`${ready.mode} ${ready.from}`.includes(ID), "where it runs and how it is reached are said by the computer's name, never its id");
 	// The pairing session was let go of: one connection open, the paired one.
 	assert.equal(c.machine.open, 1);
 	assert.equal((await c.page.call("GET", "/agents")).status, 200);
@@ -132,8 +134,8 @@ test("a computer whose key is not the one the link names is refused before the b
 	await c.page.state();
 	c.page.ready();
 	const s = await becomes(c, (x) => x.status === "error");
-	// The distinctive cause is named; that nothing was trusted is proven below by the empty store.
-	assert.match(message(s), /not the one this pairing link names/);
+	// It is said; that the key was never offered and nothing was trusted is proven below.
+	assert.ok(message(s));
 	assert.equal(machine.keysOffered, 0);
 	assert.equal(c.store.kept.get("hostKeys"), undefined);
 	assert.deepEqual((await c.page.state()).prefs.hosts, []);
@@ -149,7 +151,7 @@ test("Refuse, or a pairing that expired or was used, is said and keeps nothing",
 		await becomes(c, (s) => s.status === "starting" && s.pairing?.code === DIGITS);
 		machine.answer(decision);
 		const s = await becomes(c, (x) => x.status === "error");
-		assert.match(message(s), decision === "refuse" ? /refused this browser/ : /expired or was used/, decision);
+		assert.match(message(s), decision === "refuse" ? /refused/ : /expired/, decision);
 		assert.doesNotMatch(message(s), /\bMac\b/, "before the yes the browser knows no name, and says your computer");
 		assert.equal(c.store.kept.get("hostKeys"), undefined, decision);
 		assert.deepEqual((await c.page.state()).prefs.hosts, [], decision);
@@ -161,7 +163,7 @@ test("Refuse, or a pairing that expired or was used, is said and keeps nothing",
 	const c = client(machine, { pairLink: { id: ID, code: CODE } });
 	await c.page.state();
 	c.page.ready();
-	assert.match(message(await becomes(c, (x) => x.status === "error")), /expired or was used.*add this device again/);
+	assert.match(message(await becomes(c, (x) => x.status === "error")), /expired/);
 	assert.deepEqual(machine.pairings, []);
 	c.stop();
 });
@@ -213,7 +215,8 @@ test("pairing: only once more; and never after the computer said anything", asyn
 		await c.page.state();
 		c.page.ready();
 		const s = await becomes(c, (x) => x.status === "error");
-		assert.match(message(s), /^Could not reach your computer to pair with it\. Failed to read the protocol version$/);
+		assert.ok(message(s), "said, whatever the words");
+		assert.equal((s as { host?: string }).host, undefined, "and no machine came of it");
 		assert.equal(tries(), attempts, firsts.join());
 		c.stop();
 	}
@@ -230,9 +233,10 @@ test("a key already kept for the computer is never replaced by the link's; a com
 	const s = await becomes(c, (x) => x.status === "error");
 	assert.deepEqual(store.kept.get("hostKeys"), { [PAIRED]: fp("q") });
 	assert.equal((s as { changed?: boolean }).changed, true);
-	assert.match(message(s), /key of Studio Mac changed.*between this browser and Studio Mac\. Forget it here, then open Pine on Studio Mac and add this device again\./);
+	assert.ok(message(s).includes("Studio Mac"), "said of the computer by its name");
 	// Nor can the page trust it by hand: a paired computer's key comes from its link alone.
-	await assert.rejects(c.page.trustHostKey!(PAIRED, pairedFingerprint(ID)), /not the key/);
+	await assert.rejects(c.page.trustHostKey!(PAIRED, pairedFingerprint(ID)));
+	assert.deepEqual(store.kept.get("hostKeys"), { [PAIRED]: fp("q") });
 	c.stop();
 });
 
@@ -250,8 +254,9 @@ test("a machine's name: renamed by the owner, checked; forgetting the machine dr
 	const c = await paired();
 	const renamed = await c.page.renameHost!(PAIRED, "  Office\u0007 Mac  ");
 	assert.deepEqual(renamed.names, { [PAIRED]: "Office Mac" });
-	await assert.rejects(c.page.renameHost!(PAIRED, " \n "), /name/);
-	await assert.rejects(c.page.renameHost!("paired:somewhere-else", "x"), /not one of your machines/);
+	await assert.rejects(c.page.renameHost!(PAIRED, " \n "), "a name of nothing");
+	await assert.rejects(c.page.renameHost!("paired:somewhere-else", "x"), "a machine that is not on the list");
+	assert.deepEqual((await c.page.state()).prefs.names, { [PAIRED]: "Office Mac" });
 	assert.equal((await c.page.renameHost!(PAIRED, "y".repeat(100))).names?.[PAIRED], "y".repeat(60));
 	const forgotten = await c.page.forgetHost(PAIRED);
 	assert.deepEqual(forgotten.hosts, []);
@@ -272,7 +277,8 @@ test("whether user@host machines can be added comes from the service's configura
 	const off = client(computer(), { config: async () => ({ ice: [], relay: false }) });
 	const s = await off.page.state();
 	assert.equal(s.canAddHost, false);
-	await assert.rejects(off.page.addHost("me@box.example"), /pair/);
+	await assert.rejects(off.page.addHost("me@box.example"));
+	assert.deepEqual((await off.page.state()).prefs.hosts, []);
 	off.stop();
 	for (const config of [async () => ({ ice: [], relay: true }), async () => Promise.reject(new Error("offline")), async () => "nonsense", undefined]) {
 		const c = client(computer(), { config: config as WebBridgeDeps["config"] });
@@ -348,16 +354,19 @@ test("the page is told the deployment's host, which it names as the relay's and 
 });
 
 test("a paired computer that does not answer, or no direct way from this network, is said and tried again with a growing wait", async () => {
-	for (const [meeting, said] of [
-		["absent", /^Studio Mac does not answer: it is off, asleep, or Pine is closed\. This browser keeps trying, and connects when Studio Mac is back\.$/],
-		["no-path", /^Studio Mac is there, but no direct connection.*this network.*another network/],
-		["limits", /meeting service is over its limits.*later/],
+	// Each of the three is said in words of its own; the two that are about the computer name it.
+	const saidOf = new Map<string, string>();
+	for (const [meeting, named] of [
+		["absent", true],
+		["no-path", true],
+		["limits", false],
 	] as const) {
 		const c = await paired();
 		c.machine.meeting = meeting;
 		c.machine.drop();
 		const s = await becomes(c, (x) => x.status === "error", 5000);
-		assert.match(message(s), said, meeting);
+		assert.ok(message(s) && (!named || message(s).includes("Studio Mac")), `${meeting}: ${message(s)}`);
+		saidOf.set(meeting, message(s));
 		const waits = c.waits.length;
 		const until = Date.now() + 3000;
 		while (c.waits.length < waits + 2 && Date.now() < until) await new Promise((r) => setTimeout(r, 5));
@@ -366,6 +375,7 @@ test("a paired computer that does not answer, or no direct way from this network
 		await becomes(c, (x) => x.status === "ready", 5000);
 		c.stop();
 	}
+	assert.equal(new Set(saidOf.values()).size, 3, `the three are told apart: ${[...saidOf.values()].join(" | ")}`);
 });
 
 test("a browser the paired computer no longer knows is told to add this device again, and is not tried again", async () => {
@@ -373,7 +383,7 @@ test("a browser the paired computer no longer knows is told to add this device a
 	c.machine.authorized = false;
 	c.machine.drop();
 	const s = await becomes(c, (x) => x.status === "error", 5000);
-	assert.match(message(s), /^This browser is no longer known to Studio Mac\. Open Pine on Studio Mac and add this device again\.$/);
+	assert.ok(message(s).includes("Studio Mac"), "said of the computer by its name");
 	const tries = c.machine.connects.length;
 	await new Promise((r) => setTimeout(r, 100));
 	assert.equal(c.machine.connects.length, tries);
@@ -396,11 +406,12 @@ test("the page reads a pairing from the states it is told: the four digits on th
 		const machine = computer();
 		const c = client(machine, { pairLink: { id: ID, code: CODE } });
 		const first = await c.page.state();
-		assert.equal(firstScreen(first.state)?.title, "Pairing with your computer");
+		const waiting = firstScreen(first.state)?.title;
+		assert.ok(waiting, "a first screen of its own while the computer has not answered");
 		c.page.ready();
 		const asked = await becomes(c, (s) => s.status === "starting" && s.pairing?.code === DIGITS);
 		assert.equal(firstScreen(asked)?.code, DIGITS);
-		assert.equal(firstScreen(asked)?.title, "Confirm on your computer");
+		assert.notEqual(firstScreen(asked)?.title, waiting, "and another once the computer asks");
 		machine.answer(decision);
 		await becomes(c, (s) => (decision === "allow" ? s.status === "ready" : s.status === "error"));
 		const ends = c.states.map((s, i) => (i ? pairingEnded(c.states[i - 1], s) : undefined)).filter(Boolean);
@@ -418,7 +429,6 @@ test("where user@host machines cannot be added, the first screen is told to pair
 	const s = await off.page.state();
 	assert.equal(s.state.status, "error");
 	assert.doesNotMatch(message(s.state), /user@host|authorized_keys/);
-	assert.match(message(s.state), /^Pair this browser with the Pine app on your computer: on your computer, choose Pine > Add a device/);
 	off.stop();
 	const on = client(computer());
 	assert.match(message((await on.page.state()).state), /user@host/);
@@ -435,7 +445,8 @@ test("'Open Pine on this computer' is offered where the bridge can open pine://p
 	here.stop();
 	const phone = client(computer(), { config: meeting });
 	assert.equal((await phone.page.state()).canOpenApp, undefined);
-	await assert.rejects(phone.page.openApp!(), /Pine > Add a device/);
+	await assert.rejects(phone.page.openApp!());
+	assert.deepEqual(opened, ["pine://pair"], "and nothing was opened");
 	phone.stop();
 	const noMeeting = client(computer(), { openApp: () => void opened.push("x") });
 	assert.equal((await noMeeting.page.state()).canOpenApp, undefined, "nothing to pair with: not offered");

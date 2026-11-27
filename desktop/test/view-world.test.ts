@@ -23,7 +23,9 @@ test("a source wakes an agent, which hands a task on, waits, is asked about and 
 	assert.deepEqual(job.from, { k: "source", name: "camera" });
 	assert.equal(job.doing, "thinking");
 	assert.deepEqual(w.pulses.map((p) => [p.from, p.to, p.kind]), [["source:camera", "agent:house", "event"]]);
-	assert.equal(w.lines.at(-1)?.text, "camera triggered house");
+	// What happened is a line about that work, which names who was in it: the wording is the panel's own.
+	assert.deepEqual([w.lines.at(-1)?.agent, w.lines.at(-1)?.job], ["house", 1]);
+	assert.ok(["camera", "house"].every((name) => w.lines.at(-1)!.text.includes(name)), w.lines.at(-1)!.text);
 
 	w.take([ev("agent/house/tool", { ...ids(1, "house", "_t1"), phase: "start", tool: "delegate", subject: "gonzo" })]);
 	assert.equal(job.doing, "waiting");
@@ -33,7 +35,8 @@ test("a source wakes an agent, which hands a task on, waits, is asked about and 
 	assert.equal(child.label, "Who is it?");
 	assert.deepEqual(job.waitingOn, [2]);
 	assert.equal(w.pulses.at(-1)?.kind, "hand");
-	assert.equal(w.lines.at(-1)?.text, "house delegated a task to gonzo: Who is it?");
+	assert.deepEqual([w.lines.at(-1)?.agent, w.lines.at(-1)?.job], ["gonzo", 2]);
+	assert.ok(["house", "gonzo", "Who is it?"].every((part) => w.lines.at(-1)!.text.includes(part)), w.lines.at(-1)!.text);
 
 	w.take([ev("approval/requested", { id: "a1", agent: "gonzo", task: 2, root: 1, tool: "bash", summary: "bash: curl ..." }, { source: "approvals" })]);
 	assert.equal(child.doing, "asking");
@@ -61,7 +64,7 @@ test("where work came from: the owner, a schedule, a copy, an answer that was no
 	const tick = ev("schedule/morning", { name: "morning" }, { source: "timer" });
 	w.take([tick, ev("agent/main/started", { ...ids(2, "main", "main"), kind: "event", prompt: "brief me" }, { cause: tick.id })]);
 	assert.deepEqual(w.jobs.get(2)!.from, { k: "clock", name: "morning" });
-	assert.equal(fromText(w.jobs.get(2)!.from), "the schedule morning");
+	assert.ok(fromText(w.jobs.get(2)!.from).includes("morning"), "said by the schedule's name");
 
 	w.take([ev("agent/main/started", { ...ids(3, "main", "_t3", { root: 1, parent: 1, depth: 1 }), kind: "subagent", prompt: "look at a.txt" })]);
 	assert.deepEqual(w.jobs.get(3)!.from, { k: "copy", id: "main" });

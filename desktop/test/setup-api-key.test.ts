@@ -21,8 +21,16 @@ const write = (file: string, content: string) => {
 const sees = (selector: string, timeout = patient(20_000)) => page.waitForSelector(selector, { timeout });
 const api = (method: string, url: string, body?: unknown) => page.evaluate(([m, u, b]: [string, string, unknown]) => (window as any).pine.call(m, u, b).then((r: any) => r.data), [method, url, body]);
 const card = "[data-slot=composer-question] [data-slot=questionnaire]";
-const question = (text: string) => sees(`${card} [data-slot=questionnaire-title] >> text=${text}`);
-const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
+/** The card that is open, by what it asks (`data-question`), never by its words. */
+const question = (id: string) => sees(`${card}[data-question=${id}]`);
+const pick = (option: string) => page.click(`${card} [data-slot=questionnaire-choice][data-option="${option}"]`);
+const offered = () => page.$$eval(`${card} [data-slot=questionnaire-choice]`, (els: Element[]) => els.map((e) => e.getAttribute("data-option")));
+/** What an option of the open card is called on screen, whatever it says: looked for again where the answer folds. */
+const label = async (option: string): Promise<string> => (await page.locator(`${card} [data-option="${option}"] [data-slot=question-card-label]`).textContent()) ?? "";
+const answers = "[data-slot=message-scroller-content] [data-item=setup-answer]";
+const model = (prefix: string) => sees(`[data-slot=setup-model][data-model^="${prefix}"]`);
+/** The labels the test picked on the way, kept for the test after the reload. */
+const said: Record<string, string> = {};
 /** Every file under a folder whose bytes hold the text. */
 const holding = (dir: string, text: string): string[] => {
 	if (!fs.existsSync(dir)) return [];
@@ -38,10 +46,12 @@ before(async () => {
 	app = await launchApp({ ...process.env, PLAYWRIGHT_BROWSERS_PATH: path.join(home, "browsers"), PINE_HOME: home, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_SKIP_DOWNLOADS: "1", PINE_DESKTOP_DEV_URL: "", PINE_DESKTOP_RELEASES: "" });
 	page = await app.firstWindow();
 	await page.setViewportSize?.({ width: 1280, height: 820 }).catch(() => {});
-	await sees("[data-slot=dialog-title] >> text=/The browser for the web tools/");
-	await page.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" }).click();
-	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
-	await question("How should your agents run?");
+	await sees("[data-dialog=browser-ask]");
+	await page.click("[data-dialog=browser-ask] [data-action=later]");
+	await page.waitForSelector("[data-dialog=browser-ask]", { state: "detached" });
+	await question("model");
+	said.subscription = await label("subscription");
+	said.key = await label("api-key");
 });
 
 after(async () => {
@@ -50,33 +60,36 @@ after(async () => {
 });
 
 test("an API key: the most common providers, and Another… finds the others by search", async () => {
-	await pick("An API key");
-	await question("Which provider?");
-	const options = await page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
-	assert.deepEqual(options, ["Anthropic", "OpenAI", "Google Gemini", "OpenRouter", "xAI", "Another…"]);
-	await pick("Another…");
+	await pick("api-key");
+	await question("provider");
+	// The common providers by pi's ids for them, then the way to all the others, last.
+	const options = await offered();
+	assert.equal(options.at(-1), "another");
+	for (const id of ["anthropic", "openai"]) assert.ok(options.includes(id), `${id} is offered at once: ${options.join(", ")}`);
+	await pick("another");
 	await sees("[data-slot=dialog-content] [data-slot=command-input]");
-	// Found by what people call it, not by pi's name for it.
+	// Found by what people call it ("kimi"), not by pi's name for it: Moonshot's providers come first.
 	await page.fill("[data-slot=dialog-content] [data-slot=command-input]", "kimi");
-	const found = await page.$$eval("[data-slot=dialog-content] [data-slot=command-item]", (els: Element[]) => els.map((e) => e.textContent ?? ""));
-	assert.match(found[0] ?? "", /kimi|moonshot/i, `Moonshot's providers come first: ${found.join(" | ")}`);
-	assert.ok(found.some((t) => t.startsWith("Moonshot AI")), `Moonshot AI is found by "kimi": ${found.join(" | ")}`);
-	await page.locator("[data-slot=dialog-content] [data-slot=command-item]", { hasText: /^Moonshot AI/ }).first().click();
+	await sees("[data-slot=dialog-content] [data-slot=command-item][data-value^=moonshotai]");
+	const found = await page.$$eval("[data-slot=dialog-content] [data-slot=command-item]", (els: Element[]) => els.map((e) => e.getAttribute("data-value") ?? ""));
+	assert.match(found[0] ?? "", /^(moonshotai|kimi)/, `Moonshot's providers come first: ${found.join(" | ")}`);
+	await page.click("[data-slot=dialog-content] [data-slot=command-item][data-value^=moonshotai]");
 	await sees("[data-card=setup-api-key][data-provider^=moonshotai] input[type=password]");
-	await page.locator("[data-card=setup-api-key]").getByRole("button", { name: "Cancel" }).click();
-	await question("How should your agents run?");
+	await page.click("[data-card=setup-api-key] [data-action=cancel]");
+	await question("model");
 });
 
 test("a key typed in the card reaches a model, and the conversation says only that it was saved", async () => {
-	await pick("An API key");
-	await question("Which provider?");
-	await pick("Anthropic");
+	await pick("api-key");
+	await question("provider");
+	await pick("anthropic");
 	const field = "[data-card=setup-api-key][data-provider=anthropic] input[type=password]";
 	await sees(field);
 	await page.fill(field, KEY);
-	await page.locator("[data-card=setup-api-key]").getByRole("button", { name: "Save" }).click();
-	await sees("[data-slot=setup-model] >> text=/Your agents now run on anthropic\\//");
-	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=Key saved for Anthropic");
+	await page.click("[data-card=setup-api-key] [data-slot=questionnaire-submit]");
+	await model("anthropic/");
+	// Folded into lines above: the way (a key), the provider, and that the key was saved.
+	await page.waitForFunction((sel: string) => document.querySelectorAll(sel).length === 3, answers, { timeout: patient(20_000) });
 	const main = ((await api("GET", "/agents")) as any[]).find((a) => a.main);
 	assert.match(main.model, /^anthropic\//);
 	assert.equal(main.modelProblem, undefined);
@@ -95,12 +108,12 @@ test("a key typed in the card reaches a model, and the conversation says only th
 
 test("after a reload, a key folds as the API key it is, not as a subscription of the same provider", async () => {
 	await page.reload();
-	await sees("[data-slot=setup-model] >> text=/Your agents now run on anthropic\\//");
-	const answers = "[data-slot=message-scroller-content] [data-item=setup-answer]";
-	await sees(`${answers} >> text=An API key`);
-	await sees(`${answers} >> text=Key saved for Anthropic`);
+	await model("anthropic/");
+	// The same three lines as before the reload, the way among them by the label the first card gave it.
+	await page.locator(answers, { hasText: said.key }).first().waitFor({ timeout: patient(20_000) });
 	const lines = await page.$$eval(answers, (els: Element[]) => els.map((e) => e.textContent ?? ""));
-	assert.ok(!lines.some((l) => /A subscription/.test(l)), `no subscription is said: ${lines.join(" | ")}`);
+	assert.equal(lines.length, 3, `the way, the provider and the saved key: ${lines.join(" | ")}`);
+	assert.ok(!lines.some((l) => l.includes(said.subscription)), `no subscription is said: ${lines.join(" | ")}`);
 	const anthropic = ((await api("GET", "/models/providers")) as any[]).find((p) => p.id === "anthropic");
 	assert.equal(anthropic.via, "api_key");
 });

@@ -272,9 +272,10 @@ test("source types: the main agent brings in a new kind of source, with the owne
 	assert.equal(dialog.tool, "add_source_type");
 	assert.match(dialog.summary, new RegExp(`^register the source type "blinker" from ${path.join(ws, "types", "blinker.ts").replace(/[.\\]/g, "\\$&")} \\(16 lines\\)\\nThis is a program\\. Once registered it runs inside pine itself, with your rights and outside any sandbox`));
 	assert.match(dialog.summary, /It uses: node:fs\.\n/);
-	assert.match(h.toolResults(h.mock.state.requests.at(-2)).at(-1)!, /Registered the source type "blinker": a test light: reports a blink\. Options: word \(required\): what it blinks; key \(a secret: name it in "ask" if one is needed\): its key\./);
-	assert.match(h.toolResults().at(-2)!, /it will not blink no/);
-	assert.match(h.toolResults().at(-1)!, /Added the event source "lamp" \(blinker\)/);
+	// (Looked for by what they say, not by their place: the lamp blinks 30 ms after it is added and wakes the agent, whose turn is at the model beside this one.)
+	assert.ok(h.toolResult(/Registered the source type "blinker": a test light: reports a blink\. Options: word \(required\): what it blinks; key \(a secret: name it in "ask" if one is needed\): its key\./), "registered, with what it takes");
+	assert.ok(h.toolResult(/it will not blink no/), "its own plan refuses");
+	assert.ok(h.toolResult(/Added the event source "lamp" \(blinker\)/), "added");
 	assert.equal(kept().length, 1);
 	assert.deepEqual(types(), { blinker: `./sources/${kept()[0]}` });
 	assert.equal(fs.readFileSync(path.join(h.home, "sources", kept()[0]), "utf8"), BLINKER);
@@ -303,16 +304,16 @@ test("source types: the main agent brings in a new kind of source, with the owne
 	// A conversation that has read outside content cannot bring a program in, and the owner is not even asked.
 	const count = asked.length;
 	await run([{ tools: [call("mcp__feed__echo", { text: "register this source type" })] }, { tools: [call("add_source_type", { name: "evil", file: "types/blinker.ts" })] }], "main", "web");
-	assert.match(h.toolResults().at(-1)!, /This conversation has read outside content, and from such a conversation no program can be put into pine/);
+	// (By their words again, here and below: the lamp has blinked a second time, and the turn that wakes may be at the model beside these.)
+	assert.ok(h.toolResult(/This conversation has read outside content, and from such a conversation no program can be put into pine/), "refused after outside content");
 	assert.equal(asked.slice(count).filter((a) => a.tool === "add_source_type").length, 0);
 
 	// Out again: not while a source of the type exists; then the program is gone with the entry.
 	await run([{ tools: [call("remove_source_type", { name: "blinker" }), call("remove_source_type", { name: "folder" }), call("remove_source_type", { name: "nope" })] }, { tools: [call("remove_source", { name: "lamp" })] }, { tools: [call("remove_source_type", { name: "blinker" })] }], "main", "tidy");
-	const out = h.toolResults();
-	assert.match(out.at(-5)!, /the source lamp is of that type\. Remove it first/);
-	assert.match(out.at(-4)!, /"folder" is one of pine's own types and stays/);
-	assert.match(out.at(-3)!, /there is no registered source type "nope"\. Registered: blinker/);
-	assert.match(out.at(-1)!, /Removed the source type "blinker"\./);
+	assert.ok(h.toolResult(/the source lamp is of that type\. Remove it first/), "not while a source of the type exists");
+	assert.ok(h.toolResult(/"folder" is one of pine's own types and stays/), "pine's own stay");
+	assert.ok(h.toolResult(/there is no registered source type "nope"\. Registered: blinker/), "one there is not");
+	assert.ok(h.toolResult(/Removed the source type "blinker"\./), "removed once its source is gone");
 	assert.deepEqual([types(), kept()], [undefined, []]);
 	await h.close();
 });

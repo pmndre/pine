@@ -210,8 +210,8 @@ export function Gate() {
 						<>
 							{s.initLines.length ? <Printed sm className="w-full text-start" text={s.initLines.slice(-40).join("\n")} /> : null}
 							<div className="flex items-center gap-2">
-								{s.local ? <Button disabled={s.initRunning} onClick={() => void init()}>{s.initRunning ? <><Pulse label="Loading" data-icon="inline-start" />Setting up…</> : "Set up pine"}</Button> : null}
-								<Button variant="outline" disabled={s.initRunning} onClick={() => void bridge.retry()}>Try again</Button>
+								{s.local ? <Button data-action="init" data-busy={s.initRunning || undefined} disabled={s.initRunning} onClick={() => void init()}>{s.initRunning ? <><Pulse label="Loading" data-icon="inline-start" />Setting up…</> : "Set up pine"}</Button> : null}
+								<Button variant="outline" data-action="retry" disabled={s.initRunning} onClick={() => void bridge.retry()}>Try again</Button>
 							</div>
 						</>,
 					]
@@ -400,13 +400,16 @@ function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth
 		// The row is the stock menu button drawn as the list's option, so the list keeps its one tab stop and its arrows.
 		<SidebarMenuItem
 			role="none"
+			data-session={c.session}
+			data-branch-of={c.branch?.from}
+			data-worktree={c.worktree?.branch}
 			className="[-webkit-app-region:no-drag]"
 			onContextMenu={(e) => (e.preventDefault(), void menu())}
 			draggable={movable}
 			onDragStart={movable ? (e) => ((dragging = { agent, session: c.session, group: c.group }), (e.dataTransfer.effectAllowed = "move"), e.dataTransfer.setData("text/plain", s.titleOf(agent, c.session))) : undefined}
 			onDragEnd={() => (dragging = undefined)}
 		>
-			<SidebarMenuButton isActive={on} onClick={() => setOpenMobile(false)} className={cn(INDENT[Math.min(depth + inset, INDENT.length - 1)], c.tasks && "pr-16 group-has-data-[sidebar=menu-action]/menu-item:pr-16")} render={<ListboxItem value={c.session} label={s.titleOf(agent, c.session)} title={`${agent} · ${c.session} · ${kept}${c.branch ? ` · a branch of ${c.branch.from}` : ""}${c.worktree ? ` · in the worktree ${c.worktree.branch} of ${c.worktree.repo}` : c.folder ? ` · works in ${c.folder}` : ""}`} />}>
+			<SidebarMenuButton isActive={on} data-agent={agent} data-session={c.session} data-pinned={c.pinned || undefined} onClick={() => setOpenMobile(false)} className={cn(INDENT[Math.min(depth + inset, INDENT.length - 1)], c.tasks && "pr-16 group-has-data-[sidebar=menu-action]/menu-item:pr-16")} render={<ListboxItem value={c.session} label={s.titleOf(agent, c.session)} title={`${agent} · ${c.session} · ${kept}${c.branch ? ` · a branch of ${c.branch.from}` : ""}${c.worktree ? ` · in the worktree ${c.worktree.branch} of ${c.worktree.repo}` : c.folder ? ` · works in ${c.folder}` : ""}`} />}>
 				<span className="grid h-4 w-6 flex-none place-items-center">{tab?.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Pulse /> : tab?.unread ? <Badge className="size-2 p-0" /> : main || c.pinned ? <StarIcon className="text-faint" /> : depth || c.worktree ? <GitBranchIcon className="text-faint" /> : c.folder ? <FolderIcon className="text-faint" /> : <MessageSquareIcon className="text-faint" />}</span>
 				<span className="min-w-0 flex-1"><Title agent={agent} session={c.session} /></span>
 			</SidebarMenuButton>
@@ -416,7 +419,7 @@ function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth
 				// A stop of its own after the row (Tab from the list), shown with the pointer or the keyboard on the row; its keys are not the list's.
 				<AlertDialog>
 					<HoverTooltip>
-						<TooltipTrigger render={<AlertDialogTrigger render={<SidebarMenuAction showOnHover onKeyDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} />} aria-label="Remove this conversation permanently"><Trash2Icon /></AlertDialogTrigger>} />
+						<TooltipTrigger render={<AlertDialogTrigger render={<SidebarMenuAction showOnHover onKeyDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} />} data-action="remove" aria-label="Remove this conversation permanently"><Trash2Icon /></AlertDialogTrigger>} />
 						<TooltipContent>Remove this conversation permanently</TooltipContent>
 					</HoverTooltip>
 					<AlertDialogContent>
@@ -584,8 +587,8 @@ function Group({ a }: { a: AgentInfo }) {
 	// An agent's name and, beside it on the same line, what it is for; a group says first how many conversations it holds. The name is whole;
 	// the rest takes the room that is left and is cut off where that ends. With the pointer on the line, what was cut off slides through to its end and back.
 	const label = (
-		<span data-slot="agent-label" className="flex min-w-0 flex-1 items-baseline gap-2 font-semibold text-foreground">
-			<span className="min-w-0 flex-initial truncate">{a.id}</span>
+		<span data-slot="agent-label" data-agent={a.id} className="flex min-w-0 flex-1 items-baseline gap-2 font-semibold text-foreground">
+			<span data-slot="agent-name" className="min-w-0 flex-initial truncate">{a.id}</span>
 			<span className="@container min-w-0 flex-1 truncate text-xs font-normal text-faint group-hover/menu-item:text-clip"><span className="group-hover/menu-item:inline-block group-hover/menu-item:animate-out group-hover/menu-item:slide-out-to-left-[max(0px,100%_-_100cqw)] group-hover/menu-item:ease-linear group-hover/menu-item:delay-500 group-hover/menu-item:repeat-infinite group-hover/menu-item:direction-alternate motion-reduce:animate-none" style={{ animationDuration: slideFor(only ? what : `${count} · ${what}`) }}>{only ? null : <><span data-slot="agent-count">{count}</span>{" · "}</>}{what}</span></span>
 		</span>
 	);
@@ -814,7 +817,7 @@ export function Machines() {
 	return (
 		<SidebarMenuItem className="[-webkit-app-region:no-drag]">
 			<DropdownMenu open={open} onOpenChange={setOpen}>
-				<DropdownMenuTrigger render={<SidebarMenuButton data-slot="service-status" title={about} aria-label={`The pine this app uses: ${text}. Switch to another`} />}>
+				<DropdownMenuTrigger render={<SidebarMenuButton data-slot="service-status" data-origin={state.status !== "ready" ? undefined : state.host ? "remote" : state.started ? "started" : "attached"} title={about} aria-label={`The pine this app uses: ${text}. Switch to another`} />}>
 					{/* The dot stands in the place of the icons in the rows above it: its middle under theirs, and what is written beside it under their names. */}
 					<span className="grid size-4 flex-none place-items-center"><span className={cn(DOT, state.status === "error" ? "bg-destructive" : state.status !== "ready" ? "bg-warn" : s.connected ? "bg-primary" : "bg-destructive")} /></span>
 					<span className="min-w-0 flex-1 truncate">{text}</span>
@@ -846,6 +849,7 @@ function EnvironmentPill() {
 						variant="outline"
 						size="sm"
 						data-slot="window-environment"
+						data-host={host ?? "local"}
 						className="max-w-44 shrink-0 [-webkit-app-region:no-drag]"
 						aria-label={`Environment: ${label}. Switch or open in new window`}
 					/>
@@ -919,7 +923,7 @@ function TabFace({ item }: { item: string }) {
 	return (
 		<>
 			<span className="grid size-5 flex-none place-items-center">
-				{!tab ? (pane === "code" ? <PanelRightIcon /> : <RadarIcon />) : tab.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : tab.busy ? <Pulse /> : tab.unread ? <Badge className="size-2 p-0" /> : tab.kind === "events" ? <AudioLinesIcon /> : tab.kind === "settings" ? <SettingsIcon /> : tab.kind === "manual" ? <BookOpenIcon /> : tab.kind === "task" ? <ListIcon /> : <AgentAvatar agent={{ id: tab.agent, color: s.agent(tab.agent)?.color, main: s.agent(tab.agent)?.main }} size="sm" className="data-[size=sm]:size-5" />}
+				{!tab ? (pane === "code" ? <PanelRightIcon /> : <RadarIcon />) : tab.approvals.size ? <Badge variant="destructive" data-waiting="" className="size-4 p-0">!</Badge> : tab.busy ? <Pulse /> : tab.unread ? <Badge className="size-2 p-0" /> : tab.kind === "events" ? <AudioLinesIcon /> : tab.kind === "settings" ? <SettingsIcon /> : tab.kind === "manual" ? <BookOpenIcon /> : tab.kind === "task" ? <ListIcon /> : <AgentAvatar agent={{ id: tab.agent, color: s.agent(tab.agent)?.color, main: s.agent(tab.agent)?.main }} size="sm" className="data-[size=sm]:size-5" />}
 			</span>
 			<span data-slot="tab-name" className="flex-1 truncate">
 				{pane ? <PaneLabel which={pane} /> : tab!.kind === "events" ? "Events" : tab!.kind === "settings" ? "Settings" : tab!.kind === "manual" ? "Manual" : tab!.kind === "task" ? <>{tab!.agent} #{tab!.task}</> : tab!.session === "main" ? tab!.agent : <>{tab!.agent} · <Title agent={tab!.agent} session={tab!.session} /></>}
@@ -983,6 +987,11 @@ function DockTab({ item, row, index, end }: { item: string; row: string[]; index
 					render={<div />}
 					data-slot={pane ? "pane-tab" : "tab"}
 					data-pane={pane}
+					data-for={pane === "code" && s.codeTab ? `${s.codeTab.agent}:${s.codeTab.session}` : undefined}
+					data-agent={tab?.kind === "chat" ? tab.agent : undefined}
+					data-session={tab?.kind === "chat" ? tab.session : undefined}
+					data-kind={tab?.kind}
+					data-pinned={(kept && tab?.session !== "main") || undefined}
 					data-focus={on || undefined}
 					data-drop={drop || undefined}
 					className={cn("group/tab max-w-55 min-w-28 flex-initial justify-start gap-2 px-1 [-webkit-app-region:no-drag]", drop && "before:absolute before:inset-y-1 before:w-1 before:rounded-full before:bg-primary", drop && (drop === "after" ? "before:-right-1" : "before:-left-1"))}
@@ -1018,7 +1027,7 @@ function DockTab({ item, row, index, end }: { item: string; row: string[]; index
 					<TabFace item={item} />
 					{kept && tab?.session !== "main" ? <StarIcon className="text-warn" /> : null}
 					{/* No stop of its own: a row of tabs is one stop, and ⌘W closes the tab in front. */}
-					<Button variant="ghost" size="icon-xs" tabIndex={-1} aria-label={pane ? `Close the ${pane === "code" ? "side panel" : "view"}` : "Close this tab"} className={cn("size-5", !on && !front && "opacity-0 group-hover/tab:opacity-100")} onClick={(e) => (e.stopPropagation(), close())}><XIcon className="size-3" /></Button>
+					<Button variant="ghost" size="icon-xs" tabIndex={-1} data-action="close" aria-label={pane ? `Close the ${pane === "code" ? "side panel" : "view"}` : "Close this tab"} className={cn("size-5", !on && !front && "opacity-0 group-hover/tab:opacity-100")} onClick={(e) => (e.stopPropagation(), close())}><XIcon className="size-3" /></Button>
 				</TabsTrigger>
 			}
 		/>
@@ -1436,6 +1445,8 @@ function DockArea({ column }: { column: boolean }) {
 								id={item === PANE.code ? "code-panel" : item === PANE.view ? "view-panel" : undefined}
 								data-slot="group-body"
 								data-group={g.id}
+								data-index={groups.indexOf(g)}
+								data-edges={(["top", "left", "right", "bottom"] as const).filter((e) => at.sides.get(g.id)?.[e]).join(" ")}
 								data-focus={s.focus === g.id || undefined}
 								// Clipped: in a window too small for every group's least, a group's content is cut at its edge and never drawn over its neighbour.
 								className="absolute flex overflow-hidden"
@@ -1503,7 +1514,7 @@ function NoTab() {
 			</EmptyHeader>
 			<EmptyContent className="flex-row justify-center">
 				<Button onClick={() => void s.newConversation()}>New conversation<Kbd>{shortcut("⌘T")}</Kbd></Button>
-				{main ? <Button variant="outline" onClick={() => void s.openTab(main.id, "main")}>Open {main.id}</Button> : null}
+				{main ? <Button variant="outline" data-action="open-main" onClick={() => void s.openTab(main.id, "main")}>Open {main.id}</Button> : null}
 			</EmptyContent>
 		</Empty>
 	);
@@ -1569,13 +1580,13 @@ function UpdateButton({ update: u }: { update: UpdatePhase }) {
 	const s = useModel(store);
 	switch (u.phase) {
 		case "waiting":
-			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton onClick={() => s.cancelUpdateWait()} />}><HourglassIcon /><span className="min-w-0 flex-1 truncate">Restarts when the work is done</span><XIcon /></TooltipTrigger><TooltipContent>{`Pine ${u.version} will be installed once no conversation is working. Click to cancel the wait. The update stays ready for the next restart or quit.`}</TooltipContent></HoverTooltip>;
+			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton data-update={u.phase} data-version={u.version} onClick={() => s.cancelUpdateWait()} />}><HourglassIcon /><span className="min-w-0 flex-1 truncate">Restarts when the work is done</span><XIcon /></TooltipTrigger><TooltipContent>{`Pine ${u.version} will be installed once no conversation is working. Click to cancel the wait. The update stays ready for the next restart or quit.`}</TooltipContent></HoverTooltip>;
 		case "ready":
-			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton variant="outline" onClick={() => void s.restartToUpdate()} />}><RotateCwIcon /><span className="min-w-0 flex-1 truncate">Restart to update</span></TooltipTrigger><TooltipContent>{`Pine ${u.version} is downloaded. Pine will quit, replace this app (${u.mine}) with the new one and reopen, along with the pine it started.`}</TooltipContent></HoverTooltip>;
+			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton variant="outline" data-update={u.phase} data-version={u.version} onClick={() => void s.restartToUpdate()} />}><RotateCwIcon /><span className="min-w-0 flex-1 truncate">Restart to update</span></TooltipTrigger><TooltipContent>{`Pine ${u.version} is downloaded. Pine will quit, replace this app (${u.mine}) with the new one and reopen, along with the pine it started.`}</TooltipContent></HoverTooltip>;
 		case "downloading":
-			return <SidebarMenuButton disabled><DownloadIcon /><span className="min-w-0 flex-1 truncate">Downloading Pine {u.version}…</span></SidebarMenuButton>;
+			return <SidebarMenuButton disabled data-update={u.phase} data-version={u.version}><DownloadIcon /><span className="min-w-0 flex-1 truncate">Downloading Pine {u.version}…</span></SidebarMenuButton>;
 		case "link":
-			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton variant="outline" onClick={() => void bridge.open(u.url)} />}><ArrowUpIcon /><span className="min-w-0 flex-1 truncate">Pine {u.version} is available</span><ExternalLinkIcon /></TooltipTrigger><TooltipContent>{`${u.reason ? `${u.reason} ` : ""}This is Pine ${u.mine}. Click to open the release page on GitHub in your browser. The new app is ${newApp().what} there: ${newApp().how}.`}</TooltipContent></HoverTooltip>;
+			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton variant="outline" data-update={u.phase} data-version={u.version} onClick={() => void bridge.open(u.url)} />}><ArrowUpIcon /><span className="min-w-0 flex-1 truncate">Pine {u.version} is available</span><ExternalLinkIcon /></TooltipTrigger><TooltipContent>{`${u.reason ? `${u.reason} ` : ""}This is Pine ${u.mine}. Click to open the release page on GitHub in your browser. The new app is ${newApp().what} there: ${newApp().how}.`}</TooltipContent></HoverTooltip>;
 	}
 }
 
@@ -1592,7 +1603,7 @@ function UpdateAsk() {
 	if (u.phase === "link") {
 		return (
 			<Dialog open onOpenChange={(open) => open || close()}>
-				<DialogContent showCloseButton={false} className="sm:max-w-lg">
+				<DialogContent showCloseButton={false} className="sm:max-w-lg" data-dialog="update" data-update={u.phase} data-version={u.version}>
 					<DialogHeader>
 						<DialogTitle>Pine {u.version} is available</DialogTitle>
 						{u.reason ? <DialogDescription className="select-text">{u.reason}</DialogDescription> : null}
@@ -1600,8 +1611,8 @@ function UpdateAsk() {
 					</DialogHeader>
 					<p className="cursor-auto font-mono text-xs text-faint select-text">{u.url}</p>
 					<DialogFooter>
-						<Button variant="outline" onClick={close}>Not now</Button>
-						<Button onClick={() => (void bridge.open(u.url), close())}><ExternalLinkIcon data-icon="inline-start" />Open the release page</Button>
+						<Button variant="outline" data-action="close" onClick={close}>Not now</Button>
+						<Button data-action="release-page" onClick={() => (void bridge.open(u.url), close())}><ExternalLinkIcon data-icon="inline-start" />Open the release page</Button>
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
@@ -1615,15 +1626,15 @@ function UpdateAsk() {
 	}[u.phase];
 	return (
 		<Dialog open onOpenChange={(open) => open || close()}>
-			<DialogContent showCloseButton={false} className="sm:max-w-lg">
+			<DialogContent showCloseButton={false} className="sm:max-w-lg" data-dialog="update" data-update={u.phase} data-version={u.version}>
 				<DialogHeader>
 					<DialogTitle>{title}</DialogTitle>
 					<DialogDescription className="select-text">{text} Your pine home, with your agents, conversations and settings, stays as it is.</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
-					<Button variant="outline" onClick={close}>{u.phase === "ready" ? "Not now" : "Close"}</Button>
-					{u.phase === "ready" ? <Button onClick={() => void s.restartToUpdate()}><RotateCwIcon data-icon="inline-start" />Restart to update</Button> : null}
-					{u.phase === "waiting" ? <Button variant="outline" onClick={() => s.cancelUpdateWait()}><XIcon data-icon="inline-start" />Cancel the wait</Button> : null}
+					<Button variant="outline" data-action="close" onClick={close}>{u.phase === "ready" ? "Not now" : "Close"}</Button>
+					{u.phase === "ready" ? <Button data-action="restart" onClick={() => void s.restartToUpdate()}><RotateCwIcon data-icon="inline-start" />Restart to update</Button> : null}
+					{u.phase === "waiting" ? <Button variant="outline" data-action="cancel-wait" onClick={() => s.cancelUpdateWait()}><XIcon data-icon="inline-start" />Cancel the wait</Button> : null}
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
@@ -1662,15 +1673,15 @@ function BrowserAsk() {
 	const later = () => void s.browserLater();
 	return (
 		<Dialog open onOpenChange={(open) => open || s.browserFetching || later()}>
-			<DialogContent showCloseButton={false} className="sm:max-w-xl">
+			<DialogContent showCloseButton={false} className="sm:max-w-xl" data-dialog="browser-ask">
 				<DialogHeader>
 					<DialogTitle>The browser for the web tools is not on this {computerWord(s.platform)}</DialogTitle>
 					<DialogDescription className="select-text">For pages that need a real browser, your agents use one that pine downloads. Each version of pine needs a specific browser build, and the build for this version is not here yet. Either it was never downloaded, or the one here belongs to an older pine. The download is about 600 MB and happens once. Until then the browser tools do not work, but web search and reading a page do.</DialogDescription>
 				</DialogHeader>
 				{s.initLines.length ? <Printed sm text={s.initLines.slice(-12).join("\n")} /> : null}
 				<DialogFooter>
-					<Button variant="outline" disabled={s.browserFetching} onClick={later}>Not now</Button>
-					<Button disabled={s.browserFetching} onClick={() => void s.fetchBrowser()}>{s.browserFetching ? <><Pulse label="Loading" data-icon="inline-start" />Downloading…</> : "Download"}</Button>
+					<Button variant="outline" data-action="later" disabled={s.browserFetching} onClick={later}>Not now</Button>
+					<Button data-action="download" disabled={s.browserFetching} onClick={() => void s.fetchBrowser()}>{s.browserFetching ? <><Pulse label="Loading" data-icon="inline-start" />Downloading…</> : "Download"}</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

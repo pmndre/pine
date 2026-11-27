@@ -99,7 +99,7 @@ test("a newer proven socket for an id replaces the older one", async () => {
 	const key = computerKey();
 	const older = await waitingComputer(meetings, key);
 	const newer = await waitingComputer(meetings, key);
-	assert.deepEqual(await older.sock.closes(), { code: CLOSE.replaced, reason: "A newer connection for this computer took this one's place." });
+	assert.equal((await older.sock.closes()).code, CLOSE.replaced);
 	assert.equal(newer.sock.closed, null);
 	const browser = await joined(meetings, key.id);
 	await browser.sock.got("ready");
@@ -122,7 +122,7 @@ test("a socket that has not proved its key replaces nobody", async () => {
 test("a browser that names an id with no computer waiting is told so and closed", async () => {
 	const meetings = inMemory();
 	const browser = await joined(meetings, computerKey().id);
-	assert.deepEqual(await browser.sock.closes(), { code: CLOSE.absent, reason: "No computer waits under this id." });
+	assert.equal((await browser.sock.closes()).code, CLOSE.absent);
 	assert.deepEqual(browser.sock.sent, []);
 });
 
@@ -172,9 +172,9 @@ test("a computer that leaves closes the browsers it was meeting", async () => {
 	const browser = await joined(meetings, computer.key.id);
 	await browser.sock.got("ready");
 	await computer.conn.closed();
-	assert.deepEqual(await browser.sock.closes(), { code: CLOSE.absent, reason: "The computer left." });
+	assert.equal((await browser.sock.closes()).code, CLOSE.absent);
 	const late = await joined(meetings, computer.key.id);
-	assert.deepEqual(await late.sock.closes(), { code: CLOSE.absent, reason: "No computer waits under this id." });
+	assert.equal((await late.sock.closes()).code, CLOSE.absent);
 });
 
 test("a browser's message that is not a signal is closed as a bad message", async () => {

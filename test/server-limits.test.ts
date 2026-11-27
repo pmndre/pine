@@ -122,14 +122,14 @@ test("limits: the models of one endpoint each have their own number or pine's, a
 	assert.deepEqual([agents.limiterOf("mock/small").max, agents.limiterOf("mock/m") === agents.limiter, agents.limiterOf("mock/small") === agents.limiter], [1, true, false]);
 	assert.equal(agents.limiterOf("elsewhere/small"), agents.limiter);
 	// Sub-agents on that model run one after the other, while the conversation's own model is held to nothing but pine's limit.
-	// (Three at 80 ms each: side by side they would reach the model within a few ms of each other, one after the
-	// other each comes 80 ms or more after the one before. The bound leaves room for a timer that fires a little early.)
+	// (Counted at the model server, not timed: each takes 80 ms there, so side by side they would be there together.)
 	h.mock.state.scripts.piece = [{ delayMs: 80, text: "piece done" }];
+	h.mock.state.maxInflight = 0;
 	const r = await agents.run({ agent: "main", session: "job", prompt: mockMsg([{ tools: [call("subagent", { tasks: ["one @@REF:piece@@", "two @@REF:piece@@", "three @@REF:piece@@"], model: "small" })] }, { text: "IN" }]), ...owner });
 	assert.equal(r.text, "IN");
 	const arrived = h.mock.state.requests.filter((q: any) => q.body.model === "small").map((q: any) => q.t as number);
 	assert.equal(arrived.length, 3);
-	assert.ok(arrived.slice(1).every((t: number, i: number) => t - arrived[i] >= 70), `one after the other: ${arrived.map((t: number) => t - arrived[0]).join(", ")} ms`);
+	assert.equal(h.mock.state.maxInflight, 1, "one after the other: never two requests at the model at once");
 	assert.ok(h.pine.tasks.list({ limit: 20 }).filter((t) => t.kind === "subagent").every((t) => t.meta.model === "mock/small"));
 	assert.deepEqual(agents.status().models, { "mock/small": { active: 0, waiting: 0, max: 1 } });
 	// Through the control API: set for a model, said with the model, taken off again; a model the server has not is refused.

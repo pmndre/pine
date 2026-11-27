@@ -46,6 +46,38 @@ Assert on what the software *commits to*, which outlives the UI:
   `not installed`, a `value`/`tone` field), not the whole message. Loosen the wording, keep the
   distinction.
 
+## Three systems
+
+pine runs on Windows, macOS and Linux, and CI runs every test on all three. A test written on one
+of them must not assume it. A test that passes on a Mac and fails on Windows for a reason that has
+nothing to do with what it tests is fragile in the same way a pixel test is.
+
+- **Paths.** Never write a path with a separator in an expected value. Build what you expect the
+  way the code builds it (`path.join`, `path.relative`, `path.sep`), or compare after
+  `path.normalize` / `path.resolve` on both sides. Where pine *hands a path out* (a control API
+  answer, an event, a tool result, a stored value) it uses `/` on every system: that is the
+  product's contract, so the fix for a `\` there is in the product, and the test then pins `/`.
+  A path that is opened on this computer stays native and is compared natively.
+- **Line endings and case.** Split lines with `/\r?\n/`. Do not rely on a file system telling
+  `A.txt` from `a.txt`, nor on it not doing so.
+- **Temp, home and the environment.** `os.tmpdir()`, `os.homedir()`, `harness()`: never `/tmp`,
+  `~` or `$HOME` written out. macOS's temp folder is a link (`fs.realpathSync` it before comparing),
+  Windows' has a short and a long name.
+- **Files in use.** Windows refuses to rename, replace or delete a file another process has open.
+  A test that swaps a file under a running stand-in retries for that moment, and a clean-up
+  removes with `force` and does not fail the test.
+- **Shell, programs and signals.** No `/bin/sh`, `ls`, `cat`, `kill -9` or a signal's name in a
+  test that is to run everywhere: start `process.execPath` with a script, and end a process with
+  what the harness gives. Links (`fs.symlinkSync`) need a right on Windows that a runner may lack.
+- **What a system cannot do.** A test of something one system does not have (the sandbox on
+  Windows, a Swift helper off a Mac) skips itself with the reason, in words
+  (`skip: process.platform === "win32" && "no sandbox on Windows"`), never silently and never by
+  failing. Everything else runs on all three: do not skip a test because making it portable is work.
+- **Speed.** A runner is slower than a desk and Windows' is the slowest. No time limit a test sets
+  for itself is a measurement taken on a Mac: wait for a condition, with `PINE_TEST_PATIENCE`.
+
+Before pushing a test, read it once as each of the three systems would.
+
 ## In practice
 
 - The desktop page is driven through its real DOM: prefer `[data-slot=…]`, `[data-task=…]`,

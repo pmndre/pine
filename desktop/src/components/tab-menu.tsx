@@ -19,14 +19,14 @@ export function TabMenu({ trigger, pin, moveToWindow = false, others = true, rig
 			<ContextMenuTrigger render={trigger} />
 			<ContextMenuContent aria-label="Tab" className="min-w-48">
 				<ContextMenuGroup>
-					<ContextMenuItem onClick={() => onAction("close")}>
+					<ContextMenuItem data-action="close" onClick={() => onAction("close")}>
 						Close<ContextMenuShortcut>{shortcut("⌘W")}</ContextMenuShortcut>
 					</ContextMenuItem>
 					{closeMany ? (
 						<>
-							<ContextMenuItem disabled={!others} onClick={() => onAction("others")}>Close Others</ContextMenuItem>
-							<ContextMenuItem disabled={!right} onClick={() => onAction("right")}>Close to the Right</ContextMenuItem>
-							<ContextMenuItem onClick={() => onAction("all")}>Close All</ContextMenuItem>
+							<ContextMenuItem data-action="others" disabled={!others} onClick={() => onAction("others")}>Close Others</ContextMenuItem>
+							<ContextMenuItem data-action="right" disabled={!right} onClick={() => onAction("right")}>Close to the Right</ContextMenuItem>
+							<ContextMenuItem data-action="all" onClick={() => onAction("all")}>Close All</ContextMenuItem>
 						</>
 					) : null}
 				</ContextMenuGroup>
@@ -34,8 +34,8 @@ export function TabMenu({ trigger, pin, moveToWindow = false, others = true, rig
 					<>
 						<ContextMenuSeparator />
 						<ContextMenuGroup>
-							<ContextMenuItem onClick={() => onAction("split-right")}>Split Right</ContextMenuItem>
-							<ContextMenuItem onClick={() => onAction("split-down")}>Split Down</ContextMenuItem>
+							<ContextMenuItem data-action="split-right" onClick={() => onAction("split-right")}>Split Right</ContextMenuItem>
+							<ContextMenuItem data-action="split-down" onClick={() => onAction("split-down")}>Split Down</ContextMenuItem>
 						</ContextMenuGroup>
 					</>
 				) : null}
@@ -43,7 +43,7 @@ export function TabMenu({ trigger, pin, moveToWindow = false, others = true, rig
 					<>
 						<ContextMenuSeparator />
 						<ContextMenuGroup>
-							<ContextMenuItem onClick={() => onAction("move-to-window")}>Move to New Window</ContextMenuItem>
+							<ContextMenuItem data-action="move-to-window" onClick={() => onAction("move-to-window")}>Move to New Window</ContextMenuItem>
 						</ContextMenuGroup>
 					</>
 				) : null}
@@ -51,7 +51,7 @@ export function TabMenu({ trigger, pin, moveToWindow = false, others = true, rig
 					<>
 						<ContextMenuSeparator />
 						<ContextMenuGroup>
-							<ContextMenuItem disabled={pin === "main"} title={pin === "main" ? "An agent's main conversation is always kept" : undefined} onClick={() => onAction(pin === "unpin" ? "unpin" : "pin")}>
+							<ContextMenuItem data-action={pin === "unpin" ? "unpin" : "pin"} disabled={pin === "main"} title={pin === "main" ? "An agent's main conversation is always kept" : undefined} onClick={() => onAction(pin === "unpin" ? "unpin" : "pin")}>
 								{pin === "unpin" ? "Unpin" : "Pin"}
 							</ContextMenuItem>
 						</ContextMenuGroup>

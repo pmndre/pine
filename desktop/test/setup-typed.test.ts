@@ -20,7 +20,11 @@ const write = (file: string, content: string) => {
 const sees = (selector: string, timeout = patient(20_000)) => page.waitForSelector(selector, { timeout });
 const api = (method: string, url: string, body?: unknown) => page.evaluate(([m, u, b]: [string, string, unknown]) => (window as any).pine.call(m, u, b).then((r: any) => r.data), [method, url, body]);
 const card = "[data-slot=composer-question] [data-slot=questionnaire]";
-const question = (text: string) => sees(`${card} [data-slot=questionnaire-title] >> text=${text}`);
+/** The card that is open, by what it asks (`data-question`), never by its words. */
+const question = (id: string) => sees(`${card}[data-question=${id}]`);
+/** What an option of the open card is called on screen: the test types it back, whatever it says. */
+const label = async (option: string): Promise<string> => (await page.locator(`${card} [data-option="${option}"] [data-slot=question-card-label]`).textContent()) ?? "";
+const answered = (text: string) => page.locator("[data-slot=message-scroller-content] [data-item=setup-answer]", { hasText: text }).first().waitFor({ timeout: patient(20_000) });
 const composer = "[data-slot=composer] textarea";
 const type = async (text: string) => {
 	await page.fill(composer, text);
@@ -37,10 +41,10 @@ before(async () => {
 	app = await launchApp({ ...process.env, PLAYWRIGHT_BROWSERS_PATH: path.join(home, "browsers"), PINE_HOME: home, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_SKIP_DOWNLOADS: "1", PINE_DESKTOP_DEV_URL: "", PINE_DESKTOP_RELEASES: "", PINE_LOGIN_STAND_IN: path.join(home, "browser-signed-in") });
 	page = await app.firstWindow();
 	await page.setViewportSize?.({ width: 1280, height: 820 }).catch(() => {});
-	await sees("[data-slot=dialog-title] >> text=/The browser for the web tools/");
-	await page.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" }).click();
-	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
-	await question("How should your agents run?");
+	await sees("[data-dialog=browser-ask]");
+	await page.click("[data-dialog=browser-ask] [data-action=later]");
+	await page.waitForSelector("[data-dialog=browser-ask]", { state: "detached" });
+	await question("model");
 });
 
 after(async () => {
@@ -49,23 +53,27 @@ after(async () => {
 });
 
 test("typing an option's label, in any case, picks it", async () => {
-	await type("  a SUBSCRIPTION ");
-	await question("Which subscription?");
-	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=A subscription");
-	await type("claude");
+	// The label as the card shows it, typed back in another case and with spaces around it.
+	const subscription = await label("subscription");
+	assert.ok(subscription.trim(), "the option has a label to type");
+	await type(`  ${subscription.toUpperCase()} `);
+	await question("subscription");
+	await answered(subscription);
+	const claude = await label("anthropic");
+	await type(claude.toLowerCase());
 	await sees("[data-card=sign-in-card] [data-sign-in=code]");
-	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=Claude");
+	await answered(claude);
 	assert.equal(await page.inputValue(composer), "", "the composer is emptied, as after any message");
 	assert.equal(await prompts(), 0, "nothing went to the daemon");
-	await page.locator("[data-card=sign-in-card]").getByRole("button", { name: "Cancel" }).click();
-	await question("How should your agents run?");
+	await page.click("[data-card=sign-in-card] [data-action=cancel]");
+	await question("model");
 });
 
 test("typing anything else shows pine's fixed line, keeps the card, and sends nothing to the daemon as a prompt", async () => {
 	await type("What is a model?");
 	await sees("[data-slot=message-scroller-content] [data-item=setup-typed] >> text=What is a model?");
-	await sees("[data-slot=message-scroller-content] [data-slot=setup-no-model] >> text=/There is no model yet to answer that/");
-	await question("How should your agents run?");
+	await sees("[data-slot=message-scroller-content] [data-slot=setup-no-model]");
+	await question("model");
 	assert.equal(await page.inputValue(composer), "");
 	// Given time to reach the daemon if it were sent: it is not.
 	await new Promise((r) => setTimeout(r, 300));
@@ -75,19 +83,22 @@ test("typing anything else shows pine's fixed line, keeps the card, and sends no
 });
 
 test("while no model answers, the composer says that what is typed picks an option", async () => {
-	await question("How should your agents run?");
-	assert.match((await page.getAttribute(composer, "placeholder")) ?? "", /Type an option's name to pick it/);
+	await question("model");
+	// What is typed goes to the card, not to an agent: the composer knows, and says something of its own about it.
+	await sees(`${composer}[data-above=typed]`);
+	assert.ok(((await page.getAttribute(composer, "placeholder")) ?? "").trim(), "the composer says what typing does here");
 });
 
 test("while the key's field is open, what is typed in the composer is neither shown nor kept, and pine says to paste it in the field", async () => {
 	const typed = "sk-typed-in-the-wrong-place";
-	await type("an api key");
-	await question("Which provider?");
-	await type("anthropic");
+	await type(await label("api-key"));
+	await question("provider");
+	await type(await label("anthropic"));
 	await sees("[data-card=setup-api-key][data-provider=anthropic] input[type=password]");
-	await page.waitForFunction((c: string) => /paste the key/i.test(document.querySelector(c)?.getAttribute("placeholder") ?? ""), composer, { timeout: patient(5000) });
+	await sees(`${composer}[data-above=secret]`, patient(5000));
 	await type(typed);
-	await sees("[data-slot=toast] >> text=/Paste the key into the card above/");
+	// pine says so: a warning, in which the key is not repeated.
+	await sees("[data-slot=toast][data-type=warning]");
 	assert.equal(await page.inputValue(composer), "");
 	const shown = await page.evaluate(() => document.body.innerText + [...document.querySelectorAll("input, textarea")].map((e) => (e as HTMLInputElement).value).join("\n"));
 	assert.ok(!shown.includes(typed), "not shown anywhere in the window");
@@ -99,6 +110,6 @@ test("while the key's field is open, what is typed in the composer is neither sh
 	}
 	await page.fill(composer, "");
 	assert.equal(await prompts(), 0, "nothing went to the daemon");
-	await page.locator("[data-card=setup-api-key]").getByRole("button", { name: "Cancel" }).click();
-	await question("How should your agents run?");
+	await page.click("[data-card=setup-api-key] [data-action=cancel]");
+	await question("model");
 });

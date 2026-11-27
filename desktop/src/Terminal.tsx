@@ -161,7 +161,7 @@ export function TerminalView({ tab }: { tab: Tab }) {
 		<>
 			<div className={SUB}>
 				<SquareTerminalIcon className="size-3.5 flex-none" aria-hidden />
-				<span data-slot="terminal-cwd" className="min-w-0 flex-1 truncate font-mono">
+				<span data-slot="terminal-cwd" data-state={state.ended !== undefined ? "ended" : state.cwd ? "ready" : "starting"} className="min-w-0 flex-1 truncate font-mono">
 					{state.cwd ? tilde(state.cwd) : "Starting…"}
 					{state.ended !== undefined ? ` · ended${state.ended ? ` (${state.ended})` : ""}` : ""}
 				</span>

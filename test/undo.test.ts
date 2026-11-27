@@ -490,29 +490,29 @@ test("tui: /undo says what was taken back and puts the message into the input, /
 
 	// The pane: what the last message changed, as a list and as a diff, whatever the last commit was.
 	await send("/code turn");
-	await sees("by your last message");
+	await until(() => app.state().pane, 5000, "the pane to open");
 	await sees(/\+ fresh\.txt\s+\+1/);
 	await sees(/M notes\.txt\s+\+1 −1/);
 	await sees(/D src\/app\.ts\s+−1/);
-	await sees("3 changed by your last message");
+	await sees(/3 changed/);
 	assert.ok(!/\+ one\.txt/.test(text()), "what an earlier message made is not this one's");
 	await click("M notes.txt");
 	await sees("+NOTES-2");
-	assert.ok(text().includes("-NOTES-1") && text().includes("‹ back · notes.txt"));
+	assert.ok(text().includes("-NOTES-1") && text().includes("‹ back"));
 	await click("‹ back");
 	await click("▸ since the last commit");
 	await sees(/\+ one\.txt/);
 	await send("/code off");
 
 	// /undo: said plainly, files restored, the message back in the input.
+	// What was taken back is read off the folder and the conversation; of what the UI says about it, that it
+	// names the message and how many files.
 	await send("/undo");
-	await sees("↶ taken back: “TWO");
-	await sees(`3 files restored in ~/${name}`);
-	await sees("1 changed back, 1 removed, 1 brought back");
-	await sees("not undone: changes made outside this folder");
-	await sees("/redo restores it until you send something new");
+	await until(() => read(dir, "notes.txt") === "NOTES-1\n" && !answer("ANSWER-TWO").test(text()), 5000, "the second message to be taken back");
+	await sees(/“TWO/);
+	await sees(new RegExp(`3 files\\b.*${name}`));
 	await sees("TAIL-OF-TWO");
-	assert.ok(!answer("ANSWER-TWO").test(text()) && answer("ANSWER-ONE").test(text()), "the conversation shows what is left of it");
+	assert.ok(answer("ANSWER-ONE").test(text()), "the conversation shows what is left of it");
 	assert.equal(read(dir, "notes.txt"), "NOTES-1\n");
 	assert.equal(read(dir, "fresh.txt"), undefined);
 	assert.equal(read(dir, "src/app.ts"), "export const answer = 41;\n");
@@ -521,34 +521,30 @@ test("tui: /undo says what was taken back and puts the message into the input, /
 	// /redo: the input is emptied first (ctrl+c), then everything is as the message left it.
 	term.type(["\x03"]);
 	await send("/redo");
-	await sees("↷ brought back: “TWO");
-	await sees(`3 files in ~/${name} are again as the message left them`);
+	await until(() => read(dir, "notes.txt") === "NOTES-2\n", 5000, "the second message to be brought back");
 	await sees(answer("ANSWER-TWO"));
-	assert.equal(read(dir, "notes.txt"), "NOTES-2\n");
 	assert.equal(read(dir, "src/app.ts"), undefined);
 	await send("/redo");
-	await sees("there is nothing to bring back");
+	await sees(/nothing to bring back/);
 
 	// /undo twice goes one message further each time; the message that returns to the input is the earlier one.
 	await send("/undo");
-	await sees("/undo again to take back the message before it too");
+	await until(() => read(dir, "notes.txt") === "NOTES-1\n" && !answer("ANSWER-TWO").test(text()), 5000, "the second message to be taken back again");
 	term.type(["\x03"]);
 	await send("/undo");
-	await sees("↶ taken back: “ONE");
-	await sees(`1 file restored in ~/${name}`);
-	assert.equal(read(dir, "one.txt"), undefined);
-	assert.ok(!answer("ANSWER-ONE").test(text()));
+	await until(() => read(dir, "one.txt") === undefined && !answer("ANSWER-ONE").test(text()), 5000, "the first message to be taken back");
+	await sees(/“ONE/);
 	// Sent again from the input, changed or not, it is a new message, and the undo is final.
 	term.type(["\r"]);
 	await sees(answer("ANSWER-ONE"));
 	assert.equal(read(dir, "one.txt"), "made\n");
 	await send("/redo");
-	await sees("there is nothing to bring back");
+	await sees(/nothing to bring back/);
 	await send("/undo");
 	await until(() => read(dir, "one.txt") === undefined && !answer("ANSWER-ONE").test(text()), 5000, "the second message to be taken back");
 	term.type(["\x03"]);
 	await send("/undo");
-	await sees("there is no message of yours in this conversation to take back");
+	await sees(/no message of yours/);
 	await app.stop();
 	await h.close();
 });

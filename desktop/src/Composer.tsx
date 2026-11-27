@@ -339,18 +339,18 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 				</Alert>
 			) : null}
 			{swarm ? (
-				<Alert>
+				<Alert data-notice="swarm" data-state={swarm.status}>
 					<ClockIcon />
 					<AlertTitle>Swarm {swarm.status === "paused" ? "paused" : "limit reached"}</AlertTitle>
 					<AlertDescription className="truncate">{swarm.note}</AlertDescription>
 					<AlertAction>
-						<Button variant="link" size="xs" onClick={() => void store.setSwarm(tab, "resume")}>Resume</Button>
-						<Button variant="link" size="xs" onClick={() => void store.setSwarm(tab, "clear")}>Clear</Button>
+						<Button variant="link" size="xs" data-action="resume" onClick={() => void store.setSwarm(tab, "resume")}>Resume</Button>
+						<Button variant="link" size="xs" data-action="clear" onClick={() => void store.setSwarm(tab, "clear")}>Clear</Button>
 					</AlertAction>
 				</Alert>
 			) : null}
 			{voice !== "off" ? (
-				<Alert>
+				<Alert data-notice="voice" data-state={voice}>
 					<MicIcon />
 					<AlertTitle>{voice === "starting" ? "getting ready to listen…" : "listening"}</AlertTitle>
 					<AlertDescription>{voice === "starting" ? "" : "speak · ↩ when you are done · esc to discard"}{voiceNote ? ` · ${voiceNote}` : ""}</AlertDescription>
@@ -444,6 +444,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 						<ComboboxPrimitive.Input
 							ref={area as unknown as React.Ref<HTMLInputElement>}
 							render={<InputGroupTextarea rows={1} className="max-h-48 p-3 leading-snug" />}
+							data-above={card?.secret ? "secret" : card?.type ? "typed" : undefined}
 							placeholder={card?.placeholder && (card.type || card.secret) ? card.placeholder : tab.busy ? `Say something to ${tab.agent} while it works…` : `Message ${tab.agent} · / for commands · @ for files`}
 							onChange={(e) => {
 								// A key that types ends the listening: what was heard stays, and nothing more is put into the input.
@@ -481,7 +482,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 							<TooltipContent>Attach files (or drop them here)</TooltipContent>
 						</HoverTooltip>
 						<HoverTooltip>
-							<TooltipTrigger render={<InputGroupButton size="sm" className="@max-md/bar:size-8 @max-md/bar:px-0! min-w-0 shrink" onClick={() => void store.pickModel(tab)} aria-label={`Model: ${model}`} />}>
+							<TooltipTrigger render={<InputGroupButton size="sm" className="@max-md/bar:size-8 @max-md/bar:px-0! min-w-0 shrink" onClick={() => void store.pickModel(tab)} data-control="model" data-value={model} aria-label={`Model: ${model}`} />}>
 								<CpuIcon data-icon="inline-start" />
 								<span className="truncate @max-md/bar:hidden">{info?.model?.split("/").pop() ?? "model"}</span>
 							</TooltipTrigger>
@@ -489,7 +490,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 						</HoverTooltip>
 						<DropdownMenu>
 							<HoverTooltip>
-								<TooltipTrigger render={<DropdownMenuTrigger render={<InputGroupButton size="sm" className="@max-md/bar:size-8 @max-md/bar:px-0!" aria-label={`Reasoning: ${thinking}, how much the model thinks before answering`} />} />}>
+								<TooltipTrigger render={<DropdownMenuTrigger render={<InputGroupButton size="sm" className="@max-md/bar:size-8 @max-md/bar:px-0!" data-control="reasoning" data-value={thinking} aria-label={`Reasoning: ${thinking}, how much the model thinks before answering`} />} />}>
 									<SparkleIcon data-icon="inline-start" />
 									<span className="@max-md/bar:hidden">{thinking}</span>
 									<ChevronDownIcon data-icon="inline-end" className="@max-md/bar:hidden" />
@@ -564,7 +565,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 						) : null}
 						{tab.busy && !text.trim() && !tab.quotes.length ? (
 							<HoverTooltip>
-								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full" onClick={() => void store.stop(tab)} aria-label="Stop" />}><SquareIcon /></TooltipTrigger>
+								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full" onClick={() => void store.stop(tab)} data-action="stop" aria-label="Stop" />}><SquareIcon /></TooltipTrigger>
 								<TooltipContent>
 									Stop
 									<Kbd>esc</Kbd>
@@ -574,7 +575,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 							<HoverTooltip>
 								{/* Said as disabled, not disabled: a disabled button inside an InputGroup dims the whole
 								    composer (`has-disabled:`). With nothing to send, `send` does nothing. */}
-								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} aria-disabled={(!text.trim() && !tab.quotes.length) || undefined} aria-label={tab.busy ? `Send to the agent while it works · ${shortcut("⌥↩")} queues it until the agent is done` : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
+								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} data-action="send" aria-disabled={(!text.trim() && !tab.quotes.length) || undefined} aria-label={tab.busy ? `Send to the agent while it works · ${shortcut("⌥↩")} queues it until the agent is done` : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
 								<TooltipContent>
 									{tab.busy ? `Send to the agent while it works · ${shortcut("⌥↩")} queues it until the agent is done` : "Send"}
 									<Kbd>{shortcut("↩")}</Kbd>

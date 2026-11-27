@@ -175,7 +175,7 @@ function AskCard({ title, about, field, label, help, secret, button, onSend, onB
 			help={help}
 			button={button}
 			busy={local.busy ? "Asking the server…" : undefined}
-			start={<Button size="sm" variant="ghost" onClick={onBack}>Back</Button>}
+			start={<Button size="sm" variant="ghost" data-action="back" onClick={onBack}>Back</Button>}
 			onSend={onSend}
 		/>
 	);
@@ -266,15 +266,16 @@ function Card({ ctx }: { ctx: SetupContext }) {
 		);
 	return (
 		<QuestionCard
+			id="server"
 			question={WHICH}
 			header="Model"
 			from="pine asks"
 			options={[
-				...found.map((s) => ({ label: s.title, description: describe(s) })),
-				{ label: OTHER, description: `A server pine did not find on ${where()}. You enter the address.` },
+				...found.map((s) => ({ id: s.id, label: s.title, description: describe(s) })),
+				{ id: "other", label: OTHER, description: `A server pine did not find on ${where()}. You enter the address.` },
 			]}
 			autoFocus
-			actions={<Button size="sm" variant="ghost" onClick={back}>Back</Button>}
+			actions={<Button size="sm" variant="ghost" data-action="back" onClick={back}>Back</Button>}
 			onAnswer={([n]) => {
 				const s = found[n - 1];
 				if (!s) {

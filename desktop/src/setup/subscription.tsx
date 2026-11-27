@@ -47,12 +47,13 @@ function Card({ ctx }: { ctx: SetupContext }) {
 		const ids = Object.keys(SUBSCRIPTIONS);
 		return (
 			<QuestionCard
+				id="subscription"
 				question={WHICH}
 				header="Model"
 				from="pine asks"
-				options={ids.map((id) => ({ label: SUBSCRIPTIONS[id].title, description: SUBSCRIPTIONS[id].about }))}
+				options={ids.map((id) => ({ id, label: SUBSCRIPTIONS[id].title, description: SUBSCRIPTIONS[id].about }))}
 				autoFocus
-				actions={<Button size="sm" variant="ghost" onClick={ctx.back}>Back</Button>}
+				actions={<Button size="sm" variant="ghost" data-action="back" onClick={ctx.back}>Back</Button>}
 				onAnswer={([n]) => {
 					const id = ids[n - 1];
 					ctx.said(WHICH, SUBSCRIPTIONS[id].title);

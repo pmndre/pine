@@ -72,19 +72,28 @@ async function setUp(prefs: Record<string, unknown>, outcome: "ready" | "failed"
 	const launch = async () => {
 		const app = await launchApp({ ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsers, PINE_HOME: home, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_DESKTOP_DEV_URL: "", PINE_SKIP_DOWNLOADS: "1", PINE_DESKTOP_RELEASES: releases, PINE_DESKTOP_UPDATER: updater });
 		const page = await app.firstWindow();
-		await page.waitForSelector("[data-slot=empty] h1", { timeout: 60_000 });
+		await page.waitForSelector("[data-slot=composer] textarea", { timeout: 60_000 });
 		return { app, page };
 	};
 	const closed = (app: any) => new Promise<void>((r) => (app.process().exitCode !== null ? r() : app.process().once("exit", () => r())));
 	return { home, port, updater, calls, launch, closed, prefs: () => JSON.parse(fs.readFileSync(path.join(home, "desktop-data", "prefs.json"), "utf8")) };
 }
 
-const RESTART = "[data-slot=sidebar-footer] [data-sidebar=menu-button]:has-text('Restart to update')";
+// What the side bar's foot says of an update, by its phase (`data-update`): downloaded and ready to install, waiting for
+// the work to end, or only a link to the release (9.9.9, the one the stand-in for GitHub names).
+const RESTART = "[data-slot=sidebar-footer] [data-update=ready]";
+const PENDING = "[data-slot=sidebar-footer] [data-update=waiting]";
+const LINK = '[data-slot=sidebar-footer] [data-update=link][data-version="9.9.9"]';
+const settings = async (app: any, page: any) => {
+	await app.evaluate(({ BrowserWindow }: any) => BrowserWindow.getAllWindows()[0].webContents.send("pine:menu", "settings"));
+	await page.click("[role=navigation] [data-section=general]");
+};
+const AUTO = "[data-find=auto-update] [role=switch]";
 
 test("a newer release is downloaded without a word, and Restart to update stops the pine the app started, kept or not, then installs", { skip: OFF_MAC }, async () => {
 	const t = await setUp({ keepRunning: true });
 	const { app, page } = await t.launch();
-	assert.match((await page.textContent("[data-slot=service-status]")) ?? "", /started here/);
+	await page.waitForSelector("[data-slot=service-status][data-origin=started]", { timeout: 20_000 });
 	await page.waitForSelector(RESTART, { timeout: 20_000 });
 	// Downloaded from the feed of this kind of Mac on GitHub, made by the app and not taken from the answer; no dialog was opened for it.
 	assert.deepEqual(t.calls(), [{ call: "download", feed: FEED }]);
@@ -104,7 +113,7 @@ test("a pine the app only attached to is left alone by an update, and quitting w
 	try {
 		await waitForDaemon(t.port, t.home);
 		const { app, page } = await t.launch();
-		assert.match((await page.textContent("[data-slot=service-status]")) ?? "", /attached/);
+		await page.waitForSelector("[data-slot=service-status][data-origin=attached]", { timeout: 20_000 });
 		await page.waitForSelector(RESTART, { timeout: 20_000 });
 		await app.close();
 		assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download", "install-on-quit"]);
@@ -112,8 +121,8 @@ test("a pine the app only attached to is left alone by an update, and quitting w
 		const second = await t.launch();
 		await second.page.waitForSelector(RESTART, { timeout: 20_000 });
 		const exit = t.closed(second.app);
-		// (A dialog in front would take the click: said by its words, not as a click that times out.)
-		assert.equal(await second.page.$eval("[data-slot=dialog-content]", (e: Element) => e.textContent).catch(() => null), null, "no dialog in front");
+		// (A dialog in front would take the click: said here, not as a click that times out.)
+		assert.equal(await second.page.$("[data-slot=dialog-content]"), null, "no dialog in front");
 		await second.page.click(RESTART);
 		await exit;
 		assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download", "install-on-quit", "download", "install"]);
@@ -127,20 +136,20 @@ test("a pine the app only attached to is left alone by an update, and quitting w
 test("with Update automatically off the release page is offered and nothing is downloaded; a download that fails says so in one line, with the link", { skip: OFF_MAC }, async () => {
 	const t = await setUp({ autoUpdate: false }, "failed");
 	const { app, page } = await t.launch();
-	await page.waitForSelector("[data-slot=sidebar-footer] >> text=Pine 9.9.9 is available", { timeout: 20_000 });
+	await page.waitForSelector(LINK, { timeout: 20_000 });
 	assert.deepEqual(t.calls(), []);
-	await app.evaluate(({ BrowserWindow }: any) => BrowserWindow.getAllWindows()[0].webContents.send("pine:menu", "settings"));
-	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=General");
-	const sw = "[data-slot=field]:has-text('Update automatically') [role=switch]";
+	await settings(app, page);
+	const sw = AUTO;
 	await page.waitForSelector(`${sw}[aria-checked=false]`);
 	// Turned on, it downloads at once: this one fails, which is said in the app's own words, with the link beside it.
 	await page.click(sw);
 	await page.waitForSelector(`${sw}[aria-checked=true]`);
 	assert.equal(t.prefs().autoUpdate, true);
-	await page.waitForSelector("[data-setting=updates] >> text=The update could not be downloaded", { timeout: 20_000 });
+	for (let i = 0; i < 200 && !t.calls().length; i++) await new Promise((r) => setTimeout(r, 100));
 	assert.deepEqual(t.calls(), [{ call: "download", feed: FEED }]);
-	assert.ok(await page.locator("[data-setting=updates]").getByRole("button", { name: "Release page" }).isVisible());
-	await page.waitForSelector("[data-slot=sidebar-footer] >> text=Pine 9.9.9 is available");
+	// It failed: Settings is back at the link to the release, with the way to its page, and so is the side bar.
+	await page.waitForSelector('[data-setting=updates][data-update=link][data-version="9.9.9"] [data-action=release-page]', { timeout: 20_000 });
+	await page.waitForSelector(LINK);
 	assert.equal(await page.$(RESTART), null);
 	// Nothing was ready, so a quit installs nothing.
 	await app.close();
@@ -149,7 +158,8 @@ test("with Update automatically off the release page is offered and nothing is d
 
 const WORKING = "[data-slot=sidebar] [data-slot=pulse]";
 const WARNING = "[data-slot=alert-dialog-content]";
-const choose = (page: any, label: string) => page.click(`${WARNING} [data-slot=command-item]:has-text('${label}')`);
+/** An answer to the warning, by its value: "done" (restart when the work is done), "now", "no". */
+const choose = (page: any, value: string) => page.click(`${WARNING} [data-slot=command-item][data-value=${value}]`);
 /** The main agent set to work for a while in a conversation of its own: the model takes `ms` before it answers. */
 async function setToWork(page: any, ms: number, words: string) {
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ delayMs: ms, text: words }], "Take your time. "));
@@ -163,14 +173,15 @@ test("Restart to update while an agent works warns how many are at work: Cancel 
 	await page.waitForSelector(RESTART, { timeout: 20_000 });
 	await setToWork(page, 4000, "First done.");
 	await page.click(RESTART);
-	await page.waitForSelector(`${WARNING} >> text=1 conversation`);
-	await choose(page, "Cancel");
+	// The warning offers the three ways on: wait for the work, restart over it, or not at all.
+	await page.waitForSelector(`${WARNING} [data-slot=command-item][data-value=done]`);
+	assert.deepEqual(await page.$$eval(`${WARNING} [data-slot=command-item]`, (els: Element[]) => els.map((e) => e.getAttribute("data-value")).sort()), ["done", "no", "now"]);
+	await choose(page, "no");
 	await page.waitForSelector(WARNING, { state: "detached" });
 	assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download"]);
 	// Waiting for the end shows in the footer, and the footer calls it off.
 	await page.click(RESTART);
-	await choose(page, "Restart when they are done");
-	const PENDING = "[data-slot=sidebar-footer] [data-sidebar=menu-button]:has-text('Restarts when the work is done')";
+	await choose(page, "done");
 	await page.waitForSelector(PENDING);
 	await page.click(PENDING);
 	await page.waitForSelector(PENDING, { state: "detached" });
@@ -183,7 +194,7 @@ test("Restart to update while an agent works warns how many are at work: Cancel 
 	// Asked again on more work, it waits for the end this time, and installs then.
 	await setToWork(page, 2500, "Second done.");
 	await page.click(RESTART);
-	await choose(page, "Restart when they are done");
+	await choose(page, "done");
 	await page.waitForSelector(PENDING);
 	assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download"]);
 	const exit = t.closed(app);
@@ -198,7 +209,7 @@ test("Restart now in the warning installs at once, with the agent still at work"
 	await setToWork(page, 15_000, "Never said.");
 	await page.click(RESTART);
 	const exit = t.closed(app);
-	await choose(page, "Restart now");
+	await choose(page, "now");
 	await exit;
 	assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download", "install"]);
 });
@@ -209,10 +220,10 @@ test("an install that fails after Restart to update starts the app's pine again 
 	await page.waitForSelector(RESTART, { timeout: 20_000 });
 	await page.click(RESTART);
 	// The pine was stopped for the install; the install failed, so the app goes on with its pine started again.
-	await page.waitForSelector("[data-slot=sidebar-footer] >> text=Pine 9.9.9 is available", { timeout: 20_000 });
+	await page.waitForSelector(LINK, { timeout: 20_000 });
 	assert.equal(await page.$(RESTART), null);
 	await waitForDaemon(t.port, t.home, 30_000);
-	await page.waitForSelector("[data-slot=service-status] >> text=started here", { timeout: 20_000 });
+	await page.waitForSelector("[data-slot=service-status][data-origin=started]", { timeout: 20_000 });
 	assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download", "install"]);
 	await app.close();
 });
@@ -221,13 +232,13 @@ test("with an update downloaded, turning Update automatically off offers the rel
 	const t = await setUp({});
 	const { app, page } = await t.launch();
 	await page.waitForSelector(RESTART, { timeout: 20_000 });
-	await app.evaluate(({ BrowserWindow }: any) => BrowserWindow.getAllWindows()[0].webContents.send("pine:menu", "settings"));
-	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=General");
-	const sw = "[data-slot=field]:has-text('Update automatically') [role=switch]";
+	await settings(app, page);
+	const sw = AUTO;
 	await page.click(`${sw}[aria-checked=true]`);
 	await page.waitForSelector(`${sw}[aria-checked=false]`);
-	await page.waitForSelector("[data-slot=sidebar-footer] >> text=Pine 9.9.9 is available", { timeout: 20_000 });
+	await page.waitForSelector(LINK, { timeout: 20_000 });
 	assert.equal(await page.$(RESTART), null);
-	assert.ok(await page.locator("[data-setting=updates]").getByRole("button", { name: "Release page" }).isVisible());
+	await page.waitForSelector("[data-setting=updates][data-update=link] [data-action=release-page]");
+	assert.equal(await page.$("[data-setting=updates] [data-action=restart]"), null);
 	await app.close();
 });

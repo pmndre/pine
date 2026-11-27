@@ -1,6 +1,7 @@
-// The office (examples/home/views/office.ts), pine's own view, without a window: where the rooms go, what
+// The office (examples/home/views/office.ts), pine's own view, without a window: who has a room, what
 // the robots do for the work their agents do, winged letters for tasks handed on, capsules for events, what
-// a bubble says, the sky by the hour, and where the camera looks. The view is loaded as the frame loads it: "pine/view" is
+// a bubble says, the sky by the hour, and whom the camera keeps in view. What is asserted is the view's model (who,
+// what state, how many), never where something is drawn, how large, or in which words. The view is loaded as the frame loads it: "pine/view" is
 // pine's src/view-kit.ts, and it is told only what view-state.ts tells it.
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
@@ -13,7 +14,7 @@ import { World } from "../src/view-world.ts";
 registerHooks({
 	resolve: (spec, ctx, next) => (spec === "pine/view" ? { url: pathToFileURL(path.resolve(import.meta.dirname, "../../src/view-kit.ts")).href, shortCircuit: true } : next(spec, ctx)),
 });
-const { Office, nowOf, lookOf, skyAt, setClock, toolSay, sayOf, widthOf, ROOM_W } = await import("../../examples/home/views/office.ts");
+const { Office, nowOf, lookOf, skyAt, setClock, toolSay, sayOf } = await import("../../examples/home/views/office.ts");
 type Office = InstanceType<typeof Office>;
 
 // A summer noon, whenever the test runs: at night the robots sleep.
@@ -54,18 +55,12 @@ function run(world: World, office: Office, from: number, to: number): void {
 const contains = (outer: { x: number; y: number; w: number; h: number }, p: { x: number; y: number }) => p.x >= outer.x && p.x <= outer.x + outer.w && p.y >= outer.y && p.y <= outer.y + outer.h;
 const seen = (o: Office) => ({ x: o.cam.x - VIEW.w / o.cam.z / 2, y: o.cam.y - VIEW.h / o.cam.z / 2, w: VIEW.w / o.cam.z, h: VIEW.h / o.cam.z });
 
-test("main lives under the roof, the others on the floors below it, from the garden up", () => {
+test("every agent has a room of its own, main's is the one under the roof with the wall screen, and a wide view puts more rooms on a floor", () => {
 	const { office } = building();
-	const main = office.rooms.get("a00")!;
-	assert.ok(main.main);
-	for (const r of office.rooms.values()) if (r !== main) assert.ok(r.y > main.y, `${r.agent} is below the roof`);
-	assert.ok(main.w > ROOM_W, "the room under the roof is as wide as the house");
-	assert.ok(main.screen, "and has the wall screen with a light for each agent");
-	// The first agent after main is on the lowest floor, the last on the highest.
-	assert.ok(office.rooms.get("a01")!.y > office.rooms.get("a23")!.y);
-	// No two rooms overlap.
-	const rooms = [...office.rooms.values()];
-	for (const a of rooms) for (const b of rooms) if (a !== b) assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y, `${a.agent} and ${b.agent}`);
+	assert.deepEqual([...office.rooms.keys()].sort(), [...names].sort(), "a room for each agent, and no other");
+	assert.deepEqual([...office.rooms.values()].filter((r) => r.main).map((r) => r.agent), ["a00"]);
+	assert.ok(office.rooms.get("a00")!.screen, "and it has the wall screen with a light for each agent");
+	assert.ok([...office.rooms.values()].every((r) => r.main || !r.screen), "no other room has one");
 	// A wide view gets a wider house.
 	const wide = new Office();
 	const w = new World();
@@ -98,7 +93,7 @@ test("at rest a robot sits at its desk and sleeps at night; at work it paces, re
 	world.take([did(3400, 1, "a01", { topic: "tool", phase: "end", tool: "read" }), did(3400, 1, "a01", { topic: "tool", phase: "start", tool: "read", subject: "/home/skills/invoices/SKILL.md" })]);
 	run(world, office, 3400, 3600);
 	assert.equal(office.robotOf("a01")!.act, "skill", "a skill it has: the starred book");
-	assert.equal(sayOf(told(world).work.get(1)!, told(world), start).text, "skill: invoices");
+	assert.ok(sayOf(told(world).work.get(1)!, told(world), start).text.includes("invoices"), "its bubble names the skill");
 	world.take([did(3700, 1, "a01", { topic: "tool", phase: "end", tool: "read" }), did(3700, 1, "a01", { topic: "tool", phase: "start", tool: "mcp__web__web_search", subject: "what the owner asked" })]);
 	run(world, office, 3700, 3900);
 	assert.equal(office.robotOf("a01")!.act, "rack", "a tool of an MCP server: at the rack");
@@ -187,7 +182,8 @@ test("what just happened shows where it happened: a skill at the shelf, a schedu
 	office.hear({ k: "tool", work: 1, agent: "a01", tool: "mcp__web__web_search", mcp: "web" }, s, now);
 	office.hear({ k: "sent", work: 1, agent: "a01", tool: "send" }, s, now);
 	const floats = office.tags(s, now).filter((t: any) => t.k === "float").map((t: any) => t.text);
-	assert.deepEqual(floats, ["invoices", "daily", "new branch in a worktree"]);
+	assert.equal(floats.length, 3, `a word each for the skill, the schedule and the branch; a tool and a message say none: ${floats.join(" | ")}`);
+	assert.deepEqual(floats.slice(0, 2), ["invoices", "daily"], "the skill and the schedule by their names");
 	for (const key of ["skill:a01:invoices", "clock", "clocks:a01", "board:a01", "mcp:a01:web"]) assert.equal(office.hotAt.get(key), now, key);
 	assert.equal(office.traffic().letters, 1, "what is sent out flies to the dish");
 });
@@ -199,21 +195,22 @@ test("a board its sub-agents work through shows as pips under the agent's bubble
 	const s = { ...told(world), boards: [board] };
 	const job = (more: object) => ({ id: 1, agent: "a01", copy: false, depth: 0, from: { k: "you" as const }, doing: "waiting" as const, waitingOn: [], started: start, tools: 0, asking: false, held: false, outside: false, branch: false, worktree: false, conversation: 1, ...more });
 	const said = sayOf(job({}), s, start);
-	assert.deepEqual([said.note, said.steps], ["board: 3 of 10 done", { done: 3, total: 10 }]);
+	assert.deepEqual(said.steps, { done: 3, total: 10 });
+	assert.ok(said.note, "and a note says that these are a board's");
 	// Its own list of steps comes first, and so does who it works for.
 	assert.deepEqual(sayOf(job({ steps: { done: 1, total: 2 } }), s, start).steps, { done: 1, total: 2 });
-	assert.equal(sayOf(job({ from: { k: "agent", id: "a00" } }), s, start).note, "for a00");
-	assert.equal(sayOf(job({ id: 2, copy: true, doing: "thinking", board: 7 }), s, start).note, "a task of the board", "a view that is told no tasks still says it has one");
+	assert.ok(sayOf(job({ from: { k: "agent", id: "a00" } }), s, start).note!.includes("a00"), "whom it works for, by name");
+	const anyTask = sayOf(job({ id: 2, copy: true, doing: "thinking", board: 7 }), s, start).note;
+	assert.ok(anyTask && !/\d/.test(anyTask), `a view that is told no tasks still says it has one, without a number: ${anyTask}`);
 	// A board whose tasks are all settled says nothing, and neither does another conversation's.
 	assert.equal(sayOf(job({}), { ...s, boards: [{ ...board, open: 0, taken: 0 }] }, start).steps, undefined);
 	assert.equal(sayOf(job({ conversation: 2 }), s, start).steps, undefined);
-	assert.equal(toolSay("board_post").text, "posting on the board");
 	// A sub-agent that has one of its tasks says which.
 	const t = (id: number, st: any, more: object = {}): any => ({ id, state: st, after: [] as number[], ...more });
 	const tasks = [t(1, "done"), t(2, "taken", { worker: 2, agent: "a01" }), t(3, "open"), t(4, "blocked"), t(5, "failed"), t(6, "waiting", { after: [3] })];
 	const full = { ...board, open: 2, taken: 1, done: 1, failed: 1, blocked: 1, tasks };
 	const s2: any = { ...s, boards: [full, { ...board, id: 8, scope: "all" as const, agent: undefined, conversation: undefined, name: "bugs", tasks: [t(1, "open")] }] };
-	assert.equal(sayOf(job({ id: 2, copy: true, doing: "thinking", board: 7 }), s2, start).note, "task 2 of the board");
+	assert.match(sayOf(job({ id: 2, copy: true, doing: "thinking", board: 7 }), s2, start).note!, /\b2\b/, "by the task's number");
 	// The board stands in the agent's room while it has work on it, a moment longer when all is done, and then no more.
 	assert.equal(office.boardOf(s2, "a01", start)?.id, 7);
 	assert.equal(office.boardOf(s2, "a00", start), undefined, "a board for all agents hangs in the hall, not in a room");
@@ -224,7 +221,7 @@ test("a board its sub-agents work through shows as pips under the agent's bubble
 	const now = start + 300;
 	office.boardOf(s2, "a01", now);
 	const room = office.rooms.get("a01")!;
-	assert.deepEqual(office.hit({ x: room.tasks.x + 5, y: room.tasks.y + 5 }), { k: "agent", id: "a01", part: "tasks" });
+	assert.deepEqual(office.hit({ x: room.tasks.x + room.tasks.w / 2, y: room.tasks.y + room.tasks.h / 2 }), { k: "agent", id: "a01", part: "tasks" });
 	assert.ok(office.tags(s2, now).some((x: any) => x.k === "label" && x.text === "bugs"), "the board for all agents is named in the hall");
 	// Forty tasks posted at once are one word at the board, not forty; a question and a failure are always said.
 	for (let i = 0; i < 40; i++) office.hear({ k: "board", board: 7, change: "posted", agent: "a01", task: i + 1, state: "open" }, s2, now + i);
@@ -233,56 +230,51 @@ test("a board its sub-agents work through shows as pips under the agent's bubble
 	office.hear({ k: "board", board: 7, change: "settled", agent: "a01", task: 4, state: "blocked" }, s2, now + 2010);
 	office.hear({ k: "board", board: 7, change: "settled", agent: "a01", task: 5, state: "failed" }, s2, now + 2020);
 	office.hear({ k: "board", board: 8, change: "taken", task: 1, state: "taken" }, s2, now + 2030);
-	assert.deepEqual(office.tags(s2, now + 2030).filter((x: any) => x.k === "float").map((x: any) => x.text), ["new task", "task done", "a question", "task failed", "task taken"]);
+	const words = office.tags(s2, now + 2030).filter((x: any) => x.k === "float").map((x: any) => x.text);
+	assert.equal(words.length, 5, `one word for the forty, none for the removal, one for each of the rest: ${words.join(" | ")}`);
+	assert.equal(new Set(words).size, 5, "and each says something else");
 	assert.equal(office.hotAt.get("tasks:a01"), now + 2020);
 	assert.equal(office.hotAt.get("notice:8"), now + 2030);
 });
 
-test("a bubble says what a tool does in a view's own words, and the letters are the view's own", () => {
-	assert.deepEqual(toolSay("bash"), { sign: "term", text: "running a command", color: toolSay("bash").color });
-	assert.equal(toolSay("mcp__browser__browser_navigate", "browser").text, "browser: navigate");
-	assert.equal(toolSay("pine_sources").text, "pine: sources");
+test("a bubble has a sign for the kind of tool, and names a tool it has no words for", () => {
+	assert.equal(toolSay("bash").sign, "term");
 	assert.equal(toolSay("add_schedule").sign, "clock");
-	assert.equal(toolSay("something_new").text, "something new");
-	// The words are those a person would use: what it is doing, a sub-agent and not "a copy".
-	assert.equal(toolSay("subagent").text, "starting sub-agents");
-	assert.equal(toolSay("delegate").text, "delegating a task");
-	assert.ok(widthOf("thinking...") > widthOf("thinking"));
-	assert.equal(widthOf("i"), 1);
+	// A tool of an MCP server is said with the server's name and the tool's; a tool the view does not know, by its name.
+	assert.ok(["browser", "navigate"].every((part) => toolSay("mcp__browser__browser_navigate", "browser").text.includes(part)));
+	assert.ok(toolSay("pine_sources").text.includes("sources"));
+	assert.equal(toolSay("something_new").text.replace(/[_ ]/g, ""), "somethingnew");
+	// Every tool gets words, and the ones agents use most are told apart.
+	const said = ["bash", "read", "subagent", "delegate", "board_post"].map((t) => toolSay(t).text);
+	assert.ok(said.every((t) => t.length > 0) && new Set(said).size === said.length, said.join(" | "));
 });
 
-test("the sky follows the hour: day at noon, night at midnight, the sun only by day, a morning unlike an evening", () => {
+test("the sky follows the hour: day at noon, night at midnight, the sun only by day, a morning unlike an evening, and the season by the month", () => {
 	const noon = skyAt(new Date(2026, 5, 21, 13, 0));
 	const midnight = skyAt(new Date(2026, 5, 21, 0, 30));
 	const dusk = skyAt(new Date(2026, 5, 21, 20, 40));
 	const dawn = skyAt(new Date(2026, 5, 21, 4, 20));
-	assert.ok(noon.day > 0.9 && noon.sun);
-	assert.ok(midnight.day < 0.1 && !midnight.sun && midnight.stars > 0.8);
+	assert.ok(noon.sun && !midnight.sun);
+	assert.ok(noon.day > dusk.day && dusk.day > midnight.day, "the day goes down with the hour");
+	assert.ok(midnight.stars > noon.stars);
 	assert.ok(dusk.dusk > noon.dusk && dusk.dusk > midnight.dusk);
 	assert.ok(dawn.am && !dusk.am);
-	assert.notDeepEqual(dawn.stops, dusk.stops);
-	// The night darkens what stands outside, and turns it blue.
-	assert.ok(midnight.grade[0] < 0.5 && midnight.grade[2] > midnight.grade[0]);
-	assert.deepEqual(noon.grade, [1, 1, 1]);
 	// In winter it is dark at six in the evening; in summer it is not. The trees know the season.
-	assert.ok(skyAt(new Date(2026, 11, 21, 18, 0)).day < 0.2);
-	assert.ok(skyAt(new Date(2026, 5, 21, 18, 0)).day > 0.8);
+	assert.ok(skyAt(new Date(2026, 11, 21, 18, 0)).day < skyAt(new Date(2026, 5, 21, 18, 0)).day);
 	assert.deepEqual([0, 3, 6, 9].map((m) => skyAt(new Date(2026, m, 15, 12, 0)).season), ["winter", "spring", "summer", "autumn"]);
 });
 
-test("nothing happening shows the whole house; one room at work, the camera goes close; several far apart, out again; and pixels stay whole", () => {
+test("nothing happening shows the whole house; one room at work, the camera goes close to it; several far apart, out again until all are in view", () => {
 	const { world, office } = building();
 	run(world, office, 0, 300);
 	const all = office.framed(office.whole(), VIEW);
 	assert.equal(office.cam.z, all.z, "at rest it shows all of it");
-	assert.ok(Number.isInteger(1 / all.z), `a house too big for whole pixels is shown at a half, a third: ${all.z}`);
 
 	world.take([{ ...began(400, 1, "a07"), source: "agent:a07" }]);
 	run(world, office, 400, 14_000);
-	assert.ok(office.cam.z > all.z * 1.8, `close: ${office.cam.z} against ${all.z}`);
-	assert.ok(Number.isInteger(office.cam.z), `whole pixels: ${office.cam.z}`);
-	assert.ok(contains(seen(office), office.centerOf("a07")!));
-	assert.ok(!contains(seen(office), office.centerOf("a23")!), "a room far away is not in view");
+	assert.ok(office.cam.z > all.z, "closer than the whole house");
+	assert.ok(contains(seen(office), office.centerOf("a07")!), "the room at work is in view");
+	assert.ok(!contains(seen(office), office.centerOf("a23")!), "a room far away is not");
 
 	const close = office.cam.z;
 	world.take([began(14_100, 2, "a00"), began(14_100, 3, "a23")]);

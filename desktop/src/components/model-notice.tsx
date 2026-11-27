@@ -20,7 +20,7 @@ export function ModelNotice({ agent, model, problem, retry, onSetup }: {
 	onSetup?: () => void;
 }) {
 	return (
-		<Alert className="select-text" data-slot="model-notice">
+		<Alert className="select-text" data-slot="model-notice" data-agent={agent}>
 			{/* The stock alert draws its icon in the text's color: the warning's own color wins here. */}
 			<TriangleAlertIcon className="text-warn!" />
 			<AlertDescription>

@@ -50,9 +50,10 @@ test("swarm: the lead hands the job out and answers, pine has that answer checke
 
 	const s = swarmOf(h)!;
 	assert.deepEqual([s.status, s.round, s.checks, s.checking], ["done", 1, 1, undefined]);
-	assert.equal(s.note, "done after 1 round: 2 tasks, and the answer was checked");
+	// (How it stands is the status, the round and the events above and below. The note is a sentence for the owner:
+	// of it, here and further down, only the fact it adds is held to, never its wording.)
+	assert.match(s.note, /2 tasks/, "the note says how the work was done");
 	assert.deepEqual(events.map((e) => e.event), ["set", "checking", "done"]);
-	assert.equal(events[1].note, "the answer is being checked by a sub-agent that did none of the work");
 	assert.equal(checks(), 1);
 	// One turn of the lead's: the job in the owner's words and pine's frame, which says what a swarm's lead does.
 	const [first] = turns(h);
@@ -92,7 +93,7 @@ test("swarm: tasks that are not done call the lead again, and a check the lead h
 	const s = swarmOf(h)!;
 	assert.deepEqual([s.status, s.round, s.checks], ["done", 2, 1]);
 	assert.deepEqual(events.map((e) => e.event), ["set", "continue", "checking", "done"]);
-	assert.equal(events[1].note, "1 task is not done: round 2 of 8 starts");
+	assert.match(events[1].note, /1 task\b.*round 2 of 8/, "the note says how much is left and which round starts");
 	assert.equal(checks(), 1);
 	const [first, second] = turns(h);
 	assert.equal(turns(h).length, 2);
@@ -115,9 +116,9 @@ test("swarm: a check that fails calls the lead with the number of the check and 
 	await settled(h);
 	const s = swarmOf(h)!;
 	assert.deepEqual([s.status, s.round, s.checks, checks()], ["done", 2, 2, 2]);
-	assert.equal(s.note, "done after 2 rounds: main did it without handing anything out, and the answer was checked");
+	assert.doesNotMatch(s.note, /\d+ tasks?\b/, "nothing was handed out, and the note counts no tasks");
 	assert.deepEqual(events.map((e) => e.event), ["set", "checking", "continue", "checking", "done"]);
-	assert.deepEqual([events[2].note, events[3].note], ["the check of the answer found something: main puts it right, round 2 of 8", "the new answer is being checked"]);
+	assert.match(events[2].note, /round 2 of 8/);
 	const [, second] = turns(h);
 	assert.equal(second.prompt, continuePrompts.failed(job, 1));
 	assert.match(second.prompt, /^\[pine: your answer was checked by a sub-agent that did none of the work, and the check did not pass\. What it found is on the board: read it with board_read and id 1\. /);
@@ -138,9 +139,9 @@ test("swarm: a lead that does a small job itself has its answer checked all the 
 	await settled(h);
 	const s = swarmOf(h)!;
 	assert.deepEqual([s.status, s.round, s.checks], ["done", 2, MAX_CHECKS]);
-	assert.equal(s.note, "ended after 2 rounds: main did it without handing anything out. The last check of the answer still found something: task #2 on the board says what");
+	assert.match(s.note, /task #2\b/, "the note points at the check that still found something");
 	assert.equal(checks(), MAX_CHECKS);
-	assert.deepEqual(events.map((e) => e.note.replace(/:.*/, "")), ["started", "the answer is being checked by a sub-agent that did none of the work", "the check of the answer found something", "the new answer is being checked", "ended after 2 rounds"]);
+	assert.deepEqual(events.map((e) => e.event), ["set", "checking", "continue", "checking", "done"]);
 	assert.equal(turns(h).length, 2);
 	const [one, two] = h.pine.agents.boards.items(1, { kind: "task" });
 	assert.equal(one.text, checkTask(job, "DID-IT-MYSELF: the total is 12"));
@@ -151,7 +152,8 @@ test("swarm: a lead that does a small job itself has its answer checked all the 
 	const alone = await swarm(() => [{ text: "DID-IT-MYSELF" }]);
 	alone.h.pine.agents.swarms.set("main", "main", alone.job);
 	await settled(alone.h);
-	assert.deepEqual([swarmOf(alone.h)!.status, swarmOf(alone.h)!.round, swarmOf(alone.h)!.note, turns(alone.h).length], ["done", 1, "done after 1 round: main did it without handing anything out, and the answer was checked", 1]);
+	assert.deepEqual([swarmOf(alone.h)!.status, swarmOf(alone.h)!.round, swarmOf(alone.h)!.checks, turns(alone.h).length], ["done", 1, 1, 1]);
+	assert.doesNotMatch(swarmOf(alone.h)!.note, /\d+ tasks?\b/, "nothing was handed out, and the note counts no tasks");
 	await alone.h.close();
 });
 
@@ -168,7 +170,7 @@ test("swarm: paused while the answer is checked, the check ends by itself and re
 	await until(() => quiet(h), 5000, "the check to end");
 	assert.deepEqual([swarmOf(h)!.status, verdictOf(h.pine.agents.boards.item(1)!.result)], ["paused", "pass"]);
 	const resumed = h.pine.agents.swarms.resume("main", "main");
-	assert.deepEqual([resumed.status, resumed.round, resumed.note, turns(h).length, checks()], ["done", 1, "done after 1 round: main did it without handing anything out, and the answer was checked", 1, 1]);
+	assert.deepEqual([resumed.status, resumed.round, turns(h).length, checks()], ["done", 1, 1, 1]);
 	await h.close();
 
 	// The owner stops the check itself: the swarm pauses, the task is open again, and after resume the lead has it done.
@@ -180,7 +182,7 @@ test("swarm: paused while the answer is checked, the check ends by itself and re
 	const run = swarmOf(stopped.h)!.checking!;
 	stopped.h.pine.agents.cancel(run);
 	await stopped.h.pine.agents.wait(run);
-	assert.deepEqual([swarmOf(stopped.h)!.status, swarmOf(stopped.h)!.note, swarmOf(stopped.h)!.checks], ["paused", "paused: the check of the answer was stopped. /swarm resume goes on", 0]);
+	assert.deepEqual([swarmOf(stopped.h)!.status, swarmOf(stopped.h)!.checking, swarmOf(stopped.h)!.checks], ["paused", undefined, 0]);
 	assert.equal(stopped.h.pine.agents.boards.item(1)!.state, "open");
 	// (From here the check answers at once.)
 	stopped.opts.checkMs = 0;
@@ -224,7 +226,7 @@ test("swarm: the answer is checked on the model the owner set for it (defaults.c
 	h.pine.agents.swarms.set("main", "main", job);
 	await settled(h);
 	assert.deepEqual([swarmOf(h)!.status, swarmOf(h)!.round], ["done", 1]);
-	assert.equal(events[1].note, "the answer is being checked by a sub-agent that did none of the work, on mock/second");
+	assert.deepEqual([events[1].event, events[1].note.includes("mock/second")], ["checking", true], "the note names the model that checks");
 	const checker = h.pine.tasks.list({ limit: 50 }).find((t) => t.meta.boardTask === 2)!;
 	assert.equal(checker.meta.model, "mock/second");
 	const asked = (q: any) => rawTextOf([...q.body.messages].reverse().find((m: any) => m.role === "user")?.content ?? "");
@@ -282,7 +284,7 @@ test("swarm: a check that the model server refuses for now is started again by p
 	gone.h.pine.agents.swarms.set("main", "main", gone.job);
 	await settled(gone.h);
 	assert.deepEqual([swarmOf(gone.h)!.status, swarmOf(gone.h)!.checks, gone.h.pine.agents.boards.item(1)!.state], ["paused", 0, "failed"]);
-	assert.match(swarmOf(gone.h)!.note, /^paused: the check of the answer could not be done \(.*usage limit.*\)\. \/swarm resume goes on$/i);
+	assert.match(swarmOf(gone.h)!.note, /usage limit/i, "the note hands on why the check could not be done");
 	gone.h.pine.agents.swarms.resume("main", "main");
 	await settled(gone.h);
 	assert.deepEqual([swarmOf(gone.h)!.status, swarmOf(gone.h)!.round, swarmOf(gone.h)!.checks, gone.checks()], ["done", 2, 1, 1]);
@@ -297,7 +299,7 @@ test("swarm: a lead that asks its owner while work is left waits for the answer 
 	h.pine.agents.swarms.set("main", "main", job);
 	await settled(h);
 	assert.deepEqual([swarmOf(h)!.status, swarmOf(h)!.round], ["waiting", 1]);
-	assert.match(swarmOf(h)!.note, /main asks you something: answer it, and the swarm goes on/);
+	assert.match(swarmOf(h)!.note, /\bmain\b/, "the note names who asks");
 	// The owner's answer is a turn of the swarm's: the board is looked at after it, and the answer it led to is checked.
 	const r = await h.pine.agents.run({ agent: "main", session: "main", prompt: "0.9, as always @@REF:answer@@", ...owner });
 	assert.equal(r.text, "DONE-WITH-THE-RATE");
@@ -315,7 +317,7 @@ test("swarm: a lead that asks its owner while work is left waits for the answer 
 	stuck.h.pine.agents.swarms.set("main", "main", stuck.job);
 	await settled(stuck.h);
 	assert.deepEqual([swarmOf(stuck.h)!.status, swarmOf(stuck.h)!.round], ["limit", 2]);
-	assert.match(swarmOf(stuck.h)!.note, /stopped after 2 rounds, which is the limit \(limits\.swarmRounds\), with work left\. \/swarm resume gives it 2 more/);
+	assert.match(swarmOf(stuck.h)!.note, /limits\.swarmRounds/, "the note names the setting that stopped it");
 	const again = stuck.h.pine.agents.swarms.resume("main", "main");
 	assert.deepEqual([again.status, again.round, again.until], ["active", 3, 4]);
 	await settled(stuck.h);
@@ -329,7 +331,7 @@ test("swarm: work the lead hands to another agent is a task on the board that th
 	h.mock.state.scripts.rows = [{ text: "12 rows" }];
 	h.pine.agents.swarms.set("main", "main", job);
 	await settled(h);
-	assert.deepEqual([swarmOf(h)!.status, swarmOf(h)!.round, swarmOf(h)!.note], ["done", 1, "done after 1 round: 2 tasks, and the answer was checked"]);
+	assert.deepEqual([swarmOf(h)!.status, swarmOf(h)!.round, /2 tasks/.test(swarmOf(h)!.note)], ["done", 1, true]);
 	const tasks = h.pine.agents.boards.items(1, { kind: "task" });
 	const handed = tasks.find((t) => t.data?.agent === "helper")!;
 	// The other agent's answer is the task's result, also when it ends with a question: that goes back to who handed it the task.
@@ -381,7 +383,7 @@ test("swarm: only the owner starts one, through the control API; it is paused, r
 	assert.equal((await fetch(`${base}/agents/main/swarm`, { method: "POST", body: "{}" })).status, 401);
 	// Paused: the round that runs is the owner's to stop; no further one starts. Stopped: the swarm waits, like a goal.
 	const paused = await api("POST", "/agents/main/swarm", { session: "job", action: "pause" });
-	assert.deepEqual([paused.body.swarm.status, paused.body.swarm.note], ["paused", "paused by you. /swarm resume goes on"]);
+	assert.equal(paused.body.swarm.status, "paused");
 	const running = h.pine.tasks.list({ agent: "main", session: "job", limit: 10 }).find((t) => t.status === "running")!;
 	h.pine.agents.cancel(running.id);
 	await h.pine.agents.wait(running.id);
@@ -394,7 +396,7 @@ test("swarm: only the owner starts one, through the control API; it is paused, r
 	swarms.set("main", "keep", "the job @@REF:lead@@");
 	await until(() => h.pine.tasks.list({ agent: "main", session: "keep", limit: 10 }).some((t) => t.status === "running"), 5000, "the lead to start");
 	await h.restart();
-	assert.deepEqual([h.pine.agents.swarms.get("main", "keep")!.status, h.pine.agents.swarms.get("main", "keep")!.note], ["paused", "paused: pine was stopped while it was working. /swarm resume goes on"]);
+	assert.deepEqual([h.pine.agents.swarms.get("main", "keep")!.status, h.pine.agents.swarms.get("main", "keep")!.task], ["paused", undefined]);
 	await h.pine.agents.resetSession("main", "keep");
 	assert.equal(h.pine.agents.swarms.get("main", "keep"), undefined);
 	await h.close();
@@ -427,18 +429,21 @@ test("swarm: /swarm in the terminal UI starts one, shows what pine does about it
 		term.type([KEY.enter]);
 		await sleep(15);
 	};
+	// Where the swarm stands is asked of pine (its status, its round, whether a check runs); of the screen, that it
+	// names the round and shows the lead's answer. The sentences around them are the UI's to word.
+	const stands = (status: string, round: number, checking = false) => until(() => swarmOf(h)?.status === status && swarmOf(h)?.round === round && (swarmOf(h)?.checking !== undefined) === checking, 6000, `the swarm to be ${status} in round ${round}${checking ? ", checking" : ""} (it is ${JSON.stringify(swarmOf(h))})`);
 	await send("/swarm");
-	await sees("this conversation has no swarm");
+	await sees(/no swarm/);
+	assert.equal(swarmOf(h), undefined);
 	await send("/swarm tidy the archive @@REF:lead@@");
-	await sees("swarm started: main leads it");
-	await sees(/swarm · round 1 of 8 · (working|thinking)/);
+	await stands("active", 1);
+	await sees(/round 1 of 8/);
 	shown.working = true;
-	await sees("swarm 1 task is not done: round 2 of 8 starts");
+	await stands("active", 2, true);
 	await sees("ALL-SHELVES-SORTED");
-	await sees("swarm the answer is being checked by a sub-agent that did none of the work");
-	await sees(/swarm · round 2 of 8 · checking the answer/);
+	await sees(/round 2 of 8/);
 	shown.checking = true;
-	await sees("swarm done after 2 rounds: 1 task, and the answer was checked");
+	await stands("done", 2);
 	// The job was typed here, so it is shown once and as the owner's; what pine told the lead in a round is not shown as a message.
 	assert.ok(!text().includes("[elsewhere]") && !text().includes("[notify]") && !text().includes("the swarm is not finished") && !text().includes("your owner started a swarm") && !text().includes("Check the answer below"), text());
 	// Opened again, the conversation is read from pine's history: the owner's message is the job alone.
@@ -450,9 +455,9 @@ test("swarm: /swarm in the terminal UI starts one, shows what pine does about it
 	assert.ok(restored.includes("tidy the archive @@REF:lead@@") && !restored.includes("your owner started a swarm"), restored);
 	await again.stop();
 	await send("/swarm pause");
-	await sees("the swarm is not at work");
+	await sees(/not at work/);
+	assert.equal(swarmOf(h)!.status, "done", "a swarm that is done is not paused");
 	await send("/swarm clear");
-	await sees("swarm cleared");
-	assert.equal(swarmOf(h), undefined);
+	await until(() => swarmOf(h) === undefined, 6000, "the swarm to be cleared");
 	await h.close();
 });

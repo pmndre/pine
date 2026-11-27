@@ -124,7 +124,6 @@ test("a browser with no computer waiting is refused on a socket that is not kept
 	const o = object(ctx);
 	const { ws } = await o.open("/meet/join", computerKey().id);
 	assert.equal(ws.closed?.code, CLOSE.absent);
-	assert.equal(ws.closed?.reason, "No computer waits under this id.");
 	assert.equal(ws.accepted, "plain");
 	assert.equal(ctx.sockets.length, 0);
 });

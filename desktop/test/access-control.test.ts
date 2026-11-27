@@ -162,8 +162,10 @@ test("access control: a pairing is opened, the owner is asked with the device's 
 	assert.equal(request?.name, "Stand-in phone");
 	assert.match(request!.code, /^\d{4}$/);
 	await until("the page was told", () => calls.changes.some((s) => s.request?.code === request!.code));
-	await assert.rejects(control.answer(true, "another-question"), /no longer the one asking/, "an answer to another question allows nothing");
-	await assert.rejects(control.answer(true), /no longer the one asking/, "nor one that names none");
+	await assert.rejects(control.answer(true, "another-question"), "an answer to another question allows nothing");
+	await assert.rejects(control.answer(true), "nor one that names none");
+	assert.equal((await control.state()).request?.id, request!.id, "the question stands");
+	assert.deepEqual((await control.state()).devices, [], "and nobody was let in");
 	await control.answer(true, request!.id);
 	await until("the device is connected", async () => (await control.state()).devices[0]?.connected !== undefined);
 	const after = await control.state();
@@ -175,7 +177,8 @@ test("access control: a pairing is opened, the owner is asked with the device's 
 	assert.equal(calls.paired.length, 1);
 	assert.equal(calls.paired[0].name, "Stand-in phone");
 	await until("the paired phone was given this computer's daemon", () => calls.daemon >= 1);
-	await assert.rejects(control.answer(true), /No device is waiting/);
+	await assert.rejects(control.answer(true), "with nobody asking, an answer is refused");
+	assert.equal((await control.state()).devices.length, 1);
 });
 
 test("access control: a no, or a pairing cancelled, adds nothing and notifies nobody", async () => {
@@ -290,7 +293,8 @@ test("access control: a relay is kept with its address and user name in the pref
 		assert.ok(!JSON.stringify(calls.hostOptions[1].relay).includes(TURN_PASSWORD));
 		await until("the try is done", async () => (await control.state()).relay?.check?.result !== "trying");
 		const tried = await control.state();
-		assert.deepEqual(tried.relay?.check, { result: "usable", message: `This relay works. It gave this ${process.platform === "darwin" ? "Mac" : "computer"} an address.` });
+		assert.equal(tried.relay?.check?.result, "usable");
+		assert.equal(tried.relay?.check?.why, undefined, "a relay that works has no reason for a failure");
 		for (const told of [...calls.changes, tried, state]) assert.ok(!JSON.stringify(told).includes(TURN_PASSWORD), "no state the page reads has the password");
 		// Saved again with an empty password: the kept one stays.
 		await control.set({ relay: { address: `turn:127.0.0.1:${turn.port}`, username: TURN_USER, password: "" } });
@@ -323,11 +327,16 @@ test("access control: the try says why a relay cannot be used, and the relay is 
 			await until("the try is done", async () => (await control.state()).relay?.check?.result !== "trying");
 			return (await control.state()).relay!.check!;
 		};
-		assert.deepEqual(await result(`turn:127.0.0.1:${turn.port}`, "not-the-password"), { result: "failed", message: "Could not use this relay because it refused the user name or password. The relay is saved. Check both and save again." });
+		// Why, as a word for a program (`why`); the sentence beside it is the owner's to read.
+		const refused = await result(`turn:127.0.0.1:${turn.port}`, "not-the-password");
+		assert.deepEqual({ result: refused.result, why: refused.why }, { result: "failed", why: "refused" });
+		assert.ok(refused.message && !refused.message.includes("not-the-password") && !refused.message.includes(TURN_USER), "said in a sentence that repeats neither the user name nor the password");
 		assert.equal(prefs().relay?.address, `turn:127.0.0.1:${turn.port}`, "kept");
-		assert.match((await result(`turn:127.0.0.1:${silent.port}`, TURN_PASSWORD)).message, /^Could not use this relay because it did not answer\. The relay is saved/);
+		const quiet = await result(`turn:127.0.0.1:${silent.port}`, TURN_PASSWORD);
+		assert.deepEqual({ result: quiet.result, why: quiet.why }, { result: "failed", why: "silent" });
 		assert.equal(prefs().relay?.address, `turn:127.0.0.1:${silent.port}`, "kept");
-		assert.match((await result("turn:relay.example.invalid:3478", TURN_PASSWORD)).message, /no server was found under that name/);
+		const nowhere = await result("turn:relay.example.invalid:3478", TURN_PASSWORD);
+		assert.deepEqual({ result: nowhere.result, why: nowhere.why }, { result: "failed", why: "unknown" });
 	} finally {
 		await silent.close();
 		await turn.close();

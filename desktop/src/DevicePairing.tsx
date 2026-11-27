@@ -53,7 +53,7 @@ export function AddDeviceDialog({ opened, stale, now, onClose, onNew, onCopy }: 
 						</>
 					) : null}
 					<DialogFooter>
-						{opened && !stale ? <Button variant="outline" onClick={onCopy}><CopyIcon data-icon="inline-start" />Copy link</Button> : <Button onClick={onNew}><RotateCwIcon data-icon="inline-start" />New code</Button>}
+						{opened && !stale ? <Button variant="outline" data-action="copy" onClick={onCopy}><CopyIcon data-icon="inline-start" />Copy link</Button> : <Button data-action="new-code" onClick={onNew}><RotateCwIcon data-icon="inline-start" />New code</Button>}
 					</DialogFooter>
 				</div>
 			</DialogContent>

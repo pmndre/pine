@@ -344,7 +344,8 @@ test("boards: a pool comes back when a sub-agent asks, the conversation answers,
 	assert.match(first, /## What to do now\nAnswer task #1 with board_answer: only that puts a task back to work.* asking your owner does not by itself answer the task\. .*close it yourself with board_done \(id, result\)\.\nThen call subagent with "pool": true to go on/);
 	assert.doesNotMatch(first, /slow one done|quick one done/);
 	// The answer is for the task that asked, and with "all" for the one that has not started yet: it need not ask the same.
-	assert.equal(h.toolResults(turns(h)[2]).at(-1)!, "Answered. Task #1 is open again, and whoever takes it is shown the question and your answer. The 2 other tasks that are not finished are shown it as well.");
+	// (What the answer tells the agent, fact by fact: which task is open again, and how many others are shown the answer.)
+	assert.match(h.toolResults(turns(h)[2]).at(-1)!, /^Answered\. Task #1 is open again\b.*\b2 other tasks\b/);
 	assert.deepEqual(boards.items(1, { kind: "note" }).map((x) => [x.id, x.about ?? null, x.data ?? null]), [[4, 1, { question: "WHICH-WAY left or right?" }], [5, null, { tasks: [2, 3], question: "WHICH-WAY left or right?", of: 1 }]]);
 	const third = h.pine.tasks.list({ limit: 50 }).find((t) => t.meta.boardTask === 3)!;
 	assert.match(third.prompt, /third @@REF:quick@@\n\nQuestions that other tasks of this job asked, and the answers\. Each is about that other task, which somebody else does: you do not do it\. Where your own task meets the same question, go by the answer and do not ask again\.\n- Asked by the sub-agent of another task \(#1\), about its own task: WHICH-WAY left or right\?\n  Answer: GO-LEFT\n\nYour task is the one at the top, and only that: third @@REF:quick@@\n\n\[pine/);
@@ -398,7 +399,7 @@ test("boards: one answer does for every task that has the same question: those t
 	assert.match(first, /## Task #1 asks\nThe task: [^\n]*\nIts question:\nWHAT-RATE for a\?/);
 	assert.match(first, /## Task #2 asks\nThe task: [^\n]*\nIts question:\nWHAT-RATE for b\?/);
 	assert.match(first, /## Still being worked\n#3 \[taken by main\]/);
-	assert.equal(answered, "Answered. Task #1 is open again, and whoever takes it is shown the question and your answer. Task #2, which asked too, is open again with the same answer. The 1 other task that is not finished is shown it as well.");
+	assert.match(answered, /^Answered\. Task #1 is open again\b.*\bTask #2\b.*open again\b.*\b1 other task\b/);
 	// Each task that asked has the answer beside its own question, and the one still at work is named in the note for all.
 	assert.deepEqual(boards.items(1, { kind: "note" }).map((x) => [x.about ?? null, x.text, x.data]), [
 		[1, "RATE-100", { question: "WHAT-RATE for a?" }],

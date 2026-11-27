@@ -81,6 +81,10 @@ async function becomes(c: { states: ServiceState[] }, match: (s: ServiceState) =
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 60));
+/** Waits for what is to come, as long as a busy computer needs; the assertion after it says what is missing. */
+async function until(done: () => boolean, ms = 3000): Promise<void> {
+	for (const end = Date.now() + ms; !done() && Date.now() < end; ) await new Promise((r) => setTimeout(r, 5));
+}
 
 test("an iPhone, an iPod and an iPad are told apart from other devices, an iPad by its touch screen behind a Mac's user agent", () => {
 	assert.equal(onIosDevice(IPHONE, 5), true);
@@ -133,10 +137,10 @@ test("Open in the Pine app navigates to the app's address and uses no code; the 
 	const c = client(machine, IPHONE, (link) => chooseApp(link, SERVICE, choice.v, (url) => void went.push(url)));
 	await c.page.state();
 	c.page.ready();
-	await settle();
+	await until(() => choice.said.length > 0);
 	assert.deepEqual(choice.said, ["shown"]);
 	choice.app();
-	await settle();
+	await until(() => went.length > 0 && choice.said.length > 1);
 	assert.deepEqual(went, [appAddress(SERVICE, LINK)]);
 	assert.deepEqual(choice.said, ["shown", "tried"]);
 	assert.deepEqual(machine.connects, []);
@@ -151,10 +155,12 @@ test("Continue in this browser pairs exactly as on another device", async () => 
 	const c = client(machine, IPHONE, (link) => chooseApp(link, SERVICE, choice.v, (url) => void went.push(url)));
 	await c.page.state();
 	c.page.ready();
-	await settle();
+	await until(() => choice.said.length > 0);
 	choice.browser();
 	const asked = await becomes(c, (s) => s.status === "starting" && s.pairing?.code !== undefined);
-	assert.deepEqual(asked, { status: "starting", pairing: { code: DIGITS, name: "Safari on iPhone" } });
+	const asking = asked as { status: string; pairing: { code: string; name: string } };
+	assert.deepEqual([asking.status, asking.pairing.code], ["starting", DIGITS]);
+	assert.ok(asking.pairing.name.includes("Safari") && asking.pairing.name.includes("iPhone"), `this browser, named for the computer: ${asking.pairing.name}`);
 	assert.deepEqual(choice.said, ["shown", "closed"]);
 	assert.deepEqual(machine.connects, [{ url: `peer:${ID}`, user: `pair.${CODE}`, hostFingerprint: pairedFingerprint(ID) }]);
 	machine.answer("allow");

@@ -357,27 +357,32 @@ test("tui: /worktree moves a conversation into one, the bar names its branch, an
 		await sleep(15);
 	};
 
+	// Where the worktree stands is asked of pine and of git; of the screen, that the bar names its branch and that
+	// the menu offers what the test then takes (its first entry, with enter).
+	const branch = async () => (await client.worktree("main", "try")).worktree?.branch;
+	const bar = () => app.screen().at(-1)!;
 	await app.openFolder(dir, "try");
-	await sees("now works in the worktree pine/try");
-	await sees(/⎇ pine\/try/);
-	assert.equal((await client.worktree("main", "try")).worktree?.branch, "pine/try");
+	await until(async () => (await branch()) === "pine/try", 6000, "the worktree to be made");
+	await until(() => bar().includes("pine/try"), 6000, `the bar to name the branch: ${bar()}`);
 	await send(mockMsg([{ tools: [bash(`echo MERGED > a.txt && ${agentGit} commit -qam work`)] }, { text: "committed" }]));
-	await until(() => !text().includes("working ·") && git("log", "-1", "--format=%s", "pine/try").trim() === "work", 8000, "the agent to have committed");
+	await until(() => git("log", "-1", "--format=%s", "pine/try").trim() === "work", 8000, "the agent to have committed");
 	await until(() => h.pine.agents.status().running.length === 0, 5000, "the run to end");
 
 	await send("/worktree");
-	await sees("Merge into main");
-	await sees(/1 commit ahead of main/);
+	await until(() => app.state().dialog === "menu", 6000, "the worktree's menu");
+	await sees(/Merge\b/);
+	await sees(/1 commit\b/);
 	term.type([KEY.enter]);
-	await sees(/1 commit of pine\/try merged into main \(a fast-forward\)/);
-	assert.equal(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), "MERGED\n");
+	await until(() => fs.existsSync(path.join(dir, "a.txt")) && fs.readFileSync(path.join(dir, "a.txt"), "utf8") === "MERGED\n", 6000, "the commit to be merged into the folder's branch");
 
 	// Discarded once merged: no question, and the bar shows the folder again.
+	await until(() => app.state().dialog === undefined, 6000, "the menu to close");
 	await send("/worktree");
-	await sees("Discard the worktree");
+	await until(() => app.state().dialog === "menu", 6000, "the worktree's menu");
+	await sees(/Discard\b/);
 	term.type([KEY.enter]);
-	await sees("the worktree is gone");
-	await until(() => !/⎇/.test(app.screen().at(-1)!), 4000, "the bar to show the folder again");
+	await until(async () => (await branch()) === undefined, 6000, "the worktree to be gone");
+	await until(() => !bar().includes("pine/try"), 4000, `the bar to show the folder again: ${bar()}`);
 	assert.doesNotMatch(git("branch", "--list", "pine/*"), /pine\/try/);
 });
 
@@ -398,18 +403,19 @@ test("tui: a folder opened and a worktree made for a conversation by another han
 	await app.start();
 	const bar = () => app.screen().at(-1)!;
 	const shows = (what: string | RegExp, why: string) => until(() => (typeof what === "string" ? bar().includes(what) : what.test(bar())), 6000, `${why}\n--- bar ---\n${bar()}`);
-	await shows("no folder", "the bar of a conversation without a folder");
+	await shows("mock/m", "the bar to be drawn");
+	assert.ok(!bar().includes(path.basename(dir)), "a conversation without a folder");
 
 	// Another UI on the same daemon (the Pine app, a second terminal): this one is told nothing but that the conversation changed.
 	const other = new Client(`http://127.0.0.1:${h.pine.http!.port}`, h.pine.token);
 	await other.setFolder("main", "main", dir);
 	await shows(path.basename(dir), "the bar to name the folder that was opened elsewhere");
 	await other.makeWorktree("main", "main", "elsewhere");
-	await shows(/⎇ pine\/elsewhere/, "the bar to name the worktree that was made elsewhere");
+	await shows("pine/elsewhere", "the bar to name the worktree that was made elsewhere");
 	await other.discardWorktree("main", "main");
-	await until(() => !/⎇/.test(bar()) && bar().includes(path.basename(dir)), 6000, `the bar to show the folder again\n--- bar ---\n${bar()}`);
+	await until(() => !bar().includes("pine/elsewhere") && bar().includes(path.basename(dir)), 6000, `the bar to show the folder again\n--- bar ---\n${bar()}`);
 	await other.setFolder("main", "main", null);
-	await shows("no folder", "the bar to say that the folder was closed elsewhere");
+	await until(() => !bar().includes(path.basename(dir)), 6000, `the bar to name the folder no longer, which was closed elsewhere\n--- bar ---\n${bar()}`);
 
 	// What a UI is told names the conversation and nothing of where it works.
 	const folders = told.filter((p) => p.change === "folder");

@@ -36,7 +36,7 @@ export function SignInCard({ provider, url, code, question, error, onOpen, onCop
 	onCancel: () => void;
 }) {
 	const [copied, setCopied] = useState(false);
-	const cancel = <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>;
+	const cancel = <Button size="sm" variant="ghost" data-action="cancel" onClick={onCancel}>Cancel</Button>;
 	if (question?.options?.length) {
 		const options = question.options;
 		return <QuestionCard question={question.message} header="Sign-in" from={provider} options={options.map((o) => ({ label: o.label, description: o.description }))} autoFocus actions={cancel} onAnswer={([n]) => onAnswer(options[n - 1].id)} />;
@@ -56,7 +56,7 @@ export function SignInCard({ provider, url, code, question, error, onOpen, onCop
 				onSend={onAnswer}
 			>
 				{url ? (
-					<Button size="sm" variant="outline" className="self-start" onClick={onOpen}>
+					<Button size="sm" variant="outline" className="self-start" data-action="open" onClick={onOpen}>
 						<ExternalLinkIcon data-icon="inline-start" />
 						Open the sign-in page again
 					</Button>
@@ -72,7 +72,7 @@ export function SignInCard({ provider, url, code, question, error, onOpen, onCop
 			start={cancel}
 			end={
 				url ? (
-					<Button size="sm" variant="outline" onClick={onOpen}>
+					<Button size="sm" variant="outline" data-action="open" onClick={onOpen}>
 						<ExternalLinkIcon data-icon="inline-start" />
 						Open the sign-in page again
 					</Button>
@@ -83,7 +83,7 @@ export function SignInCard({ provider, url, code, question, error, onOpen, onCop
 				<InputGroup>
 					<InputGroupInput data-sign-in="code" readOnly aria-label="The code to enter" value={code} />
 					<InputGroupAddon align="inline-end">
-						<InputGroupButton onClick={() => (onCopy(code), setCopied(true))}>
+						<InputGroupButton data-action="copy" data-copied={copied || undefined} onClick={() => (onCopy(code), setCopied(true))}>
 							{copied ? <CheckIcon data-icon="inline-start" /> : <CopyIcon data-icon="inline-start" />}
 							Copy
 						</InputGroupButton>

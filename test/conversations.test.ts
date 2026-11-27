@@ -315,26 +315,30 @@ test("tui: a tab the main agent opens appears behind the one the owner is in, an
 	const text = () => app.screen().join("\n");
 	const sees = (what: RegExp) => until(() => what.test(text()), 5000, `the screen to show ${what}\n--- screen ---\n${text()}`);
 	const main = async (...tools: any[]) => void (await h.pine.agents.run({ agent: "main", session: "work", prompt: mockMsg([{ tools }]), ...owner }));
-	await sees(/^ pine\s+1 ★ main ×/m);
+	// The tabs by what they are (PineTui.state()), not by how the bar draws them.
+	const tabs = () => app.state().tabs.map((x) => `${x.agent}·${x.session}`).join(" ");
+	const tabsAre = (want: string) => until(() => tabs() === want, 5000, `the tabs ${want} (they are ${tabs()})`);
+	await tabsAre("main·main");
 
 	await main(call("set_conversation", { agent: "helper", name: "notes", tab: true }));
-	await sees(/1 ★ main ×\s+2 helper·notes ×/);
-	// The owner is still where they were: the header is the first tab's, and the new tab's words are not on screen.
-	assert.match(text(), /main · main · no folder/);
+	await tabsAre("main·main helper·notes");
+	// The owner is still where they were: the first tab is in front, and the new tab's words are not on screen.
+	assert.equal(app.state().front, 0);
 	assert.ok(!text().includes("remember the llamas"), text());
 	await until(() => h.pine.agents.uiTabs().tabs.length === 2 && h.pine.agents.uiTabs().active === 0, 3000, "the UI to have saved its tabs");
 
 	await main(call("set_conversation", { agent: "helper", name: "notes", rename: "papers" }));
-	await sees(/2 helper·papers ×/);
+	await tabsAre("main·main helper·papers");
+	await sees(/helper·papers/);
 	await main(call("set_conversation", { agent: "helper", name: "papers", tab: false }));
-	await until(() => !/helper·papers/.test(text()), 5000, `the tab to close\n${text()}`);
+	await tabsAre("main·main");
 	assert.ok(h.pine.agents.conversations("helper").some((c: any) => c.session === "papers"), "the conversation stays");
 
 	await main(call("set_conversation", { agent: "helper", name: "papers", tab: true }));
-	await sees(/2 helper·papers ×/);
+	await tabsAre("main·main helper·papers");
 	await main(call("remove_conversation", { agent: "helper", name: "papers" }));
-	await until(() => !/helper·papers/.test(text()), 5000, `the tab of a removed conversation to go\n${text()}`);
-	assert.match(text(), /main · main · no folder/);
+	await tabsAre("main·main");
+	assert.equal(app.state().front, 0);
 	await app.stop();
 	await h.close();
 });
@@ -353,16 +357,16 @@ test("tui: /group puts the conversation into a group and takes it out, and the l
 	await sees(/main·okapi/);
 	term.type("/group Zoo");
 	term.type([KEY.enter]);
-	await sees(/this conversation is in the group Zoo: it is kept however long it is not used/);
-	assert.equal(h.pine.agents.groupOf("main", "okapi"), "Zoo");
+	await until(() => h.pine.agents.groupOf("main", "okapi") === "Zoo", 5000, "the conversation to be in the group");
 	term.type("/sessions");
 	term.type([KEY.enter]);
-	await sees(/okapi\s+▸ Zoo .* kept in a group/);
+	await until(() => app.state().dialog === "conversations", 5000, "the list of conversations");
+	await sees(/okapi\s.*\bZoo\b/);
+	assert.ok(!/llama\s.*\bZoo\b/.test(text()), "only the one that is in it");
 	term.type([KEY.esc]);
 	term.type("/group -");
 	term.type([KEY.enter]);
-	await sees(/this conversation is in no group now/);
-	assert.equal(h.pine.agents.groupOf("main", "okapi"), undefined);
+	await until(() => h.pine.agents.groupOf("main", "okapi") === undefined, 5000, "the conversation to be out of the group");
 	await app.stop();
 	await h.close();
 });

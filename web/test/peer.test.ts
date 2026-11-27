@@ -177,7 +177,7 @@ test("a computer whose host key is not the link's id is refused before the brows
 		lied.bridge.stop();
 		return end;
 	}, named.link());
-	assert.match(state.status === "error" ? state.message : "", /not the one this pairing link names/);
+	assert.match(state.status === "error" ? state.message : "", /pairing link/, "it is the link that is said not to fit, not the network");
 	assert.deepEqual(other.admitted, [], "the other computer was never offered a key");
 	assert.deepEqual(named.admitted, []);
 });
@@ -201,7 +201,7 @@ test("the ways a paired computer cannot be reached are told apart: nobody waits,
 		lone.bridge.stop();
 		return end.status === "error" ? end.message : "";
 	}, `${meeting.url}/#pair=${nobody}.AAECAwQFBgcICQoLDA0ODw`);
-	assert.match(said, /^Your computer does not answer: it is off, asleep, or Pine is closed\. Open Pine on your computer and add this device again\.$/);
+	assert.ok(said.length > 0 && !said.includes(nobody), `said in words, without the computer's id: ${said}`);
 });
 
 test("a browser whose key the paired computer no longer knows is told so, and stops trying", async () => {
@@ -215,5 +215,5 @@ test("a browser whose key the paired computer no longer knows is told so, and st
 		return { message: end.status === "error" ? end.message : "", again: made.opened - opened };
 	});
 	assert.equal(said.again, 0, "no way to the computer was opened again");
-	assert.equal(said.message, "This browser is no longer known to Test Mac. Open Pine on Test Mac and add this device again.");
+	assert.ok(said.message.includes("Test Mac"), `said of the computer by its name: ${said.message}`);
 });

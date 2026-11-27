@@ -134,13 +134,13 @@ export interface AccessState {
 /**
  * The relay as the page reads it. `check`: the try made when it was saved; `trying` while it runs,
  * `usable` when the relay gave this computer an address, `failed` otherwise, with the reason in
- * `message`. A relay that failed is kept all the same.
+ * `message` for the owner and in `why` for a program (`refused`, `silent`, `unknown`, `unavailable`). A relay that failed is kept all the same.
  */
 export interface AccessRelay {
 	address: string;
 	username: string;
 	password: boolean;
-	check?: { result: "trying" | "usable" | "failed"; message: string };
+	check?: { result: "trying" | "usable" | "failed"; message: string; why?: RelayTry };
 }
 
 /**
@@ -227,13 +227,13 @@ const NO_ADDRESS = "Browser access needs the address of the service that a brows
 const REPLACED = `Another copy of Pine with this ${COMPUTER}'s key is now waiting at the service, so this one stopped. Turn browser access off and on again to wait here instead.`;
 
 /** What a try of the relay found, said under its field. Nothing here repeats the user name or the password. */
-const TRIED: Record<RelayTry | "trying", { result: "trying" | "usable" | "failed"; message: string }> = {
+const TRIED: Record<RelayTry | "trying", NonNullable<AccessRelay["check"]>> = {
 	trying: { result: "trying", message: "Trying the relay..." },
 	usable: { result: "usable", message: `This relay works. It gave this ${COMPUTER} an address.` },
-	refused: { result: "failed", message: "Could not use this relay because it refused the user name or password. The relay is saved. Check both and save again." },
-	silent: { result: "failed", message: "Could not use this relay because it did not answer. The relay is saved and will be used once it answers. Check the address and that the server is running." },
-	unknown: { result: "failed", message: "Could not use this relay because no server was found under that name. The relay is saved. Check the address." },
-	unavailable: { result: "failed", message: "Could not try this relay because browser access cannot connect on this system." },
+	refused: { result: "failed", why: "refused", message: "Could not use this relay because it refused the user name or password. The relay is saved. Check both and save again." },
+	silent: { result: "failed", why: "silent", message: "Could not use this relay because it did not answer. The relay is saved and will be used once it answers. Check the address and that the server is running." },
+	unknown: { result: "failed", why: "unknown", message: "Could not use this relay because no server was found under that name. The relay is saved. Check the address." },
+	unavailable: { result: "failed", why: "unavailable", message: "Could not try this relay because browser access cannot connect on this system." },
 };
 
 /** The relay of the preferences as the host is handed it, without its password. */

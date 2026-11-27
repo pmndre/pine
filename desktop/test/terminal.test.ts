@@ -75,7 +75,9 @@ test("terminal: a shell that ends says so; one that is closed does not, and its 
 test("terminal: a name that is not a conversation's, a folder that is not one, and the app's own variables are refused", { skip: posix }, async () => {
 	const w = world();
 	try {
-		await assert.rejects(w.terms.open("../x y", w.dir, 80, 24), /not a terminal's name/);
+		// Refused for its name (whatever the refusal's words), and no shell was started under it.
+		await assert.rejects(w.terms.open("../x y", w.dir, 80, 24), /name/i);
+		assert.equal(w.terms.has("../x y"), false);
 		assert.equal(startIn(path.join(w.dir, "missing")), os.homedir());
 		assert.equal(startIn("relative/path"), os.homedir());
 		assert.equal(startIn(w.dir), w.dir);
@@ -98,7 +100,9 @@ test("runnable: a block is run as it is shown, and one that holds what does not 
 	for (const hidden of ["\x1b[2K", "\r", "\b", "\u202E", "\u200B", "\u2028", "\u{E0041}", "\x00", "\u0085"]) {
 		const r = runnable(`echo safe${hidden}rm -rf ~`);
 		assert.equal(r.ok, false, JSON.stringify(hidden));
-		assert.match((r as { why: string }).why, /does not show as itself \(U\+[0-9A-F]{4,6}\)/);
+		// The refusal names the character that would not show, by its code point: that is what the owner is told to look for.
+		const point = `U+${hidden.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`;
+		assert.ok((r as { why: string }).why.includes(point), `${JSON.stringify(hidden)} is named as ${point}: ${(r as { why: string }).why}`);
 	}
 });
 
@@ -146,7 +150,7 @@ for (const shell of ["/bin/bash", "/bin/zsh"].filter((s) => fs.existsSync(s))) {
 			await w.until(() => w.runs.length > 0);
 			assert.equal(w.runs[0].state, "running");
 			assert.match(w.runs[0].output, /serving/);
-			await assert.rejects(w.terms.run("main:s", "echo another"), /busy with another command/);
+			await assert.rejects(w.terms.run("main:s", "echo another"), /busy/i);
 			await new Promise((res) => setTimeout(res, 600));
 			assert.equal(w.runs.length, 1, "said once");
 			w.terms.write("main:s", "\x03");

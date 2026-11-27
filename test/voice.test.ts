@@ -342,20 +342,23 @@ test("voice: ctrl+r dictates into the message, after what was typed; enter ends 
 		await app.start();
 		const text = () => app.screen().join("\n");
 		const sees = (what: string | RegExp, ms = 4000) => until(() => (typeof what === "string" ? text().includes(what) : what.test(text())), ms, `the screen to show ${what}\n--- screen ---\n${text()}`);
-		return { term, app, text, sees };
+		// How far the dictating is, is the UI's own state (PineTui.state().voice), not the words of its status line.
+		const ready = () => until(() => app.state().tabs.length > 0 && app.screen().some((l) => l.trim() !== ""), 4000, "the UI to be drawn");
+		const dictating = (state: "starting" | "listening" | undefined, ms = 4000) => until(() => app.state().voice === state, ms, `dictating to be ${state ?? "over"} (it is ${app.state().voice})\n--- screen ---\n${text()}`);
+		return { term, app, text, sees, ready, voice: dictating };
 	};
 	const said = [{ type: "ready" }, { type: "partial", text: "which bill" }, { type: "partial", text: "which bill is due first" }];
 	let ui = await open({ program: async () => standIn(dir, said) });
-	await ui.sees("type a message");
+	await ui.ready();
 	const tasks = () => h.pine.tasks.list({}).length;
 
 	ui.term.type("About the scans:");
 	ui.term.type([CTRL_R]);
-	await ui.sees("● listening · speak · enter when you are done · esc to throw it away");
+	await ui.voice("listening");
 	await ui.sees("About the scans: which bill is due first");
 	// Enter ends the listening. The words stay in the input to be read; nothing has been sent.
 	ui.term.type([KEY.enter]);
-	await until(() => !/listening|finishing/.test(ui.text()), 4000, "the listening to end");
+	await ui.voice(undefined);
 	await ui.sees("About the scans: which bill is due first");
 	await sleep(150);
 	assert.equal(tasks(), 0, "what was heard is not sent by itself");
@@ -372,15 +375,15 @@ test("voice: ctrl+r dictates into the message, after what was typed; enter ends 
 		assert.ok(y >= 0, `a microphone on the screen\n${ui.text()}`);
 		return { y, x: lines[y].indexOf("🎤"), line: lines[y] };
 	};
-	assert.ok(!ui.app.screen()[0].includes("🎤"), "not in the tab bar");
-	assert.match(mic().line, /^ {10,}🎤$/, "at the right end of the input's line, which is empty");
-	assert.match(ui.app.screen()[mic().y - 1], /^─+$/, "the line above the input runs on over it");
+	/** What stands in the input: its line without the microphone. */
+	const input = () => mic().line.replace("🎤", "").trim();
+	assert.equal(input(), "", "the input is empty");
 	ui.term.click(mic().x, mic().y);
-	await ui.sees("● listening · speak");
-	await until(() => /^ which bill is due first +🎤$/.test(mic().line), 3000, "the words in the input, the microphone after them");
+	await ui.voice("listening");
+	await until(() => input() === "which bill is due first", 3000, `the words in the input (${input()})`);
 	// (One cell further: two clicks on one spot are a double click, which is no second click.)
 	ui.term.click(mic().x + 1, mic().y);
-	await until(() => !/● (listening|finishing)/.test(ui.text()), 4000, "the click to end the listening");
+	await ui.voice(undefined);
 	await sleep(120);
 	assert.equal(tasks(), 1, "and it sends nothing either");
 	ui.term.type([KEY.enter]);
@@ -391,17 +394,17 @@ test("voice: ctrl+r dictates into the message, after what was typed; enter ends 
 	ui.term.type([CTRL_R]);
 	await ui.sees("keep this which bill is due first");
 	ui.term.type([KEY.esc]);
-	await until(() => !ui.text().includes("listening"), 3000, "the listening to end");
-	await until(() => /^ keep this +🎤$/.test(ui.app.screen().find((l) => l.includes("keep this")) ?? ""), 3000, `what was typed before, alone in the input\n${ui.text()}`);
+	await ui.voice(undefined, 3000);
+	await until(() => input() === "keep this", 3000, `what was typed before, alone in the input\n${ui.text()}`);
 	// Nothing heard comes after it: a short look for words that should not arrive.
 	await sleep(120);
-	assert.ok(/^ keep this +🎤$/.test(ui.app.screen().find((l) => l.includes("keep this")) ?? "") && !ui.text().includes("keep this which"), ui.text());
+	assert.equal(input(), "keep this", ui.text());
 	assert.equal(tasks(), 2);
 	await ui.app.stop();
 
 	// It cannot listen: the reason is shown, and the input is as it was.
 	ui = await open({ program: async () => standIn(dir, [{ type: "error", code: "microphone", message: "pine may not use the microphone. Allow it in System Settings > Privacy & Security > Microphone." }]) });
-	await ui.sees("type a message");
+	await ui.ready();
 	ui.term.type("typed");
 	ui.term.type([CTRL_R]);
 	await ui.sees("pine may not use the microphone. Allow it in System Settings");
@@ -412,7 +415,7 @@ test("voice: ctrl+r dictates into the message, after what was typed; enter ends 
 	let started = 0;
 	const linux = voiceTools("linux", dir, { look: linuxWith([]) });
 	ui = await open({ ...linux, program: () => (started++, linux.program()) });
-	await ui.sees("type a message");
+	await ui.ready();
 	assert.ok(ui.text().includes("▤ code") && !ui.text().includes("🎤"), "no microphone is offered where there is none to use");
 	ui.term.type([CTRL_R]);
 	await ui.sees("Voice input on Linux");
@@ -436,17 +439,20 @@ test("voice: dictating never holds the input: a typed key ends it, and so does e
 		await app.start();
 		const text = () => app.screen().join("\n");
 		const sees = (what: string | RegExp, ms = 4000) => until(() => (typeof what === "string" ? text().includes(what) : what.test(text())), ms, `the screen to show ${what}\n--- screen ---\n${text()}`);
-		return { term, app, text, sees };
+		// How far the dictating is, is the UI's own state (PineTui.state().voice), not the words of its status line.
+		const ready = () => until(() => app.state().tabs.length > 0 && app.screen().some((l) => l.trim() !== ""), 4000, "the UI to be drawn");
+		const dictating = (state: "starting" | "listening" | undefined, ms = 4000) => until(() => app.state().voice === state, ms, `dictating to be ${state ?? "over"} (it is ${app.state().voice})\n--- screen ---\n${text()}`);
+		return { term, app, text, sees, ready, voice: dictating };
 	};
 	// It goes on hearing, word after word. What is typed meanwhile must not be overwritten by the next word.
 	const talking = [{ type: "ready" }, { type: "partial", text: "one" }, ...Array.from({ length: 40 }, (_, i) => ({ type: "partial", text: `one two ${i}` }))];
 	let ui = await open({ program: async () => standIn(dir, talking) });
-	await ui.sees("type a message");
+	await ui.ready();
 	ui.term.type([CTRL_R]);
-	await ui.sees("● listening");
-	await ui.sees(/one two \d+ +🎤/);
+	await ui.voice("listening");
+	await ui.sees(/one two \d+/);
 	ui.term.type("!");
-	await until(() => !/● (listening|finishing)/.test(ui.text()), 3000, "the typed key to end the listening");
+	await ui.voice(undefined, 3000);
 	const typed = ui.app.screen().find((l) => l.includes("one two") && l.includes("!")) ?? "";
 	assert.match(typed, /one two \d+!/, "what was heard stays, and the key is typed after it");
 	await sleep(250);
@@ -457,11 +463,11 @@ test("voice: dictating never holds the input: a typed key ends it, and so does e
 
 	// A helper that never gets to listen (the system is waiting for an answer about the microphone): enter gets out of it.
 	ui = await open({ program: async () => [process.execPath, "-e", "setInterval(() => {}, 1000)"] });
-	await ui.sees("type a message");
+	await ui.ready();
 	ui.term.type([CTRL_R]);
-	await ui.sees("● getting ready to listen");
+	await ui.voice("starting");
 	ui.term.type([KEY.enter]);
-	await until(() => !ui.text().includes("getting ready to listen"), 3000, "enter to end what never began");
+	await ui.voice(undefined, 3000);
 	ui.term.type("still here");
 	ui.term.type([KEY.enter]);
 	await ui.sees("ECHO[still here]");

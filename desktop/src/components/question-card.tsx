@@ -57,6 +57,8 @@ export const COMPOSER_QUESTION = "-m-[3px] flex min-h-0 flex-col *:data-[slot=sc
 export interface QuestionCardOption {
 	label: string;
 	description?: string;
+	/** What the option is, in a word that stays when its label is reworded (`data-option`), where the asker has one. */
+	id?: string;
 }
 
 /**
@@ -155,7 +157,9 @@ export class ComposerCardSlot implements QuestionCardHostValue {
  * for the owner's own words: the composer below is that (`type`, through the host). The same card
  * for an agent's `question` and for what pine asks itself.
  */
-export function QuestionCard({ question, header, from, options, multiple, recommended, autoFocus, actions, type, placeholder, onAnswer, onNoAnswer, onLater }: {
+export function QuestionCard({ id, question, header, from, options, multiple, recommended, autoFocus, actions, type, placeholder, onAnswer, onNoAnswer, onLater }: {
+	/** What is asked, in a word that stays when the question is reworded (`data-question`), where the asker has one. */
+	id?: string;
 	question: string;
 	/** A few words about the question, such as "Database", said with who asks. */
 	header?: string;
@@ -203,6 +207,7 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 	const about = [header, from].filter(Boolean).join(" · ");
 	return (
 		<Questionnaire
+			data-question={id}
 			defaultItem="answer"
 			shortcuts="numbers"
 			onKeyDownCapture={(e) => {
@@ -228,6 +233,8 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 							<QuestionnaireChoice
 								key={i}
 								value={String(i + 1)}
+								data-option={o.id}
+								data-recommended={i === 0 && recommended && !multiple ? "" : undefined}
 								onChange={(e) => {
 									if (!multiple && e.currentTarget.checked && !moving.current) settle(e.currentTarget.form, [i + 1]);
 								}}
@@ -245,9 +252,9 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 			</QuestionnaireItem>
 			{actions || onLater || onNoAnswer || multiple ? (
 				<CardActions start={actions}>
-					{onLater ? <Button size="sm" variant="ghost" onClick={onLater}>Later</Button> : null}
-					{onNoAnswer ? <QuestionnaireSkip size="sm">No answer</QuestionnaireSkip> : null}
-					{multiple ? <QuestionnaireSubmit size="sm" disabled={!ticked}>Send</QuestionnaireSubmit> : null}
+					{onLater ? <Button size="sm" variant="ghost" data-action="later" onClick={onLater}>Later</Button> : null}
+					{onNoAnswer ? <QuestionnaireSkip size="sm" data-action="no-answer">No answer</QuestionnaireSkip> : null}
+					{multiple ? <QuestionnaireSubmit size="sm" data-action="send" disabled={!ticked}>Send</QuestionnaireSubmit> : null}
 				</CardActions>
 			) : null}
 		</Questionnaire>

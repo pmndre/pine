@@ -84,6 +84,12 @@ export interface Harness {
 	/** Model requests whose system prompt contains `marker`. */
 	requestsFor(marker: string): any[];
 	toolResults(req?: any): string[];
+	/**
+	 * The newest tool result, in any request so far, that matches. For a result that is looked for by what it
+	 * says: positions from the end of the last request are another run's as soon as something else asks the model
+	 * meanwhile (an agent that a source has just woken), and that is a race.
+	 */
+	toolResult(what: RegExp): string | undefined;
 	toolsOffered(req: any): string[];
 	/** Everything an agent can read about one of its tools: its declaration, or, where the tool is an action of a family, what find_tools says about it. As JSON text. */
 	about(tool: string, agent?: string): Promise<string>;
@@ -167,6 +173,13 @@ export async function harness(spec: { pine?: Record<string, unknown>; agents: Re
 		workspace: (agent) => h.pine.cfg.agents[agent].workspace,
 		requestsFor: (marker) => mock.state.requests.filter((r: any) => h.system(r).includes(marker)),
 		toolResults: (req = mock.state.requests.at(-1)) => req.body.messages.filter((m: any) => m.role === "tool").map((m: any) => textOf(m.content)),
+		toolResult: (what) => {
+			for (const req of [...mock.state.requests].reverse()) {
+				const found = h.toolResults(req).findLast((r) => what.test(r));
+				if (found !== undefined) return found;
+			}
+			return undefined;
+		},
 		toolsOffered: (req) => offered(req),
 		about: async (tool, agent = "main") => {
 			await h.pine.agents.run({ agent, session: "new", prompt: mockMsg([{ tools: [{ name: "find_tools", args: { names: [tool] } }] }]), trust: "owner" } as any);

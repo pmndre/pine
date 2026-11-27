@@ -208,7 +208,7 @@ export function SetupScript({ tab }: { tab: Tab }) {
 				</Fragment>
 			))}
 			{problem ? null : (
-				<div data-slot="setup-model">
+				<div data-slot="setup-model" data-model={facts.main.model}>
 					<Marker className="select-text">
 						<MarkerIcon>
 							<CpuIcon />
@@ -259,11 +259,12 @@ export function SetupCard({ tab }: { tab: Tab }) {
 		) : (
 			<QuestionCard
 				key="first"
+				id="model"
 				question={FIRST}
 				recommended
 				header="Model"
 				from="pine asks"
-				options={BRANCHES.map((b) => ({ label: b.label, description: b.description }))}
+				options={BRANCHES.map((b) => ({ id: b.id, label: b.label, description: b.description }))}
 				autoFocus={free}
 				onAnswer={([n]) => {
 					const b = BRANCHES[n - 1];
@@ -277,12 +278,13 @@ export function SetupCard({ tab }: { tab: Tab }) {
 		card = (
 			<QuestionCard
 				key="keep"
+				id="keep"
 				question={KEEP}
 				header="Model"
 				from="pine asks"
 				options={[
-					{ label: "Go on", description: "Keep it. You can change it at any time in Settings › Models." },
-					{ label: "Choose another model", description: "Pick among the models your agents can use now." },
+					{ id: "go-on", label: "Go on", description: "Keep it. You can change it at any time in Settings › Models." },
+					{ id: "another", label: "Choose another model", description: "Pick among the models your agents can use now." },
 				]}
 				autoFocus={free}
 				onAnswer={([n]) => {

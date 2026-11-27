@@ -233,7 +233,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 								<span className="min-w-0 flex-1 truncate text-left">{t.title || (t.url === "about:blank" ? "New tab" : t.url)}</span>
 							</TabsTrigger>
 							{/* (Closing the last tab leaves the browser up without a page: the view is empty again.) */}
-							<Button variant="ghost" size="icon-xs" aria-label={state.tabs.length > 1 ? "Close this tab" : "Close the page"} className={cn(i !== state.current && "invisible group-hover/tab:visible")} onClick={() => act({ do: "closetab", index: i })}><XIcon /></Button>
+							<Button variant="ghost" size="icon-xs" data-action="closetab" aria-label={state.tabs.length > 1 ? "Close this tab" : "Close the page"} className={cn(i !== state.current && "invisible group-hover/tab:visible")} onClick={() => act({ do: "closetab", index: i })}><XIcon /></Button>
 						</div>
 					))}
 							</TabsList>
@@ -241,7 +241,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 						</div>
 					</ScrollArea>
 					<HoverTooltip>
-						<TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="New tab" onClick={() => (act({ do: "newtab" }), line.current?.focus())} />}><PlusIcon /></TooltipTrigger>
+						<TooltipTrigger render={<Button variant="ghost" size="icon-xs" data-action="newtab" aria-label="New tab" onClick={() => (act({ do: "newtab" }), line.current?.focus())} />}><PlusIcon /></TooltipTrigger>
 						<TooltipContent>New tab</TooltipContent>
 					</HoverTooltip>
 				</div>
@@ -249,7 +249,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 			<div className="flex flex-none items-center gap-0.5 border-b border-line-soft px-2 py-1.5">
 				<ButtonGroup>
 					<HoverTooltip>
-						<TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Back" disabled={!open} onClick={() => act({ do: "back" })} />}><ChevronLeftIcon /></TooltipTrigger>
+						<TooltipTrigger render={<Button variant="ghost" size="icon-xs" data-action="back" aria-label="Back" disabled={!open} onClick={() => act({ do: "back" })} />}><ChevronLeftIcon /></TooltipTrigger>
 						<TooltipContent>Back</TooltipContent>
 					</HoverTooltip>
 					<HoverTooltip>
@@ -264,6 +264,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 				<InputGroup className="ml-1 min-w-0 flex-1">
 					<InputGroupInput
 						aria-label="Address"
+						data-field="address"
 						className="min-w-0"
 						spellCheck={false}
 						placeholder="Enter an address, like example.com or localhost:3000"
@@ -326,7 +327,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 			) : !state ? (
 				lookError ? <Empty><EmptyHeader><EmptyMedia variant="icon"><EyeIcon /></EmptyMedia><EmptyTitle>Could not reach the browser</EmptyTitle><EmptyDescription>{lookError}</EmptyDescription></EmptyHeader></Empty> : <BrowserSkeleton className="min-h-0 flex-1" />
 			) : (
-				<Empty>
+				<Empty data-state="no-page">
 					<EmptyHeader>
 						<EmptyMedia variant="icon">
 							<EyeIcon />

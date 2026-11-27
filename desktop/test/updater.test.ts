@@ -49,6 +49,10 @@ function harness(init: { current?: string; disk?: string; shipIt?: boolean; poll
 }
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Waits for what the updater's own poll brings about, however late that poll runs on a busy computer. */
+const until = async (what: () => boolean) => {
+	for (let i = 0; i < 500 && !what(); i++) await wait(10);
+};
 
 test("plistString reads CFBundleShortVersionString and CFBundleIdentifier from XML Info.plist", () => {
 	const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -88,7 +92,7 @@ test("squirrel: when ShipIt is already running, download waits without calling c
 	// ShipIt finishes copying and swaps /Applications/Pine.app to 0.58.0.
 	h.setDisk("0.58.0");
 	h.setShipIt(false);
-	await wait(50);
+	await until(() => h.updater.state().state === "ready");
 
 	assert.deepEqual(h.calls, []);
 	assert.deepEqual(h.updater.state(), { state: "ready", version: "0.58.0" });
@@ -104,7 +108,7 @@ test("squirrel: when ShipIt exits without replacing the app on disk, download pr
 	assert.deepEqual(h.calls, []);
 
 	h.setShipIt(false);
-	await wait(50);
+	await until(() => h.calls.length >= 2);
 
 	assert.deepEqual(h.calls, [`setFeedURL:${FEED}`, "checkForUpdates"]);
 	h.emitter.emit("update-downloaded");

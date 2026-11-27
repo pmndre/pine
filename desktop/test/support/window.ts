@@ -253,9 +253,9 @@ export const closed = () => void (app = undefined);
  */
 export async function started(): Promise<void> {
 	await opened.promise;
-	await sees("[data-slot=empty] h1");
-	await sees(`[data-slot=dialog-title] >> text=The browser for the web tools is not on this ${HERE}`);
-	await page.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" }).click();
+	await sees("[data-slot=empty] [data-slot=welcome-name]");
+	await sees("[data-dialog=browser-ask]");
+	await page.click("[data-dialog=browser-ask] [data-action=later]");
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
 	// "Not now" is kept once pine said its version: a reload before that would ask again, over what the test clicks.
 	await page.waitForFunction(() => localStorage.getItem("pine.browser.later"));

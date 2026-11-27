@@ -30,9 +30,19 @@ const shot = async (name: string) => {
 };
 const opened = () => app.evaluate(() => (globalThis as any).quiet.opened as string[]);
 const card = "[data-slot=composer-question] [data-slot=questionnaire]";
-const question = (text: string) => sees(`${card} [data-slot=questionnaire-title] >> text=${text}`);
-const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
-const activeTab = () => page.$$eval("[data-slot=tab][aria-selected=true]", (els: Element[]) => els[0]?.textContent ?? "");
+/** The card that is open, by what it asks (`data-question`), never by its words. */
+const question = (id: string) => sees(`${card}[data-question=${id}]`);
+const pick = (option: string) => page.click(`${card} [data-slot=questionnaire-choice][data-option="${option}"]`);
+const options = () => page.$$eval(`${card} [data-slot=questionnaire-choice]`, (els: Element[]) => els.map((e) => e.getAttribute("data-option")));
+/** What an option of the open card is called on screen, whatever it says: looked for again where the answer folds. */
+const label = async (option: string): Promise<string> => (await page.locator(`${card} [data-option="${option}"] [data-slot=question-card-label]`).textContent()) ?? "";
+const answers = "[data-slot=message-scroller-content] [data-item=setup-answer]";
+const answered = (text: string) => page.locator(answers, { hasText: text }).first().waitFor({ timeout: patient(20_000) });
+const model = (prefix: string) => sees(`[data-slot=setup-model][data-model^="${prefix}"]`);
+/** The conversation of the tab in front, as "agent:session". */
+const activeTab = () => page.$$eval("[data-slot=tab][aria-selected=true]", (els: Element[]) => `${els[0]?.getAttribute("data-agent")}:${els[0]?.getAttribute("data-session")}`);
+/** The labels the test picked on the way, for the lines they fold into. */
+const said: Record<string, string> = {};
 
 before(async () => {
 	// A home as `pine init` leaves it, without a model: pine.json names none, and nobody signed in anywhere.
@@ -52,19 +62,18 @@ after(async () => {
 
 test("a home with no model opens Setup Pine, pinned and in front, with pine's welcome and the first card", async () => {
 	// The question about the browser for the web tools comes at the start: put off, it lies over nothing.
-	await sees("[data-slot=dialog-title] >> text=/The browser for the web tools/");
-	await page.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" }).click();
-	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
-	await sees("[data-slot=conversation-head] >> text=Setup Pine");
+	await sees("[data-dialog=browser-ask]");
+	await page.click("[data-dialog=browser-ask] [data-action=later]");
+	await page.waitForSelector("[data-dialog=browser-ask]", { state: "detached" });
+	await sees("[data-slot=conversation-head][data-agent=main][data-session=setup]");
 	await sees("[data-slot=setup-welcome]");
-	await question("How should your agents run?");
-	const options = await page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
-	assert.deepEqual(options, ["A subscription", "An API key", "A model on this computer"]);
-	// pine's own first card marks the way it would pick.
-	assert.equal(await page.locator(card).getByText("recommended").count(), 1);
-	assert.match((await page.$$eval(`${card} [data-slot=questionnaire-choice]`, (els: Element[]) => els[0]?.textContent)) ?? "", /A subscription[\s\S]*recommended/);
-	// Pinned: a star on its line in the side bar, and the daemon keeps the pin.
-	await sees("[data-sidebar=menu-button]:has-text('Setup Pine') svg.lucide-star");
+	await question("model");
+	// The three ways to a model, in the order pine offers them.
+	assert.deepEqual(await options(), ["subscription", "api-key", "local"]);
+	// pine's own first card marks the way it would pick: the first one, and no other.
+	assert.deepEqual(await page.$$eval(`${card} [data-slot=questionnaire-choice][data-recommended]`, (els: Element[]) => els.map((e) => e.getAttribute("data-option"))), ["subscription"]);
+	// Pinned: so on its line in the side bar, and the daemon keeps the pin.
+	await sees("[data-slot=sidebar] [data-agent=main][data-session=setup][data-pinned]");
 	const pinned = () => {
 		const db = new DatabaseSync(path.join(home, "data", "pine.db"));
 		db.exec("PRAGMA busy_timeout = 5000");
@@ -74,63 +83,66 @@ test("a home with no model opens Setup Pine, pinned and in front, with pine's we
 	};
 	for (let i = 0; i < 50 && !pinned().includes("main:setup"); i++) await new Promise((r) => setTimeout(r, 100));
 	assert.ok(pinned().includes("main:setup"), "the daemon keeps the pin");
-	assert.match(String(await activeTab()), /Setup Pine/);
+	assert.equal(await activeTab(), "main:setup");
 	await shot("setup-01-first-card");
 });
 
 test("a subscription: which one, the sign-in card (page opened once, its code with Copy), Cancel brings the first card back", async () => {
-	await pick("A subscription");
-	await question("Which subscription?");
+	await pick("subscription");
+	await question("subscription");
 	// A list of what pine offers: none of it is marked as the one to pick.
-	assert.equal(await page.locator(card).getByText("recommended").count(), 0);
-	await pick("Claude");
+	assert.equal(await page.locator(`${card} [data-slot=questionnaire-choice][data-recommended]`).count(), 0);
+	await pick("anthropic");
+	// The code the sign-in gave (the stand-in's), to enter on its page.
 	await sees("[data-card=sign-in-card] [data-sign-in=code][value=PINE-1234]");
-	await sees("[data-card=sign-in-card] >> text=/Waiting for you to sign in/");
 	await shot("setup-02-sign-in");
 	for (let i = 0; i < 50 && !(await opened()).length; i++) await new Promise((r) => setTimeout(r, 100));
 	assert.deepEqual(await opened(), ["https://sign-in.example/device"], "the sign-in page is opened once, by itself");
-	await page.locator("[data-card=sign-in-card]").getByRole("button", { name: "Open the sign-in page again" }).click();
-	assert.equal((await opened()).length, 2);
-	await page.locator("[data-card=sign-in-card]").getByRole("button", { name: "Copy" }).click();
-	await page.locator("[data-card=sign-in-card]").getByRole("button", { name: "Cancel" }).click();
-	await question("How should your agents run?");
+	await page.click("[data-card=sign-in-card] [data-action=open]");
+	assert.deepEqual(await opened(), ["https://sign-in.example/device", "https://sign-in.example/device"], "and again when asked for");
+	// Copy puts the code on the clipboard (noted by the app under test instead of the system's).
+	await page.click("[data-card=sign-in-card] [data-action=copy]");
+	await sees("[data-card=sign-in-card] [data-action=copy][data-copied]");
+	await page.click("[data-card=sign-in-card] [data-action=cancel]");
+	await question("model");
 	assert.equal(await page.$("[data-card=sign-in-card]"), null);
 });
 
 test("a subscription reaches a model: pine names the one its agents run on now, and offers to change it", async () => {
-	await pick("A subscription");
-	await question("Which subscription?");
-	await pick("Claude");
+	said.way = await label("subscription");
+	await pick("subscription");
+	await question("subscription");
+	said.provider = await label("anthropic");
+	await pick("anthropic");
 	await sees("[data-card=sign-in-card] [data-sign-in=code]");
 	// The owner signs in in the browser.
 	fs.writeFileSync(browserDone, "sk-ant-not-a-real-key-0123456789");
-	await sees("[data-slot=setup-model] >> text=/Your agents now run on anthropic\\//");
-	await question("Keep this model?");
-	const options = await page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
-	assert.deepEqual(options, ["Go on", "Choose another model"]);
+	await model("anthropic/");
+	await question("keep");
+	assert.deepEqual(await options(), ["go-on", "another"]);
 	const agents = (await api("GET", "/agents")) as any[];
 	const main = agents.find((a) => a.main);
 	assert.match(main.model, /^anthropic\//);
 	assert.equal(main.modelProblem, undefined);
 	assert.doesNotMatch(await page.textContent("[data-slot=message-scroller-content]"), /sk-ant-not-a-real-key/);
 	// What was answered is folded into lines above.
-	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=A subscription");
-	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=Claude");
+	await answered(said.way);
+	await answered(said.provider);
 	await shot("setup-03-model");
 });
 
 test("a reload draws the steps again from the daemon's state, and nothing of them is in the conversation's history", async () => {
 	await page.reload();
-	await sees("[data-slot=conversation-head] >> text=Setup Pine");
+	await sees("[data-slot=conversation-head][data-agent=main][data-session=setup]");
 	await sees("[data-slot=setup-welcome]");
-	await sees("[data-slot=setup-model] >> text=/Your agents now run on anthropic\\//");
-	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=Claude");
-	await question("Keep this model?");
+	await model("anthropic/");
+	await answered(said.provider);
+	await question("keep");
 	const history = (await api("GET", "/tasks?agent=main&session=setup&limit=40")) as any[];
 	assert.deepEqual(history, []);
-	await pick("Go on");
+	await pick("go-on");
 	// What comes next is setup-handoff.test.ts's.
-	await question("What would you like to set up now?");
+	await question("next");
 });
 
 test("a model that is gone opens Setup Pine again, and the no-model notice leads there", async () => {
@@ -142,14 +154,14 @@ test("a model that is gone opens Setup Pine again, and the no-model notice leads
 		p.send("pine:focus", true);
 		p.send("pine:focus", false);
 	});
-	await question("How should your agents run?");
-	assert.match(String(await activeTab()), /Setup Pine/);
-	// main's card says it in a toast that stays, whose button leads there; not as a notice on the card.
+	await question("model");
+	assert.equal(await activeTab(), "main:setup");
+	// main's card says it in a toast that stays (a warning with an action), whose button leads there; not as a notice on the card.
 	await page.click("[data-slot=tab] >> nth=0");
-	const toast = page.locator("[data-slot=toast]", { hasText: "Connect a model first" });
-	await toast.waitFor({ timeout: 20_000 });
+	const toast = page.locator("[data-slot=toast][data-type=warning]:has([data-slot=toast-action])");
+	await toast.waitFor({ timeout: patient(20_000) });
 	assert.equal(await page.$("[data-slot=empty] [data-slot=model-notice]"), null);
-	await toast.getByRole("button", { name: "Set up a model…" }).click();
-	await question("How should your agents run?");
-	assert.match(String(await activeTab()), /Setup Pine/);
+	await toast.locator("[data-slot=toast-action]").click();
+	await question("model");
+	assert.equal(await activeTab(), "main:setup");
 });

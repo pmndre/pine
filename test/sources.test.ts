@@ -539,7 +539,8 @@ test("sources: a subscription is for one conversation, for the agent, or for all
 	// In the main conversation itself the agent and "here" are the same, and nothing is asked.
 	assert.equal(asked.length, 2);
 	r = await run("main", "main", [{ tools: [call("subscribe", { source: "beep", note: "for the agent", throttle: "1h" })] }]);
-	assert.match(r.text, /Subscribed to beep \(agent\)\. .* will arrive in your main conversation \(this one\)/);
+	// (As below: the source's first event can go into this very turn, and the mock then answers the event. What subscribe said is looked for by its words.)
+	assert.ok(h.toolResult(/Subscribed to beep \(agent\)\. .* will arrive in your main conversation \(this one\)/), r.text);
 	assert.equal(asked.length, 2);
 	// A conversation that subscribes while the agent listens too is told that both are woken.
 	r = await run("main", "third", [{ tools: [call("subscribe", { source: "beep", note: "here as well", throttle: "1h" })] }]);
@@ -556,7 +557,7 @@ test("sources: a subscription is for one conversation, for the agent, or for all
 	assert.ok(itsTool && !JSON.stringify(itsTool.function.parameters.properties.scope).includes("global"), "an agent that cannot do it is not offered it");
 	assert.equal(asked.length, 2);
 	r = await run("main", "main", [{ tools: [call("subscribe", { source: "beep", scope: "global", note: "for everyone", throttle: "1h" })] }]);
-	assert.match(r.text, /Subscribed to beep \(global\)\. .* will wake gonzo, each in their main conversation/);
+	assert.ok(h.toolResult(/Subscribed to beep \(global\)\. .* will wake gonzo, each in their main conversation/), r.text);
 	assert.deepEqual([asked[2].tool, asked[2].summary.split("\n")[0]], ["subscribe", 'subscribe ALL agents to the event source "beep"']);
 	await settle("gonzo/main", "main/main", "main/side");
 	assert.deepEqual(woken(), ["gonzo/main", "main/main", "main/side"], "an agent with an entry of its own is not woken twice");
@@ -693,9 +694,10 @@ test("sources: a type says what it takes, add_source works from that; a file mas
 
 	// The owner's own type: checked by its schema and by its own plan, its secret kept out of the configuration, and it runs.
 	r = await run([{ tools: [call("add_source", { name: "door", type: "bell", options: { word: "dingdongdingdong" }, description: "x" }), call("add_source", { name: "door", type: "bell", options: { word: "ding", pin: "4711-4711", loud: true }, description: "x" }), call("add_source", { name: "door", type: "bell", options: { word: "ding", pin: "4711-4711" }, description: "the door bell", note: "say who is there", throttle: "1h" })] }]);
-	assert.match(h.toolResults().at(-3)!, /the word is too long for a bell/);
-	assert.match(h.toolResults().at(-2)!, /these options do not fit a bell source: there is no option loud\. It takes: word \(required\): what it says; pin \(a secret: name it in "ask" if one is needed\): its pin code/);
-	assert.match(r.text, /Added the event source "door" \(bell\)\. Subscribed to door \(agent\)/);
+	// (Looked for by what they say, not by their place: the bell rings at once and wakes the agent, whose turn is at the model beside this one.)
+	assert.ok(h.toolResult(/the word is too long for a bell/), "its own plan refuses");
+	assert.ok(h.toolResult(/these options do not fit a bell source: there is no option loud\. It takes: word \(required\): what it says; pin \(a secret: name it in "ask" if one is needed\): its pin code/), "its schema refuses");
+	assert.ok(h.toolResult(/Added the event source "door" \(bell\)\. Subscribed to door \(agent\)/), "added and subscribed");
 	assert.equal(asked.length, 0, "its plan said that it opens nothing");
 	assert.deepEqual(file().sources.door, { type: "bell", description: "the door bell", word: "ding", pin: "${PINE_SOURCE_DOOR_MAIN_PIN}" });
 	assert.match(env(), /^PINE_SOURCE_DOOR_MAIN_PIN=4711-4711$/m);

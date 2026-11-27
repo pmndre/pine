@@ -9,7 +9,7 @@ import { after, before, test } from "node:test";
 import { pathToFileURL } from "node:url";
 import { startMock } from "../../baseline/tests/mock.mjs";
 import { browserPlaces } from "../../src/browser-build.ts";
-import { launchApp } from "./support/app.ts";
+import { launchApp, patient } from "./support/app.ts";
 import { daemonGone, freePort, ours, stopKept, waitForDaemon } from "./support/daemon.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -39,6 +39,8 @@ const write = (file: string, content: string) => {
 
 /** The daemon of this test's home answers on its port (another run's daemon there does not count). */
 const healthy = () => ours(port, home);
+/** The side bar's line about the pine in use, once it says where that pine came from: "attached" (it ran already) or "started" (this app started it). */
+const origin = (page: any, which: "attached" | "started", ms = 30_000) => page.waitForSelector(`[data-slot=service-status][data-origin=${which}]`, { timeout: patient(ms) });
 
 before(async () => {
 	mock = await startMock({ strip: /<pine-note>[\s\S]*?<\/pine-note>\s*/g });
@@ -81,16 +83,16 @@ after(async () => {
 test("attaches to a pine that runs, and leaves it running", async () => {
 	app = await launchApp({ ...process.env, PINE_HOME: home, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_DESKTOP_DEV_URL: "" });
 	const page = await app.firstWindow();
-	await page.waitForSelector("[data-slot=empty] h1", { timeout: 30_000 }).catch(async () => {
+	await page.waitForSelector("[data-slot=tab][data-active]", { timeout: patient(30_000) }).catch(async () => {
 		throw new Error(`the conversation did not appear. On screen: ${await page.evaluate(() => document.body.innerText.slice(0, 800))}`);
 	});
-	assert.match(await page.textContent("[data-slot=service-status]"), /attached/);
+	await origin(page, "attached");
 	// The pine that runs is the app's own version: nothing is said about it.
 	assert.equal(await page.$("[data-notice=older-pine]"), null);
 	// It talks to that very daemon: a message is answered (the scripted model echoes).
 	await page.fill("[data-slot=composer] textarea", "hello there");
 	await page.keyboard.press("Enter");
-	await page.waitForSelector("[data-slot=markdown] >> text=ECHO[hello there]", { timeout: 30_000 });
+	await page.waitForSelector("[data-slot=markdown] >> text=ECHO[hello there]", { timeout: patient(30_000) });
 	await app.close();
 	app = undefined;
 	// Asked a few times: a daemon that is busy for a moment is not a daemon that is gone.
@@ -112,16 +114,14 @@ test("a pine that runs is said to be older than the app's own when it is", async
 	app = await launchApp({ ...process.env, PINE_HOME: home, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_DESKTOP_DEV_URL: "" });
 	const page = await app.firstWindow();
 	// (The conversation of the test before is the one shown, so the window is not empty.)
-	await page.waitForSelector("[data-slot=service-status] >> text=attached", { timeout: 30_000 });
+	await origin(page, "attached");
 	const version = JSON.parse(fs.readFileSync(path.join(root, "..", "package.json"), "utf8")).version;
-	const line = await page.waitForSelector("[data-slot=sidebar-footer] [data-notice=older-pine]", { timeout: 10_000 });
-	assert.match((await line.textContent()) ?? "", /older pine/i);
-	// Settings > General says which versions, and what to do.
-	await menu(app, "settings");
-	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=General");
-	const said = (await (await page.waitForSelector("[data-slot=settings-page] [data-notice=older-pine]", { timeout: 10_000 })).textContent()) ?? "";
+	// The side bar points it out.
+	await page.waitForSelector("[data-slot=sidebar-footer] [data-notice=older-pine]", { timeout: patient(10_000) });
+	// Settings > General says which versions: the one that runs and the app's own.
+	await menu(app, "settings:general");
+	const said = (await (await page.waitForSelector("[data-slot=settings-page] [data-notice=older-pine]", { timeout: patient(10_000) })).textContent()) ?? "";
 	assert.ok(said.includes(version) && said.includes("0.0.1"), `the notice names both versions: ${said}`);
-	assert.match(said, /restart/i);
 	await app.close();
 	app = undefined;
 	assert.ok(await healthy(), "the daemon the app only attached to was stopped with it");
@@ -141,8 +141,8 @@ test("with \"keep pine running\" a daemon the app started goes on after it", asy
 		// Started by a pine of a newer version than it says: a daemon the app started is never pointed out.
 		const second = await launchApp({ ...process.env, PINE_HOME: kept, PINE_DESKTOP_DATA: path.join(kept, "desktop-data"), PINE_DESKTOP_DEV_URL: "", PINE_CLI: path.join(newer, "bin", "pine.js") });
 		const page = await second.firstWindow();
-		await page.waitForSelector("[data-slot=empty] h1", { timeout: 60_000 });
-		assert.match((await page.textContent("[data-slot=service-status]")) ?? "", /started here/);
+		await page.waitForSelector("[data-slot=tab][data-active]", { timeout: patient(60_000) });
+		await origin(page, "started", 10_000);
 		assert.equal(await page.$("[data-notice=older-pine]"), null);
 		await second.close();
 		await new Promise((r) => setTimeout(r, 800));
@@ -150,8 +150,8 @@ test("with \"keep pine running\" a daemon the app started goes on after it", asy
 		// The next start finds it and attaches.
 		const third = await launchApp({ ...process.env, PINE_HOME: kept, PINE_DESKTOP_DATA: path.join(kept, "desktop-data"), PINE_DESKTOP_DEV_URL: "" });
 		const again = await third.firstWindow();
-		await again.waitForSelector("[data-slot=empty] h1", { timeout: 60_000 });
-		assert.match((await again.textContent("[data-slot=service-status]")) ?? "", /attached/);
+		await again.waitForSelector("[data-slot=tab][data-active]", { timeout: patient(60_000) });
+		await origin(again, "attached", 10_000);
 		await third.close();
 	} finally {
 		// It is this test's to stop: found by the home it was started for, while its token is there.

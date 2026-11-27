@@ -513,20 +513,21 @@ test("tui: a secret is typed into the dialog without being shown, and never appe
 
 	term.type(mockMsg([{ tools: [call("add_source", { name: "telegram", type: "telegram", description: "my Telegram", options: { apiBase: tg.apiBase }, note: "Answer briefly." })] }]));
 	term.type(["\r"]);
-	await sees("Approval needed, and something only you have");
-	// The value's name on a line of its own, and under it what it is.
-	// (What the conversation shows behind the dialog may stand to the right of its border.)
-	await sees(/│ token +│[^\n]*\n.*│ the bot's token, which @BotFather gives/);
-	await sees("Type or paste it here. It is not shown, goes into pine's .env file");
+	// The question is known by the UI's state, what it holds by the dots drawn for it: how the dialog words it is not this test's.
+	const asked = (open: boolean, why: string) => until(() => (app.state().dialog === "asks") === open, 4000, `${why}\n${text()}`);
+	const dots = () => (text().match(/•/g) ?? []).length;
+	await asked(true, "the question for the token");
+	await sees(/│ token\b/);
 	// Enter with nothing typed does not say yes, and letters are part of the value, not shortcuts.
 	term.type(["\r"]);
 	await sleep(40);
 	assert.equal(h.pine.approvals.pending().length, 1);
 	term.type("abd");
-	await sees("> •••");
+	await until(() => dots() === 3, 4000, `three dots for three letters\n${text()}`);
+	assert.ok(!text().includes("abd"), "what is typed is not shown");
 	term.type(["\x15"]); // ctrl+u: start over
 	term.paste(` ${TOKEN}\n`);
-	await sees(`> ${"•".repeat(TOKEN.length)}`);
+	await until(() => dots() === TOKEN.length, 4000, `a dot for each character of the token\n${text()}`);
 	term.type(["\r"]);
 	await sees(/Added the event source "telegram"/);
 	await until(() => h.pine.sources.list().find((s) => s.name === "telegram")?.running, 4000, "the source to run");
@@ -541,28 +542,32 @@ test("tui: a secret is typed into the dialog without being shown, and never appe
 	tg.message(1001, "", { caption: "what is this?", photo: [{ file_id: "f1", file_unique_id: "u1", file_size: PNG.length }] });
 	const code = async () => { await until(() => tg.sent().some((m) => /type this code/.test(m.text))); return tg.sent().findLast((m) => /type this code/.test(m.text))!.text.match(/(\d{3}) (\d{3})/)!.slice(1).join(""); };
 	await pair;
-	await sees(/│ code +│[^\n]*\n.*│ the six digits the bot just sent to that account in Telegram/);
-	term.type(await code());
-	await sees(/> \d{6}/);
+	await asked(true, "the question for the code");
+	await sees(/│ code\b/);
+	const digits = await code();
+	term.type(digits);
+	await sees(digits);
 	term.type(["\r"]);
 	await sees("telegram: Alex");
-	await sees(/picture 1 · 1×1 · click to enlarge/);
+	await sees(/picture 1\b.*1×1/);
 
 	// Left for later, the question can be reopened with /approve; a plain yes is not offered for it.
 	term.type(mockMsg([{ tools: [call("add_source", { name: "second", type: "telegram", description: "x", options: { apiBase: tg.apiBase } })] }]));
 	term.type(["\r"]);
-	await sees("Approval needed, and something only you have");
+	await asked(true, "the question for the second token");
 	term.type(["\x1b"]);
-	await until(() => !text().includes("Approval needed, and something only you have"));
-	await sees("it needs something only you have");
+	await asked(false, "the dialog to close");
+	assert.equal(h.pine.approvals.pending().length, 1, "left for later, it still waits");
 	term.type("/approve");
 	term.type(["\r"]);
-	await sees("Approval needed, and something only you have");
+	await asked(true, "the question again, not a yes");
+	assert.equal(h.pine.approvals.pending().length, 1);
 	term.type(["\x1b"]);
-	await until(() => !text().includes("Approval needed, and something only you have"), 4000, "the dialog to close again");
+	await asked(false, "the dialog to close again");
 	term.type("/deny");
 	term.type(["\r"]);
-	await sees(/denied/);
+	await until(() => h.pine.approvals.pending().length === 0, 4000, "the request to be denied");
+	assert.ok(!h.pine.sources.list().some((s) => s.name === "second"), "and nothing was added");
 	await app.stop();
 	await h.close();
 });

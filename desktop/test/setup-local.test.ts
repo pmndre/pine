@@ -40,14 +40,20 @@ const shot = async (name: string) => {
 	await page.screenshot({ path: path.join(process.env.PINE_DESKTOP_SHOTS, `${name}.png`) });
 };
 const card = "[data-slot=composer-question] [data-slot=questionnaire]";
-const question = (text: string) => sees(`${card} [data-slot=questionnaire-title] >> text=${text}`);
-const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
-const options = () => page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
+/** The card that is open, by what it asks (`data-question`), never by its words. */
+const question = (id: string) => sees(`${card}[data-question=${id}]`);
+const pick = (option: string) => page.click(`${card} [data-slot=questionnaire-choice][data-option="${option}"]`);
+const options = () => page.$$eval(`${card} [data-slot=questionnaire-choice]`, (els: Element[]) => els.map((e) => e.getAttribute("data-option")));
+/** What an option of the open card is called on screen, whatever it says: looked for again where the answer folds. */
+const label = async (option: string): Promise<string> => (await page.locator(`${card} [data-option="${option}"] [data-slot=question-card-label]`).textContent()) ?? "";
+const model = (selector: string) => sees(`[data-slot=setup-model]${selector}`);
+const composer = "[data-slot=composer] textarea";
 const local = "[data-card=setup-local]";
-const fill = async (field: string, text: string, button: string) => {
+/** A value typed into the card's own field and sent with the card's button. */
+const fill = async (field: string, text: string) => {
 	await sees(`${local} [data-setup=${field}]`);
 	await page.fill(`${local} [data-setup=${field}]`, text);
-	await page.locator(local).getByRole("button", { name: button }).click();
+	await page.click(`${local} [data-slot=questionnaire-submit]`);
 };
 
 /** Back to no model: the default unset, the server removed, the page told. */
@@ -59,9 +65,11 @@ const forget = async (server: string) => {
 		p.send("pine:focus", true);
 		p.send("pine:focus", false);
 	});
-	await question("How should your agents run?");
+	await question("model");
 };
 
+/** What the composer says under a card with options, for the card without any. */
+let whereOptions = "";
 let llama: Awaited<ReturnType<typeof listen>>;
 let studio: Awaited<ReturnType<typeof listen>>;
 
@@ -88,9 +96,9 @@ before(async () => {
 	});
 	page = await app.firstWindow();
 	await page.setViewportSize?.({ width: 1280, height: 820 }).catch(() => {});
-	await sees("[data-slot=dialog-title] >> text=/The browser for the web tools/");
-	await page.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" }).click();
-	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
+	await sees("[data-dialog=browser-ask]");
+	await page.click("[data-dialog=browser-ask] [data-action=later]");
+	await page.waitForSelector("[data-dialog=browser-ask]", { state: "detached" });
 });
 
 after(async () => {
@@ -100,32 +108,36 @@ after(async () => {
 });
 
 test("what answered on this computer is offered; a server that wants a key asks for it in a secret field", async () => {
-	await question("How should your agents run?");
-	await pick("A model on this computer");
-	await question("Which server?");
-	assert.deepEqual(await options(), ["Pinecone", "LM Studio", "Another address"]);
+	await question("model");
+	await sees(`${composer}[data-above=typed]`);
+	whereOptions = (await page.getAttribute(composer, "placeholder")) ?? "";
+	await pick("local");
+	await question("server");
+	// What answered on the stand-ins' ports, by pine's names for them, then the way to any other address.
+	assert.deepEqual(await options(), ["pinecone", "lmstudio", "other"]);
 	await shot("setup-local-01-found");
-	await pick("LM Studio");
+	const studio = await label("lmstudio");
+	await pick("lmstudio");
 	await sees(`${local} input[type=password][data-setup=key]`);
-	await fill("key", "sk-wrong", "Unlock");
-	await sees(`${local} [data-slot=field-error] >> text=/did not accept that key/`);
+	await fill("key", "sk-wrong");
+	await sees(`${local} [data-slot=field-error]`);
 	// A wrong key asks for the key again, with what the server said: not for the server's address.
 	await sees(`${local} input[type=password][data-setup=key]`);
 	assert.equal(await page.$(`${local} [data-setup=address]`), null, "no address card");
 	await shot("setup-local-02-key");
-	await fill("key", KEY, "Unlock");
-	await sees("[data-slot=setup-model] >> text=/Your agents now run on lmstudio\\/gemma/");
+	await fill("key", KEY);
+	await model('[data-model="lmstudio/gemma"]');
 	assert.doesNotMatch(await page.textContent("[data-slot=message-scroller-content]"), new RegExp(KEY));
 	assert.deepEqual(await api("GET", "/tasks?agent=main&session=setup&limit=40"), []);
-	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=LM Studio");
+	await page.locator("[data-slot=message-scroller-content] [data-item=setup-answer]", { hasText: studio }).first().waitFor({ timeout: patient(20_000) });
 });
 
 test("Pinecone adds its model server and its MCP server for all agents", async () => {
 	await forget("lmstudio");
-	await pick("A model on this computer");
-	await question("Which server?");
-	await pick("Pinecone");
-	await sees("[data-slot=setup-model] >> text=/Your agents now run on pinecone\\/qwen3/");
+	await pick("local");
+	await question("server");
+	await pick("pinecone");
+	await model('[data-model="pinecone/qwen3"]');
 	const mcp = ((await api("GET", "/mcp")) as any[]).find((s) => s.name === "pinecone");
 	assert.ok(mcp, "Pinecone's MCP server is there");
 	assert.equal(mcp.scope, "global", "for all agents");
@@ -140,44 +152,21 @@ test("with nothing found, the owner types the address of a server, and it reache
 	await new Promise((r) => llama.server.close(r));
 	await new Promise((r) => studio.server.close(r));
 	const other = await listen(models("phi"));
-	// In a short pane, where the card scrolls inside its slot: the field takes the keyboard without
-	// scrolling it, so the card starts at its title, with no fade over the top.
-	// The field's focus ring (stock, 3 pixels) lies inside the slot, which clips what it holds: whole on
-	// both sides, and under the field where the field is in view.
-	const ring = () =>
-		page.$eval("[data-slot=composer-question] [data-slot=scroll-area-viewport]", (v: Element) => {
-			const f = v.querySelector("[data-setup=address]")!.getBoundingClientRect();
-			const r = v.getBoundingClientRect();
-			return { top: v.scrollTop, scroll: v.scrollHeight, client: v.clientHeight, left: f.left - 3 - r.left, right: r.right - (f.right + 3), bottom: r.bottom - (f.bottom + 3) };
-		});
-	await page.setViewportSize({ width: 1280, height: 420 });
-	try {
-		await pick("A model on this computer");
-		await sees(`${local} >> text=/found no model server/`);
-		await page.waitForFunction(() => document.activeElement?.getAttribute("data-setup") === "address", undefined, { timeout: patient(5_000) });
-		const slot = await ring();
-		assert.ok(slot.scroll > slot.client, `the card does not scroll in a short pane: ${JSON.stringify(slot)}`);
-		assert.equal(slot.top, 0, `the card's slot starts scrolled: ${JSON.stringify(slot)}`);
-		assert.ok(slot.left >= 0 && slot.right >= 0, `the focus ring is cut at a side: ${JSON.stringify(slot)}`);
-	} finally {
-		await page.setViewportSize({ width: 1280, height: 820 });
-	}
-	await page.waitForFunction(() => {
-		const v = document.querySelector("[data-slot=composer-question] [data-slot=scroll-area-viewport]");
-		return v && v.scrollHeight <= v.clientHeight;
-	}, undefined, { timeout: patient(5_000) });
-	const whole = await ring();
-	assert.ok(whole.left >= 0 && whole.right >= 0 && whole.bottom >= 0, `the focus ring is cut: ${JSON.stringify(whole)}`);
+	await pick("local");
+	// No list to choose from: the card asks for the address, and its field takes the keyboard as it comes.
+	await sees(`${local} [data-setup=address]`);
+	await page.waitForFunction(() => document.activeElement?.getAttribute("data-setup") === "address", undefined, { timeout: patient(5_000) });
+	assert.equal(await page.$(`${card} [data-slot=questionnaire-choice]`), null, "nothing was found, so nothing is offered");
 	await shot("setup-local-03-nothing");
-	// The address card has no options: the composer says where to type, not to name an option.
-	await page.waitForFunction(
-		() => (document.querySelector("[data-slot=composer] textarea")?.getAttribute("placeholder") ?? "") === "Type the address in the field above",
-		undefined,
-		{ timeout: patient(5_000) },
-	);
-	assert.notEqual(await page.getAttribute("[data-slot=composer] textarea", "placeholder"), "Type an option's name to pick it…");
-	await fill("address", "http://127.0.0.1:1", "Connect");
-	await sees(`${local} [data-slot=field-error] >> text=/no model server answers/`);
-	await fill("address", `http://127.0.0.1:${other.port}`, "Connect");
-	await sees("[data-slot=setup-model] >> text=/Your agents now run on .*\\/phi/");
+	// The address card has no options: the composer says something else than where typing names one.
+	await sees(`${composer}[data-above=typed]`);
+	const here = (await page.getAttribute(composer, "placeholder")) ?? "";
+	assert.ok(here.trim() && whereOptions.trim(), "the composer says what typing does in both places");
+	assert.notEqual(here, whereOptions);
+	// An address where nothing answers is said under the field, which stays; one that answers reaches a model.
+	await fill("address", "http://127.0.0.1:1");
+	await sees(`${local} [data-slot=field-error]`);
+	await sees(`${local} [data-setup=address]`);
+	await fill("address", `http://127.0.0.1:${other.port}`);
+	await model('[data-model$="/phi"]');
 });

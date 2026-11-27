@@ -200,18 +200,18 @@ function Changes({ tab, turn, openFile }: { tab: Tab; turn: boolean; openFile: (
 		return (
 			<>
 				<div className={SUB}>
-					<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => setFile(undefined)} aria-label="Back to the list"><ChevronLeftIcon /></Button>} /><TooltipContent>Back to the list</TooltipContent></HoverTooltip>
+					<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => setFile(undefined)} data-action="back" aria-label="Back to the list"><ChevronLeftIcon /></Button>} /><TooltipContent>Back to the list</TooltipContent></HoverTooltip>
 					<PathCrumbs path={file} />
-					<Button variant="ghost" size="xs" onClick={() => openFile(inFolder(file))}><PencilIcon data-icon="inline-start" />Edit</Button>
+					<Button variant="ghost" size="xs" data-action="edit" onClick={() => openFile(inFolder(file))}><PencilIcon data-icon="inline-start" />Edit</Button>
 				</div>
 				<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">{diff.data ? <><Diff text={diff.data.diff || "No difference."} />{diff.data.truncated ? <p className="px-3 py-2.5 text-sm text-muted-foreground select-text">… the rest of this diff is too long to show.</p> : null}</> : diff.error ? <Empty><EmptyHeader><EmptyMedia variant="icon"><GitBranchIcon /></EmptyMedia><EmptyTitle>Could not show this diff</EmptyTitle><EmptyDescription>{diff.error}</EmptyDescription></EmptyHeader></Empty> : <LinesSkeleton />}</div><ScrollBar orientation="horizontal" /></ScrollArea>
 			</>
 		);
 	return (
 		<>
-			<div className={SUB}>
-				{turn ? <><Undo2Icon className="size-4 shrink-0" /><span className="min-w-0 flex-1 truncate">{data.prompt ? `Since “${short(oneLine(data.prompt), 60)}”` : "Since your last message"}</span>{data.files.length ? <Button variant="outline" size="xs" onClick={() => void store.undo(tab, false)}>Undo</Button> : null}</> : <><GitBranchIcon className="size-3.5 shrink-0" /><span className="min-w-0 flex-1 truncate">{data.branch || "no branch"}{data.worktree ? ` · ${data.worktree.ahead} ahead of ${data.worktree.base}${data.worktree.behind ? `, ${data.worktree.behind} behind` : ""}` : ""} · {data.files.length ? plural(data.files.length, "changed file") : "clean"}</span>{data.worktree ? <Button variant="outline" size="xs" onClick={() => void store.worktreeMenu(tab)}>{data.worktree.ahead && !data.worktree.dirty ? "Merge…" : "Worktree…"}</Button> : null}</>}
-				<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={list.reload} aria-label="Refresh"><RotateCwIcon /></Button>} /><TooltipContent>Refresh</TooltipContent></HoverTooltip>
+			<div className={SUB} data-slot="changes-head" data-range={turn ? "turn" : "changes"} data-ahead={turn ? undefined : data.worktree?.ahead}>
+				{turn ? <><Undo2Icon className="size-4 shrink-0" /><span className="min-w-0 flex-1 truncate">{data.prompt ? `Since “${short(oneLine(data.prompt), 60)}”` : "Since your last message"}</span>{data.files.length ? <Button variant="outline" size="xs" onClick={() => void store.undo(tab, false)}>Undo</Button> : null}</> : <><GitBranchIcon className="size-3.5 shrink-0" /><span className="min-w-0 flex-1 truncate">{data.branch || "no branch"}{data.worktree ? ` · ${data.worktree.ahead} ahead of ${data.worktree.base}${data.worktree.behind ? `, ${data.worktree.behind} behind` : ""}` : ""} · {data.files.length ? plural(data.files.length, "changed file") : "clean"}</span>{data.worktree ? <Button variant="outline" size="xs" data-action="worktree" onClick={() => void store.worktreeMenu(tab)}>{data.worktree.ahead && !data.worktree.dirty ? "Merge…" : "Worktree…"}</Button> : null}</>}
+				<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={list.reload} data-action="refresh" aria-label="Refresh"><RotateCwIcon /></Button>} /><TooltipContent>Refresh</TooltipContent></HoverTooltip>
 			</div>
 			<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">
 				{data.note ? <p className="px-3 py-2.5 text-sm text-muted-foreground select-text">{data.note}</p> : null}
@@ -362,7 +362,7 @@ function FileView({ tab, file, close }: { tab: Tab; file: string; close: () => v
 	return (
 		<>
 			<div className={SUB}>
-				<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => (dirty ? setLeaving(true) : leave())} aria-label="Back to the files"><ChevronLeftIcon /></Button>} /><TooltipContent>Back to the files</TooltipContent></HoverTooltip>
+				<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => (dirty ? setLeaving(true) : leave())} data-action="back" aria-label="Back to the files"><ChevronLeftIcon /></Button>} /><TooltipContent>Back to the files</TooltipContent></HoverTooltip>
 				<AlertDialog open={leaving} onOpenChange={setLeaving}>
 					<AlertDialogContent>
 						<AlertDialogHeader>
@@ -377,7 +377,7 @@ function FileView({ tab, file, close }: { tab: Tab; file: string; close: () => v
 				<PathCrumbs path={file}>{dirty ? <span className="text-warn"> ●</span> : null}</PathCrumbs>
 				{disk.data?.truncated ? <Badge variant="outline">too large to edit</Badge> : null}
 				{root && !store.remote ? <HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => void bridge.reveal(`${root}/${file}`)} aria-label={SHOW_IN[store.platform] ?? SHOW_IN.darwin}><ExternalLinkIcon /></Button>} /><TooltipContent>{SHOW_IN[store.platform] ?? SHOW_IN.darwin}</TooltipContent></HoverTooltip> : null}
-				{kind || disk.data?.binary ? null : <Button variant={dirty ? "default" : "ghost"} size="xs" disabled={!dirty || saving} onClick={() => void save()}><SaveIcon data-icon="inline-start" />Save</Button>}
+				{kind || disk.data?.binary ? null : <Button variant={dirty ? "default" : "ghost"} size="xs" data-action="save" disabled={!dirty || saving} onClick={() => void save()}><SaveIcon data-icon="inline-start" />Save</Button>}
 			</div>
 			{changedOnDisk ? (
 				<Alert className="m-2 w-auto">
@@ -473,7 +473,7 @@ function Files({ tab, file, setFile }: { tab: Tab; file?: string; setFile: (file
 					<InputGroupAddon>
 						<SearchIcon />
 					</InputGroupAddon>
-					<InputGroupInput aria-label={state.contents ? "Find a file by name or contents" : "Find a file"} placeholder={`Find a file${state.contents ? " or text" : ""}${root ? ` in ${tilde(root)}` : ""}`} value={query} onChange={(e) => setQuery(e.target.value)} />
+					<InputGroupInput data-field="find-file" aria-label={state.contents ? "Find a file by name or contents" : "Find a file"} placeholder={`Find a file${state.contents ? " or text" : ""}${root ? ` in ${tilde(root)}` : ""}`} value={query} onChange={(e) => setQuery(e.target.value)} />
 					<InputGroupAddon align="inline-end">
 						<HoverTooltip>
 							<TooltipTrigger render={<InputGroupButton size="icon-xs" variant={state.contents ? "secondary" : "ghost"} aria-pressed={state.contents} aria-label="Search inside files too" onClick={() => ((state.contents = !state.contents), redraw())} />}>
@@ -483,7 +483,7 @@ function Files({ tab, file, setFile }: { tab: Tab; file?: string; setFile: (file
 						</HoverTooltip>
 					</InputGroupAddon>
 				</InputGroup>
-				<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => setTick((n) => n + 1)} aria-label="Refresh"><RotateCwIcon /></Button>} /><TooltipContent>Refresh</TooltipContent></HoverTooltip>
+				<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => setTick((n) => n + 1)} data-action="refresh" aria-label="Refresh"><RotateCwIcon /></Button>} /><TooltipContent>Refresh</TooltipContent></HoverTooltip>
 			</div>
 			<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
 				{/* A right click beside the rows is about the folder itself: new files go to its top. */}
@@ -545,7 +545,7 @@ function Output({ tab }: { tab: Tab }) {
 		return (
 			<>
 				<div className={SUB}>
-					<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => setOpen(undefined)} aria-label="Back to the list"><ChevronLeftIcon /></Button>} /><TooltipContent>Back to the list</TooltipContent></HoverTooltip>
+					<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => setOpen(undefined)} data-action="back" aria-label="Back to the list"><ChevronLeftIcon /></Button>} /><TooltipContent>Back to the list</TooltipContent></HoverTooltip>
 					<span className="font-mono">{shown.entry.tool}</span>
 					<span className="min-w-0 flex-1 truncate font-mono text-faint">{shown.entry.subject}</span>
 				</div>
@@ -602,7 +602,7 @@ function Running({ tab }: { tab: Tab }) {
 							))}
 							{/* Stop, asked first. */}
 							<AlertDialog>
-								<AlertDialogTrigger render={<Button variant="ghost" size="xs" />}>Stop</AlertDialogTrigger>
+								<AlertDialogTrigger render={<Button variant="ghost" size="xs" data-action="stop" />}>Stop</AlertDialogTrigger>
 								<AlertDialogContent>
 									<AlertDialogHeader>
 										<AlertDialogTitle>Stop {short(p.command, 80)}?</AlertDialogTitle>
@@ -655,23 +655,23 @@ export function CodePanel({ tab }: { tab: Tab }) {
 					{/* Last turn is a range of Changes, chosen inside that view: one tab for both. */}
 					<Tabs value={view === "turn" ? "changes" : view} onValueChange={(v) => setView(v as CodeView)}>
 						<TabsList variant="line" activateOnFocus>
-							<TabsTrigger value="files">Files</TabsTrigger>
-							<TabsTrigger value="changes">Changes</TabsTrigger>
-							<TabsTrigger value="output">Output</TabsTrigger>
+							<TabsTrigger value="files" data-view="files">Files</TabsTrigger>
+							<TabsTrigger value="changes" data-view="changes">Changes</TabsTrigger>
+							<TabsTrigger value="output" data-view="output">Output</TabsTrigger>
 							{/* A shell of this computer: a conversation of another machine's pine does not work here. */}
-							{store.remote ? null : <TabsTrigger value="terminal">Terminal</TabsTrigger>}
-							<TabsTrigger value="browser">Browser</TabsTrigger>
-							<TabsTrigger value="agent">Agent</TabsTrigger>
+							{store.remote ? null : <TabsTrigger value="terminal" data-view="terminal">Terminal</TabsTrigger>}
+							<TabsTrigger value="browser" data-view="browser">Browser</TabsTrigger>
+							<TabsTrigger value="agent" data-view="agent">Agent</TabsTrigger>
 							{/* Only while a command of the conversation's is still running, or the owner asked for the tab. */}
 							{tab.programs.length || view === "running" ? (
-								<TabsTrigger value="running">
+								<TabsTrigger value="running" data-view="running" data-count={tab.programs.length}>
 									Running
 									{tab.programs.length ? <Badge variant="secondary">{tab.programs.length}</Badge> : null}
 								</TabsTrigger>
 							) : null}
 							{/* Only while the conversation has a board, or the owner asked for the tab: most conversations have none. */}
 							{tab.boards.length || view === "board" ? (
-								<TabsTrigger value="board">
+								<TabsTrigger value="board" data-view="board" data-count={unsettled}>
 									Board
 									{unsettled ? <Badge variant="secondary">{unsettled}</Badge> : null}
 								</TabsTrigger>
@@ -694,8 +694,8 @@ export function CodePanel({ tab }: { tab: Tab }) {
 					{/* Which changes: all that git knows of in the folder, or what the owner's last message changed. */}
 					<div className={SUB}>
 						<ToggleGroup aria-label="Which changes" variant="outline" size="sm" value={[view]} onValueChange={(v) => v[0] && setView(v[0] as CodeView)}>
-							<ToggleGroupItem value="changes">All changes</ToggleGroupItem>
-							<ToggleGroupItem value="turn">Last turn</ToggleGroupItem>
+							<ToggleGroupItem value="changes" data-range="changes">All changes</ToggleGroupItem>
+							<ToggleGroupItem value="turn" data-range="turn">Last turn</ToggleGroupItem>
 						</ToggleGroup>
 					</div>
 					<Changes tab={tab} turn={view === "turn"} openFile={(f) => (setFile(f), setView("files"))} />

@@ -152,7 +152,7 @@ function OnlyIn({ session }: { session?: string }) {
 function RemoveButton({ what, onRemove, size = "sm", className }: { what: string; onRemove: () => unknown; size?: "sm" | "default"; className?: string }) {
 	return (
 		<AlertDialog>
-			<AlertDialogTrigger render={<Button variant="ghost" size={size} className={className} />}>Remove</AlertDialogTrigger>
+			<AlertDialogTrigger render={<Button variant="ghost" size={size} className={className} data-action="remove" />}>Remove</AlertDialogTrigger>
 			<AlertDialogContent>
 				<AlertDialogHeader>
 					<AlertDialogTitle>Remove {what}?</AlertDialogTitle>
@@ -219,7 +219,7 @@ function Choose<T extends string>({ id, items, value, onChange, row, placeholder
 			<SelectContent className={LIST} {...(row ? { alignItemWithTrigger: false, align: "end" as const } : {})}>
 				<SelectGroup>
 					{items.map((o) => (
-						<SelectItem key={o.value} value={o.value}>
+						<SelectItem key={o.value} value={o.value} data-value={o.value}>
 							<Wrapped>{o.label}</Wrapped>
 						</SelectItem>
 					))}
@@ -506,7 +506,7 @@ function AgentHeading({ id, color }: { id: string; color?: string }) {
 	const [editing, setEditing] = useState(false);
 	return (
 		<span className="flex items-center gap-2">
-			<AgentColorPicker agent={{ id, color, main: store.agent(id)?.main }} onChange={(c) => void store.colorAgent(id, c)} trigger={<Button variant="ghost" size="icon" className="rounded-full" aria-label={`Color of ${id}`} title="Change the agent's color" />}>
+			<AgentColorPicker agent={{ id, color, main: store.agent(id)?.main }} onChange={(c) => void store.colorAgent(id, c)} trigger={<Button variant="ghost" size="icon" className="rounded-full" data-action="agent-color" aria-label={`Color of ${id}`} title="Change the agent's color" />}>
 				<AgentAvatar agent={{ id, color, main: store.agent(id)?.main }} />
 			</AgentColorPicker>
 			{editing ? (
@@ -602,7 +602,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 			back={{ label: "Agents", onClick: back }}
 			title={<AgentHeading id={d.id} color={(store.agent(d.id) ?? d).color} />}
 			lead={d.main ? "The main agent. It sets up pine for you and can delegate tasks to all other agents." : d.description || `Works in ${tilde(d.workspace)}.`}
-			actions={<Button variant="outline" onClick={() => void store.openTab(id, "main")}><MessageSquareIcon data-icon="inline-start" />Open conversation</Button>}
+			actions={<Button variant="outline" data-action="open-conversation" onClick={() => void store.openTab(id, "main")}><MessageSquareIcon data-icon="inline-start" />Open conversation</Button>}
 		>
 			<Section title="Model">
 				<FieldGroup>
@@ -842,7 +842,7 @@ export function NewAgent({ close, made }: { close: () => void; made: (id: string
 						</Field>
 					</FieldGroup>
 				</ScrollArea>
-				<DialogFooter><Button variant="outline" onClick={close}>Cancel</Button><Button disabled={!f.id.trim() || !f.instructions.trim()} onClick={() => void create()}>Create agent</Button></DialogFooter>
+				<DialogFooter><Button variant="outline" onClick={close}>Cancel</Button><Button disabled={!f.id.trim() || !f.instructions.trim()} data-action="submit" onClick={() => void create()}>Create agent</Button></DialogFooter>
 			</DialogContent>
 		</Dialog>
 	);
@@ -857,7 +857,7 @@ function Agents() {
 	const setAdding = (on: boolean) => ((s.newAgent = on), s.touch());
 	if (open && s.agents.some((a) => a.id === open)) return <AgentPage id={open} back={() => setOpen(undefined)} />;
 	return (
-		<Page title="Agents" lead="Each agent has its own instructions, model, workspace and conversations. Open an agent to change what it may do and to manage the skills, MCP servers, sources, schedules and routes that belong to it." actions={<Button variant="outline" onClick={() => setAdding(true)}><PlusIcon data-icon="inline-start" />New agent</Button>}>
+		<Page title="Agents" lead="Each agent has its own instructions, model, workspace and conversations. Open an agent to change what it may do and to manage the skills, MCP servers, sources, schedules and routes that belong to it." actions={<Button variant="outline" data-action="new-agent" onClick={() => setAdding(true)}><PlusIcon data-icon="inline-start" />New agent</Button>}>
 			<ItemGroup>
 				{s.agents.map((a) => (
 					<SettingsItem
@@ -938,7 +938,7 @@ function SignIn({ provider, type, reload }: { provider: string; type?: "api_key"
 								<InputGroup>
 									<InputGroupInput id={`${field}-answer`} autoFocus className="font-mono" type={q.secret ? "password" : "text"} autoComplete="off" spellCheck={false} aria-invalid={error ? true : undefined} aria-describedby={error ? `${field}-error` : undefined} value={answer} onChange={(e) => setAnswer(e.target.value)} onKeyDown={(e) => e.key === "Enter" && answer.trim() && void send(answer.trim())} />
 									<InputGroupAddon align="inline-end">
-										<InputGroupButton variant="default" disabled={!answer.trim()} onClick={() => void send(answer.trim())}>Continue</InputGroupButton>
+										<InputGroupButton variant="default" data-action="submit" disabled={!answer.trim()} onClick={() => void send(answer.trim())}>Continue</InputGroupButton>
 									</InputGroupAddon>
 								</InputGroup>
 								{q.secret ? <FieldDescription>What you type stays hidden. It is stored in auth.json in pine's home, where agents cannot read it.</FieldDescription> : null}
@@ -954,8 +954,8 @@ function SignIn({ provider, type, reload }: { provider: string; type?: "api_key"
 						</Alert>
 					) : null}
 					{/* Where the agents' model could not answer, pine took one of the new ones (src/owner.ts, settleModel), and says so; else the choice is offered here, where they were just made available. */}
-					{state?.done && !state.error && state.chosen ? <div className="flex items-center gap-2"><span>Your agents now run on <b className="font-mono">{state.chosen}</b>.</span><DialogClose render={<Button variant="outline" />} onClick={() => void store.chooseDefaultModel(state.models).then(reload)}>Another one…</DialogClose></div> : null}
-					{state?.done && !state.error && !state.chosen && state.models?.length ? <div className="flex items-center gap-2"><DialogClose render={<Button variant="outline" />} onClick={() => void store.chooseDefaultModel(state.models).then(reload)}>Choose the model your agents run on…</DialogClose><span className="text-muted-foreground">Or do it later with Change on the Models page.</span></div> : null}
+					{state?.done && !state.error && state.chosen ? <div className="flex items-center gap-2"><span>Your agents now run on <b className="font-mono">{state.chosen}</b>.</span><DialogClose render={<Button variant="outline" data-action="choose-model" />} onClick={() => void store.chooseDefaultModel(state.models).then(reload)}>Another one…</DialogClose></div> : null}
+					{state?.done && !state.error && !state.chosen && state.models?.length ? <div className="flex items-center gap-2"><DialogClose render={<Button variant="outline" data-action="choose-model" />} onClick={() => void store.chooseDefaultModel(state.models).then(reload)}>Choose the model your agents run on…</DialogClose><span className="text-muted-foreground">Or do it later with Change on the Models page.</span></div> : null}
 				</div>
 			</ScrollArea>
 			<DialogFooter><DialogClose render={<Button variant={state?.done ? "default" : "outline"} />}>{state?.done ? "Done" : "Cancel"}</DialogClose></DialogFooter>
@@ -978,7 +978,7 @@ function ProviderRow({ p, reload }: { p: Provider; reload: () => void }) {
 			actions={<>
 				{p.signedIn ? (
 					<AlertDialog>
-						<AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>Sign out</AlertDialogTrigger>
+						<AlertDialogTrigger render={<Button variant="ghost" size="sm" data-action="sign-out" />}>Sign out</AlertDialogTrigger>
 						<AlertDialogContent>
 							<AlertDialogHeader>
 								<AlertDialogTitle>Sign out of {name}?</AlertDialogTitle>
@@ -997,7 +997,7 @@ function ProviderRow({ p, reload }: { p: Provider; reload: () => void }) {
 					</Dialog>
 				) : null}
 				<Dialog onOpenChange={(open) => open || reload()}>
-					<DialogTrigger render={<Button variant="outline" size="sm" />}>{p.signedIn ? "New API key" : "API key"}</DialogTrigger>
+					<DialogTrigger render={<Button variant="outline" size="sm" data-action="api-key" />}>{p.signedIn ? "New API key" : "API key"}</DialogTrigger>
 					<DialogContent showCloseButton={false} className="sm:max-w-xl"><SignIn provider={p.id} type="api_key" reload={reload} /></DialogContent>
 				</Dialog>
 			</>}
@@ -1170,7 +1170,7 @@ function Models() {
 								<FieldDescription>All agents use this model unless you pick another for an agent, on the agent's page or in the bar under a conversation.</FieldDescription>
 							</FieldContent>
 							<Control>
-								<Button variant="outline" onClick={() => void store.chooseDefaultModel().then(reload)}>Change…</Button>
+								<Button variant="outline" data-action="change" onClick={() => void store.chooseDefaultModel().then(reload)}>Change…</Button>
 							</Control>
 						</Field>
 					</FieldGroup>
@@ -1230,7 +1230,7 @@ function DecisionModels({ servers }: { servers: string[] }) {
 			about="Models that answer a route's questions with a value instead of text: how likely a yes is, which option fits, or which level applies. They answer in a fraction of a second, which suits routes that act on each event. Agents do not run on these models."
 			actions={
 				<Dialog actionsRef={adding}>
-					<DialogTrigger render={<Button variant="outline" disabled={!list.data} />}><PlusIcon data-icon="inline-start" />Add a decision model</DialogTrigger>
+					<DialogTrigger render={<Button variant="outline" data-action="new-decision" disabled={!list.data} />}><PlusIcon data-icon="inline-start" />Add a decision model</DialogTrigger>
 					<DialogContent showCloseButton={false} className="sm:max-w-xl">{list.data ? <NewDecision servers={servers} signedIn={list.data.typesafe.signedIn} made={() => (adding.current?.close(), list.reload())} /> : <DialogHeader><DialogTitle>Add a decision model</DialogTitle></DialogHeader>}</DialogContent>
 				</Dialog>
 			}
@@ -1290,7 +1290,7 @@ function TypesafeRow({ decisions, reload }: { decisions: Decisions; reload: () =
 			actions={<>
 				{signedIn ? (
 					<AlertDialog>
-						<AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>Sign out</AlertDialogTrigger>
+						<AlertDialogTrigger render={<Button variant="ghost" size="sm" data-action="sign-out" />}>Sign out</AlertDialogTrigger>
 						<AlertDialogContent>
 							<AlertDialogHeader>
 								<AlertDialogTitle>Sign out of TypeSafe?</AlertDialogTitle>
@@ -1410,7 +1410,7 @@ function NewDecision({ servers, signedIn, made }: { servers: string[]; signedIn:
 			</FieldGroup>
 			<DialogFooter>
 				<DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-				<Button disabled={busy || !ready} onClick={() => void add()}>Add decision model</Button>
+				<Button data-action="submit" disabled={busy || !ready} onClick={() => void add()}>Add decision model</Button>
 			</DialogFooter>
 		</>
 	);
@@ -1482,7 +1482,7 @@ function NewMcpServer({ agent, made }: { agent?: string; made: () => void }) {
 			</ScrollArea>
 			<DialogFooter>
 				<DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-				<Button disabled={!f.name.trim() || !f.target.trim()} onClick={() => void add()}>Add server</Button>
+				<Button data-action="submit" disabled={!f.name.trim() || !f.target.trim()} onClick={() => void add()}>Add server</Button>
 			</DialogFooter>
 		</>
 	);
@@ -1511,7 +1511,7 @@ function McpList({ agent }: { agent?: string }) {
 			about={agent ? `Tools only ${agent} gets.` : undefined}
 			actions={
 				<Dialog actionsRef={adding}>
-					<DialogTrigger render={<Button variant="outline" />}><PlusIcon data-icon="inline-start" />Add server</DialogTrigger>
+					<DialogTrigger render={<Button variant="outline" data-action="new-server" />}><PlusIcon data-icon="inline-start" />Add server</DialogTrigger>
 					<DialogContent showCloseButton={false} className="sm:max-w-2xl"><NewMcpServer agent={agent} made={() => adding.current?.close()} /></DialogContent>
 				</Dialog>
 			}
@@ -1525,6 +1525,7 @@ function McpList({ agent }: { agent?: string }) {
 						<SettingsItem
 							key={`${x.scope}:${x.name}`}
 							data-find={`mcp:${x.scope}:${x.name}`}
+							data-tone={tone}
 							title={<>
 									{x.name}
 									{state === undefined ? <Skeleton className="h-5 w-16 rounded-full" /> : <Badge variant={tone === "good" ? "default" : tone === "warn" ? "outline" : "secondary"}>{state}</Badge>}
@@ -1534,7 +1535,7 @@ function McpList({ agent }: { agent?: string }) {
 								</>}
 							description={<span className="font-mono">{x.target}</span>}
 							actions={<>
-								{x.remote ? <Button variant="outline" size="sm" disabled={busy === x.name} onClick={() => void login(x.name, of)}>{busy === x.name ? <><Pulse label="Loading" data-icon="inline-start" />In your browser…</> : "Sign in"}</Button> : null}
+								{x.remote ? <Button variant="outline" size="sm" data-action="sign-in" disabled={busy === x.name} onClick={() => void login(x.name, of)}>{busy === x.name ? <><Pulse label="Loading" data-icon="inline-start" />In your browser…</> : "Sign in"}</Button> : null}
 								{x.target.startsWith("bundled:") ? null : <RemoveButton what={`the MCP server ${x.name}`} onRemove={() => store.attempt(() => api.removeMcp(x.name, of)).then((r) => r && (store.flash(`Removed ${x.name}.`), changed()))} />}
 							</>}
 						/>
@@ -1623,7 +1624,7 @@ function SkillDialog({ draft, close, lockAgent }: { draft: SkillDraft; close: ()
 				<DialogFooter>
 					{was?.managed ? <RemoveButton what={`the skill ${was.name}`} size="default" className="sm:mr-auto" onRemove={remove} /> : null}
 					<DialogClose render={<Button variant="outline" />}>{managed ? "Cancel" : "Close"}</DialogClose>
-					{managed ? <Button disabled={!edit.name.trim() || !edit.description.trim() || !edit.instructions.trim()} onClick={() => void save()}>{was ? "Save changes" : "Add skill"}</Button> : null}
+					{managed ? <Button disabled={!edit.name.trim() || !edit.description.trim() || !edit.instructions.trim()} data-action="submit" onClick={() => void save()}>{was ? "Save changes" : "Add skill"}</Button> : null}
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
@@ -1640,7 +1641,7 @@ function SkillList({ agent }: { agent?: string }) {
 			title={agent ? "Skills" : "For all agents"}
 			data-find={agent ? "agent-skills" : undefined}
 			about={agent ? `Skills only ${agent} uses.` : undefined}
-			actions={<Button variant="outline" onClick={() => openThing({ kind: "skill", agent })}><PlusIcon data-icon="inline-start" />New skill</Button>}
+			actions={<Button variant="outline" data-action="new-skill" onClick={() => openThing({ kind: "skill", agent })}><PlusIcon data-icon="inline-start" />New skill</Button>}
 		>
 			<Listed load={skills} list={list} bars={agent ? 1 : 3} empty={<NoneYet agent={agent} icon={BookIcon} title="No skills for all agents">Ask an agent to make one (“make a skill of this”), or add one here.</NoneYet>}>
 				{(x) => (
@@ -2084,7 +2085,7 @@ function NewSource({ types, agent, made }: { types: SourceType[]; agent?: string
 					)}
 				</div>
 			</ScrollArea>
-			<DialogFooter>{plan ? <><Button variant="outline" onClick={() => setPlan(undefined)}>Back</Button><Button disabled={busy || plan.needs.some((n) => !values[n.name]?.trim())} onClick={() => void add()}>Add source</Button></> : <><DialogClose render={<Button variant="outline" />}>Cancel</DialogClose><Button disabled={busy || !f.name.trim() || !f.type} onClick={() => void check()}>Continue</Button></>}</DialogFooter>
+			<DialogFooter>{plan ? <><Button variant="outline" onClick={() => setPlan(undefined)}>Back</Button><Button disabled={busy || plan.needs.some((n) => !values[n.name]?.trim())} data-action="submit" onClick={() => void add()}>Add source</Button></> : <><DialogClose render={<Button variant="outline" />}>Cancel</DialogClose><Button data-action="continue" disabled={busy || !f.name.trim() || !f.type} onClick={() => void check()}>Continue</Button></>}</DialogFooter>
 		</>
 	);
 }
@@ -2134,7 +2135,7 @@ function Sources({ agent }: { agent?: string }) {
 					</DropdownMenu>
 				) : null}
 				<Dialog actionsRef={adding}>
-					<DialogTrigger render={<Button variant="outline" disabled={!types.data} />}><PlusIcon data-icon="inline-start" />New source</DialogTrigger>
+					<DialogTrigger render={<Button variant="outline" data-action="new-source" disabled={!types.data} />}><PlusIcon data-icon="inline-start" />New source</DialogTrigger>
 					<DialogContent showCloseButton={false} className="sm:max-w-2xl">{types.data ? <NewSource types={types.data} agent={agent} made={() => (adding.current?.close(), changed())} /> : <DialogHeader><DialogTitle>New source</DialogTitle></DialogHeader>}</DialogContent>
 				</Dialog>
 			</>}
@@ -2292,7 +2293,7 @@ export function ScheduleForm({ schedule: was, agent, made }: { schedule?: Schedu
 			<DialogFooter>
 				{was ? <RemoveButton what={`the schedule ${was.name}`} size="default" className="sm:mr-auto" onRemove={remove} /> : null}
 				<DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-				<Button disabled={busy || !f.name.trim() || !f.when.trim() || !f.task.trim()} onClick={() => void save()}>{was ? "Save changes" : "Add schedule"}</Button>
+				<Button disabled={busy || !f.name.trim() || !f.when.trim() || !f.task.trim()} data-action="submit" onClick={() => void save()}>{was ? "Save changes" : "Add schedule"}</Button>
 			</DialogFooter>
 		</>
 	);
@@ -2311,7 +2312,7 @@ export function Schedules({ agent }: { agent?: string }) {
 			title="Schedules"
 			data-find={agent ? "agent-schedules" : "schedules"}
 			about={agent ? `Tasks ${agent} gets at set times, as if you had sent them.` : "Tasks that all agents get at set times. For a single agent, add the schedule on that agent's page, or just ask the agent: “every morning at seven…”."}
-			actions={<Button variant="outline" onClick={() => openThing({ kind: "schedule", agent })}><PlusIcon data-icon="inline-start" />New schedule</Button>}
+			actions={<Button variant="outline" data-action="new-schedule" onClick={() => openThing({ kind: "schedule", agent })}><PlusIcon data-icon="inline-start" />New schedule</Button>}
 		>
 			<Listed load={list} list={mine} bars={agent ? 1 : 3} empty={<NoneYet agent={agent} icon={ClockIcon} title="No schedules for all agents">Schedules for a single agent are on that agent's page.</NoneYet>}>
 				{(x) => (
@@ -2570,7 +2571,7 @@ export function RouteForm({ route: was, agent, made, does: first = "wake" }: { r
 			<DialogFooter>
 				{was ? <RemoveButton what={`the route ${was.name}`} size="default" className="sm:mr-auto" onRemove={remove} /> : null}
 				<DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-				<Button disabled={busy || !ready} onClick={() => void add()}>{was ? "Save changes" : "Add route"}</Button>
+				<Button data-action="submit" disabled={busy || !ready} onClick={() => void add()}>{was ? "Save changes" : "Add route"}</Button>
 			</DialogFooter>
 		</>
 	);
@@ -2619,7 +2620,7 @@ export function Routes({ agent }: { agent?: string }) {
 			title="Routes"
 			data-find={agent ? "agent-routes" : "routes"}
 			about={agent ? `Rules that wake ${agent} or act for it when a certain event arrives. They are removed along with ${agent}.` : "Rules for events. When an event arrives, a route does one thing, often without waking an agent. Most setups need none. To react to a source, let an agent listen to it."}
-			actions={<Button variant="outline" onClick={() => openThing({ kind: "route", agent })}><PlusIcon data-icon="inline-start" />New route</Button>}
+			actions={<Button variant="outline" data-action="new-route" onClick={() => openThing({ kind: "route", agent })}><PlusIcon data-icon="inline-start" />New route</Button>}
 		>
 			<Listed load={list} list={mine} bars={agent ? 1 : 3} empty={<NoneYet agent={agent} icon={GitBranchIcon} title="No routes">You don’t need any to start.</NoneYet>}>
 				{(r) => {
@@ -2794,7 +2795,7 @@ export function ThemePicker() {
 										<SelectGroup>
 											<SelectLabel>{kind === "dark" ? "Dark" : "Light"}</SelectLabel>
 											{of.map((t) => (
-												<SelectItem key={t.id} value={t.id}>
+												<SelectItem key={t.id} value={t.id} data-value={t.id}>
 													<Swatch colors={t.colors} />
 													{t.name}
 												</SelectItem>
@@ -2938,7 +2939,7 @@ export function MachineList() {
 		// It answered and its agents did not load: no wait to show, the Gate says why and offers Try again.
 		if (state.status === "ready" && s.loadError) return <Badge variant="destructive">not loaded</Badge>;
 		if (state.status === "error") return <Badge variant="destructive">unreachable</Badge>;
-		return <Badge variant={s.connected ? "default" : "outline"}>{s.connected ? "in use" : "not answering"}</Badge>;
+		return <Badge variant={s.connected ? "default" : "outline"} data-state={s.connected ? "in-use" : "not-answering"}>{s.connected ? "in use" : "not answering"}</Badge>;
 	};
 	/** What a row says of its machine when nothing is wrong: a paired computer by its name (its id says nothing), user@host as written. */
 	const about = (h: string) => (isPaired(h) ? <>The pine of the Pine app on {s.nameOf(h)}, paired with this {s.device}.</> : <>The pine on <Breakable host={h} />, over SSH.</>);
@@ -2972,7 +2973,7 @@ export function MachineList() {
 				{state.host === h && s.canDisconnect ? <Button variant="outline" size="sm" data-slot="disconnect" onClick={() => void s.disconnect()}>Disconnect</Button> : null}
 				{h && s.canRename ? <Button variant="outline" size="sm" data-slot="rename-machine" onClick={() => void s.renameMachine(h)}>Rename</Button> : null}
 				{/* With no local machine to fall back on, the one in use may go when it is not reached (its host key changed, say). */}
-				{h && (state.host !== h || (!s.local && state.status === "error")) ? <Button variant="ghost" size="sm" onClick={() => void forget(h)}>Forget</Button> : null}
+				{h && (state.host !== h || (!s.local && state.status === "error")) ? <Button variant="ghost" size="sm" data-action="forget" onClick={() => void forget(h)}>Forget</Button> : null}
 			</>}
 		>
 				{h && reachedThrough(h, s.serviceHost) ? <ItemDescription className="line-clamp-none wrap-anywhere" data-slot="reached-through">{reachedThrough(h, s.serviceHost)}</ItemDescription> : null}
@@ -3026,9 +3027,9 @@ export function MachineList() {
 						<Field data-invalid={refused ? true : undefined}>
 							<FieldLabel htmlFor={`${field}-host`}>Host</FieldLabel>
 							<InputGroup>
-								<InputGroupInput id={`${field}-host`} className="font-mono" placeholder="you@server" aria-invalid={refused ? true : undefined} value={host} onChange={(e) => (setHost(e.target.value), setRefused(undefined))} onKeyDown={(e) => e.key === "Enter" && host.trim() && void add()} />
+								<InputGroupInput id={`${field}-host`} data-field="host" className="font-mono" placeholder="you@server" aria-invalid={refused ? true : undefined} value={host} onChange={(e) => (setHost(e.target.value), setRefused(undefined))} onKeyDown={(e) => e.key === "Enter" && host.trim() && void add()} />
 								<InputGroupAddon align="inline-end">
-									<InputGroupButton disabled={!host.trim()} onClick={() => void add()}><PlusIcon data-icon="inline-start" />Add</InputGroupButton>
+									<InputGroupButton data-action="add" disabled={!host.trim()} onClick={() => void add()}><PlusIcon data-icon="inline-start" />Add</InputGroupButton>
 								</InputGroupAddon>
 							</InputGroup>
 							<FieldDescription>{s.local ? "Write it as you would after ssh: host, user@host, or a name from ~/.ssh/config. The app connects when you pick the machine." : "Write it as you would after ssh: user@host, or user@host:port. The app connects when you pick the machine."}</FieldDescription>
@@ -3189,7 +3190,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 				<FieldGroup>
 					<ThemePicker />
 					{s.updates ? (
-						<Field orientation="responsive" data-setting="updates">
+						<Field orientation="responsive" data-setting="updates" data-update={update?.phase ?? "none"} data-version={update?.version}>
 							<FieldContent>
 								<FieldTitle>
 									Pine {s.versions.app}
@@ -3200,10 +3201,10 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 								</FieldDescription>
 							</FieldContent>
 							<Control>
-								{update?.phase === "waiting" ? <Button variant="outline" onClick={() => s.cancelUpdateWait()}><XIcon data-icon="inline-start" />Cancel the wait</Button> : null}
-								{update?.phase === "ready" ? <Button onClick={() => void s.restartToUpdate()}><RotateCwIcon data-icon="inline-start" />Restart to update</Button> : null}
-								{update?.phase === "link" ? <Button variant="outline" onClick={() => void bridge.open(update.url)}><ExternalLinkIcon data-icon="inline-start" />Release page</Button> : null}
-								<Button variant="outline" disabled={s.updateLooking} onClick={() => void s.lookForUpdate(true)}><RotateCwIcon data-icon="inline-start" />Check now</Button>
+								{update?.phase === "waiting" ? <Button variant="outline" data-action="cancel-wait" onClick={() => s.cancelUpdateWait()}><XIcon data-icon="inline-start" />Cancel the wait</Button> : null}
+								{update?.phase === "ready" ? <Button data-action="restart" onClick={() => void s.restartToUpdate()}><RotateCwIcon data-icon="inline-start" />Restart to update</Button> : null}
+								{update?.phase === "link" ? <Button variant="outline" data-action="release-page" onClick={() => void bridge.open(update.url)}><ExternalLinkIcon data-icon="inline-start" />Release page</Button> : null}
+								<Button variant="outline" data-action="check" disabled={s.updateLooking} onClick={() => void s.lookForUpdate(true)}><RotateCwIcon data-icon="inline-start" />Check now</Button>
 							</Control>
 						</Field>
 					) : null}
@@ -3287,7 +3288,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 					) : null}
 					{local && !s.browserChecked && !s.browserFetching ? <FieldSkeleton data-setting="browser" /> : null}
 					{local && (s.browser !== undefined || s.browserFetching) ? (
-						<Field orientation="responsive" data-setting="browser">
+						<Field orientation="responsive" data-setting="browser" data-state={s.browser ? "here" : s.browserFetching ? "fetching" : "missing"}>
 							<FieldContent>
 								<FieldTitle>
 									Browser for the web tools
@@ -3302,7 +3303,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 							</FieldContent>
 							{s.browser ? null : (
 								<Control>
-									<Button variant="outline" disabled={s.browserFetching} onClick={() => void s.fetchBrowser()}>{s.browserFetching ? <><Pulse label="Loading" data-icon="inline-start" />Downloading…</> : "Download"}</Button>
+									<Button variant="outline" data-action="download" disabled={s.browserFetching} onClick={() => void s.fetchBrowser()}>{s.browserFetching ? <><Pulse label="Loading" data-icon="inline-start" />Downloading…</> : "Download"}</Button>
 								</Control>
 							)}
 						</Field>
@@ -3462,7 +3463,7 @@ export function Settings() {
 											{sections.map((x) => (
 												<SidebarMenuItem key={x.id} className="flex-none @3xl/settings:flex-initial">
 													{/* While searching, a section with nothing that fits fades, as in the system's settings; a click on one ends the search. */}
-													<SidebarMenuButton isActive={!searching && section === x.id} aria-current={!searching && section === x.id ? "page" : undefined} className={cn(searching && !hits.has(x.id) && "opacity-50")} onClick={() => (setQuery(""), (s.section = x.id), (s.settingsAgent = undefined), s.touch())}><x.icon />{x.label}</SidebarMenuButton>
+													<SidebarMenuButton data-section={x.id} data-dimmed={(searching && !hits.has(x.id)) || undefined} isActive={!searching && section === x.id} aria-current={!searching && section === x.id ? "page" : undefined} className={cn(searching && !hits.has(x.id) && "opacity-50")} onClick={() => (setQuery(""), (s.section = x.id), (s.settingsAgent = undefined), s.touch())}><x.icon />{x.label}</SidebarMenuButton>
 												</SidebarMenuItem>
 											))}
 										</SidebarMenu>

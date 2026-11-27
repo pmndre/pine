@@ -73,7 +73,7 @@ test("goal: the conversation goes on by itself until the judge says the objectiv
 
 	const goal = goalOf(h)!;
 	assert.deepEqual([goal.status, goal.round, goal.reason, goal.objective], ["met", 3, "all three files are there", objective]);
-	assert.match(goal.note, /^met after 3 rounds$/);
+	assert.match(goal.note, /3 rounds/, "the note says how long it took (the status and the round are above)");
 	// The first round is the owner's message; the others are pine calling again, in the owner's name.
 	const tasks = rounds(h);
 	assert.deepEqual(tasks.map((t) => [t.kind, t.status, t.meta.trust, t.session]), [["prompt", "done", "owner", "main"], ["notify", "done", "owner", "main"], ["notify", "done", "owner", "main"]]);
@@ -156,7 +156,7 @@ test("goal: the round limit holds, the owner's word gives as many again, and an 
 	await settled(h);
 	let goal = goalOf(h)!;
 	assert.deepEqual([goal.status, goal.round, goal.until], ["limit", 2, 2]);
-	assert.match(goal.note, /not met after 2 rounds, which is the limit \(limits\.goalRounds\)/);
+	assert.match(goal.note, /limits\.goalRounds/, "the note names the setting that stopped it");
 	await sleep(100);
 	assert.equal(rounds(h).length, 2);
 	assert.equal(shown.length, 2);
@@ -391,17 +391,22 @@ test("goal: /goal in the terminal UI sets it through the API; the status line sh
 	let seen = 0;
 	h.mock.state.scripts.work = works("HALF-DONE", { until: () => seen >= (h.pine.agents.goals.get("main", "main")?.round ?? 0) });
 
+	// Where the goal stands is asked of pine (its status and round); of the screen, that it names the round and
+	// shows each verdict's reason, which the test's judge wrote. The sentences around them are the UI's to word.
+	const goal = () => h.pine.agents.goals.get("main", "main");
+	const stands = (status: string, round: number) => until(() => goal()?.status === status && goal()?.round === round, 5000, `the goal to be ${status} in round ${round} (it is ${goal()?.status} in round ${goal()?.round})`);
 	send("/goal");
-	await sees("this conversation has no goal");
+	await sees(/no goal/);
+	assert.equal(goal(), undefined);
 	send("/goal ship both halves @@REF:work@@");
-	await sees("goal set: main works on it until it is met, for at most 20 rounds");
-	await sees(/goal · round 1 of 20 · (working|thinking)/);
+	await stands("active", 1);
+	await sees(/round 1 of 20/);
 	seen = 1;
-	await sees("goal not met yet: round 2 of 20 starts");
+	await stands("active", 2);
 	await sees("the second half is missing");
-	await sees(/goal · round 2 of 20 · (working|thinking)/);
+	await sees(/round 2 of 20/);
 	seen = 2;
-	await sees(/goal stopped after 2 rounds: main needs something from you/);
+	await stands("blocked", 2);
 	await sees("it needs your go-ahead");
 	assert.ok(!/goal · round \d+ of \d+ ·/.test(text()), "a goal that stopped is not shown as running");
 	// The objective was typed here, so it is shown once and as the owner's; the frame of a round is not repeated.
@@ -409,23 +414,24 @@ test("goal: /goal in the terminal UI sets it through the API; the status line sh
 	assert.equal(h.pine.agents.goals.get("main", "main")!.status, "blocked");
 
 	send("/goal resume");
-	await sees("goal resumed: round 3 of 20 starts");
+	await stands("active", 3);
 	seen = 3;
-	await sees("goal met after 3 rounds");
+	await stands("met", 3);
 	await sees("both halves are shipped");
 	send("/goal pause");
-	await sees("/goal: the goal is not being worked on");
+	await sees(/not being worked on/);
+	assert.equal(goal()!.status, "met", "a goal that is met is not paused");
 	send("/goal");
-	await sees("the goal: ship both halves");
+	await sees(/goal: ship both halves/);
 
 	// Opened again, the conversation shows the rounds and where the goal stands.
 	await app.stop();
 	const again = new PineTui({ client, terminal: new FakeTerminal(120, 44) });
 	apps.push(again);
 	await again.start();
-	await until(() => again.screen().join("\n").includes("── now ──"));
+	await until(() => again.screen().join("\n").includes("both halves are shipped"), 5000, "the history");
 	const restored = again.screen().join("\n");
-	assert.ok(restored.includes("↻ goal: round 2 of 20") && restored.includes("goal met after 3 rounds") && restored.includes("the goal: ship both halves"), restored);
+	assert.ok(/round 2 of 20/.test(restored) && /round 3 of 20/.test(restored) && /goal: ship both halves/.test(restored), restored);
 	// The owner's first message is what they typed: pine's frame around it was for the agent.
 	assert.ok(restored.includes("ship both halves @@REF:work@@") && !restored.includes("your owner set this as the goal"), restored);
 	await again.stop();
@@ -442,10 +448,9 @@ test("goal: /goal in the terminal UI sets it through the API; the status line sh
 	const between = new PineTui({ client, terminal: third });
 	apps.push(between);
 	await between.start();
-	await until(() => between.screen().join("\n").includes("goal · round 2 of 20 · checking whether it is met · esc to pause"));
+	await until(() => /round 2 of 20/.test(between.screen().join("\n")), 5000, "the goal's round on screen");
 	third.type([KEY.esc]);
-	await until(() => between.screen().join("\n").includes("goal paused by you. /goal resume goes on"));
-	assert.equal(h.pine.agents.goals.get("main", "main")!.status, "paused");
+	await until(() => h.pine.agents.goals.get("main", "main")!.status === "paused", 5000, "esc to pause the goal");
 	await between.stop();
 	await h.close();
 });

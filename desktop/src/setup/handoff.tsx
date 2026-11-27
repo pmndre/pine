@@ -14,6 +14,8 @@ const NEXT = "What would you like to set up now?";
 
 /** One thing the owner may tick: its option on the card, and its line in the message they send. */
 interface Next {
+	/** What it is, in a word that stays when its label is reworded. */
+	id: string;
 	label: string;
 	description: string;
 	line: string;
@@ -22,12 +24,12 @@ interface Next {
 }
 
 const ALL: Next[] = [
-	{ label: "The mode", description: "How much your agents ask before they act, and whether they work in a sandbox.", line: "The mode: how much my agents ask before they act." },
-	{ label: "A working folder", description: "One of your folders, such as a project, for a conversation to work in.", line: "A working folder: a folder of mine for a conversation to work in." },
-	{ label: "Telegram", description: "Talk to your agents from your phone, through your own bot.", line: "Telegram: so that I can talk to my agents from my phone." },
-	{ label: "A first agent", description: `Your own agent for one job, for example: ${TRY_EVENTS}`, line: `A first agent of my own, for example: ${TRY_EVENTS}` },
-	{ label: "The theme", description: "How the app looks: light, dark, or one of pine's other themes.", line: "The theme of the app." },
-	{ label: "Pinecone", description: "Models and tools that run on this Mac, free and private. Your main agent helps you install it.", line: "Pinecone: help me install it on this Mac, for models and tools that run here.", mac: true },
+	{ id: "mode", label: "The mode", description: "How much your agents ask before they act, and whether they work in a sandbox.", line: "The mode: how much my agents ask before they act." },
+	{ id: "folder", label: "A working folder", description: "One of your folders, such as a project, for a conversation to work in.", line: "A working folder: a folder of mine for a conversation to work in." },
+	{ id: "telegram", label: "Telegram", description: "Talk to your agents from your phone, through your own bot.", line: "Telegram: so that I can talk to my agents from my phone." },
+	{ id: "agent", label: "A first agent", description: `Your own agent for one job, for example: ${TRY_EVENTS}`, line: `A first agent of my own, for example: ${TRY_EVENTS}` },
+	{ id: "theme", label: "The theme", description: "How the app looks: light, dark, or one of pine's other themes.", line: "The theme of the app." },
+	{ id: "pinecone", label: "Pinecone", description: "Models and tools that run on this Mac, free and private. Your main agent helps you install it.", line: "Pinecone: help me install it on this Mac, for models and tools that run here.", mac: true },
 ];
 
 /** What the card offers here. */
@@ -51,16 +53,18 @@ export const handoff: SetupStage = {
 		return (
 			<QuestionCard
 				key="next"
+				id="next"
 				question={NEXT}
 				header="Next"
 				from="pine asks"
-				options={items.map((n) => ({ label: n.label, description: n.description }))}
+				options={items.map((n) => ({ id: n.id, label: n.label, description: n.description }))}
 				multiple
 				autoFocus
 				actions={
 					<Button
 						size="sm"
 						variant="ghost"
+						data-action="nothing"
 						onClick={() => {
 							finish();
 							void store.openTab(main, "main");

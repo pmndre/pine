@@ -293,21 +293,26 @@ test("tui: the code pane shows a command in the background with where its output
 		term.type(["\r"]);
 		await sleep(15);
 	};
+	// What runs is asked of pine; of the screen, that it shows the command (the test's own), where its output
+	// goes (the file pine keeps for it), and a way to stop it.
+	const running = () => h.pine.agents.programs.running("main:main");
+	// (A line that marks it as running, ●: the conversation's own lines hold the command too, as what was typed and called.)
+	const shown = () => (text().match(/●[^\n│]*sleep 33/g) ?? []).length;
 	await send("/code running");
-	await sees("Nothing is running.");
+	await until(() => app.state().pane, 5000, "the pane to open");
+	assert.deepEqual(running(), []);
 	await send(mockMsg([{ tools: [background("sleep 33")] }, { text: "started" }]));
-	await sees("started");
+	await until(() => running().length === 1 && h.pine.tasks.list({ status: "done" }).length === 1, 8000, "the command to run on after the turn");
+	const [job] = running();
 	await sees("● sleep 33");
-	await sees(/in the background · running for \d+ s/);
-	await sees("output in ");
+	await sees(/running for \d+ s/);
 	// The agent's turn is over. That a command of its still runs is said under the conversation, not only in the pane.
-	await sees(/● a command runs in the background: sleep 33 · \d+ s · main is told when it ends/);
-	const [job] = h.pine.agents.programs.running("main:main");
+	await until(() => shown() >= 2, 5000, `the command in the pane and under the conversation\n${text()}`);
 	const lines = app.screen();
 	const y = lines.findIndex((l) => l.includes("■ stop"));
 	term.click(lines[y].lastIndexOf("■ stop") + 1, y);
-	await sees("Nothing is running.");
-	await until(() => !/a command runs in the background/.test(text()), 6000, "the line to go when nothing runs any more");
+	await until(() => running().length === 0, 6000, "the command to be stopped");
+	await until(() => shown() === 0, 6000, `its lines to go when nothing runs any more\n${text()}`);
 	await until(() => gone(job.id), 5000, "the command to be gone");
 	await h.close();
 });

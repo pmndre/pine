@@ -46,8 +46,9 @@ after(async () => {
 	if (home) fs.rmSync(home, { recursive: true, force: true });
 });
 
-const RESTART = "[data-slot=sidebar-footer] [data-sidebar=menu-button]:has-text('Restart to update')";
-const PENDING = "[data-slot=sidebar-footer] [data-sidebar=menu-button]:has-text('Restarts when the work is done')";
+// The side bar's foot, by the update's phase (`data-update`): ready to install, or waiting for the work to end.
+const RESTART = "[data-slot=sidebar-footer] [data-update=ready]";
+const PENDING = "[data-slot=sidebar-footer] [data-update=waiting]";
 const WARNING = "[data-slot=alert-dialog-content]";
 
 test("while an update waits for the work to end, Settings > General and the update dialog show the wait and call it off, and offer no second restart", { skip: OFF_MAC }, async () => {
@@ -71,35 +72,37 @@ test("while an update waits for the work to end, Settings > General and the upda
 	const app = await launchApp({ ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsers, PINE_HOME: home, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_DESKTOP_DEV_URL: "", PINE_SKIP_DOWNLOADS: "1", PINE_DESKTOP_RELEASES: releases, PINE_DESKTOP_UPDATER: updater });
 	try {
 		const page = await app.firstWindow();
-		await page.waitForSelector("[data-slot=empty] h1", { timeout: 60_000 });
+		await page.waitForSelector("[data-slot=composer] textarea", { timeout: 60_000 });
 		await page.waitForSelector(RESTART, { timeout: 20_000 });
 		// The main agent at work for longer than the test lasts.
 		await page.fill("[data-slot=composer] textarea", mockMsg([{ delayMs: 30_000, text: "Never said." }], "Take your time. "));
 		await page.keyboard.press("Enter");
 		await page.waitForSelector("[data-slot=sidebar] [data-slot=pulse]", { timeout: 20_000 });
 		await page.click(RESTART);
-		await page.click(`${WARNING} [data-slot=command-item]:has-text('Restart when they are done')`);
+		await page.click(`${WARNING} [data-slot=command-item][data-value=done]`);
 		await page.waitForSelector(PENDING);
 
 		// The dialog of "Check for Updates…": the wait, and its call-off, and no Restart to update.
 		const menu = (command: string) => app.evaluate(({ BrowserWindow }: any, c: string) => BrowserWindow.getAllWindows()[0].webContents.send("pine:menu", c), command);
 		await menu("updates");
-		const dialog = page.locator("[data-slot=dialog-content]");
-		await dialog.getByText("once no conversation is working").waitFor();
-		assert.equal(await dialog.getByRole("button", { name: "Restart to update" }).count(), 0);
-		await dialog.getByRole("button", { name: "Close" }).click();
+		const dialog = page.locator("[data-dialog=update]");
+		await page.waitForSelector("[data-dialog=update][data-update=waiting] [data-action=cancel-wait]");
+		assert.equal(await dialog.locator("[data-action=restart]").count(), 0);
+		await dialog.locator("[data-action=close]").click();
 		await dialog.waitFor({ state: "detached" });
 		await page.waitForSelector(PENDING);
 
 		// Settings > General: the same.
 		await menu("settings");
-		await page.click("[role=navigation] [data-sidebar=menu-button] >> text=General");
+		await page.click("[role=navigation] [data-section=general]");
 		const field = page.locator("[data-setting=updates]");
-		await field.getByText("once no conversation is working").waitFor();
-		assert.equal(await field.getByRole("button", { name: "Restart to update" }).count(), 0);
-		await field.getByRole("button", { name: "Cancel the wait" }).click();
+		await page.waitForSelector("[data-setting=updates][data-update=waiting] [data-action=cancel-wait]");
+		assert.equal(await field.locator("[data-action=restart]").count(), 0);
+		await field.locator("[data-action=cancel-wait]").click();
 		await page.waitForSelector(PENDING, { state: "detached" });
-		await field.getByRole("button", { name: "Restart to update" }).waitFor();
+		// Called off: every view is back at the update that is ready, the side bar's among them.
+		await page.waitForSelector("[data-setting=updates][data-update=ready] [data-action=restart]");
+		await page.waitForSelector(RESTART);
 		assert.deepEqual(calls(), ["download"]);
 	} finally {
 		await app.close().catch(() => {});

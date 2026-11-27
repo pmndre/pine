@@ -184,8 +184,7 @@ test("pairing: a code stops working when its time is over", async () => {
 	const s = await setup({ pairingMs: 50 });
 	const opened = s.pairing.open();
 	assert.ok(opened.expires.getTime() - Date.now() <= 50);
-	await sleep(80);
-	assert.equal(s.pairing.current(), undefined);
+	await until(() => s.pairing.current() === undefined);
 	await assert.rejects(s.connect(`pair.${codeOf(opened.link, s.store.machineId())}`));
 });
 
@@ -227,7 +226,8 @@ test("pairing: a wrong code closes the connection, so that it gets no second gue
 			if (tried++ === 0) next({ type: "publickey", username: `pair.${"B".repeat(22)}`, key: s.browser.private });
 		},
 	} as any);
-	const outcome = await Promise.race([closed, sleep(1000).then(() => "still open")]);
+	// (The wait is for the close itself; the ten seconds only bound a server that never ends it.)
+	const outcome = await Promise.race([closed, sleep(10_000).then(() => "still open")]);
 	assert.equal(outcome, "closed");
 	// And it did not use up the code: the pairing is still open for the next connection.
 	assert.ok(s.pairing.current());

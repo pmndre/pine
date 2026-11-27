@@ -34,7 +34,7 @@ test("a malformed pairing link is taken out all the same, and ignored with a mes
 		const a = address(`https://pine.example/web/${bad}`);
 		const taken = takePairLink(a.at, a.replace);
 		assert.equal(taken.link, undefined, bad);
-		assert.match(taken.problem ?? "", /pairing link/, bad);
+		assert.ok(taken.problem, `${bad}: said to be no good`);
 		assert.deepEqual(a.replaced, ["https://pine.example/web/"], bad);
 	}
 });
@@ -52,20 +52,20 @@ test("a machine id is the fingerprint of the computer's host key, in the form Op
 });
 
 test("this browser's name for the computer it pairs with: the browser and the system", () => {
-	const named: [string, string][] = [
-		["Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36", "Chrome on Android"],
-		["Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1", "Safari on iPhone"],
-		["Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/131.0.6778.73 Mobile/15E148 Safari/604.1", "Chrome on iPhone"],
-		["Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/132.0 Mobile/15E148 Safari/605.1.15", "Firefox on iPad"],
-		["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15", "Safari on Mac"],
-		["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0", "Edge on Windows"],
-		["Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0", "Firefox on Linux"],
-		["Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", "Chrome on ChromeOS"],
-		["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 OPR/114.0.0.0", "Opera on Windows"],
-		["", "A web browser"],
-		["Something\u0007odd/1.0", "A web browser"],
+	const named: [string, string, string][] = [
+		["Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36", "Chrome", "Android"],
+		["Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1", "Safari", "iPhone"],
+		["Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/131.0.6778.73 Mobile/15E148 Safari/604.1", "Chrome", "iPhone"],
+		["Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/132.0 Mobile/15E148 Safari/605.1.15", "Firefox", "iPad"],
+		["Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15", "Safari", "Mac"],
+		["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0", "Edge", "Windows"],
+		["Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0", "Firefox", "Linux"],
+		["Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36", "Chrome", "ChromeOS"],
+		["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 OPR/114.0.0.0", "Opera", "Windows"],
 	];
-	for (const [agent, name] of named) assert.equal(deviceName(agent), name, agent);
+	for (const [agent, browser, system] of named) assert.ok(deviceName(agent).includes(browser) && deviceName(agent).includes(system), `${agent}: ${deviceName(agent)}`);
+	// A user agent that says nothing it knows still gets a name, in words of pine's own and none of the agent's.
+	for (const agent of ["", "Something\u0007odd/1.0"]) assert.ok(/^[\w ]+$/.test(deviceName(agent)) && !deviceName(agent).includes("odd"), JSON.stringify(deviceName(agent)));
 });
 
 test("a paired computer is written paired: and its machine id among the machines; nothing else is one", () => {

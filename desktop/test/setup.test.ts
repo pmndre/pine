@@ -47,14 +47,17 @@ test("Set up pine runs nothing as administrator on Linux: what needs one is show
 	const page = await app.firstWindow();
 	const calls = () => fs.readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l) as string[]);
 	const services = () => calls().filter((c) => c[0] === "service").length;
-	await page.getByRole("button", { name: "Set up pine" }).click({ timeout: 30_000 });
-	await page.waitForFunction(() => !document.body.textContent?.includes("Setting up…"), undefined, { timeout: 30_000 });
+	await page.click("[data-action=init]", { timeout: 30_000 });
+	// Until `pine init` has run and ended: its call is in the stand-in's log, and the button is no longer busy.
+	for (let i = 0; i < 300 && !(fs.existsSync(log) && calls().some((c) => c[0] === "init") && !(await page.$("[data-action=init][data-busy]"))); i++) await new Promise((r) => setTimeout(r, 100));
 	const init = calls().find((c) => c[0] === "init")!;
 	if (process.platform === "linux") {
 		assert.ok(!init.includes("--yes"), `pine init was told to run what needs an administrator: ${init.join(" ")}`);
 		// What pine would run is on the screen, with what to do; pine is not asked again by itself.
-		await page.locator("[data-slot=toast]", { hasText: "Part of the setup needs an administrator" }).waitFor({ timeout: 10_000 });
-		assert.match(await page.textContent("body"), /sudo apt-get install -y bubblewrap/);
+		// (A warning, not the error of a setup that failed; the command is pine's own, as its setup prints it.)
+		await page.waitForSelector("[data-slot=toast][data-type=warning]", { timeout: 10_000 });
+		assert.match(await page.locator("body").innerText(), /sudo .*bubblewrap/, "the command to run is on the screen");
+		assert.ok(await page.$("[data-action=retry]"), "with Try again beside it");
 		const before = services();
 		await new Promise((r) => setTimeout(r, 500));
 		assert.equal(services(), before, "the app asked for its pine again while what needs an administrator was not done");

@@ -195,31 +195,35 @@ test("tui: the code pane shows changes, files and tool output; the folder is set
 	// pine <folder>: a conversation of the main agent, named after the folder, that works there.
 	await app.openFolder(dir);
 	const name = path.basename(dir).replace(/^\.+/, "").slice(0, 24).replace(/[-.]+$/, "");
-	await sees(`2 main·${name.slice(0, 16)}`);
-	await sees(`works in ~/${path.basename(dir)}`);
+	const tabs = () => app.state().tabs.map((x) => `${x.agent}·${x.session}`);
+	// A turn of the conversation is waited for at the daemon, with room for a busy computer (a command in the
+	// sandbox, the folder recorded for undo): what the screen shows of it comes after.
+	const turns = (n: number) => until(() => h.pine.tasks.list({ status: "done" }).length >= n, 20_000, `${n} finished turns`);
+	await until(() => tabs().join() === `main·main,main·${name}` && app.state().front === 1, 4000, `the folder's conversation in front (${tabs().join()})`);
 	assert.deepEqual(await client.folders("main"), [{ session: name, folder: dir }]);
 	await app.openFolder(dir);
-	assert.equal((text().split("\n")[0].match(/main·/g) ?? []).length, 1, "the same folder again opens the same conversation, not another");
-	assert.match(app.screen().at(-1)!, new RegExp(`main · ${name} · ~/${path.basename(dir).replace(/\./g, "\\.")} · mock/m`), "the bar at the bottom names the folder");
+	assert.equal(tabs().length, 2, "the same folder again opens the same conversation, not another");
+	await until(() => app.screen().at(-1)!.includes(path.basename(dir)), 4000, "the bar at the bottom to name the folder");
 
 	// The agent changes a file there; the pane lists it and shows the diff.
 	await send(mockMsg([{ tools: [call("bash", { command: "printf 'export const answer = 42;\\n' > src/app.ts; echo BUILD-OUTPUT-LINE" })] }, { text: "changed" }]));
-	await sees("changed");
-	assert.ok(!text().includes("Changes"), "closed until it is asked for");
+	await turns(1);
+	assert.equal(app.state().pane, false, "closed until it is asked for");
 	await click("▤ code");
-	await sees(/Changes\s+Files\s+Output/);
-	await sees(/M src\/app\.ts\s+\+1 −2/);
-	await sees(/main · 1 changed/);
-	assert.ok(text().includes("│") && text().includes("ECHO") === false && text().includes("changed"), "the conversation stays beside it");
+	await until(() => app.state().pane, 4000, "the pane to open");
+	await sees(/src\/app\.ts\s+\+1 −2/);
+	await sees(/1 changed/);
+	assert.ok(text().includes("BUILD-OUTPUT-LINE"), "the conversation stays beside it");
 	await click("src/app.ts");
 	await sees("+export const answer = 42;");
-	assert.ok(text().includes("-export const answer = 41;") && text().includes("‹ back · src/app.ts"));
+	assert.ok(text().includes("-export const answer = 41;") && text().includes("‹ back"));
 
 	// It follows what the agent does: the next change is there without asking.
 	await send(mockMsg([{ tools: [call("bash", { command: "printf 'export const answer = 43;\\n' > src/app.ts" })] }, { text: "again" }]));
+	await turns(2);
 	await sees("+export const answer = 43;");
 	await click("‹ back");
-	await sees(/M src\/app\.ts/);
+	await sees(/src\/app\.ts\s+\+1 −2/);
 
 	// Files: a tree that opens on a click, and a file with its text.
 	await click(" Files ");
@@ -239,7 +243,7 @@ test("tui: the code pane shows changes, files and tool output; the folder is set
 	await sees("BUILD-OUTPUT-LINE");
 
 	// Closed with the same button, with ctrl+g and with /code; it is remembered for the next start.
-	const paneOpen = () => /Changes\s+Files\s+Output/.test(text());
+	const paneOpen = () => app.state().pane;
 	await click("▤ code");
 	await until(() => !paneOpen());
 	term.type([CTRL_G]);
@@ -255,23 +259,23 @@ test("tui: the code pane shows changes, files and tool output; the folder is set
 
 	// The folder menu: no folder, where pine was started, folders in use, or one that is picked.
 	await click(`~/${path.basename(dir)}`, 99);
-	await sees(`Folder for main·${name}`);
-	await sees(/No folder\s+main's own workspace/);
+	await until(() => app.state().dialog === "menu", 4000, "the folder menu");
 	await click("Pick a folder");
-	await sees(`this conversation now works in ~/${path.basename(second)}`);
-	await sees(/This folder is not in a git|notes\.txt 14 B/);
-	assert.equal(h.pine.agents.folderOf("main", name), second);
+	const folder = () => h.pine.agents.folderOf("main", name);
+	await until(() => folder() === second, 4000, `the picked folder (${folder()})`);
+	await until(() => app.screen().at(-1)!.includes(path.basename(second)), 4000, "the bar to name it");
 	await send("/folder none");
-	await sees("works in main's own workspace again");
-	assert.match(app.screen().at(-1)!, new RegExp(`main · ${name} · no folder · mock/m`));
+	await until(() => !folder(), 4000, `no folder (${folder()})`);
+	await until(() => !app.screen().at(-1)!.includes(path.basename(second)), 4000, "the bar to name it no longer");
 	await send(`/folder ${h.home}`);
-	await sees("the folder was not changed: that is pine's own folder");
+	await sees(/pine's own/);
+	assert.ok(!folder(), "pine's own folder is refused");
 	chosen = undefined;
 	// A folder dropped on the terminal is opened; a file dropped there is attached, as before.
 	term.paste(dir);
-	await sees(`this conversation now works in ~/${path.basename(dir)}`);
+	await until(() => folder() === dir, 4000, `the dropped folder (${folder()})`);
 	term.paste(path.join(dir, "notes.txt"));
-	await sees(/attached: notes\.txt/);
+	await sees(/notes\.txt.*×/);
 	await send("/detach");
 
 	// In a narrow terminal the pane takes the whole width.
@@ -279,8 +283,8 @@ test("tui: the code pane shows changes, files and tool output; the folder is set
 	const narrow = new PineTui({ client, terminal: new FakeTerminal(70, 24), mode: "test" });
 	apps.push(narrow);
 	await narrow.start();
-	await until(() => /M src\/app\.ts/.test(narrow.screen().join("\n")), 4000, `the pane to be open again\n${narrow.screen().join("\n")}`);
-	assert.ok(!narrow.screen().join("\n").includes("earlier in this session"), "only the pane, where both do not fit");
+	await until(() => narrow.state().pane && /src\/app\.ts/.test(narrow.screen().join("\n")), 4000, `the pane to be open again\n${narrow.screen().join("\n")}`);
+	assert.ok(!narrow.screen().join("\n").includes("BUILD-OUTPUT-LINE"), "only the pane, where both do not fit");
 	await narrow.stop();
 	await h.close();
 });

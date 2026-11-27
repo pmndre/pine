@@ -53,7 +53,7 @@ export function ApprovalDialog({ req }: { req: Approval }) {
 	}, [req.id]);
 	return (
 		<Dialog open onOpenChange={(open) => open || s.closeAsking()}>
-			<DialogContent showCloseButton={false} initialFocus={fields.length ? first : true} className="sm:max-w-xl">
+			<DialogContent showCloseButton={false} initialFocus={fields.length ? first : true} className="sm:max-w-xl" data-dialog="approval" data-tool={req.tool} data-inputs={fields.length || undefined}>
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2"><TriangleAlertIcon className="text-warn" /> {fields.length ? "Approval needed, plus something only you can provide" : "Approval needed"}</DialogTitle>
 				</DialogHeader>
@@ -91,11 +91,11 @@ export function ApprovalDialog({ req }: { req: Approval }) {
 				</div>
 				</ScrollArea>
 				<DialogFooter>
-					<Button variant="ghost" onClick={() => s.closeAsking()}>Later <Kbd>esc</Kbd></Button>
+					<Button variant="ghost" data-action="later" onClick={() => s.closeAsking()}>Later <Kbd>esc</Kbd></Button>
 					<span className="min-w-0 flex-1" />
-					<Button variant="destructive" onClick={() => void s.decide(req.id, false)}>Deny{fields.length ? "" : <Kbd>d</Kbd>}</Button>
-					{req.remember && !fields.length ? <Button variant="outline" onClick={() => allow(true)}>Always here <Kbd>s</Kbd></Button> : null}
-					<Button onClick={() => allow()}>{fields.length ? "Save and allow" : req.holds ? "Allow" : "Allow once"}{fields.length ? "" : <Kbd>a</Kbd>}</Button>
+					<Button variant="destructive" data-action="deny" onClick={() => void s.decide(req.id, false)}>Deny{fields.length ? "" : <Kbd>d</Kbd>}</Button>
+					{req.remember && !fields.length ? <Button variant="outline" data-action="always" onClick={() => allow(true)}>Always here <Kbd>s</Kbd></Button> : null}
+					<Button data-action="allow" onClick={() => allow()}>{fields.length ? "Save and allow" : req.holds ? "Allow" : "Allow once"}{fields.length ? "" : <Kbd>a</Kbd>}</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

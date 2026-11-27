@@ -38,7 +38,7 @@ test("command: the link goes into a folder of the PATH that is the owner's, and 
 		const made = await install(w.resources, env, w.home);
 		assert.deepEqual(made, { state: "here", at: path.join(own, "pine") });
 		assert.equal(fs.readlinkSync(path.join(own, "pine")), path.join(w.resources, "bin", "pine"));
-		assert.match(said(made), /is this app's pine/);
+		assert.ok(said(made).includes(path.join(own, "pine")), "what the owner is told names where the command is");
 		// A second time changes nothing.
 		assert.deepEqual(await install(w.resources, env, w.home), made);
 
@@ -58,7 +58,8 @@ test("command: a pine that was installed by itself is left alone", { skip: links
 		const env = { PATH: [own, npm].join(path.delimiter) };
 		const now = look(w.resources, env, w.home);
 		assert.deepEqual(now, { state: "other", at: path.join(npm, "pine") });
-		assert.match(said(now), /a different pine .*leaves it alone/);
+		assert.ok(said(now).includes(path.join(npm, "pine")), "what the owner is told names the other pine");
+		assert.notEqual(said(now), said({ state: "here", at: now.at }), "and does not call it this app's");
 		// Neither setting up nor removing does anything to it, or beside it.
 		assert.deepEqual(await install(w.resources, env, w.home), now);
 		assert.deepEqual(await remove(w.resources, env, w.home), now);
@@ -70,11 +71,11 @@ test("command: a pine that was installed by itself is left alone", { skip: links
 		fs.writeFileSync(path.join(own, "pine"), "notes, not a program\n", { mode: 0o644 });
 		const kept = await install(w.resources, env2, w.home);
 		assert.equal(kept.state, "none");
-		assert.match(kept.why ?? "", /will not replace it/);
+		assert.ok(kept.why, "with a reason for the owner");
 		assert.equal(fs.readFileSync(path.join(own, "pine"), "utf8"), "notes, not a program\n");
 		fs.rmSync(path.join(own, "pine"));
 		fs.symlinkSync("/somewhere/else/pine", path.join(own, "pine"));
-		assert.match((await install(w.resources, env2, w.home)).why ?? "", /a link to \/somewhere\/else\/pine/);
+		assert.ok(((await install(w.resources, env2, w.home)).why ?? "").includes("/somewhere/else/pine"), "the reason names where the link leads");
 		assert.equal(fs.readlinkSync(path.join(own, "pine")), "/somewhere/else/pine");
 	} finally {
 		w.done();
@@ -103,7 +104,9 @@ test("command: without a folder to write, the shared one and a password; from a 
 		fs.chmodSync(closed, 0o555);
 		const env = { PATH: [closed, "/usr/bin", "/bin"].join(path.delimiter) };
 		assert.deepEqual(look(w.resources, env, w.home), { state: "none", at: "/usr/local/bin/pine", password: true });
-		assert.match(said(look(w.resources, env, w.home)), /to \/usr\/local\/bin.*will ask for your password/);
+		// The owner is told where it would go, and that it takes a password: other words than for a folder of their own.
+		assert.ok(said(look(w.resources, env, w.home)).includes("/usr/local/bin"));
+		assert.notEqual(said({ state: "none", at: "/usr/local/bin/pine", password: true }), said({ state: "none", at: "/usr/local/bin/pine", password: false }));
 
 		// What the system is asked to run with the password: the path is an argument, never a part of the script.
 		const odd = `/Applications/It's "Pine"; rm -rf ~.app/Contents/Resources/bin/pine`;
@@ -120,7 +123,7 @@ test("command: without a folder to write, the shared one and a password; from a 
 			const res = path.join(w.dir(...place), "Pine.app", "Contents", "Resources");
 			fs.mkdirSync(path.join(res, "bin"), { recursive: true });
 			fs.writeFileSync(path.join(res, "bin", "pine"), "#!/bin/sh\n", { mode: 0o755 });
-			assert.match(look(res, env, w.home).why ?? "", /Move Pine into your Applications folder/);
+			assert.ok(look(res, env, w.home).why, "with a reason for the owner");
 			assert.equal(look(res, env, w.home).state, "unavailable");
 		}
 		fs.chmodSync(closed, 0o755);
@@ -158,11 +161,13 @@ test("command: an AppImage's link leads to the AppImage, never into the folder u
 		// An AppImage that did not say where it lies offers nothing: the folder it runs from changes.
 		const lost = look(resources, { PATH: own }, w.home, "linux");
 		assert.equal(lost.state, "unavailable");
-		assert.match(lost.why ?? "", /Start Pine from the AppImage file itself/);
+		assert.ok(lost.why, "with a reason for the owner");
 		// In a Linux package the link leads to the launcher in the app, as on a Mac; the password is the system's.
 		const closed = w.dir("closed");
 		fs.chmodSync(closed, 0o555);
-		assert.match(said(look(w.resources, { PATH: closed }, w.home, "linux"), "linux"), /to \/usr\/local\/bin.*The system will ask for your password/);
+		const shared = look(w.resources, { PATH: closed }, w.home, "linux");
+		assert.deepEqual(shared, { state: "none", at: "/usr/local/bin/pine", password: true });
+		assert.ok(said(shared, "linux").includes("/usr/local/bin"));
 		fs.chmodSync(closed, 0o755);
 	} finally {
 		fs.rmSync(mount, { recursive: true, force: true });
@@ -180,11 +185,12 @@ test("command: on Windows the folder the installer put into the PATH is the app'
 		// Not on the PATH: the installer puts it there.
 		const none = look(resources, { Path: npm }, w.home, "win32");
 		assert.equal(none.state, "unavailable");
-		assert.match(said(none, "win32"), /installer adds pine to your PATH/);
+		assert.ok(said(none, "win32").includes(bin), "the owner is told which folder belongs on the PATH");
 		// On the PATH (by whatever name Windows gives the variable, with a separator at the end or not): the app's.
 		const here = look(resources, { Path: `${npm};${bin}\\` }, w.home, "win32");
 		assert.deepEqual(here, { state: "here", at: path.join(bin, "pine.cmd"), managed: true });
-		assert.match(said(here, "win32"), /uninstalling Pine removes it/);
+		assert.ok(said(here, "win32").includes(path.join(bin, "pine.cmd")));
+		assert.notEqual(said(here, "win32"), said({ ...here, managed: false }, "win32"), "that the installer manages it is said");
 		assert.deepEqual(await install(resources, { Path: bin }, w.home, "win32"), here);
 		assert.deepEqual(await remove(resources, { Path: bin }, w.home, "win32"), here);
 		assert.equal(fs.existsSync(path.join(bin, "pine.cmd")), true);

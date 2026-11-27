@@ -9,8 +9,9 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import type { ElectronApplication, Page } from "playwright-core";
 import { startMock } from "../../baseline/tests/mock.mjs";
+import { browserPlaces } from "../../src/browser-build.ts";
 import { sandboxMissing } from "../../src/security.ts";
-import { allWindowBounds, clickMenu, launchApp, waitForWindow, windowCount } from "./support/app.ts";
+import { allWindowBounds, launchApp, patient, waitForWindow, windowCount } from "./support/app.ts";
 
 let mock: any;
 let home: string;
@@ -23,6 +24,53 @@ const write = (file: string, content: string) => {
 	fs.writeFileSync(file, content);
 };
 
+/**
+ * A menu item's click, found by its key and not by its wording, for the window at `index` (in the order the windows
+ * were made). The items that only send the page a command are sent as that command instead (`sendMenuTo`).
+ */
+async function menuKey(launched: ElectronApplication, accelerator: string, index: number): Promise<void> {
+	await launched.evaluate(
+		({ BrowserWindow, Menu }: any, [key, idx]: [string, number]) => {
+			const target = [...BrowserWindow.getAllWindows()].sort((a: any, b: any) => a.id - b.id)[idx];
+			if (!target || target.isDestroyed()) throw new Error(`no window ${idx}`);
+			target.emit("focus");
+			const find = (items: any[]): any => {
+				for (const i of items) {
+					if (i.accelerator === key && typeof i.click === "function") return i;
+					const below = i.submenu ? find(i.submenu.items) : undefined;
+					if (below) return below;
+				}
+			};
+			const found = find(Menu.getApplicationMenu()?.items ?? []);
+			if (!found) throw new Error(`no menu item with the key ${key}`);
+			found.click(found, target, undefined);
+		},
+		[accelerator, index] as [string, number],
+	);
+}
+const NEW_WINDOW = "CmdOrCtrl+N";
+
+/** Waits until the app has that many windows. */
+async function windowsAre(launched: ElectronApplication, expected: number): Promise<void> {
+	await launched.evaluate(
+		({ BrowserWindow }: any, [n, ms]: [number, number]) =>
+			new Promise<void>((resolve, reject) => {
+				const deadline = Date.now() + ms;
+				const check = () => (BrowserWindow.getAllWindows().length === n ? resolve() : Date.now() > deadline ? reject(new Error(`expected ${n} windows, got ${BrowserWindow.getAllWindows().length}`)) : setTimeout(check, 50));
+				check();
+			}),
+		[expected, patient(10_000)] as [number, number],
+	);
+}
+
+/** An agent's main conversation, opened from the side bar by the agent's name. */
+const openAgent = async (p: Page, agent: string) => {
+	await p.locator("[data-slot=sidebar] [data-slot=agent-label]").getByText(agent, { exact: true }).first().click();
+	await p.locator("[data-slot=tab][data-active] [data-slot=tab-name]", { hasText: agent }).waitFor();
+};
+/** What a window shows first: a conversation, or that it has no tab. */
+const FIRST = "[data-slot=no-tab], [data-slot=tab][data-active]";
+
 async function startPineApp(): Promise<{ app: ElectronApplication; page: Page }> {
 	const launched = await launchApp({
 		...process.env,
@@ -34,13 +82,7 @@ async function startPineApp(): Promise<{ app: ElectronApplication; page: Page }>
 		PINE_DESKTOP_RELEASES: "",
 	});
 	const first = await launched.firstWindow();
-	await first.waitForSelector("[data-slot=empty] h1, [data-slot=no-tab], [data-slot=tab][data-active]", { timeout: 25_000 });
-	const notNow = first.locator("[data-slot=dialog-footer]").getByRole("button", { name: "Not now" });
-	await notNow.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
-	if (await notNow.isVisible().catch(() => false)) {
-		await notNow.click();
-		await first.waitForSelector("[data-slot=dialog-content]", { state: "detached", timeout: 5000 }).catch(() => {});
-	}
+	await first.waitForSelector(FIRST, { timeout: patient(30_000) });
 	return { app: launched, page: first };
 }
 
@@ -49,8 +91,7 @@ const tabNames = (p: Page) => p.evaluate(() => [...document.querySelectorAll("[d
 
 /** Opens a new conversation of scout's in a window, named `name`, and leaves `draft` unsent in it. */
 async function scoutConversation(p: Page, name: string, draft: string): Promise<void> {
-	await p.locator("[data-slot=sidebar-menu-item]:has([data-slot=agent-label])", { has: p.locator("[data-slot=agent-label] > :first-child", { hasText: /^scout$/ }) }).locator("[data-slot=agent-label]").click();
-	await p.waitForSelector("[data-slot=tab][data-active] [data-slot=tab-name] >> text=scout");
+	await openAgent(p, "scout");
 	await p.fill("[data-slot=composer] textarea", `/new ${name}`);
 	await p.keyboard.press("Enter");
 	await p.waitForSelector(`[data-slot=tab][data-active] [data-slot=tab-name] >> text=${name}`);
@@ -112,8 +153,10 @@ before(async () => {
 	mock = await startMock({ strip: /<pine-note>[\s\S]*?<\/pine-note>\s*/g });
 	home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-mw-drag-")));
 	dataDir = path.join(home, "desktop-data");
+	// The browser of the web tools counts as there, so that the app's question about it lies over nothing here (app.test.ts tests it).
 	browsers = path.join(home, "browsers");
 	fs.mkdirSync(browsers, { recursive: true });
+	for (const place of (await browserPlaces()) ?? []) write(path.join(browsers, path.basename(place), "INSTALLATION_COMPLETE"), "");
 	write(
 		path.join(home, "models.json"),
 		JSON.stringify({
@@ -149,8 +192,8 @@ test("a tab dropped on another window moves there with its draft, lands on the h
 	await app.evaluate(({ BrowserWindow }: any) => BrowserWindow.getAllWindows()[0].setBounds({ x: 0, y: 0, width: 1280, height: 820 }));
 	// win1: main, scout, scout's "carry" with a draft.
 	await scoutConversation(win1, "carry", "carried by drag");
-	const win2 = await waitForWindow(app, () => clickMenu(app!, ["File", "New Window"], 0));
-	await win2.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
+	const win2 = await waitForWindow(app, () => menuKey(app!, NEW_WINDOW, 0));
+	await win2.waitForSelector("[data-slot=no-tab]", { timeout: patient(20_000) });
 
 	// Nothing is being dragged: a drop gives nothing.
 	assert.equal(await win2.evaluate(() => (window as any).pine.tabDrop()), undefined);
@@ -182,14 +225,7 @@ test("a tab dropped on another window moves there with its draft, lands on the h
 	assert.deepEqual(await tabNames(win1), ["main"]);
 	await pickUp(win1, "main");
 	await dropOn(win2, "carry", "after");
-	await app.evaluate(
-		({ BrowserWindow }: any) =>
-			new Promise<void>((resolve, reject) => {
-				const deadline = Date.now() + 5000;
-				const check = () => (BrowserWindow.getAllWindows().length === 1 ? resolve() : Date.now() > deadline ? reject(new Error("the window left without a tab did not close")) : setTimeout(check, 50));
-				check();
-			}),
-	);
+	await windowsAre(app, 1);
 	await win2.waitForFunction(() => [...document.querySelectorAll("[data-slot=tab] [data-slot=tab-name]")].length === 3);
 	const after = await tabNames(win2);
 	assert.equal(after[0], "scout");
@@ -201,8 +237,8 @@ test("a tab dropped on another window moves there with its draft, lands on the h
 test("a window on another machine's pine takes no tab of this computer's: that conversation is not there", async () => {
 	assert.ok(app, "app is running from the test before");
 	const local = app.windows().find((p) => !p.isClosed())!;
-	const other = await waitForWindow(app, () => clickMenu(app!, ["File", "New Window"], 0));
-	await other.waitForSelector("[data-slot=no-tab]", { timeout: 20_000 });
+	const other = await waitForWindow(app, () => menuKey(app!, NEW_WINDOW, 0));
+	await other.waitForSelector("[data-slot=no-tab]", { timeout: patient(20_000) });
 	// A machine that is never reached: the window is on it from the moment it is picked, connected or not.
 	const host = "pine-drag-test.invalid";
 	await other.evaluate(async (host) => {

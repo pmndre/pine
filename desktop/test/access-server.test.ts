@@ -419,7 +419,8 @@ test("access server: every session says who connected and when it left", async (
 	assert.ok(s.events[0].at instanceof Date);
 	client.end();
 	await closed(client);
-	await sleep(20);
+	// The server sees it leave a moment after the client saw its own end: waited for, not slept for.
+	for (let i = 0; i < 500 && s.events.length < 2; i++) await sleep(10);
 	assert.deepEqual(
 		s.events.map((e) => [e.kind, e.id]),
 		[
@@ -437,7 +438,8 @@ test("access server: no more than the limit of connections at a time", async () 
 	await assert.rejects(s.connect());
 	a.end();
 	await closed(a);
-	await sleep(20);
+	// Until the server counts one connection less: its side of the close comes a moment after the client's.
+	for (let i = 0; i < 500 && s.server.connected().length > 1; i++) await sleep(10);
 	(await s.connect()).end();
 	b.end();
 });

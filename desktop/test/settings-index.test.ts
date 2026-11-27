@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { AGENT_PLACES, entries, PLACES, search, type Shown } from "../src/settings-index.ts";
+import { AGENT_PLACES, entries, GROUPS, LABELS, PLACES, search, type Shown } from "../src/settings-index.ts";
 
 const src = path.join(import.meta.dirname, "../src");
 const pages = ["Settings.tsx", "BrowserAccess.tsx"].map((f) => fs.readFileSync(path.join(src, f), "utf8")).join("\n");
@@ -46,7 +46,8 @@ test("pine's settings, agents and what pine has are found where their pages show
 	});
 	const one = (q: string) => search(list, q)[0];
 	assert.deepEqual(one("largest download").place, { section: "general", find: `[data-setting-key="limits.maxDownloadMb"]` });
-	assert.deepEqual(one("largest download").path, ["General", "Limits"]);
+	// Its path is the page's own name for itself and for the group, whatever they are called.
+	assert.deepEqual(one("largest download").path, [LABELS.general, GROUPS.find((g) => g.prefix === "limits.")!.title]);
 	assert.equal(one("largest download").about, "How large a download may be.", "only the first line of what a setting says");
 	// A setting the page does not show is not found either.
 	assert.equal(search(list, "warmSlots").length, 0);
@@ -57,7 +58,7 @@ test("pine's settings, agents and what pine has are found where their pages show
 	assert.equal(search(list, "mock").filter((e) => e.id.startsWith("provider:")).length, 0);
 	// By what people call it: pi's "Google" is found as Gemini, and as the subscription it cannot sign in with.
 	assert.equal(one("gemini").id, "provider:google");
-	assert.equal(one("gemini").title, "Google Gemini");
+	assert.match(one("gemini").title, /gemini/i, "under the name it was searched by");
 	assert.equal(one("antigravity").id, "provider:google");
 	// An agent's fields, for each agent, but the main agent cannot be removed.
 	assert.deepEqual(one("scout network").place, { section: "agents", agent: "scout", find: `[data-find="agent-network"]` });
@@ -94,10 +95,11 @@ test("what one agent has is found on its page, what is for all agents on the pag
 	});
 	const one = (id: string) => list.find((e) => e.id === id)!;
 	assert.deepEqual(one("source:books:scans").place, { section: "agents", agent: "books", find: `[data-find="source:books:scans"]` });
-	assert.deepEqual(one("source:books:scans").path, ["Agents", "books", "Sources"]);
+	assert.deepEqual(one("source:books:scans").path.slice(0, 2), [LABELS.agents, "books"]);
+	assert.equal(one("source:books:scans").path.length, 3, "then the part of the agent's page that lists it");
 	assert.deepEqual(one("source:global:mail").place, { section: "events", find: `[data-find="source:global:mail"]` });
 	// A route an agent made for itself is its own; one of pine's that wakes it stays on the Events page.
 	assert.equal(one("route:flagged").place.agent, "books");
 	assert.equal(one("route:door").place.section, "events");
-	assert.deepEqual(one("skill:/h/agents/books/skills/ledger").path, ["Agents", "books", "Skills"]);
+	assert.deepEqual(one("skill:/h/agents/books/skills/ledger").path.slice(0, 2), [LABELS.agents, "books"]);
 });

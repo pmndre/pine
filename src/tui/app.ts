@@ -1500,6 +1500,17 @@ export class PineTui {
 		await this.opts.onQuit?.();
 	}
 
+	/**
+	 * Where the UI stands, as values: its tabs in their order, which one is in front, which kind of dialog is
+	 * open (a question that waits for the owner, a menu, the list of conversations), whether the pane beside
+	 * the conversation is, and how far dictating a message is. For tests, which go by this and not by where on
+	 * the screen something is drawn.
+	 */
+	state(): { tabs: Array<{ kind: Tab["kind"]; agent: string; session: string }>; front: number; dialog?: "asks" | "menu" | "conversations"; pane: boolean; voice?: "starting" | "listening" | "finishing" } {
+		const dialog = !this.dialog ? undefined : this.dialog.waits ? "asks" : this.dialog.id === "conversations" ? "conversations" : "menu";
+		return { tabs: this.tabs.map(({ kind, agent, session }) => ({ kind, agent, session })), front: this.tabs.indexOf(this.active), dialog, pane: this.codeOpen, voice: this.voice?.state };
+	}
+
 	/** What is on screen, without colors. For tests and debugging. */
 	screen(): string[] {
 		this.tui.renderNow(true);
