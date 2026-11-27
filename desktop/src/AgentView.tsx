@@ -1,5 +1,5 @@
 // The agent, beside its conversation: who it is, what it runs on, what it is doing, and what this
-// conversation has been given (skills, servers, what wakes it, what it remembers). A conversation in pine
+// conversation has been given (skills, servers, what wakes it), and the files it reads with each message. A conversation in pine
 // is a conversation with an agent; this is the agent.
 //
 // The tab is an overview, and Settings is where things are kept: each part has the name and the order of
@@ -7,10 +7,9 @@
 // in the same dialog Settings opens (`openThing`) or at its place in Settings. A row says whom the thing is
 // for only when that is not this agent: "all agents" or "this conversation".
 import { BookIcon, CheckIcon, ChevronRightIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, PlugIcon, SettingsIcon, ShieldIcon, SparkleIcon, TriangleAlertIcon, ZapIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { HoverTooltip } from "@/components/hover-tooltip";
-import { Printed } from "@/components/printed";
 import { Pulse } from "@/components/pulse";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -20,11 +19,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { type AgentFileKey, AgentFiles, changedFiles, FilesSkeleton, UnsavedBar } from "./AgentFiles.tsx";
 import { api } from "./api.ts";
 import { bridge } from "./bridge.ts";
-import { CODE_LINES } from "./lists.tsx";
 import { store, type Tab, useModel } from "./model.ts";
-import { childKind, MODES, oneLine, plural, short, tilde } from "./text.ts";
+import { childKind, MODES, oneLine, plural, tilde } from "./text.ts";
 import { goTo, LISTS, openThing, routeOf, routeSaid, whenShort } from "./things.ts";
 import { useLoad } from "./use-load.ts";
 
@@ -111,6 +110,9 @@ export function AgentView({ tab }: { tab: Tab }) {
 	const routes = useLoad(() => api.routes(), [id, ...again]);
 	const skills = useLoad(() => api.skills(), [id, ...again]);
 	const servers = useLoad(() => api.mcp(), [id, ...again]);
+	const [texts, setTexts] = useState<Partial<Record<AgentFileKey, string>>>({});
+	const [busy, setBusy] = useState(false);
+	useEffect(() => setTexts({}), [id]);
 	if (!info) return null;
 	const mode = MODES.find((m) => m.value === info.mode);
 	// What this conversation has: the agent's own, what is for all agents, and what is for this conversation alone.
@@ -122,7 +124,19 @@ export function AgentView({ tab }: { tab: Tab }) {
 	const tools = (servers.data ?? []).filter((x) => x.enabled && x.agents.includes(id) && (!x.session || x.session === tab.session));
 	const helpers = [...tab.children].reverse().slice(0, 8);
 	const elsewhere = [...s.busy].filter(([key, tasks]) => tasks.size && key.startsWith(`${id}:`) && key !== tab.key).map(([key]) => key.slice(id.length + 1));
-	const memory = detail.data?.files.memory?.trim();
+	// What was typed into the agent's files and not saved yet. It is kept while the lists are asked again
+	// (after each turn), and dropped with the agent.
+	const unsaved = detail.data ? changedFiles(detail.data.files, texts) : [];
+	const save = async () => {
+		if (!unsaved.length) return;
+		setBusy(true);
+		const done = await store.attempt(() => api.updateAgent(id, Object.fromEntries(unsaved.map((f) => [f.key, texts[f.key]]))));
+		setBusy(false);
+		if (!done) return;
+		store.flash(`Saved ${unsaved.map((f) => f.name).join(", ")}. ${id} reads the change from the next message on.${done.warnings.length ? ` Note: ${done.warnings.join("; ")}` : ""}`, done.warnings.length ? "warn" : "good", done.warnings.length ? 9000 : 3500);
+		setTexts({});
+		detail.reload();
+	};
 	// Where a part's things are kept: its part of the agent's page in Settings.
 	const manage = (part: string) => () => goTo({ section: "agents", agent: id, find: `[data-find="agent-${part}"]` });
 	// Whom a thing is for, said only when it is not this agent as a whole.
@@ -221,11 +235,12 @@ export function AgentView({ tab }: { tab: Tab }) {
 					</AgentSection>
 				) : null}
 
-				{detail.data && memory === undefined ? null : (
-					<AgentSection title="Memory" manage={manage("instructions")} {...state(detail)} empty={memory || !detail.data ? undefined : "MEMORY.md is empty."}>
-						{memory ? <div className={INSET}><Printed capped text={short(memory, 6000)} contentClassName={CODE_LINES} /></div> : null}
-					</AgentSection>
-				)}
+				{/* The agent's own files, as on its page in Settings: read, changed and saved here too. */}
+				<AgentSection title="Instructions" manage={manage("instructions")} error={state(detail).error}>
+					<div className={INSET}>
+						{detail.data ? <AgentFiles id={id} files={detail.data.files} texts={texts} onText={(key, v) => setTexts((was) => ({ ...was, [key]: v }))} onSave={() => void save()} /> : <FilesSkeleton />}
+					</div>
+				</AgentSection>
 
 				{detail.data ? (
 					<AgentSection title="Workspace">
@@ -237,6 +252,8 @@ export function AgentView({ tab }: { tab: Tab }) {
 						/>
 					</AgentSection>
 				) : null}
+				{/* While a file is changed, the way to keep it stays in sight at the foot of the tab. */}
+				{unsaved.length ? <UnsavedBar busy={busy} discard={() => setTexts({})} save={() => void save()}>Unsaved: {unsaved.map((f) => f.name).join(", ")}</UnsavedBar> : null}
 			</div>
 		</ScrollArea>
 	);

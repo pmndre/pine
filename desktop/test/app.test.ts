@@ -1840,6 +1840,11 @@ test("beside a conversation, the panel's Agent view says what the agent has been
 	assert.equal(await page.locator("[data-slot=dialog-content]").getByLabel("Task", { exact: true }).inputValue(), "Say good morning.");
 	await page.keyboard.press("Escape");
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
+	// The agent's files are the part its page in Settings has: its four files, one tab each.
+	const files = page.locator("[data-slot=agent-section]", { has: page.locator("h3", { hasText: "Instructions" }) });
+	assert.deepEqual(await files.locator("[role=tab]").allTextContents(), ["AGENTS.md", "SOUL.md", "TOOLS.md", "MEMORY.md"]);
+	await files.getByRole("tab", { name: "MEMORY.md" }).click();
+	await sees("[data-slot=agent-section] >> text=Only the agent changes this file.");
 	// "Manage" leads to that part of the agent's page in Settings.
 	await page.locator("[data-slot=agent-section]", { has: page.locator("h3", { hasText: "Schedules" }) }).getByRole("button", { name: "Manage" }).click();
 	await sees("[data-slot=settings-page] [data-find=agent-schedules][data-found]");

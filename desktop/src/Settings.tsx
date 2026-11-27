@@ -17,12 +17,12 @@ import { Sidebar as SidebarRoot, SidebarContent, SidebarGroup, SidebarGroupConte
 import { Pulse } from "@/components/pulse";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "cn";
 import { type ComponentProps, Fragment, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { type AgentDetail, api, type AskQuestion, type Decisions, type ModelServer, type Provider, type Route, type Schedule, type Setting, type Skill, type SourceInfo, type SourceType } from "./api.ts";
 import { bridge } from "./bridge.ts";
-import { Editor } from "./CodePanel.tsx";
+import { AgentFiles, changedFiles, FilesSkeleton, FileTabs, UnsavedBar } from "./AgentFiles.tsx";
+import { Editor } from "./Editor.tsx";
 import { Model, store, type UpdatePhase, useModel, useSignal } from "./model.ts";
 import { SignInRun } from "./sign-in.ts";
 
@@ -488,35 +488,6 @@ const TOOL_ABOUT: Record<string, string> = {
 	ls: "List a folder",
 };
 
-const FILES: Array<{ key: "instructions" | "soul" | "tooling" | "memory" | "rules"; label: string; name: string; about: string; edit: boolean }> = [
-	{ key: "instructions", label: "AGENTS.md", name: "AGENTS.md", about: "What the agent is for and how it works. The agent keeps this file up to date, and you can change it here.", edit: true },
-	{ key: "soul", label: "SOUL.md", name: "SOUL.md", about: "The agent's character and tone.", edit: true },
-	{ key: "tooling", label: "TOOLS.md", name: "TOOLS.md", about: "How this agent prefers to use tools, on top of the notes for all agents. May be empty.", edit: true },
-	{ key: "memory", label: "MEMORY.md", name: "MEMORY.md", about: "Notes the agent keeps to remember things between conversations. Only the agent changes this file.", edit: false },
-	{ key: "rules", label: "Your rules", name: "agents/<id>/AGENTS.md", about: "Your rules for this agent, which the agent reads and cannot change. Edit the file in pine's home.", edit: false },
-];
-
-/** Files to read and change, one tab each: what the file is for, and the file in an editor. */
-function FileTabs<K extends string>({ files, value, onChange, children }: { files: Array<{ key: K; label: string; about?: string }>; value: K; onChange: (v: K) => void; children: (key: K) => ReactNode }) {
-	return (
-		<Tabs value={value} onValueChange={onChange}>
-			<TabsList activateOnFocus className="gap-1">
-				{files.map((f) => (
-					<TabsTrigger key={f.key} value={f.key}>
-						{f.label}
-					</TabsTrigger>
-				))}
-			</TabsList>
-			{files.map((f) => (
-				<TabsContent key={f.key} value={f.key} className="flex flex-col gap-2">
-					{f.about ? <p className="text-muted-foreground">{f.about}</p> : null}
-					{children(f.key)}
-				</TabsContent>
-			))}
-		</Tabs>
-	);
-}
-
 /**
  * An agent's avatar and name at the top of its page, each the place where it is changed: the avatar
  * opens its color, the name turns into a field that renames it. Both are saved at once, apart from
@@ -554,44 +525,10 @@ function AgentPageSkeleton() {
 	);
 }
 
-/** A set of file tabs over an editor, on its first load. */
-function FilesSkeleton() {
-	return (
-		<div data-slot="files-skeleton" className="flex flex-col gap-2">
-			<div className="flex gap-2">
-				<Skeleton className="h-8 w-28" />
-				<Skeleton className="h-8 w-24" />
-				<Skeleton className="h-8 w-24" />
-			</div>
-			<Skeleton className="h-72 w-full" />
-		</div>
-	);
-}
-
-/**
- * The bar that keeps a page's unsaved changes in sight at its foot, wherever the change was made: what is
- * changed, Discard and Save changes. It sticks over the page as it scrolls, so it has the page's own ground
- * and a shadow, and stays above what scrolls under it.
- */
-function UnsavedBar({ busy, discard, save, children }: { busy: boolean; discard: () => void; save: () => void; children: ReactNode }) {
-	return (
-		<Item variant="outline" size="sm" data-unsaved="" className="sticky bottom-4 z-10 bg-background shadow-lg">
-			<ItemContent>
-				<ItemTitle>{children}</ItemTitle>
-			</ItemContent>
-			<ItemActions>
-				<Button variant="ghost" disabled={busy} onClick={discard}>Discard</Button>
-				<Button disabled={busy} onClick={save}>{busy ? <><Pulse label="Saving" data-icon="inline-start" />Saving…</> : "Save changes"}</Button>
-			</ItemActions>
-		</Item>
-	);
-}
-
 function AgentPage({ id, back }: { id: string; back: () => void }) {
 	const detail = useLoad(() => api.agentDetail(id), [id]);
 	const models = useLoad(() => api.models());
 	const [change, setChange] = useState<Record<string, unknown>>({});
-	const [file, setFile] = useState<(typeof FILES)[number]["key"]>("instructions");
 	const [texts, setTexts] = useState<Record<string, string>>({});
 	const [busy, setBusy] = useState(false);
 	const field = useId();
@@ -605,7 +542,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 		);
 	const now = <K extends keyof AgentDetail>(key: K): AgentDetail[K] => (key in change ? (change[key as string] as AgentDetail[K]) : d[key]);
 	const put = (key: string, value: unknown) => setChange({ ...change, [key]: value });
-	const dirtyFiles = FILES.filter((f) => f.edit && texts[f.key] !== undefined && texts[f.key] !== (d.files[f.key] ?? ""));
+	const dirtyFiles = changedFiles(d.files, texts);
 	const dirty = Object.keys(change).length > 0 || dirtyFiles.length > 0;
 	const save = async () => {
 		setBusy(true);
@@ -703,16 +640,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 			</Section>
 			<FieldSeparator />
 			<Section title="Instructions" about="The files the agent reads with each message." data-find="agent-instructions">
-				<FileTabs files={FILES.filter((f) => f.edit || d.files[f.key] !== undefined)} value={file} onChange={setFile}>
-					{(key) => {
-						const meta = FILES.find((f) => f.key === key)!;
-						return (
-							<div className="flex h-72 overflow-hidden rounded-lg border">
-								<Editor key={`${id}:${key}`} file={`${key}.md`} text={texts[key] ?? d.files[key] ?? ""} readOnly={!meta.edit} onChange={(v) => setTexts((was) => ({ ...was, [key]: v }))} onSave={() => void save()} />
-							</div>
-						);
-					}}
-				</FileTabs>
+				<AgentFiles id={id} files={d.files} texts={texts} onText={(key, v) => setTexts((was) => ({ ...was, [key]: v }))} onSave={() => void save()} />
 			</Section>
 			<FieldSeparator />
 			<Section title="Permissions" about="What the agent may do without asking you.">

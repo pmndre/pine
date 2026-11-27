@@ -221,6 +221,8 @@ desktop/
     View.tsx       the view's panel. view-world.ts is pine as the page knows it; view-state.ts what a
                    view is told (names and states, no text); view-frame.ts (view.html) the frame
     Settings.tsx   the settings pages; settings-index.ts what their search finds
+    AgentFiles.tsx an agent's instruction files as tabs over an editor, the same part on the agent's page
+                   in Settings and in the side panel's Agent tab; Editor.tsx the editor itself (CodeMirror)
     things.ts      what Settings and the side panel's Agent tab (AgentView.tsx) share about sources,
                    schedules, routes, skills and servers: how one is said in words, the sign that a list
                    changed (`LISTS`), and `openThing`, which opens a route, a schedule or a skill in the
