@@ -45,6 +45,8 @@ const SYNONYMS: string[][] = [
 	["manual", "documentation", "docs", "doc", "handbook", "guide", "reference", "help", "readme"],
 	["mcp", "server", "connector", "integration", "plugin", "extension", "tool"],
 	["extension", "plugin", "addon", "package", "npm", "module"],
+	// The owner's own browser as the agents' browser: what somebody calls it who has not read "your own browser".
+	["chrome", "brave", "edge", "chromium", "vivaldi", "arc", "real", "logged", "cookies", "tabgroup"],
 	["skill", "procedure", "howto", "recipe", "playbook", "instruction", "knowhow"],
 	["secret", "token", "password", "key", "credential", "apikey", "env"],
 	["approve", "approval", "permission", "confirm", "consent", "ask", "allow", "deny", "dialog", "prompt", "question"],

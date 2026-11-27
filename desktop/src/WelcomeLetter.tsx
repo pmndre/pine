@@ -13,7 +13,8 @@ export interface LetterProps {
 	home: string;
 	/** Whether the home is on this computer, where it can be shown in the Finder. */
 	here: boolean;
-	settings: (section?: string) => void;
+	/** Opens Settings, on a page and at a part of it (`find`, a selector the page marks the part with) where they are named. */
+	settings: (section?: string, find?: string) => void;
 	reveal: () => void;
 	/** Put words into the input, for the owner to send or change. */
 	say: (text: string) => void;
@@ -45,6 +46,9 @@ export function WelcomeLetter({ main, home, here, settings, reveal, say }: Lette
 						<ArrowUpRightIcon className="text-muted-foreground" />
 					</ItemActions>
 				</Item>
+				<p data-slot="welcome-browser">
+					Agents browse in a browser of pine's own. To let them work in your Chrome or Brave too, with your logins, <Button variant="link" className="h-auto p-0 [font-size:inherit]" onClick={() => settings("general", "[data-setting=own-browser]")}>connect your browser</Button>.
+				</p>
 				<p>
 					{/* Links in the text do something in the app and never open an address: the stock link button, at the size of the text around it. The home's path wraps inside the sentence: a long one would overflow a narrow window. */}
 					Everything lives in {here ? <Button variant="link" className="inline h-auto shrink p-0 text-left [font-size:inherit] whitespace-normal wrap-anywhere" onClick={reveal}>{home}</Button> : <span className="font-mono text-xs wrap-anywhere">{home}</span>} and <Button variant="link" className="h-auto p-0 [font-size:inherit]" onClick={() => settings()}>Settings</Button>, but telling <b>{main}</b> is usually enough.

@@ -24,7 +24,7 @@ function draw(state) {
 	} else {
 		const missing = /not found/i.test(state?.why ?? "");
 		$("line").textContent = missing ? "pine has not been connected to this browser yet." : "pine does not answer.";
-		$("hint").textContent = missing ? "In the Pine app: Settings > Browser > Connect. In a terminal: pine chrome install. Then restart this browser." : (state?.why ?? "");
+		$("hint").textContent = missing ? "In the Pine app: Settings > General > Your own browser > Connect. In a terminal: pine chrome install. Then restart this browser." : (state?.why ?? "");
 	}
 	$("again").hidden = on;
 }

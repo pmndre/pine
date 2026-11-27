@@ -109,6 +109,9 @@ src/
                     when that check failed, wait for the owner's answer
   hatch.ts          agents introduce themselves once, in their answer to the owner's first message to them: the note in front
                     of it (`INTRODUCE`). No agent starts a conversation by itself
+  chrome.ts         the owner's own browser (Chrome, Brave, Edge) as the agents' browser, the daemon's side: registering
+                    pine's host with the browsers of the account (native messaging) when the owner asks, the launcher
+                    and the copy of the extension in pine's home, where it stands. The host itself is mcp/chrome.ts
   browser-view.ts   the bundled browser of a conversation for a UI that shows it itself (the Pine app's panel): the
                     daemon's way through the door of the browser's server, for the control API alone
   programs.ts       what a conversation's commands left running: found by process group, listed, stopped;
@@ -158,9 +161,15 @@ src/
                     terminal UI, and `unfolded` for a place that folds nothing)
   dev/claude-model.ts   OpenAI-compatible server backed by `claude -p` (development only)
 mcp/                bundled MCP servers (separate processes): web, browser, commands, computer; lib.ts is what they share
+                    (chrome.ts is not a server: the host the owner's own browser starts for pine's extension, which
+                    Playwright's server connects to as it connects to the Pine app's browser host)
                     (computer.cs and computer-linux.py are computer.ts's helpers on Windows and on Linux with X11)
                     (render.ts is not a server: the helper of the http source's `render`, one look at a page with the browser)
                     (computer.swift is the macOS helper of computer.ts: accessibility tree, mouse and key events, pictures; it decides nothing)
+extension/          pine's extension for Chrome, Brave and Edge (manifest v3, plain JavaScript, no build): a pair of hands
+                    for mcp/chrome.ts. A tab group per conversation, chrome.debugger on the tabs of that group and no
+                    other, the agent's pointer drawn into the page. It decides nothing. docs/dev/chrome.md has its
+                    protocol, its id and key, and how it is tried
 examples/home/      what `pine init` copies
 test/               node:test files; support/harness.ts builds a temp home and a daemon
 baseline/           pi SDK behaviour checks and their results; the mock model server lives here
@@ -633,6 +642,23 @@ These are invariants. A change that breaks one needs a test that shows why it is
    writes it into pine's home, where the guard reads it and no agent can write). Nothing a page
    reaches by itself is asked about, a run started from outside cannot ask, a name that needs a
    lookup cannot be allowed, and pine's control port is refused without a question.
+   The owner's own browser (Chrome, Brave, Edge with pine's extension: `extension/`, `mcp/chrome.ts`,
+   `src/chrome.ts`) is the one place where a browser of an agent's is not behind the guard, and it is the
+   owner's decision: it is their browser, with their logins and their network, and they said the agent may
+   work there. There is no guard proxy in it and none is to be pretended. What holds there instead: only an
+   owner's own conversation gets it (`chromeFile` from `browserSession`, never a run started from outside,
+   never a sub-agent), by the owner's setting (`defaults.browser`) or the agent's `browser_to_chrome`, which
+   asks nobody. The agent reaches the tabs of its conversation's tab group and no other tab: the ones it
+   opened and the ones the owner dragged in, and a tab dragged out or cancelled on the browser's own bar is
+   let go at once. The host (`mcp/chrome.ts`) is started by the browser for pine's extension alone
+   (`EXTENSION_IDS`, the browser's own check and the host's), its door is a WebSocket on the loopback with a
+   word kept in pine's data, it refuses whoever names an origin, and a tab's session has no say over other
+   tabs or the browser (`NOT_IN_A_TAB`). No login is carried into the owner's browser or out of it (`moveNow`
+   in `mcp/browser.ts`), the blocked tools are the same, and since the owner uses those tabs every call is
+   guarded as with a window. pine's control port stays refused by the gate, and a local address the agent
+   opens itself is still asked about there. Only the owner registers the host with the browsers
+   (`connectChrome`: Settings, `pine chrome install`; no tool), nothing is written before they did, and what
+   is written is fixed text and paths of pine's own. `test/chrome.test.ts` fails without each of these.
 9. **The terminal UI shows where a link goes.** Markdown is rendered with hyperlinks off, so a
    link's target is printed next to its text, and `Linked` makes only printed `http(s)`
    addresses clickable. Do not render agent output in a way that hides a link's target.
@@ -1165,6 +1191,15 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   is to do and the calls it was given); a real install is tried by hand, from release N to N+1,
   with the feed and the zip on a stand-in for the release's downloads (`PINE_DESKTOP_DOWNLOADS`,
   for tests only, beside `PINE_DESKTOP_RELEASES`).
+- The owner's own browser is tested without one (`test/chrome.test.ts`): the host on a stand-in for the
+  extension (`fakeExtension`) with a socket in Playwright's place, the browser's framing through the real
+  process, what is registered with the browsers in an account of the test's own (`account`; a daemon in a
+  test takes `PINE_CHROME_ACCOUNT`, for tests only, so that no test writes into the owner's browsers), and
+  the browser server's move there on its stand-in for Playwright (`test/browser.test.ts`). The `live:` test
+  loads the real extension into the Chromium Playwright has, in a profile of its own without a window, with
+  the real host started by that browser, and plays the owner's hand on the tab strip through the
+  extension's own worker. Run it (`npm run test:live`) when you change `extension/`, `mcp/chrome.ts` or
+  upgrade Playwright MCP. A real Chrome or Brave with the extension from a store is tried by hand.
 - The browser in the app's panel is tested without a browser: the relay on its stand-in for
   Playwright's server (`FAKE_BROWSER` in `test/browser.test.ts`, which also plays the owner's
   hand), the control API and the app on a stand-in for the browser's door (a file in the test

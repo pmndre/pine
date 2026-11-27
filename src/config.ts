@@ -318,7 +318,7 @@ export interface PineConfig {
 	logLevel: LogLevel;
 	main?: string;
 	/** `mode`: for every agent that names none. Not set: auto for the main agent, safe for the others. */
-	defaults: { model?: string; /** The model that judges whether a goal is met, as "provider/id". Not set: the agent's own. */ judge?: string; /** The model that checks a swarm's answer, as "provider/id". Not set: the agent's own. */ checker?: string; /** Agents introduce themselves in their answer to the first message their owner writes to them. */ introduce: boolean; thinking: string; mode?: Mode; bashTimeoutSec: number; taskTimeoutSec: number; idleMs: number; settings: Record<string, unknown> };
+	defaults: { model?: string; /** The model that judges whether a goal is met, as "provider/id". Not set: the agent's own. */ judge?: string; /** The model that checks a swarm's answer, as "provider/id". Not set: the agent's own. */ checker?: string; /** Agents introduce themselves in their answer to the first message their owner writes to them. */ introduce: boolean; /** Which browser the agents use in the owner's conversations: pine's own, or the owner's own (Chrome, Brave, Edge) whenever it runs with pine's extension. Not set: pine's own. */ browser?: "chrome"; thinking: string; mode?: Mode; bashTimeoutSec: number; taskTimeoutSec: number; idleMs: number; settings: Record<string, unknown> };
 	limits: {
 		maxConcurrentRuns: number;
 		/**
@@ -665,6 +665,7 @@ export function loadConfig(home = defaultHome()): PineConfig {
 			judge: typeof d.judge === "string" && d.judge ? d.judge : undefined,
 			checker: typeof d.checker === "string" && d.checker ? d.checker : undefined,
 			introduce: d.introduce !== false,
+			browser: d.browser === "chrome" ? "chrome" : undefined,
 			thinking: d.thinking ?? "medium",
 			mode: d.mode,
 			bashTimeoutSec: d.bashTimeoutSec ?? 900,

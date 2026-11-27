@@ -174,6 +174,8 @@ const BROWSER_BRIEF: Record<string, string> = {
 	browser_close: "close the page, when your owner asks for that (a page you have read can stay open)",
 	browser_show: "show the browser as a window on your owner's screen",
 	browser_hide: "take the browser's window off your owner's screen again",
+	browser_to_chrome: 'work in your owner\'s own browser from now on (their Chrome, Brave or Edge, with their logins). Call it first, before you open anything, when they say "my browser", "Chrome" or "Brave", or when a site refuses pine\'s browser',
+	browser_to_pine: "go back from your owner's own browser to pine's own",
 };
 
 /** What an argument is, in a few words, where its name and type do not say it. From the tool's own words for it. */
@@ -882,6 +884,13 @@ export function families(opts: { servers: Array<{ name: string; namespace: strin
 		if (!t && wanted) {
 			const others = [...fams.values()].filter((g) => g !== f && find(g));
 			if (others.length === 1) t = find(others[0]);
+		}
+		// The browser, called with a web address and no action: there is one thing that can mean. (Only there: for
+		// pine's own families a guess could be the tool that removes something.)
+		if (!t && !wanted && f.kind === "browser") {
+			const given = Object.keys(p ?? {}).filter((k) => p[k] !== null && p[k] !== undefined && p[k] !== "");
+			const fits = given.includes("url") ? [...f.action.values()].filter((m) => given.every((k) => k in (m.parameters?.properties ?? {})) && ((m.parameters?.required ?? []) as string[]).every((k) => given.includes(k))) : [];
+			if (fits.length === 1) t = fits[0];
 		}
 		if (!t) throw new Error(opts.leaf ? NOT_A_SUBAGENTS : `${f.name} has no ${f.key} "${wanted}". It has: ${[...f.action.keys()].join(", ")}.`);
 		const mine = Object.keys(t.parameters?.properties ?? {});

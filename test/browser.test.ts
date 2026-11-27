@@ -7,7 +7,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { ALWAYS_BLOCKED, ASK_HINT, cleanOps, CORE_TOOLS, inlineFiles, relay, startGuardProxy, startViewDoor, toolAllowed, vet, webAddress } from "../mcp/browser.ts";
+import { ALWAYS_BLOCKED, NO_CHROME, ASK_HINT, cleanOps, CORE_TOOLS, inlineFiles, relay, startGuardProxy, startViewDoor, toolAllowed, vet, webAddress } from "../mcp/browser.ts";
 import { browserSession } from "../src/agents.ts";
 import { keptAddress, VISITED } from "../src/browser-view.ts";
 import { localTarget } from "../src/net.ts";
@@ -337,13 +337,16 @@ async function fakeBrowser(t: { after(fn: () => void): void }, o: Record<string,
 	let ended = false;
 	const refused: string[] = [];
 	const server = relay(o as any, {
-		launch: (headed, host) => spawn(process.execPath, [script, host ? "hosted" : headed ? "headed" : "hidden", log, ...flags], { stdio: ["pipe", "pipe", "inherit"] }),
+		launch: (headed, host) => spawn(process.execPath, [script, host ? (host.includes("chrome") ? "chrome" : "hosted") : headed ? "headed" : "hidden", log, ...flags], { stdio: ["pipe", "pipe", "inherit"] }),
 		send: (msg: any) => void got.set(msg.id, msg),
 		scratch,
 		refused,
 		ended: () => void (ended = true),
 		// The Pine app's own browser, while a test says it is there (`app`).
 		host: o.app ? async () => (fs.existsSync(path.join(scratch, "app")) ? fs.readFileSync(path.join(scratch, "app"), "utf8") : undefined) : undefined,
+		// The owner's own browser with pine's extension, while a test says it is there (`chrome`), and what it is told when the agent is done there.
+		chrome: o.chromeFile ? async () => (fs.existsSync(path.join(scratch, "chrome")) ? fs.readFileSync(path.join(scratch, "chrome"), "utf8") : undefined) : undefined,
+		bye: async (host) => fs.appendFileSync(path.join(scratch, "bye"), `${host}\n`),
 	});
 	t.after(() => (server.child().kill(), fs.rmSync(scratch, { recursive: true, force: true })));
 	let id = 0;
@@ -359,7 +362,9 @@ async function fakeBrowser(t: { after(fn: () => void): void }, o: Record<string,
 	};
 	await rpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "test", version: "0" } });
 	const app = (url?: string) => (url ? fs.writeFileSync(path.join(scratch, "app"), url) : fs.rmSync(path.join(scratch, "app"), { force: true }));
-	return { rpc, call, app, scratch, refused, view: server.view, log: () => fs.readFileSync(log, "utf8").trim().split("\n"), raw: () => fs.readFileSync(`${log}.raw`, "utf8").trim().split("\n"), ended: () => ended, owner: (...lines: string[]) => fs.writeFileSync(`${log}.owner`, lines.join("\n")) };
+	const chrome = (url?: string) => (url ? fs.writeFileSync(path.join(scratch, "chrome"), url) : fs.rmSync(path.join(scratch, "chrome"), { force: true }));
+	const byes = () => (fs.existsSync(path.join(scratch, "bye")) ? fs.readFileSync(path.join(scratch, "bye"), "utf8").trim().split("\n") : []);
+	return { rpc, call, app, chrome, byes, scratch, refused, view: server.view, log: () => fs.readFileSync(log, "utf8").trim().split("\n"), raw: () => fs.readFileSync(`${log}.raw`, "utf8").trim().split("\n"), ended: () => ended, owner: (...lines: string[]) => fs.writeFileSync(`${log}.owner`, lines.join("\n")) };
 }
 
 test("browser: with a window the owner uses it too: the agent is moved to the page they opened and does not leave a page it has not seen", async (t) => {
@@ -451,8 +456,8 @@ test("browser: the bundled server is configured like the others and marks sessio
 	assert.deepEqual(JSON.parse(pi.env.PINE_MCP_OPTIONS), { headed: true });
 	// What pine adds for a conversation wins over the options: a run started from outside gets no window and no local addresses.
 	const set = { ...server, options: { window: true, localFile: "/tmp/anything" } };
-	assert.deepEqual(JSON.parse((toPiMcp("browser", set, browserSession(false, "/home/allowed.json")) as any).env.PINE_MCP_OPTIONS), { window: false, localFile: null, viewFile: null, hostFile: null, room: null });
-	assert.deepEqual(JSON.parse((toPiMcp("browser", set, browserSession(true, "/home/allowed.json")) as any).env.PINE_MCP_OPTIONS), { window: true, localFile: "/home/allowed.json", viewFile: null, hostFile: null, room: null });
+	assert.deepEqual(JSON.parse((toPiMcp("browser", set, browserSession(false, "/home/allowed.json")) as any).env.PINE_MCP_OPTIONS), { window: false, localFile: null, viewFile: null, hostFile: null, room: null, chromeFile: null, chrome: false });
+	assert.deepEqual(JSON.parse((toPiMcp("browser", set, browserSession(true, "/home/allowed.json")) as any).env.PINE_MCP_OPTIONS), { window: true, localFile: "/home/allowed.json", viewFile: null, hostFile: null, room: null, chromeFile: null, chrome: false });
 	// The door for the owner's own window: only in an owner's conversation, and a run from outside loses one that the options name.
 	assert.equal(JSON.parse((toPiMcp("browser", set, browserSession(true, "/home/allowed.json", "/home/view.json")) as any).env.PINE_MCP_OPTIONS).viewFile, "/home/view.json");
 	assert.equal(JSON.parse((toPiMcp("browser", { ...set, options: { ...(set as any).options, viewFile: "/tmp/mine.json", window: true } } as any, browserSession(false, "/home/allowed.json", "/home/view.json")) as any).env.PINE_MCP_OPTIONS).viewFile, null);
@@ -461,6 +466,13 @@ test("browser: the bundled server is configured like the others and marks sessio
 	assert.deepEqual(hosted(browserSession(true, "/home/allowed.json", "/home/view.json", "/home/host.json", "main:main")), { hostFile: "/home/host.json", room: "main:main" });
 	assert.deepEqual(hosted(browserSession(true, "/home/allowed.json", undefined, "/home/host.json", "main:main")), { hostFile: null, room: null });
 	assert.deepEqual(hosted(browserSession(false, "/home/allowed.json", "/home/view.json", "/home/host.json", "main:main")), { hostFile: null, room: null });
+	// The owner's own browser (Chrome with pine's extension): where it says it is, and whether this conversation's browser is that
+	// one, only for an owner's conversation that is no sub-agent's. Whatever the options say, a run from outside has neither.
+	const chrome = (o: Record<string, unknown>) => ((x) => ({ chromeFile: x.chromeFile, chrome: x.chrome, room: x.room }))(JSON.parse((toPiMcp("browser", { ...set, options: { ...(set as any).options, chromeFile: "/tmp/mine.json", chrome: true, room: "x:y" } } as any, o) as any).env.PINE_MCP_OPTIONS));
+	assert.deepEqual(chrome(browserSession(true, "/home/allowed.json", "/home/view.json", undefined, "main:main", "/home/chrome.json", true)), { chromeFile: "/home/chrome.json", chrome: true, room: "main:main" });
+	assert.deepEqual(chrome(browserSession(true, "/home/allowed.json", "/home/view.json", undefined, "main:main", "/home/chrome.json", false)), { chromeFile: "/home/chrome.json", chrome: false, room: "main:main" });
+	assert.deepEqual(chrome(browserSession(true, "/home/allowed.json", undefined, undefined, "main:main", "/home/chrome.json", true)), { chromeFile: null, chrome: false, room: null });
+	assert.deepEqual(chrome(browserSession(false, "/home/allowed.json", "/home/view.json", undefined, "main:main", "/home/chrome.json", true)), { chromeFile: null, chrome: false, room: null });
 	await h.close();
 });
 
@@ -665,6 +677,83 @@ test("browser view: while the Pine app runs, the browser is the app's own, and w
 	await until(() => b.log().filter((l) => l.startsWith("start")).at(-1) === "start hidden", 5000, "the move out of the app").catch((e) => assert.fail(`${e.message}\n${b.log().join("\n")}`));
 	await until(() => b.log().at(-1) === "browser_navigate https://shop.example/cart", 5000, "the page opened again");
 	assert.equal((await b.view.state()).hosted, undefined);
+});
+
+test("browser: the agent moves into the owner's own browser and back; no login is carried either way, and the tabs it opened there are closed when it leaves", async (t) => {
+	const b = await fakeBrowser(t, { window: true, chromeFile: "/home/chrome.json", tools: [...CORE_TOOLS, "login"] });
+	const names = (await b.rpc("tools/list")).result.tools.map((x: any) => x.name);
+	assert.ok(names.includes("browser_to_chrome") && names.includes("browser_to_pine"), names.join(" "));
+	// Only where pine says the owner's browser may be used, and only in the owner's own conversation.
+	assert.ok(toolAllowed("browser_to_chrome", { window: true, chromeFile: "/x" }) && !toolAllowed("browser_to_chrome", { window: true }) && !toolAllowed("browser_to_chrome", { chromeFile: "/x" }) && !toolAllowed("browser_to_pine", { tools: "all" }));
+
+	// The owner's browser is not there: the agent is told what it takes, and stays where it is.
+	const none = await b.call("browser_to_chrome");
+	assert.ok(none.failed && none.text === NO_CHROME, none.text);
+	assert.deepEqual(b.log().filter((l) => l.startsWith("start")), ["start hidden"]);
+
+	// A page and a login in pine's own browser. Then into the owner's: the page in a tab of its own, the login left behind.
+	await b.call("browser_navigate", { url: "https://shop.example/account" });
+	await b.call("login");
+	b.chrome("ws://chrome");
+	const moved = await b.call("browser_to_chrome");
+	assert.ok(!moved.failed && moved.text.includes("a tab group named pine in your owner's own browser") && moved.text.includes("You are on: https://shop.example/account"), moved.text);
+	assert.match((await b.call("browser_snapshot")).text, /Page URL: https:\/\/shop\.example\/account\n- window: chrome\n- cookies: none/);
+	assert.ok(!b.raw().some((l) => l.includes("storage_state")), "nothing of a login was read or written");
+	const log = b.log();
+	assert.ok(log.indexOf("start chrome") < log.indexOf("browser_tabs new") && log.indexOf("browser_tabs new") < log.lastIndexOf("browser_navigate https://shop.example/account"), log.join("\n"));
+	assert.match((await b.call("browser_to_chrome")).text, /a tab group named pine/);
+	assert.equal(b.log().filter((l) => l === "start chrome").length, 1, "already there: nothing started anew");
+
+	// The owner uses those tabs too, and drags one in: the agent is told before it acts.
+	b.owner("newtab https://mail.example/inbox");
+	const looked = await b.call("browser_snapshot");
+	assert.ok(looked.text.startsWith("The browser has changed since you last looked") && looked.text.includes("https://mail.example/inbox"), looked.text);
+	// What the owner's own window (the Pine app) shows of it is a picture in the page's points, and it is not the app's own browser.
+	assert.deepEqual(((s) => ({ hosted: s.hosted, scale: s.scale }))(await b.view.state()), { hosted: undefined, scale: 1 });
+	assert.match((await b.call("browser_show")).text, /^Your owner sees the browser in their own browser/);
+	assert.ok(!b.log().includes("start headed"), "no window of pine's");
+
+	// Closing the browser there closes the tabs pine opened; so does moving back, where nothing of the owner's logins comes along.
+	await b.call("browser_close");
+	await until(() => b.byes().length === 1, 2000, "the owner's browser told that the agent is done");
+	await b.call("browser_navigate", { url: "https://shop.example/cart" });
+	const back = await b.call("browser_to_pine");
+	assert.ok(!back.failed && back.text.startsWith("The browser is pine's own again.") && back.text.includes("https://shop.example/cart"), back.text);
+	assert.deepEqual(b.byes(), ["ws://chrome", "ws://chrome"]);
+	assert.equal(b.log().filter((l) => l.startsWith("start")).at(-1), "start hidden");
+	assert.match((await b.call("browser_snapshot")).text, /window: hidden\n- cookies: none/);
+	assert.ok(!b.raw().some((l) => l.includes("storage_state")));
+	assert.match((await b.call("browser_to_pine")).text, /pine's own already/);
+	assert.equal(b.ended(), false);
+});
+
+test("browser: with the owner's setting the browser is the owner's own whenever that one is there, and pine's own when it is gone", async (t) => {
+	const b = await fakeBrowser(t, { window: true, chromeFile: "/home/chrome.json", chrome: true, app: true });
+	await b.call("browser_navigate", { url: "https://shop.example/" });
+	assert.match((await b.call("browser_snapshot")).text, /window: hidden/);
+	// Both are there: the owner's own browser comes before the app's.
+	b.app("ws://127.0.0.1:9/word");
+	b.chrome("ws://chrome");
+	await until(() => b.log().includes("start chrome"), 5000, "the move into the owner's browser");
+	await until(() => b.log().filter((l) => l === "browser_navigate https://shop.example/").length === 2, 5000, "the page opened again");
+	assert.ok(!b.log().includes("start hosted"));
+	// The owner's browser is closed: the app's own takes over.
+	b.chrome();
+	await until(() => b.log().filter((l) => l.startsWith("start")).at(-1) === "start hosted", 5000, "the move into the app");
+});
+
+test("browser: called with a web address and no action, the browser opens it; and the agent is told that \"my browser\" is the owner's own", async (t) => {
+	const h = await harness({ pine: { mcp: { browser: { pine: "browser", options: { executablePath: "/nonexistent/browser" } } } }, agents: { main: {} } });
+	t.after(() => h.close());
+	const seen: string[] = [];
+	h.pine.bus.subscribe("agent/main/tool", (e: any) => void (e.payload.phase === "start" && seen.push(e.payload.tool)));
+	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [{ name: "browser", args: { url: "https://example.com/" } }] }, { tools: [{ name: "browser", args: {} }] }, { text: "done" }]), trust: "owner" });
+	// A model that names no action and gives an address means one thing; with nothing given it is told what there is.
+	assert.deepEqual(seen.filter((x) => x.includes("browser_")), ["mcp__browser__browser_navigate"]);
+	assert.match(h.toolResults().at(-1) ?? "", /browser has no tool ""\. It has: .*browser_to_chrome, browser_to_pine/);
+	// What the model reads about the two tools, in the one declaration of the browser.
+	const declared = h.mock.state.requests.at(-1).body.tools.find((x: any) => x.function.name === "browser").function.description as string;
+	assert.match(declared, /- browser_to_chrome\(\): work in your owner's own browser from now on .*Call it first, before you open anything, when they say "my browser"/);
 });
 
 test("browser view: where the owner's own window shows the browser, showing it opens no other window", async (t) => {

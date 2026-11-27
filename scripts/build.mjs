@@ -12,7 +12,7 @@ const out = path.join(root, "build");
 fs.rmSync(out, { recursive: true, force: true });
 execFileSync(process.execPath, [path.join(root, "node_modules", "typescript", "bin", "tsc"), "-p", path.join(root, "tsconfig.build.json")], { cwd: root, stdio: "inherit" });
 
-for (const name of ["README.md", "LICENSE", "docs", "examples"]) fs.cpSync(path.join(root, name), path.join(out, name), { recursive: true });
+for (const name of ["README.md", "LICENSE", "docs", "examples", "extension"]) fs.cpSync(path.join(root, name), path.join(out, name), { recursive: true });
 // The README's screenshots are shown from the repository; they need not travel with every install.
 fs.rmSync(path.join(out, "docs", "images"), { recursive: true, force: true });
 // pine's helpers are built from their sources on the computer they run on (Swift on a Mac, C# on

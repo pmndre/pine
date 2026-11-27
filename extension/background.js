@@ -30,14 +30,15 @@ const pending = new Set();
 /** Messages of the host that came in pieces: id -> the pieces so far. */
 const parts = new Map();
 
-// What outlives this worker while the browser runs: which group is whose, and which tabs pine opened.
+// What outlives this worker while the browser runs: which group is whose (room -> group), and
+// which tabs pine opened itself (tab -> room). Those it closes again; the owner's it never closes.
 let groups = {};
-let mine = new Set();
+let mine = {};
 const ready = chrome.storage.session.get(["groups", "mine"]).then((kept) => {
 	groups = kept.groups && typeof kept.groups === "object" ? kept.groups : {};
-	mine = new Set(Array.isArray(kept.mine) ? kept.mine : []);
+	mine = kept.mine && typeof kept.mine === "object" && !Array.isArray(kept.mine) ? kept.mine : {};
 });
-const save = () => void chrome.storage.session.set({ groups, mine: [...mine] }).catch(() => {});
+const save = () => void chrome.storage.session.set({ groups, mine }).catch(() => {});
 
 const text = (e) => {
 	const said = e instanceof Error ? e.message : String(e);
@@ -143,7 +144,8 @@ async function request(m) {
 	if (m.do === "enter") return { tabs: await enter(String(m.room), String(m.title ?? "pine")) };
 	if (m.do === "open") return open(String(m.room), String(m.title ?? "pine"), typeof m.url === "string" ? m.url : "about:blank");
 	if (m.do === "close") return close(m.tabId);
-	if (m.do === "leave") return leave(String(m.room), m.closeMine === true);
+	if (m.do === "leave") return leave(String(m.room));
+	if (m.do === "clear") return clear(String(m.room));
 	throw new Error(`unknown request ${m.do}`);
 }
 
@@ -175,12 +177,20 @@ async function attach(tabId, room) {
 	try {
 		const { targetInfo } = await chrome.debugger.sendCommand({ tabId }, "Target.getTargetInfo");
 		tabs.set(tabId, room);
+		await awake(tabId);
 		return targetInfo;
 	} catch {
 		await chrome.debugger.detach({ tabId }).catch(() => {});
 		return undefined;
 	}
 }
+
+/**
+ * A tab that is not in front is hidden: its page stops drawing, and a click that waits for the page
+ * to hold still waits for ever. With this the page stays awake behind the owner's own tab, so the
+ * agent works without taking the front.
+ */
+const awake = (tabId) => chrome.debugger.sendCommand({ tabId }, "Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => {});
 
 /** A conversation's browser is here from now on: every tab of its group is its agent's. */
 async function enter(room, title) {
@@ -215,14 +225,14 @@ async function open(room, title, url) {
 			await chrome.tabGroups.update(groupId, { title, color: COLOR });
 			groups[room] = groupId;
 		} else await chrome.tabs.group({ tabIds: [tab.id], groupId });
-		mine.add(tab.id);
+		mine[tab.id] = room;
 		save();
 		const targetInfo = await attach(tab.id, room);
 		if (!targetInfo) throw new Error("the browser did not let pine use the new tab");
 		if (url !== "about:blank" && /^https?:/i.test(url)) await chrome.tabs.update(tab.id, { url });
 		return { tabId: tab.id, targetInfo };
 	} catch (e) {
-		mine.delete(tab.id);
+		delete mine[tab.id];
 		await chrome.tabs.remove(tab.id).catch(() => {});
 		throw e;
 	} finally {
@@ -233,20 +243,31 @@ async function open(room, title, url) {
 async function close(tabId) {
 	if (!tabs.has(tabId)) throw new Error("No tab with given id");
 	tabs.delete(tabId);
-	mine.delete(tabId);
+	delete mine[tabId];
 	save();
 	await chrome.tabs.remove(tabId).catch(() => {});
 	return {};
 }
 
-/** A conversation's browser is here no longer. Its group stays; the tabs pine opened go if asked. */
-async function leave(room, closeMine) {
+/** A conversation's browser is here no longer (it rests, or pine stopped). Its group and every tab stay; nobody is attached. */
+async function leave(room) {
 	rooms.delete(room);
 	for (const [tabId, of] of [...tabs]) {
 		if (of !== room) continue;
 		tabs.delete(tabId);
 		await chrome.debugger.detach({ tabId }).catch(() => {});
-		if (closeMine && mine.delete(tabId)) await chrome.tabs.remove(tabId).catch(() => {});
+	}
+	return {};
+}
+
+/** The agent is done with its browser here: the tabs pine opened for this conversation are closed. The owner's stay. */
+async function clear(room) {
+	for (const [id, of] of Object.entries(mine)) {
+		if (of !== room) continue;
+		const tabId = Number(id);
+		delete mine[id];
+		gone(tabId);
+		await chrome.tabs.remove(tabId).catch(() => {});
 	}
 	save();
 	return {};
@@ -263,13 +284,17 @@ async function releaseAll() {
 
 /** A tab is no longer pine's. */
 function gone(tabId) {
-	if (!tabs.delete(tabId)) return;
-	if (mine.delete(tabId)) save();
-	send({ ev: "gone", tabId });
+	if (mine[tabId] !== undefined) {
+		delete mine[tabId];
+		save();
+	}
+	if (tabs.delete(tabId)) send({ ev: "gone", tabId });
 }
 
 chrome.debugger.onEvent.addListener((source, method, params) => {
 	if (source.tabId === undefined || !tabs.has(source.tabId)) return;
+	// A page from another site is another process: it is kept awake like the one before it.
+	if (!source.sessionId && method === "Page.frameNavigated" && !params?.frame?.parentId) void awake(source.tabId);
 	send({ ev: "cdp", tabId: source.tabId, ...(source.sessionId ? { sessionId: source.sessionId } : {}), method, params });
 });
 

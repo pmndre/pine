@@ -197,6 +197,36 @@ ask the agent to show it:
 - No window for a run started from outside, or without a screen. `"block": ["browser_show",
   "browser_hide"]` removes the tools.
 
+### Your own browser (Chrome, Brave, Edge)
+
+pine's own browser has no logins of yours, and some sites refuse it. An agent can work in your
+own browser instead: Chrome, Brave, Edge, Chromium, Vivaldi or Arc, with pine's extension in it.
+
+| What | How |
+|---|---|
+| Connect, once | Settings > General > **Your own browser** > Connect in the Pine app, or `pine chrome install`. Then add the extension to the browser: open `chrome://extensions`, turn on Developer mode, and drag the folder pine names onto that page (or "Load unpacked"). Restart the browser if it ran before |
+| `pine chrome` | Says whether pine is connected to the browsers on this computer and whether the extension answers. `pine chrome install` connects, `pine chrome remove` takes it back |
+| `mcp__browser__browser_to_chrome` | The agent moves its browser into yours, for this conversation. Say "use my browser" or "do this in Chrome" |
+| `mcp__browser__browser_to_pine` | Back to pine's own browser. The tabs the agent opened in yours are closed, yours stay |
+| `defaults.browser` | `chrome`: every conversation of yours uses your browser whenever it runs with the extension. `pine` (the default): pine's own |
+
+- A conversation gets a tab group named `pine · <agent or conversation>` there. The agent sees
+  and uses the tabs of that group and no other tab.
+- Drag a tab into the group to hand it to the agent; drag it out to take it back. The agent is
+  told when a tab came, and looks before it acts.
+- The agent works in the background: its tab does not come to the front, and you see a pointer
+  labelled pine where it clicks.
+- The browser shows "Pine started debugging this browser" while an agent is attached. Cancel
+  there takes every tab back from the agents at once.
+- Closing a conversation's browser or moving back closes the tabs the agent opened. A conversation
+  that rests leaves its tabs open and nobody attached.
+
+It is your browser, with your logins: the agent is signed in wherever you are, and the guard of
+pine's own browser (no local network, no logins) does not apply there. Only your own
+conversations get it, never a run started from outside or a sub-agent. No login is copied into
+your browser or out of it. Without the extension, or with the browser closed, the agent works in
+pine's own browser.
+
 ### Local addresses
 
 When the agent opens a local address with `browser_navigate` (`http://localhost:5173`,
