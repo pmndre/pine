@@ -256,7 +256,8 @@ test("chrome: pine is registered with the browsers of an account when the owner 
 		// The launcher: fixed text, the Node pine runs on, pine's own host, and where that says its door is. A path with a space or a quote stays one word.
 		const text = fs.readFileSync(launcher, "utf8");
 		assert.ok(text.startsWith("#!/bin/sh\n") && text.includes(`exec '${process.execPath}' '${path.join(import.meta.dirname, "..", "mcp", "chrome.ts")}' '${chromeFile(w.dataDir)}' "$@"`), text);
-		assert.equal(fs.statSync(launcher).mode & 0o777, 0o700);
+		// Only the owner runs it. (Windows has no such bits: a file there says 666 whatever it was given.)
+		if (process.platform !== "win32") assert.equal(fs.statSync(launcher).mode & 0o777, 0o700);
 		// The extension as it lies with pine, for a browser that loads it from a folder.
 		const state = chromeState(w);
 		assert.equal(state.folder, path.join(w.home, "chrome", "extension"));
