@@ -202,6 +202,7 @@ export const COMMANDS: Command[] = [
 	},
 	{ name: "mcp", title: "MCP servers", about: "List them, add one, or sign in to one", run: menu("settings:mcp") },
 	{ name: "events", title: "Event log", about: "Watch everything that happens, live", keys: "⇧⌘L", run: menu("events") },
+	{ name: "manual", title: "Manual", about: "Read pine's manual: everything it does and how", run: menu("manual") },
 	{
 		name: "tasks", title: "Recent tasks", about: "Recent tasks of this agent", chat: true,
 		run: async (_a, tab) => {

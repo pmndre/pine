@@ -44,7 +44,7 @@ The manual in six parts. Each chapter is one file in `references/`.
 
 | Chapter | What it holds |
 |---|---|
-| [The Pine app](references/desktop.md) | The app on a computer: window, tabs, code panel, settings, browser access for a phone or browser |
+| [The Pine app](references/desktop.md) | The app on a computer: window, tabs, code panel, settings, the Manual tab, browser access for a phone or browser |
 | [Views for the Pine app](references/views.md) | A script of your own that draws all of pine in the app's panel |
 | [The terminal UI](references/tui.md) | Tabs, slash commands, keys, modes, approvals, pictures, dictation |
 | [The phone app](references/mobile.md) | pine on an Android phone or an iPhone, over SSH or paired with the Pine app |

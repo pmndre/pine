@@ -1,7 +1,7 @@
 // The window: the list of agents and conversations at the side, the tabs along the top, one
 // conversation in the middle with its panel, and whatever lies over them for a moment (a list
 // to pick from, a question, the palette).
-import { ArrowUpIcon, AudioLinesIcon, DownloadIcon, HourglassIcon, RotateCwIcon, CheckIcon, RadarIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronsUpDownIcon, EllipsisIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, ListIcon, MenuIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, TerminalSquareIcon, Trash2Icon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, AudioLinesIcon, BookOpenIcon, DownloadIcon, HourglassIcon, RotateCwIcon, CheckIcon, RadarIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronsUpDownIcon, EllipsisIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, ListIcon, MenuIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, TerminalSquareIcon, Trash2Icon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
 import { useMediaQuery } from "usehooks-ts";
 import { Toggle } from "@/components/ui/toggle";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,6 +31,7 @@ import { type Beside, isPick, PANE, paneOf, ROOM, store, type Tab, type UpdatePh
 import * as dock from "./dock.ts";
 import { ViewAside } from "./View.tsx";
 import { Breakable, MachineList, NewAgent, Settings } from "./Settings.tsx";
+import { Manual } from "./Manual.tsx";
 import { computerWord, firstScreen, isPaired, noMachineSaid } from "./machines.ts";
 import { ApprovalDialog } from "./ApprovalDialog.tsx";
 import { Palette } from "./Palette.tsx";
@@ -696,6 +697,9 @@ export function Sidebar() {
 					<SidebarMenuItem className="[-webkit-app-region:no-drag]">
 						<SidebarMenuButton isActive={front?.kind === "settings"} onClick={() => s.openSettings()}><SettingsIcon /><span className="min-w-0 flex-1">Settings</span><Kbd>{shortcut("⌘,")}</Kbd></SidebarMenuButton>
 					</SidebarMenuItem>
+					<SidebarMenuItem className="[-webkit-app-region:no-drag]">
+						<SidebarMenuButton isActive={front?.kind === "manual"} onClick={() => s.openManual()}><BookOpenIcon /><span className="min-w-0 flex-1">Manual</span></SidebarMenuButton>
+					</SidebarMenuItem>
 					<Machines />
 				</SidebarMenu>
 			</SidebarFooter>
@@ -915,10 +919,10 @@ function TabFace({ item }: { item: string }) {
 	return (
 		<>
 			<span className="grid size-5 flex-none place-items-center">
-				{!tab ? (pane === "code" ? <PanelRightIcon /> : <RadarIcon />) : tab.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : tab.busy ? <Pulse /> : tab.unread ? <Badge className="size-2 p-0" /> : tab.kind === "events" ? <AudioLinesIcon /> : tab.kind === "settings" ? <SettingsIcon /> : tab.kind === "task" ? <ListIcon /> : <AgentAvatar agent={{ id: tab.agent, color: s.agent(tab.agent)?.color, main: s.agent(tab.agent)?.main }} size="sm" className="data-[size=sm]:size-5" />}
+				{!tab ? (pane === "code" ? <PanelRightIcon /> : <RadarIcon />) : tab.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : tab.busy ? <Pulse /> : tab.unread ? <Badge className="size-2 p-0" /> : tab.kind === "events" ? <AudioLinesIcon /> : tab.kind === "settings" ? <SettingsIcon /> : tab.kind === "manual" ? <BookOpenIcon /> : tab.kind === "task" ? <ListIcon /> : <AgentAvatar agent={{ id: tab.agent, color: s.agent(tab.agent)?.color, main: s.agent(tab.agent)?.main }} size="sm" className="data-[size=sm]:size-5" />}
 			</span>
 			<span data-slot="tab-name" className="flex-1 truncate">
-				{pane ? <PaneLabel which={pane} /> : tab!.kind === "events" ? "Events" : tab!.kind === "settings" ? "Settings" : tab!.kind === "task" ? <>{tab!.agent} #{tab!.task}</> : tab!.session === "main" ? tab!.agent : <>{tab!.agent} · <Title agent={tab!.agent} session={tab!.session} /></>}
+				{pane ? <PaneLabel which={pane} /> : tab!.kind === "events" ? "Events" : tab!.kind === "settings" ? "Settings" : tab!.kind === "manual" ? "Manual" : tab!.kind === "task" ? <>{tab!.agent} #{tab!.task}</> : tab!.session === "main" ? tab!.agent : <>{tab!.agent} · <Title agent={tab!.agent} session={tab!.session} /></>}
 			</span>
 		</>
 	);
@@ -1075,6 +1079,7 @@ function tabLabel(item: string): string {
 	const tab = s.tabOf(item);
 	if (!tab) return item;
 	if (tab.kind === "events") return "Events";
+	if (tab.kind === "manual") return "Manual";
 	if (tab.kind === "settings") return "Settings";
 	if (tab.kind === "task") return `${tab.agent} #${tab.task}`;
 	return tab.session === "main" ? tab.agent : `${tab.agent} · ${s.titleOf(tab.agent, tab.session)}`;
@@ -1249,7 +1254,7 @@ function Body({ item }: { item: string }) {
 	if (!tab) return <NoTab />;
 	return (
 		<TabBoundary key={tab.id} what={tab.kind === "chat" ? `conversation` : tab.kind} close={() => s.closeTab(tab)}>
-			{tab.kind === "settings" ? <Settings /> : tab.kind === "events" ? <Events tab={tab} /> : <Conversation key={tab.id} tab={tab} />}
+			{tab.kind === "settings" ? <Settings /> : tab.kind === "manual" ? <Manual /> : tab.kind === "events" ? <Events tab={tab} /> : <Conversation key={tab.id} tab={tab} />}
 		</TabBoundary>
 	);
 }
@@ -1704,7 +1709,7 @@ export function App() {
 	}, []);
 	const ready = s.service.status === "ready" && s.agents.length > 0 && s.opened;
 	const tab = s.active;
-	const tabLabel = !ready || !tab ? undefined : tab.kind === "events" ? "Events" : tab.kind === "settings" ? "Settings" : tab.kind === "task" ? `${tab.agent} #${tab.task}` : tab.session === "main" ? tab.agent : `${tab.agent} · ${s.titleKnown(tab.agent, tab.session) ? s.titleOf(tab.agent, tab.session) : tab.session}`;
+	const tabLabel = !ready || !tab ? undefined : tab.kind === "events" ? "Events" : tab.kind === "settings" ? "Settings" : tab.kind === "manual" ? "Manual" : tab.kind === "task" ? `${tab.agent} #${tab.task}` : tab.session === "main" ? tab.agent : `${tab.agent} · ${s.titleKnown(tab.agent, tab.session) ? s.titleOf(tab.agent, tab.session) : tab.session}`;
 	const windowTitle = [tabLabel, s.remote, "Pine"].filter(Boolean).join(" — ");
 	useEffect(() => {
 		document.title = windowTitle;

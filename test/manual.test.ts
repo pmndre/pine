@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { createManual, loadManual, partsOf, showRead, showSearch, stem } from "../src/manual.ts";
+import { chapter, chapters, createManual, loadManual, lookUp, partsOf, pineManual, showRead, showSearch, stem } from "../src/manual.ts";
 import { harness, mockMsg } from "./support/harness.ts";
 
 const run = promisify(execFile);
@@ -39,6 +39,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 	// [what is asked, a part that must be among the first four]
 	const cases: Array<[string, RegExp]> = [
 		["telegram pairing code", /^source-types#telegram$/],
+		["where can I read the documentation myself in the app", /^desktop#the-manual$/],
 		["my owner typed a message instead of picking one of the answers I offered", /^(agents#a-message-while-the-agent-works|desktop#when-the-agent-asks-you-something|setup)/],
 		["install the mac app with brew", /^desktop#getting-it/],
 		["only wake the agent for mail that is probably urgent, as a number I can filter on", /^events#typed-questions/],
@@ -485,4 +486,46 @@ test("manual: every agent has it as a tool instead of a skill in its prompt, and
 	assert.match(found.stdout, /^"telegram pairing": \d of \d+ parts, the best first\n1\. source-types#telegram /);
 	const part = await run(process.execPath, [CLI, "manual", "--read", "source-types#telegram"]);
 	assert.ok(part.stdout.startsWith("## source-types#telegram"));
+});
+
+test("manual: a person reads it as a book, chapters in the order of the index's table, each whole, and searches it as an agent does", () => {
+	const manual = pineManual(DOCS);
+	const list = chapters(manual);
+	assert.equal(list[0].id, "pine", "the index comes first");
+	assert.equal(list[1].id, "overview", "then the files in the order the index's table names them");
+	assert.deepEqual([...new Set(list.map((c) => c.group))], ["Start here", "Where you talk to pine", "Agents", "Reacting to the world", "Setting pine up", "Reference"], "each chapter in its part of the manual, the index in the first");
+	assert.equal(new Set(list.map((c) => c.id)).size, list.length);
+	assert.ok(list.find((c) => c.id === "sources")!.sections.some((x) => x.id === "sources#a-first-example"));
+
+	const sources = chapter(manual, "sources")!;
+	assert.equal(sources.sections[0].level, 1);
+	assert.ok(sources.sections.slice(1).every((x) => x.level === 2 || x.level === 3));
+	assert.ok(sources.sections.every((x) => x.id === "sources" || x.id.startsWith("sources#")), "a chapter holds its own file and nothing else");
+	assert.equal(chapter(manual, "../package"), undefined, "a chapter is named by its id, never a path");
+	assert.equal(chapter(manual, "sources#a-first-example"), undefined, "a section is not a chapter");
+
+	const hits = lookUp(manual, "remind me every morning");
+	assert.ok(hits.length);
+	assert.equal(hits[0].chapter, "events", "a reminder is a schedule");
+	const row = lookUp(manual, "bashTimeoutSec").find((h) => h.row);
+	assert.ok(row, "a key is found by its name");
+	assert.ok(chapter(manual, row!.chapter)!.sections.some((x) => x.id === row!.section), "a row opens at the section it stands in");
+});
+
+test("manual: the control API hands the owner's UI the chapters, a chapter and a search", async () => {
+	const h = await harness({ pine: { http: { port: 0 } }, agents: { main: {} } });
+	const base = `http://127.0.0.1:${h.pine.http!.port}`;
+	const get = async (url: string, token = h.pine.token) => {
+		const res = await fetch(base + url, { headers: { authorization: `Bearer ${token}` } });
+		return { status: res.status, body: (await res.json()) as any };
+	};
+	const list = await get("/manual");
+	assert.equal(list.status, 200);
+	assert.equal(list.body[0].id, "pine");
+	const one = await get("/manual/chapter?id=overview");
+	assert.equal(one.body.title, "How pine works");
+	assert.equal((await get("/manual/chapter?id=..%2F..%2Fpackage.json")).status, 404);
+	const found = await get(`/manual/search?q=${encodeURIComponent("telegram pairing")}`);
+	assert.ok(found.body.some((x: any) => x.chapter === "source-types"));
+	assert.equal((await get("/manual", "wrong")).status, 401, "the manual is behind the token like the rest of the control API");
 });

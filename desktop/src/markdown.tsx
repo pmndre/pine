@@ -140,6 +140,14 @@ export interface Where {
 
 /** Whose workspace a path in the answer is in: a context, so that the components below stay the same for every answer. */
 const WhereContext = createContext<Where | undefined>(undefined);
+/** Where a link that is not a web address goes, for text that is pine's own (the manual: a link to another of its files). Unset in an answer. */
+const FollowContext = createContext<Follow | undefined>(undefined);
+
+/** Links of text that is pine's own: which of them it takes (`can`), and where one goes (`go`). */
+export interface Follow {
+	can: (href: string) => boolean;
+	go: (href: string) => void;
+}
 
 type Node = ExtraProps["node"];
 const textOf = (node: Node | { type: string; value?: string; children?: unknown[] }): string => {
@@ -194,11 +202,16 @@ async function linkMenu(url: string, where: Where | undefined): Promise<void> {
 
 function Link({ href, children, node }: React.ComponentProps<"a"> & ExtraProps) {
 	const where = useContext(WhereContext);
+	const follow = useContext(FollowContext);
 	const url = typeof href === "string" ? href : "";
 	const shown = textOf(node).trim();
 	// A place in the answer itself, as a footnote's number is: its words alone. The way back from a note
 	// to where it was called is no words at all.
 	if (url.startsWith("#user-content-fnref-")) return null;
+	if (follow && url && !url.startsWith("#user-content-") && follow.can(url)) {
+		const go = (e: React.SyntheticEvent) => (e.preventDefault(), follow.go(url));
+		return <a data-follow={url} role="link" tabIndex={0} className={cn("cursor-pointer text-primary underline decoration-primary/40 underline-offset-2", FOCUS)} onClick={go} onKeyDown={(e) => e.key === "Enter" && go(e)}>{children}</a>;
+	}
 	if (url.startsWith("#")) return <>{children}</>;
 	if (!isWeb(url)) return <span>{url && shown !== url ? <>{children} ({url})</> : children}</span>;
 	const plain = shown === url || shown === url.replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -573,13 +586,16 @@ const CONTROLS: ControlsConfig = { code: { copy: true, download: false }, table:
 // Details above. `data-slot="markdown"` and `data-live` are what the tests look for.
 const LOOK = "cursor-auto select-text wrap-anywhere";
 
-/** Markdown, drawn into the page. While `live`, the text grows; what the reader opened stays open. */
-export const Markdown = memo(function Markdown({ text, where, live }: { text: string; where?: Where; live?: boolean }): ReactNode {
+/** Markdown, drawn into the page. While `live`, the text grows; what the reader opened stays open. `follow` takes the
+ *  links that are not web addresses, for text of pine's own: an answer has none, and its such links stay words. */
+export const Markdown = memo(function Markdown({ text, where, live, follow }: { text: string; where?: Where; live?: boolean; follow?: Follow }): ReactNode {
 	return (
 		<WhereContext.Provider value={where}>
+			<FollowContext.Provider value={follow}>
 			<Streamdown data-slot="markdown" data-live={live || undefined} className={LOOK} caret="block" rehypePlugins={REHYPE as never} components={COMPONENTS} plugins={PLUGINS} controls={CONTROLS} linkSafety={{ enabled: false }} shikiTheme={CODE_THEMES} isAnimating={!!live} lineNumbers={false}>
 				{text}
 			</Streamdown>
+			</FollowContext.Provider>
 		</WhereContext.Provider>
 	);
 });

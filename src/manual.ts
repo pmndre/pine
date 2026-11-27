@@ -41,6 +41,8 @@ const SYNONYMS: string[][] = [
 	["introduce", "introduction", "hello", "hatch", "greet", "greeting", "welcome", "onboarding", "meet"],
 	// Setup Pine: what a newcomer says who has just installed pine.
 	["setup", "onboarding", "newcomer", "beginner", "installed", "install"],
+	// The manual: what somebody calls the text they want to read about pine themselves.
+	["manual", "documentation", "docs", "doc", "handbook", "guide", "reference", "help", "readme"],
 	["mcp", "server", "connector", "integration", "plugin", "extension", "tool"],
 	["skill", "procedure", "howto", "recipe", "playbook", "instruction", "knowhow"],
 	["secret", "token", "password", "key", "credential", "apikey", "env"],
@@ -572,4 +574,67 @@ export function showRead(manual: Manual, ids: string[], budget = 14_000): string
 		out.push(`${head}\n\n${r.text || "(nothing but the parts below it)"}${more}${below}${around}`);
 	}
 	return out.join("\n\n");
+}
+
+// ---- the manual as a book, for a person -----------------------------------------------------------
+//
+// The same parts, put back together for somebody who reads rather than searches: a chapter is one
+// file, its sections in the order they stand, each with the depth of its heading. The UIs draw it
+// (the Pine app's Manual tab); what they are handed is text of pine's own docs and nothing else.
+
+export interface Chapter {
+	id: string;
+	title: string;
+	/** The part of the manual it is in, as the index's table names it under "Which file to read" ("Start here"); the index is in the first. */
+	group?: string;
+	/** Its sections below the chapter's own heading: the second level, each with the third level under it. */
+	sections: Array<{ id: string; title: string; sections: Array<{ id: string; title: string }> }>;
+}
+
+/** The chapters in the order the table of the manual's index (SKILL.md) names them, the index first, and any it does not name after. */
+export function chapters(manual: Manual): Chapter[] {
+	const tops = manual.parts.filter((p) => p.kind === "section" && p.path.length === 1 && !p.note);
+	const byFile = new Map<string, Part>();
+	for (const t of tops) if (!byFile.has(t.file)) byFile.set(t.file, t);
+	// The index's table ("Read this when you want to ...") lists every file once, in an order that reads well.
+	const table = manual.parts.filter((p) => p.file === "pine" && p.kind === "section").flatMap((p) => p.text.split("\n")).filter((l) => l.trimStart().startsWith("|")).join("\n");
+	const named = [...table.matchAll(/references\/([a-z0-9-]+)\.md/g)].map((m) => m[1]);
+	const order = [...new Set(["pine", ...named, ...[...byFile.keys()].sort()])].filter((f) => byFile.has(f));
+	const byId = new Map(manual.parts.map((p) => [p.id, p]));
+	// The parts of the manual: a heading under "Which file to read", and the files its table names.
+	const groupOf = new Map<string, string>();
+	for (const p of manual.parts) {
+		if (p.file !== "pine" || p.kind !== "section" || p.path.length !== 3 || p.path[1] !== "Which file to read") continue;
+		for (const m of p.text.matchAll(/references\/([a-z0-9-]+)\.md/g)) if (!groupOf.has(m[1])) groupOf.set(m[1], p.title);
+	}
+	const first = [...groupOf.values()][0];
+	if (first) groupOf.set("pine", first);
+	return order.map((file) => {
+		const top = byFile.get(file)!;
+		const under = (p: Part) => p.children.map((c) => byId.get(c)).filter((c): c is Part => c?.kind === "section");
+		return { id: top.id, title: top.title, ...(groupOf.has(file) ? { group: groupOf.get(file) } : {}), sections: under(top).map((s) => ({ id: s.id, title: s.title, sections: under(s).map((x) => ({ id: x.id, title: x.title })) })) };
+	});
+}
+
+/** One chapter whole: its sections in order, each with its heading's level (1 for the chapter's own) and its Markdown. */
+export function chapter(manual: Manual, id: string): { id: string; title: string; sections: Array<{ id: string; title: string; level: number; text: string }> } | undefined {
+	const top = manual.parts.find((p) => p.id === id && p.kind === "section" && p.path.length === 1 && !p.note);
+	if (!top) return undefined;
+	const sections = manual.parts.filter((p) => p.kind === "section" && p.file === top.file && !p.note);
+	// A file with a second heading of the first level ("# .env" in sources.md) keeps it in its place, one level down.
+	return { id: top.id, title: top.title, sections: sections.map((p) => ({ id: p.id, title: p.title, level: p === top ? 1 : Math.max(2, p.path.length), text: p.text })) };
+}
+
+/** A search, as a person's UI shows it: where each hit stands, and the section it opens at (a row opens at the table it is a row of). */
+export function lookUp(manual: Manual, query: string, limit = 20): Array<{ id: string; chapter: string; section: string; title: string; where: string; line: string; row: boolean }> {
+	const byId = new Map(manual.parts.map((p) => [p.id, p]));
+	const tops = new Map(manual.parts.filter((p) => p.kind === "section" && p.path.length === 1).map((p) => [p.file, p.id]));
+	return manual
+		.search(query, limit)
+		.hits.filter((h) => !h.note)
+		.map((h) => {
+			const p = byId.get(h.id)!;
+			const section = p.kind === "row" ? h.id.slice(0, h.id.lastIndexOf(h.id.includes("/") ? "/" : "#")) : h.id;
+			return { id: h.id, chapter: tops.get(p.file) ?? p.file, section, title: p.title, where: p.path.slice(0, -1).join(" › "), line: h.line, row: p.kind === "row" };
+		});
 }

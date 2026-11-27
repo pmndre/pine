@@ -24,6 +24,7 @@ import { allSkills, checkSkill, deleteSkill, skillDir, skillsBeside, writeSkill 
 import type { SourceHost } from "./sources.ts";
 import { localTime, type Scheduler } from "./timers.ts";
 import { errText, type Logger, parseDuration } from "./util.ts";
+import { chapter, chapters, lookUp, pineManual } from "./manual.ts";
 import { listThemes, themeInForce } from "./themes.ts";
 import { listViews, viewCode, viewInForce } from "./views.ts";
 import { changeFiles, type FileChange, MAX_EDIT, writeText } from "./workspace-view.ts";
@@ -327,6 +328,15 @@ export class OwnerApi {
 				files: Object.fromEntries(Object.entries(files).filter(([, text]) => text !== undefined)),
 			};
 		}
+		// pine's manual for the owner to read (the app's Manual tab): its chapters, one chapter whole, a search. The same
+		// docs/ the agents search with their `manual` tool, read from pine's own code; a chapter is named by its id, never a path.
+		if (at === "manual") return chapters(pineManual(path.join(PINE_ROOT, "docs")));
+		if (at === "manual/chapter") {
+			const found = chapter(pineManual(path.join(PINE_ROOT, "docs")), q.get("id") ?? "");
+			if (!found) throw new Refusal(404, `there is no chapter "${q.get("id") ?? ""}" in the manual`);
+			return found;
+		}
+		if (at === "manual/search") return lookUp(pineManual(path.join(PINE_ROOT, "docs")), (q.get("q") ?? "").slice(0, 200));
 		// The themes of the owner's UIs, each as the colors it gives (src/theme-colors.ts), and the one in force.
 		if (at === "themes") {
 			const themes = listThemes(cfg.home);

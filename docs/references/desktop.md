@@ -155,8 +155,8 @@ not know yet: update pine and restart it.
 
 ## The window
 
-The side bar at the left lists your agents and their conversations; the event log, Settings and
-whether pine answers are at its foot. Tabs hold conversations, Settings, the event log, the side
+The side bar at the left lists your agents and their conversations; the event log, Settings, the
+Manual and whether pine answers are at its foot. Tabs hold conversations, Settings, the event log, the side
 panel and the view. The side panel at the right holds the files, terminal and browser of a
 conversation.
 
@@ -636,6 +636,23 @@ does, and the tools and boards they use ([views.md](views.md) says how it is lai
 | Dragging, scrolling, pinching | Moves and zooms the board (pinch, or scroll with `ctrl` or `cmd`); the camera then stays where you put it |
 | The eye, at the top right | Follow activity (on at first): the camera follows what happens again. A double click on the empty board does the same; the button beside the eye shows the whole board |
 | Zooming out; zooming in | Far out every box is one line, a name and its state (`working`, `waiting`, `asks you`, `idle`); close in it says all: each piece of work with its time and tools, and every task of a board with its worker |
+
+## The manual
+
+**Manual**, at the foot of the side bar (also **Help › Pine Manual**, and `Manual` in the palette),
+opens pine's manual, its documentation, in a tab of its own to read yourself. It is the text the
+agents look up with their `manual` tool, from the pine the app uses, so it fits that version.
+
+| Part | What it is |
+|---|---|
+| Chapters, on the left | Every chapter under its part of the manual (Start here, Where you talk to pine, Agents, Reacting to the world, Setting pine up, Reference), in the order of the index. The open chapter shows its sections; the arrow beside a chapter shows or hides them, a click on one goes there |
+| The chapter, in the middle | One chapter whole. A link to another chapter or heading opens it in this tab. At its end, the chapters before and after it |
+| On this page, on the right | The chapter's headings; the one you are at is marked as you scroll |
+| Search the manual | At the top of the chapters (`⌘F` while the manual is in front). It finds sections as the agents' search does, each with where it stands and the line that fits; Enter opens the first, the arrow keys go through them. A key, tool or command is found by its name and opens at its table row |
+| The palette | `⌘K` lists what the manual says about the words you type, under "In the manual" |
+
+Narrower than about 720 pixels, the chapters are a choice above the text; "On this page" shows where
+the manual has about 1000 pixels. Pictures in the manual are shown as their description.
 
 ## Settings
 

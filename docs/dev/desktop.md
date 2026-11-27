@@ -221,6 +221,7 @@ desktop/
     View.tsx       the view's panel. view-world.ts is pine as the page knows it; view-state.ts what a
                    view is told (names and states, no text); view-frame.ts (view.html) the frame
     Settings.tsx   the settings pages; settings-index.ts what their search finds
+    Manual.tsx     the Manual tab: pine's manual from the daemon (`GET /manual`), its parts, chapters, a chapter, its search
     sign-in.ts     a provider sign-in as the page follows it; components/sign-in-card.tsx its card
     setup/         Setup Pine's steps: engine.tsx walks them, types.ts, branches.ts (`BRANCHES`: one
                    module per way to a model, subscription.tsx, api-key.tsx, local.tsx; `AFTER`:

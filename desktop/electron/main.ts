@@ -1326,7 +1326,7 @@ function buildMenu(): void {
 		// The Mac's Window menu has no Close, and ⌘W closes the tab. Electron's elsewhere has Close on Ctrl+W, Close Tab's key:
 		// there it is the Mac's, and the window closes with its own button, as with the red one.
 		isMac ? { role: "windowMenu" } : { label: "Window", submenu: [{ role: "minimize" }, { role: "zoom" }] },
-		{ role: "help", submenu: [item("Keys and Commands", "help"), ...(RELEASE_API && !isMac ? [item("Check for Updates…", "updates")] : []), { label: "pine on GitHub", click: () => openOutside("https://github.com/pmndre/pine") }] },
+		{ role: "help", submenu: [item("Pine Manual", "manual"), item("Keys and Commands", "help"), ...(RELEASE_API && !isMac ? [item("Check for Updates…", "updates")] : []), { label: "pine on GitHub", click: () => openOutside("https://github.com/pmndre/pine") }] },
 	];
 	Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 	// The Dock's menu: open a new window or add a device while Pine is in the background.

@@ -17,6 +17,9 @@ out, it is `main`.
 | `GET /status`, `/agents`, `/approvals` | As the CLI commands. An agent whose model cannot answer has `modelProblem`, saying why |
 | `GET /models` | Models that have credentials, as `provider/id` |
 | `POST /models/refresh` | Read `models.json` and `.env` again |
+| `GET /manual` | The manual as chapters in the order of its index, each with its part (`group`), its sections and their subsections (ids, titles); the Pine app's Manual tab draws it |
+| `GET /manual/chapter?id=<id>` | One chapter whole: its sections in order, each with id, title, heading level and Markdown |
+| `GET /manual/search?q=<words>` | A search as the agents' `manual` tool searches: each hit with its chapter, the section it opens at and the line that matched |
 | `GET /mcp` | Configured MCP servers |
 | `POST /mcp` `{ name, server, agent? }` or `{ name, remove: true, agent? }` | Add or remove a server while the daemon runs |
 | `POST /mcp/refresh` | Close idle sessions so they start again with the current servers |

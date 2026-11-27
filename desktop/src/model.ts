@@ -171,7 +171,7 @@ export const isPick = (req: Approval): boolean => req.tool === "question" || Boo
 /** One tab: a conversation, the work of one task, or the event log. */
 export class Tab extends Model {
 	id = uid();
-	kind: "chat" | "task" | "events" | "settings";
+	kind: "chat" | "task" | "events" | "settings" | "manual";
 	agent: string;
 	session: string;
 	/** For a tab on one task. */
@@ -397,6 +397,8 @@ export class Store extends Model {
 	settingsAgent?: string;
 	/** What the search of Settings (or the palette) picked on that page: the element to show, and the words for the page's own search. Taken once the page shows it. */
 	settingsFind?: { find?: string; filter?: string };
+	/** Where the Manual tab stands: a chapter, the section in it to show (its top without one), the row of a table in it; `n` rises with each move. */
+	manualAt: { chapter: string; section?: string; row?: string; n: number } = { chapter: "pine", n: 0 };
 	/** Whether the dialog that makes a new agent is open: over whatever is in front, from the side bar's + and from Settings > Agents. */
 	newAgent = false;
 	/** Conversations in which an agent is at work right now, whether a tab shows them or not: "agent:session". */
@@ -1392,6 +1394,19 @@ export class Store extends Model {
 		if (session !== undefined) return (this.busy.get(`${agent}:${session}`)?.size ?? 0) > 0;
 		for (const [key, tasks] of this.busy) if (tasks.size && key.startsWith(`${agent}:`)) return true;
 		return false;
+	}
+
+	/** The Manual tab, at a chapter or a section of it when one is named (a part's id: "sources#a-first-example"). */
+	openManual(to?: { chapter: string; section?: string; row?: string }): void {
+		if (to) this.manualAt = { ...to, n: this.manualAt.n + 1 };
+		let tab = this.tabs.find((t) => t.kind === "manual");
+		if (!tab) {
+			tab = new Tab("manual", "manual", "");
+			tab.loaded = true;
+			this.tabs.push(tab);
+		}
+		this.activate(tab);
+		this.touch();
 	}
 
 	openSettings(section?: string, agent?: string): void {
@@ -3238,6 +3253,8 @@ export class Store extends Model {
 				return this.toggle("view");
 			case "events":
 				return this.openEvents();
+			case "manual":
+				return this.openManual();
 			case "updates":
 				return this.lookForUpdate(true);
 			case "add-device":

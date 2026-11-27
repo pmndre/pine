@@ -480,7 +480,34 @@ export interface Status {
 const a = (agent: string) => `/agents/${e(agent)}`;
 const s = (session: string) => `?session=${e(session)}`;
 
+// ---- pine's manual (src/manual.ts: chapters, lookUp) --------------------------------------------------
+
+export interface ManualChapter {
+	id: string;
+	title: string;
+	/** The part of the manual it is in ("Start here"), as the index names it. */
+	group?: string;
+	sections: Array<{ id: string; title: string; sections: Array<{ id: string; title: string }> }>;
+}
+export interface ManualText {
+	id: string;
+	title: string;
+	sections: Array<{ id: string; title: string; level: number; text: string }>;
+}
+export interface ManualHit {
+	id: string;
+	chapter: string;
+	section: string;
+	title: string;
+	where: string;
+	line: string;
+	row: boolean;
+}
+
 export const api = {
+	manual: () => get<ManualChapter[]>("/manual"),
+	manualChapter: (id: string) => get<ManualText>(`/manual/chapter${qs({ id })}`),
+	manualSearch: (q: string) => get<ManualHit[]>(`/manual/search${qs({ q })}`),
 	get,
 	post,
 	agents: () => get<AgentInfo[]>("/agents"),

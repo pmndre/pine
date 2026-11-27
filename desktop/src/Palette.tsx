@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import { api, type ManualHit } from "./api.ts";
 import { COMMANDS } from "./commands.ts";
 import { bridge } from "./bridge.ts";
 import { computerWord } from "./machines.ts";
@@ -18,11 +19,20 @@ export function Palette() {
 	useModel(s);
 	// What Settings has, found by the same search as in Settings: asked for once the palette opens.
 	const index = useSettingsIndex(true);
+	// What the manual says about the words, asked of the daemon once the typing pauses.
+	const [manual, setManual] = useState<ManualHit[]>([]);
+	useEffect(() => {
+		const q = query.trim();
+		if (q.length < 3) return setManual([]);
+		let live = true;
+		const t = setTimeout(() => void api.manualSearch(q).then((list) => live && setManual(list.slice(0, 4)), () => live && setManual([])), 200);
+		return () => ((live = false), clearTimeout(t));
+	}, [query]);
 	type Row = { id: string; group: string; label: string; about?: string; keys?: string; run: () => void; conv?: { agent: string; session: string } };
 	const all = useMemo(() => {
 		const chat = s.active?.kind === "chat";
 		const rows: Row[] = [];
-		for (const t of s.tabs) rows.push({ id: `t:${t.id}`, group: "Open tabs", label: t.kind === "chat" ? `${t.agent} · ${s.titleOf(t.agent, t.session)}` : t.kind === "task" ? `${t.agent} task #${t.task}` : t.kind === "settings" ? "Settings" : "Events", run: () => s.activate(t), conv: t.kind === "chat" ? { agent: t.agent, session: t.session } : undefined });
+		for (const t of s.tabs) rows.push({ id: `t:${t.id}`, group: "Open tabs", label: t.kind === "chat" ? `${t.agent} · ${s.titleOf(t.agent, t.session)}` : t.kind === "task" ? `${t.agent} task #${t.task}` : t.kind === "settings" ? "Settings" : t.kind === "manual" ? "Manual" : "Events", run: () => s.activate(t), conv: t.kind === "chat" ? { agent: t.agent, session: t.session } : undefined });
 		for (const [agent, convs] of s.conversations) for (const c of convs) if (!s.tabs.some((t) => t.kind === "chat" && t.agent === agent && t.session === c.session)) rows.push({ id: `s:${agent}:${c.session}`, group: "Conversations", label: `${agent} · ${s.titleOf(agent, c.session)}`, about: `${ago(c.last)}${c.folder ? ` · ${c.folder}` : ""}`, run: () => void s.openTab(agent, c.session), conv: { agent, session: c.session } });
 		for (const c of COMMANDS) if (!c.chat || chat) rows.push({ id: `c:${c.name}`, group: "Commands", label: c.title, about: c.about, keys: c.keys, run: () => void c.run("", s.active) });
 		if (typeof bridge.newWindow === "function") rows.push({ id: "c:new-window", group: "Commands", label: "New window", about: "Open another Pine window", keys: "⌘N", run: () => void bridge.newWindow?.() });
@@ -60,10 +70,11 @@ export function Palette() {
 		};
 		const byName = named.map(here);
 		const settings: Row[] = search(index, q).slice(0, 8).map((e) => ({ id: `f:${e.id}`, group: "In Settings", label: e.title, about: e.path.join(" › "), run: () => goTo(e.place) }));
+		const read: Row[] = manual.map((h) => ({ id: `r:${h.id}`, group: "In the manual", label: h.title, about: h.where.split(" › ").slice(1).join(" › ") || undefined, run: () => s.openManual({ chapter: h.chapter, section: h.section, row: h.row ? h.title : undefined }) }));
 		const said: Row[] = found.filter((m) => !listed.has(`${m.agent}:${m.session}`)).map((m) => ({ id: `m:${m.agent}:${m.session}`, group: "Said in conversations", label: `${m.agent} · ${s.titleOf(m.agent, m.session)}`, about: `${m.who}: ${m.snippet}`, keys: ago(m.ts), run: () => void s.openFound(m.agent, m.session, query.trim()) }));
-		return [...byName, ...settings, ...said, ...described.filter((r) => !holds(r) || !listed.has(`${r.conv!.agent}:${r.conv!.session}`)), ...loose.filter((r) => !r.conv || !listed.has(`${r.conv.agent}:${r.conv.session}`))].slice(0, 80);
+		return [...byName, ...settings, ...read, ...said, ...described.filter((r) => !holds(r) || !listed.has(`${r.conv!.agent}:${r.conv!.session}`)), ...loose.filter((r) => !r.conv || !listed.has(`${r.conv.agent}:${r.conv.session}`))].slice(0, 80);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [query, all, s.said, index]);
+	}, [query, all, s.said, index, manual]);
 	// Rows that follow each other under the same heading are one group.
 	const groups: Array<{ name: string; rows: Row[] }> = [];
 	for (const r of shown) groups.at(-1)?.name === r.group ? groups.at(-1)!.rows.push(r) : groups.push({ name: r.group, rows: [r] });
