@@ -5,118 +5,14 @@
   </picture>
 </h1>
 
-**[Download the Pine app](https://github.com/pmndre/pine/releases/latest)** for macOS, Windows and
-Linux. It also gives your terminal the `pine` command.
+pine (PI neural engine) runs AI agents that react to events as well as to chat. It is a daemon
+built on the pi coding agent, with a desktop app, a terminal UI, a phone app and a web client.
 
----
+## Install
 
-pine is also a command line tool on its own, for a terminal or a server (needs Node 24 or newer):
-
-```bash
-npm install -g @pmndre/pine
-```
-
-### PINE makes AI reactive
-
-Most harnesses just do input chat: "Do this do that". And maybe a scheduler: "Do it tomorrow". In PINE agents react to any stimuli. From watching folders, commands, websites, ftp endpoints, webhooks, to any other event source. You can hook them up and let them react to and operate your physical devices in the house, or digital assets.
-
-PINE of course also handles regular chat, coding, tasks and orchestration. Agents carry memory and so on. All the basic stuff is in there, too.
-
-### Some design choices
-
-- **Event-driven architecture:** Agents subscribe to events and react. An event source is just a `*.ts` service with a schema. Tell the agent what you want and they subscribe: "Watch ~/documents/scans, for every new file: extract summaries and payment details, if present"
-- **No configs:** Tell the main agent what you want. It configures PINE, creates agents, MCPs, event sources, skills and schedules through administrative tool calls, never touches user config, never messes it up or breaks it.
-- **Self-discovery:** A built-in BM25 manual tool lets agents look up any API or internal detail on demand, without carrying docs in context.
-- **A CLI that feels like a desktop app:** Tabs, buttons, scroll regions, inline images and video, and drag-and-drop with thumbnails. Works in Kitty-protocol terminals like Ghostty, with fallbacks for older ones.
-- **Built in:** Computer use (macOS), web browsing, coding tools, diffs and git, undo, plan mode, goals (`/goal` keeps an agent working until it is done) and swarms (`/swarm` has an agent lead a job that its sub-agents work through on a board, with the result checked).
-- **Orchestration:** Agents can delegate, create sub-agents in parallel, and share a board of tasks so that no two do the same thing. A pinned tab simply persists an agent and its task. Name it, give it instructions, chat with it or subscribe it to events.
-
-> [!IMPORTANT]
-> pine runs on macOS, Linux and Windows; `pine init` sets up what it needs. Its sandbox is the system's own on macOS and Linux. On Windows the Pine app runs pine in WSL, where it has the Linux sandbox; pine on Windows itself works in `auto` and `bypass` mode ([operations.md](docs/references/operations.md), "On Windows").
-
-```
-          you:  terminal UI · Pine app · Telegram
-                               │
-                               ▼
- wake it                 ┌───────────┐            it uses
- events ───────────────► │           │ ◄───────── MCP servers
-   Telegram · MQTT · FTP │           │ ◄───────── skills
-   webhooks · folders    │   agent   │
-   web addresses         │           │
-   commands · etc *      │           │
- schedules ────────────► │           │
-   repeating · once      └─────┬─────┘
-                               │  delegate ──► other agents
-                               │  subagent ──► with distinct prompts, in parallel
-                               │  swarms   ──► many agents in parallel
-                               │  boards   ──► where agents exchange progess
-                               ▼
-                 answers · messages · actions
-
- Events, schedules, MCPs and skills can be set up by asking:
- for the current conversation, agent scope, or globally
- (main agent only) for all agents.
-
- * New event types that agents can subscribe to can be created easily.
-```
-
-## Quick start
-
-Sets everything up: the browser the web tools drive, and your user folder (`~/.pine`). On Linux
-also the sandbox that agents in `safe` mode work in; it shows what it would install and asks once.
-
-```bash
-pine init
-```
-
-Checks the setup: validates the configuration, lists each agent with its model, tools and MCP
-servers, and prints security notes if something is open that should not be.
-
-```bash
-pine check
-```
-
-Opens the terminal UI. If no daemon is running, it starts one inside and stops it when you quit.
-
-```bash
-pine
-```
-
-Runs the daemon as a service, without the UI, so agents keep reacting to events with no terminal
-open. `pine` then attaches to it. To have it start at login, see
-[operations.md](docs/references/operations.md).
-
-```bash
-pine start
-```
-
-Connect your subscriptions, or local llm servers. Switch with `/model` in the UI:
-
-```bash
-pine login opencode-go
-```
-
-`pine login anthropic` and `pine login openai-codex` use a Claude or ChatGPT subscription. A
-model server of your own (llama.cpp, vLLM, LM Studio) is added by its address, with
-`pine model add studio http://127.0.0.1:8080`, or by asking the main agent. See
-[operations.md](docs/references/operations.md) and [tui.md](docs/references/tui.md).
-
-To work on a project, start it in that folder. The agent gets that folder for the
-conversation, and `▤ code` (or `ctrl+g`) opens a pane with git changes and diffs, the files and
-the output of its tool calls. `/undo` takes your last message back, with the files it changed
-([coding.md](docs/references/coding.md)):
-
-```bash
-pine .
-```
-
-The Pine app has the same conversations in a window, an editor for a conversation's folder and
-a settings panel for agents, models, MCP servers, skills and events. It starts pine itself, or
-uses the one that runs ([desktop.md](docs/references/desktop.md)). Each
-[release](https://github.com/pmndre/pine/releases/latest) has it for macOS (a disk image for
-Apple silicon and one for Intel), Windows and Linux. It carries pine and the Node it runs on, so
-nothing else has to be installed, and it gives your shell the `pine` command. On a Mac with
-Homebrew:
+**[Download the Pine app](https://github.com/pmndre/pine/releases/latest)** for macOS, Windows
+and Linux. It carries pine and the Node it runs on, and gives your terminal the `pine` command.
+On a Mac with Homebrew:
 
 ```bash
 brew tap pmndre/pine https://github.com/pmndre/pine
@@ -126,39 +22,7 @@ brew tap pmndre/pine https://github.com/pmndre/pine
 brew install --cask pmndre/pine/pmndre-pine
 ```
 
-From a checkout:
-
-```bash
-npm run desktop
-```
-
-On an Android phone or an iPhone, the Pine app shows the pine of another machine, over SSH (your
-Mac, a server) or paired with the Pine app by QR code: the same page, with its own SSH key and no
-pine on the phone. Each release
-has it as an APK; the IPA to sideload with your own Apple ID is built by hand for now
-([mobile.md](docs/references/mobile.md)).
-
-From a web browser on any computer, with nothing installed, the web client shows the same page:
-over SSH to your own pine, or paired with the Pine app by QR code
-([web.md](docs/references/web.md)).
-
-To get a newer version later, with whatever it needs:
-
-```bash
-pine update
-```
-
-## Docker
-
-A container needs nothing special. It is the wall around pine, and the agents work inside it
-without a sandbox of their own:
-
-```bash
-docker run -it -v pine:/root/.pine node:24 bash
-```
-
-`-v pine:/root/.pine` keeps pine's home (configuration, conversations) when the container is
-replaced. Inside, it is the same as anywhere:
+For a terminal or a server, with Node 24 or newer:
 
 ```bash
 npm install -g @pmndre/pine
@@ -168,46 +32,112 @@ npm install -g @pmndre/pine
 pine init
 ```
 
-Every agent whose mode you did not choose then works in `auto` mode, and `pine check` says so.
-The agents and pine's own secrets are in the same container; what keeps the two apart there is
-described under "pine's own files without a sandbox" in
-[docs/references/security.md](docs/references/security.md).
-
-`safe` mode puts an agent into a sandbox of its own, as on a Mac. A container may only make
-one when it is started with the rights for it, which take away most of what Docker itself
-protects:
-
 ```bash
-docker run -it --cap-add SYS_ADMIN --cap-add NET_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined -v pine:/root/.pine node:24 bash
+pine
 ```
 
-| Part | What it is for |
+`pine init` makes pine's home (`~/.pine`) and fetches the browser the web tools drive. On Linux it
+also sets up the sandbox, after showing what it would install and asking once. `pine` opens the
+terminal UI.
+
+A new pine has no model. The app asks for one at its first start: a Claude, ChatGPT or GitHub
+Copilot subscription, an API key, or a model server on your computer. In a terminal:
+
+```bash
+pine login anthropic
+```
+
+```bash
+pine model add studio http://127.0.0.1:8080
+```
+
+`pine login openai-codex` uses a ChatGPT subscription, and `pine login` with an unknown name lists
+every provider. `pine model add` takes llama.cpp, vLLM, LM Studio, Ollama or anything else with
+OpenAI's chat API ([operations.md](docs/references/operations.md)).
+
+## pine makes AI reactive
+
+Most harnesses wait for you to type, and some run a task on a schedule. pine's agents also wake
+when something happens: a file lands in a folder, a mail arrives, a price changes on a page, a
+camera sees someone at the door, a build fails. Tell an agent what to watch:
+
+> Watch ~/Documents/scans. For every new file, pull out a summary and any payment details.
+
+The agent picks an event source, you confirm, and it reacts for as long as pine runs. Chat,
+coding, memory, schedules and orchestration are all there too.
+
+```
+          you:  Pine app · terminal UI · phone · browser · Telegram
+                               │
+                               ▼
+ wake it                 ┌───────────┐            it uses
+ events ───────────────► │           │ ◄───────── MCP servers
+   folders · mail · chat │           │ ◄───────── skills
+   web pages · webhooks  │   agent   │ ◄───────── extensions
+   MQTT · cameras · etc  │           │
+ schedules ────────────► │           │
+   repeating · once      └─────┬─────┘
+                               │  delegate ──► other agents
+                               │  subagent ──► copies of itself, in parallel
+                               │  boards   ──► shared tasks and notes
+                               ▼
+                 answers · messages · actions
+```
+
+## What is in it
+
+| | |
 | --- | --- |
-| `--cap-add SYS_ADMIN` | lets the sandbox create its namespaces |
-| `--cap-add NET_ADMIN` | lets a sandbox without network have its own loopback interface |
-| `--security-opt seccomp=unconfined` | Docker's system call filter forbids the sandbox's change of root |
-| `--security-opt apparmor=unconfined` | Docker's AppArmor profile forbids its mounts |
+| Event sources | Folders, web pages and APIs, feeds, calendars, mail, Telegram, Slack, Matrix, Discord, Zulip, webhooks, streams, MQTT, Modbus, ONVIF cameras, FTP, SMTP, syslog, serial ports, commands, devices joining your network, and the computer itself (sleep, lock, power, disks). A type is one `.ts` file with a schema, and the main agent can write a new one ([source-types.md](docs/references/source-types.md)) |
+| Setup by asking | The main agent creates agents and adds sources, schedules, MCP servers, skills, extensions and model servers by tool call. Each call checks its input and writes one entry, and whatever opens something new or reaches beyond the conversation asks you first. No configuration file has to be edited by hand. A setup is for one conversation, one agent, or all agents ([setup.md](docs/references/setup.md)) |
+| Teams | An agent hands work to another agent, runs sub-agents in parallel, or shares a board of tasks so that no two do the same thing. `/swarm` has an agent lead a job on a board until the result is checked, and `/goal` keeps one working until a judge says the goal is met ([boards.md](docs/references/boards.md)) |
+| Coding | A folder or a git worktree per conversation, diffs, an editor, a terminal, commands in the background, plan mode, and `/undo`, which takes back your last message with the files it changed ([coding.md](docs/references/coding.md)) |
+| Web and apps | Web search, a browser of pine's own, or your Chrome, Brave or Edge with pine's extension. Agents can also operate desktop apps on macOS, Windows and Linux with X11 ([mcp.md](docs/references/mcp.md), [computer.md](docs/references/computer.md)) |
+| A manual agents search | Agents look up how pine works with a `manual` tool (BM25 over the docs), so the docs stay out of their context. The Pine app shows the same manual in its Manual tab |
+| Your own additions | MCP servers, skills, pi extensions, views (a script that draws all of pine in the app's panel), VS Code color themes, and an HTTP control API for scripts ([api.md](docs/references/api.md)) |
 
-`pine init` installs what the image lacks (bubblewrap, the browser's system libraries) and says
-so if a right is missing. With pine as an ordinary user in the container instead of root, add
-`--security-opt systempaths=unconfined`. `--privileged` works in place of all of them.
+## Where you talk to it
 
-## Code signing policy
+| | |
+| --- | --- |
+| [The Pine app](docs/references/desktop.md) | Conversations in tabs and windows, with an editor, a terminal, the agent's browser and a view of every agent at work beside them. Settings for agents, models, MCP servers, skills, extensions and events. Dictation. On a Mac it updates itself |
+| [The terminal UI](docs/references/tui.md) | `pine`: tabs, mouse, a code pane, dictation, and pictures and video inline in Kitty-protocol terminals such as Ghostty, with fallbacks for others. `pine .` opens a conversation in the current folder |
+| [The phone app](docs/references/mobile.md) | Android and iPhone. It shows the pine of another machine, over SSH or paired with the Pine app by QR code, and runs no pine itself. Each release has the APK; the IPA is built by hand for now and sideloaded |
+| [The web client](docs/references/web.md) | The same page in any browser, with nothing installed, at <https://pine-main.drcmda.workers.dev>. Over SSH to your pine, or paired with the Pine app by QR code |
+| Telegram | A bot you pair with pine carries your messages, the agents' answers and their approval requests |
+| Another machine | `pine --ssh <host>` in a terminal, or Settings > Environments in the app, uses the pine of a server |
 
-The Pine app for Windows is signed. Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+`pine start` runs the daemon alone, so agents keep reacting with no window open; the Pine app can
+keep it running after it quits. `pine check` validates the setup and prints security notes, and
+`pine update` fetches a newer version. Every command is in
+[commands.md](docs/references/commands.md).
 
-- Committers and reviewers: [drcmda](https://github.com/drcmda), [abernier](https://github.com/abernier)
-- Approvers: [drcmda](https://github.com/drcmda)
+## Safety
 
-Only what is built from this repository's source by its release workflow ([release.yml](.github/workflows/release.yml)) is signed, and every release is approved by hand. How it is set up: [desktop/signpath/](desktop/signpath/README.md).
+An agent that reads the web or your mail reads text that strangers wrote. pine decides what
+content may do by where it came from: your own messages get the agent's full tools, everything
+else is data, and once a conversation has read outside content, sending anything out asks you
+first. No model judges a tool call.
 
-### Privacy
+Each agent has a mode:
 
-pine will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it: the model servers, web addresses, sources and MCP servers it talks to are the ones its owner sets up. One exception, in the Pine app: when it starts, it asks GitHub (`api.github.com`) for the number of pine's latest release, to say when a newer app is out. That question carries nothing about your computer or your pine.
+| Mode | Sandbox | Asks you |
+| --- | --- | --- |
+| `auto` (the main agent's default) | None: your whole account | Before critical actions (`sudo`, a force push) |
+| `safe` (the default for other agents) | The agent's own folders | Before a call reaches further |
+| `manual` | As `safe` | Before every action that changes or sends something |
+| `bypass` | None | Never |
+| `plan` | As the mode before | Never: whatever does more than look is refused |
+
+The sandbox is the system's own on macOS (`sandbox-exec`) and Linux (bubblewrap). Windows has
+none: the Pine app runs pine in WSL for the Linux sandbox, and pine on Windows itself works in
+`auto` and `bypass`. In a Docker container the container is the wall, unless you start it with
+the rights a sandbox needs ([operations.md](docs/references/operations.md), "In a container").
+[security.md](docs/references/security.md) has the layers and a section on what is not solved.
 
 ## Documentation
 
-Start at [docs/SKILL.md](docs/SKILL.md), the manual's index. The Pine app shows the same manual in its Manual tab.
+The manual's index is [docs/SKILL.md](docs/SKILL.md).
 
 | Part | Chapters |
 | --- | --- |
@@ -218,3 +148,27 @@ Start at [docs/SKILL.md](docs/SKILL.md), the manual's index. The Pine app shows 
 | Setting pine up | [Setup by asking an agent](docs/references/setup.md), [Configuration files](docs/references/configuration.md), [Security and its limits](docs/references/security.md) |
 | Reference | [Commands](docs/references/commands.md), [Control API](docs/references/api.md), [Technology](docs/references/stack.md) |
 | Working on pine itself | [AGENTS.md](AGENTS.md), [docs/dev](docs/dev/README.md) |
+
+## Code signing policy
+
+The Pine app for Windows is signed. Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [drcmda](https://github.com/drcmda), [abernier](https://github.com/abernier)
+- Approvers: [drcmda](https://github.com/drcmda)
+
+Only what the release workflow ([release.yml](.github/workflows/release.yml)) builds from this
+repository's source is signed, and every release is approved by hand. How it is set up:
+[desktop/signpath/](desktop/signpath/README.md).
+
+### Privacy
+
+pine will not transfer any information to other networked systems unless specifically requested
+by the user or the person installing or operating it. The model servers, web addresses, sources
+and MCP servers it talks to are the ones its owner sets up. One exception, in the Pine app: at its
+start it asks GitHub (`api.github.com`) for pine's latest release, and on a Mac downloads a newer
+app from there. That request carries nothing about your computer or your pine, and Settings >
+General turns it off.
+
+## License
+
+[MIT](LICENSE)
