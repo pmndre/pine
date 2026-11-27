@@ -6,10 +6,10 @@
 // its part on the agent's page in Settings, one way there ("Manage"), and rows that open the thing itself,
 // in the same dialog Settings opens (`openThing`) or at its place in Settings. A row says whom the thing is
 // for only when that is not this agent: "all agents" or "this conversation".
-import { BookIcon, CheckIcon, ChevronRightIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, PlugIcon, SettingsIcon, ShieldIcon, SparkleIcon, TriangleAlertIcon, ZapIcon } from "lucide-react";
+import { BookIcon, CheckIcon, ChevronRightIcon, ClockIcon, FolderIcon, GitBranchIcon, PlugIcon, SettingsIcon, TriangleAlertIcon, ZapIcon } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
-import { HoverTooltip } from "@/components/hover-tooltip";
+import { AgentFacts } from "@/components/agent-facts";
 import { Pulse } from "@/components/pulse";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -18,12 +18,11 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { type AgentFileKey, AgentFiles, changedFiles, FilesSkeleton, UnsavedBar } from "./AgentFiles.tsx";
 import { api } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { store, type Tab, useModel } from "./model.ts";
-import { childKind, MODES, oneLine, plural, tilde } from "./text.ts";
+import { childKind, oneLine, plural, tilde } from "./text.ts";
 import { goTo, LISTS, openThing, routeOf, routeSaid, whenShort } from "./things.ts";
 import { useLoad } from "./use-load.ts";
 
@@ -114,7 +113,6 @@ export function AgentView({ tab }: { tab: Tab }) {
 	const [busy, setBusy] = useState(false);
 	useEffect(() => setTexts({}), [id]);
 	if (!info) return null;
-	const mode = MODES.find((m) => m.value === info.mode);
 	// What this conversation has: the agent's own, what is for all agents, and what is for this conversation alone.
 	const listens = (sources.data ?? []).filter((x) => x.local || x.agent || x.global);
 	const could = (sources.data ?? []).length - listens.length;
@@ -150,7 +148,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 							<AgentAvatar agent={{ id, color: info.color, main: info.main }} size="lg" />
 						</ItemMedia>
 						<ItemContent className="min-w-0">
-							<ItemTitle>{id}{info.main ? <Badge>main</Badge> : null}</ItemTitle>
+							<ItemTitle>{id}</ItemTitle>
 							<ItemDescription>{info.description || "no description"}</ItemDescription>
 						</ItemContent>
 						<ItemActions>
@@ -158,10 +156,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 						</ItemActions>
 					</Item>
 					<div className={cn("flex flex-wrap gap-1.5", INSET)}>
-						<HoverTooltip><TooltipTrigger render={<Badge variant="outline" render={<button type="button" onClick={() => void s.pickModel(tab)} />}><CpuIcon data-icon="inline-start" />{info.model}</Badge>} /><TooltipContent>The model this agent runs on</TooltipContent></HoverTooltip>
-						<HoverTooltip><TooltipTrigger render={<Badge variant="outline" render={<button type="button" onClick={() => void s.pickReasoning(tab)} />}><SparkleIcon data-icon="inline-start" />reasoning {info.thinking}</Badge>} /><TooltipContent>How long the model thinks before answering</TooltipContent></HoverTooltip>
-						<HoverTooltip><TooltipTrigger render={<Badge variant="outline" render={<button type="button" onClick={() => void s.pickMode(tab)} />}><ShieldIcon data-icon="inline-start" />{info.mode} · {info.mode === "auto" || info.mode === "bypass" ? "your account" : "in a sandbox"}</Badge>} /><TooltipContent>{mode?.about ?? "How often the agent asks you, and what it can reach"}</TooltipContent></HoverTooltip>
-						{info.delegates.length ? <Badge variant="outline">delegates to {info.delegates.includes("*") ? (info.main ? "all other agents" : `all agents except ${store.agents.find((a) => a.main)?.id ?? "the main one"}`) : info.delegates.join(", ")}</Badge> : null}
+						<AgentFacts agent={info} mainId={store.agents.find((a) => a.main)?.id} pick={{ model: () => void s.pickModel(tab), reasoning: () => void s.pickReasoning(tab), mode: () => void s.pickMode(tab) }} />
 					</div>
 				</header>
 

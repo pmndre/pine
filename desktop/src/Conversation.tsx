@@ -3,13 +3,14 @@
 // The parts are shadcn's chat components, composed the way its AI Elements pages show: the thread
 // is Message Scroller, a turn is Message (and Bubble for the owner's), the work of a turn is Trace
 // (Task, Tool, Reasoning, Subagent and Plan), a request is an Item (Confirmation), a note is a Marker.
-import { ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
 import { Fragment, memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { Sound } from "@/components/sound";
 import { contextMenu } from "@/components/page-menu";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Attachment, AttachmentContent, AttachmentGroup, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { AgentFacts } from "@/components/agent-facts";
 import { ModelNotice } from "@/components/model-notice";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,7 +47,7 @@ import { Markdown, MEDIA } from "./markdown.tsx";
 import { runs } from "./work-runs.ts";
 import { type Bookmark, isPick, type Item, type Part, type QuoteSource, quoteId, type SentQuote, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { SetupCard, SetupScript } from "./setup/engine.tsx";
-import { childKind, clock, count, MODES, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
+import { childKind, clock, count, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
 import { sameSource } from "../../src/quotes.ts";
 
@@ -706,7 +707,6 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 		// Short, for the stock toast's row: its action says the rest.
 		store.noModelNotice({ title: "Connect a model first", description: "Your agents can't answer you yet." });
 	}, [problem]);
-	const mode = MODES.find((m) => m.value === info?.mode);
 	const h = has?.holdings;
 	const counts: Array<[string, number]> = h ? [["skill", h.skills.length], ["event source", h.sources.length], ["schedule", h.schedules.length], ["MCP server", h.servers.length], ["conversation", h.conversations.length]] : [];
 	return (
@@ -723,10 +723,7 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 			</EmptyHeader>
 			<EmptyContent>
 				<div className="flex flex-wrap justify-center gap-1.5">
-					<HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}><CpuIcon data-icon="inline-start" /><b>{info?.model ?? "no model"}</b></TooltipTrigger><TooltipContent>The model this agent runs on</TooltipContent></HoverTooltip>
-					<HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}><ShieldIcon data-icon="inline-start" /><b>{info?.mode}</b>{info?.mode === "auto" || info?.mode === "bypass" ? "your account, no sandbox" : "in a sandbox"}</TooltipTrigger><TooltipContent>{mode?.about ?? "How often the agent asks you, and what it can reach"}</TooltipContent></HoverTooltip>
-					{info?.main ? <HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}>administers pine</TooltipTrigger><TooltipContent>Creates and changes other agents and pine's settings when you ask</TooltipContent></HoverTooltip> : null}
-					{info?.delegates.length ? <HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}>delegates to <b>{info.delegates.includes("*") ? (info.main ? "all other agents" : `all agents except ${store.agents.find((a) => a.main)?.id ?? "the main one"}`) : info.delegates.join(", ")}</b></TooltipTrigger><TooltipContent>Agents this agent can delegate to</TooltipContent></HoverTooltip> : null}
+					{info ? <AgentFacts agent={info} mainId={store.agents.find((a) => a.main)?.id} pick={{ model: () => void store.pickModel(tab), reasoning: () => void store.pickReasoning(tab), mode: () => void store.pickMode(tab) }} /> : null}
 					{asked === tab.agent ? counts.filter(([, n]) => n > 0).map(([what, n]) => <Badge variant="outline" key={what}><b>{n}</b>{n === 1 ? what : `${what}s`}</Badge>) : <WelcomeBadgesSkeleton count={2} />}
 				</div>
 				{/* The main agent's says it in a toast (above); another agent's on its card. */}

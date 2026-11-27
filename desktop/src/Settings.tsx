@@ -1,7 +1,7 @@
 // Settings: everything about pine that is otherwise a command in a shell or a sentence to the
 // main agent. Each page asks the daemon what there is and tells it what to change; the daemon
 // checks every change as it checks the main agent's, and nothing here writes a file itself.
-import { AudioLinesIcon, BookIcon, MonitorSmartphoneIcon, LaptopIcon, ServerIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PlugIcon, PlusIcon, RotateCwIcon, SearchIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon, TerminalSquareIcon } from "lucide-react";
+import { AudioLinesIcon, BookIcon, MonitorSmartphoneIcon, LaptopIcon, ServerIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PlugIcon, PlusIcon, RotateCwIcon, SearchIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon, TerminalSquareIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "cn";
 import { type ComponentProps, Fragment, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
-import { type AgentDetail, api, type AskQuestion, type Decisions, type ModelServer, type Provider, type Route, type Schedule, type Setting, type Skill, type SourceInfo, type SourceType } from "./api.ts";
+import { type AgentDetail, api, type Decisions, type ModelServer, type Provider, type Route, type Schedule, type Setting, type Skill, type SourceInfo, type SourceType } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { AgentFiles, changedFiles, FilesSkeleton, FileTabs, UnsavedBar } from "./AgentFiles.tsx";
 import { Editor } from "./Editor.tsx";
@@ -48,8 +48,8 @@ import { ModelNotice } from "@/components/model-notice";
 import { AgentColorPicker, AgentNameInput } from "@/components/agent-identity";
 import { BrowserAccess } from "./BrowserAccess.tsx";
 import { Control, CONTROL, LIST, Page, Section, Wrapped } from "./settings-parts.tsx";
-import { changed, conversationOf, DECIDE_ANSWERS, goTo, LISTS, OPENED, openThing, routeOf, routeSaid, span, subscriber, wakes } from "./things.ts";
-import { type Entry, entries, GROUPS, LABELS, type Lists, type Place, search } from "./settings-index.ts";
+import { changed, DECIDE_ANSWERS, goTo, LISTS, OPENED, openThing, routeOf, routeSaid, span, subscriber, wakes } from "./things.ts";
+import { type Entry, entries, GROUPS, LABELS, type Lists, search } from "./settings-index.ts";
 import { providerAbout, providerName, providerWords, SUBSCRIPTIONS } from "./providers.ts";
 import { NearbyComputers, PairLinkField } from "./Pairing.tsx";
 
@@ -135,20 +135,7 @@ function ForField({ id, items, value, onChange }: { id: string; items: Array<{ v
 	return (
 		<Field>
 			<FieldLabel htmlFor={id}>For</FieldLabel>
-			<Select items={items} value={value} onValueChange={(v) => onChange(v ?? "")}>
-				<SelectTrigger id={id} className="w-full">
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent>
-					<SelectGroup>
-						{items.map((o) => (
-							<SelectItem key={o.value} value={o.value}>
-								{o.label}
-							</SelectItem>
-						))}
-					</SelectGroup>
-				</SelectContent>
-			</Select>
+			<Choose id={id} items={items} value={value} onChange={onChange} />
 			<FieldDescription>{value ? `Only ${value} gets it. It appears on ${value}'s page.` : "All agents get it."}</FieldDescription>
 		</Field>
 	);
@@ -211,20 +198,27 @@ const ownBy = <T,>(list: T[] | undefined, agentOf: (x: T) => string | undefined,
 const FORM_GRID = "grid grid-cols-1 @lg/settings:grid-cols-2";
 
 /**
- * One out of a few in a form, as a stock Select across the form's width. Pressed buttons were hard to tell
- * apart in some themes; a select says the choice in words.
+ * One out of a few, as a stock Select that says the choice in words: every select of Settings' forms and rows.
+ * In a form it is as wide as its field. In a row of settings (`row`) it has the row's control width and its
+ * list opens below it. Either way the list is as wide as its longest option, and one that does not fit wraps.
+ * With a `placeholder`, an empty value is nothing chosen yet.
  */
-function Choose<T extends string>({ id, items, value, onChange }: { id: string; items: Array<{ value: T; label: string }>; value: T; onChange: (value: T) => void }) {
+function Choose<T extends string>({ id, items, value, onChange, row, placeholder, disabled, required }: { id: string; items: Array<{ value: T; label: string }>; value: T | ""; onChange: (value: T) => void; row?: boolean; placeholder?: string; disabled?: boolean; required?: boolean }) {
+	// Only what the list offers is handed on: the select itself may say "nothing".
+	const pick = (v: string | null) => {
+		const next = (v ?? "") as T;
+		if (items.some((o) => o.value === next)) onChange(next);
+	};
 	return (
-		<Select items={items} value={value} onValueChange={(v) => v && onChange(v as T)}>
-			<SelectTrigger id={id} className="w-full">
-				<SelectValue />
+		<Select items={items as Array<{ value: string; label: string }>} value={(placeholder !== undefined && !value ? null : value) as string | null} onValueChange={pick}>
+			<SelectTrigger id={id} className={row ? CONTROL : "w-full"} disabled={disabled} aria-required={required || undefined}>
+				<SelectValue placeholder={placeholder} />
 			</SelectTrigger>
-			<SelectContent>
+			<SelectContent className={LIST} {...(row ? { alignItemWithTrigger: false, align: "end" as const } : {})}>
 				<SelectGroup>
 					{items.map((o) => (
 						<SelectItem key={o.value} value={o.value}>
-							{o.label}
+							<Wrapped>{o.label}</Wrapped>
 						</SelectItem>
 					))}
 				</SelectGroup>
@@ -232,6 +226,9 @@ function Choose<T extends string>({ id, items, value, onChange }: { id: string; 
 		</Select>
 	);
 }
+
+/** The models a form offers: the default first (named where it is known), then each; one the thing is set to that is no longer offered stays in the list. */
+const modelChoices = (models: string[] | undefined, fallback?: string, current?: string) => [{ value: "", label: fallback ? `The default (${fallback})` : "The default model" }, ...(current && !(models ?? []).includes(current) ? [current] : []).concat(models ?? []).map((m) => ({ value: m, label: m }))];
 
 // ---- general ----------------------------------------------------------------------------------------
 
@@ -306,6 +303,29 @@ function FieldSkeleton(props: ComponentProps<"div">) {
 	);
 }
 
+/** Why something did not load, in place of what it would show. */
+function Failed({ error }: { error: string }) {
+	return <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{error}</AlertDescription></Alert>;
+}
+
+/**
+ * Nothing to list: an icon, what is missing, and a line on how to get one. On an agent's page (`agent`), where
+ * five lists follow each other, a line instead.
+ */
+function NoneYet({ agent, icon: Icon, title, children }: { agent?: string; icon: LucideIcon; title: string; children: ReactNode }) {
+	if (agent) return <FieldDescription>None yet.</FieldDescription>;
+	return <Empty><EmptyHeader><EmptyMedia variant="icon"><Icon /></EmptyMedia><EmptyTitle>{title}</EmptyTitle><EmptyDescription>{children}</EmptyDescription></EmptyHeader></Empty>;
+}
+
+/**
+ * A list of Settings in each of its states: its rows, `empty` when it has none, why it failed, or bars of a
+ * row's shape while it first loads. `list` is what of the load is shown here (those for all agents, or an agent's).
+ */
+function Listed<T>({ load, list, empty, bars = 3, children }: { load: { error?: string }; list: T[] | undefined; empty: ReactNode; bars?: number; children: (x: T) => ReactNode }) {
+	if (list && !list.length) return <>{empty}</>;
+	return <ItemGroup>{list ? list.map(children) : load.error ? <Failed error={load.error} /> : <SettingsItemsSkeleton count={bars} />}</ItemGroup>;
+}
+
 /** A Settings list on its first load: a few skeleton rows in place of its items. */
 function SettingsItemsSkeleton({ count = 3 }: { count?: number }) {
 	return Array.from({ length: count }, (_, i) => <SettingsItem key={i} skeleton />);
@@ -353,20 +373,7 @@ function SettingRow({ s, models, reload }: { s: Setting; models?: string[]; relo
 				: [...(k.one.includes(s.now) ? [] : [{ value: "", label: s.now }]), ...k.one.map((v) => ({ value: v, label: v }))];
 		const value = k === "model" ? (unset ? "" : s.now) : k.one.includes(s.now) ? s.now : "";
 		control = (
-			<Select items={items} value={value} onValueChange={(v) => void set(v || "default")}>
-				<SelectTrigger id={id} className={CONTROL}>
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent alignItemWithTrigger={false} align="end" className={LIST}>
-					<SelectGroup>
-						{items.map((o) => (
-							<SelectItem key={o.value} value={o.value}>
-								<Wrapped>{o.label}</Wrapped>
-							</SelectItem>
-						))}
-					</SelectGroup>
-				</SelectContent>
-			</Select>
+			<Choose row id={id} items={items} value={value} onChange={(v) => void set(v || "default")} />
 		);
 	} else {
 		const hint = typeof k === "object" ? `A whole number from ${k.from} to ${k.to}. Press Enter to save.` : "A duration such as 90s or 5m. Press Enter to save.";
@@ -431,7 +438,7 @@ function General() {
 				</>
 			) : null}
 			{!overview.data && !overview.error ? <div data-slot="settings-overview-skeleton"><SettingsItem skeleton /></div> : null}
-			{overview.error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{overview.error}</AlertDescription></Alert> : null}
+			{overview.error ? <Failed error={overview.error} /> : null}
 			{settings.data ? (
 				GROUPS.map((g) => (
 					<Fragment key={g.prefix}>
@@ -444,7 +451,7 @@ function General() {
 					</Fragment>
 				))
 			) : settings.error ? (
-				<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{settings.error}</AlertDescription></Alert>
+				<Failed error={settings.error} />
 			) : (
 				GROUPS.map((g) => <SettingsGroupSkeleton key={g.prefix} />)
 			)}
@@ -537,7 +544,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 	if (!d)
 		return (
 			<Page title={id} back={{ label: "Agents", onClick: back }}>
-				{detail.error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{detail.error}</AlertDescription></Alert> : <AgentPageSkeleton />}
+				{detail.error ? <Failed error={detail.error} /> : <AgentPageSkeleton />}
 			</Page>
 		);
 	const now = <K extends keyof AgentDetail>(key: K): AgentDetail[K] => (key in change ? (change[key as string] as AgentDetail[K]) : d[key]);
@@ -565,7 +572,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 	const others = store.agents.filter((a) => a.id !== id).map((a) => a.id);
 	const mode = now("mode");
 	const forget = (change.forget as string[]) ?? [];
-	const modelItems = [{ value: "", label: d.defaultModel ? `${d.defaultModel} (the default)` : "the default" }, ...(d.model && !(models.data ?? []).includes(d.model) ? [d.model] : []).concat(models.data ?? []).map((m) => ({ value: m, label: m }))];
+	const modelItems = modelChoices(models.data, d.defaultModel, d.model);
 	const reasoningItems = REASONING.map((r) => ({ value: r, label: r }));
 	const scroll = now("scroll") ?? "top";
 	const scrollItems = SCROLLS.map((x) => ({ value: x.value, label: x.label }));
@@ -585,20 +592,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 	const leaveOut = (p: string, write: boolean) => put(write ? "write" : "read", ((change[write ? "write" : "read"] as string[]) ?? []).filter((x) => x !== p));
 	const select = (fieldId: string, items: Array<{ value: string; label: string }>, value: string, onChange: (v: string) => void) => (
 		<Control>
-			<Select items={items} value={value} onValueChange={(v) => onChange(v ?? "")}>
-				<SelectTrigger id={fieldId} className={CONTROL}>
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent alignItemWithTrigger={false} align="end" className={LIST}>
-					<SelectGroup>
-						{items.map((o) => (
-							<SelectItem key={o.value} value={o.value}>
-								<Wrapped>{o.label}</Wrapped>
-							</SelectItem>
-						))}
-					</SelectGroup>
-				</SelectContent>
-			</Select>
+			<Choose row id={fieldId} items={items} value={value} onChange={onChange} />
 		</Control>
 	);
 	return (
@@ -730,7 +724,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 						})}
 					</ItemGroup>
 				) : (
-					<Empty><EmptyHeader><EmptyMedia variant="icon"><FolderIcon /></EmptyMedia><EmptyTitle>No other folders</EmptyTitle><EmptyDescription>The agent works only in its own workspace.</EmptyDescription></EmptyHeader></Empty>
+					<NoneYet icon={FolderIcon} title="No other folders">The agent works only in its own workspace.</NoneYet>
 				)}
 			</Section>
 			<FieldSeparator />
@@ -809,7 +803,7 @@ export function NewAgent({ close, made }: { close: () => void; made: (id: string
 	const [f, setF] = useState({ id: "", instructions: "", model: "" });
 	const name = useRef<HTMLInputElement>(null);
 	const field = useId();
-	const modelItems = [{ value: "", label: "pine's default" }, ...(models.data ?? []).map((m) => ({ value: m, label: m }))];
+	const modelItems = modelChoices(models.data);
 	const create = async () => {
 		const done = await store.attempt(() => api.createAgent({ id: f.id.trim(), instructions: f.instructions.trim(), model: f.model || undefined }));
 		if (!done) return;
@@ -839,20 +833,7 @@ export function NewAgent({ close, made }: { close: () => void; made: (id: string
 						<Field>
 							<FieldLabel htmlFor={`${field}-model`}>Model</FieldLabel>
 							{models.data || models.error ? (
-								<Select items={modelItems} value={f.model} onValueChange={(model) => setF({ ...f, model: model ?? "" })}>
-								<SelectTrigger id={`${field}-model`}>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent className={LIST}>
-									<SelectGroup>
-										{modelItems.map((o) => (
-											<SelectItem key={o.value} value={o.value}>
-												<Wrapped>{o.label}</Wrapped>
-											</SelectItem>
-										))}
-									</SelectGroup>
-								</SelectContent>
-							</Select>
+								<Choose id={`${field}-model`} items={modelItems} value={f.model} onChange={(model) => setF({ ...f, model })} />
 							) : <SelectPending id={`${field}-model`} />}
 						</Field>
 					</FieldGroup>
@@ -1199,19 +1180,9 @@ function Models() {
 					</InputGroupAddon>
 					<InputGroupInput aria-label="Search providers" placeholder={`Search ${hosted.length || ""} providers: Gemini, Mistral, OpenRouter…`} value={query} onChange={(e) => setQuery(e.target.value)} />
 				</InputGroup>
-				{providers.data && !listed.length ? (
-					<Empty><EmptyHeader><EmptyMedia variant="icon"><SearchIcon /></EmptyMedia><EmptyTitle>No provider by that name</EmptyTitle><EmptyDescription>Try another word, or connect your own model below.</EmptyDescription></EmptyHeader></Empty>
-				) : (
-					<ItemGroup>
-						{providers.data ? (
-							listed.map((p) => <ProviderRow key={p.id} p={p} reload={reload} />)
-						) : providers.error ? (
-							<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{providers.error}</AlertDescription></Alert>
-						) : (
-							<SettingsItemsSkeleton />
-						)}
-					</ItemGroup>
-				)}
+				<Listed load={providers} list={providers.data ? listed : undefined} empty={<NoneYet icon={SearchIcon} title="No provider by that name">Try another word, or connect your own model below.</NoneYet>}>
+					{(p) => <ProviderRow key={p.id} p={p} reload={reload} />}
+				</Listed>
 				{providers.data && !q && more > 0 ? <p className="text-muted-foreground">{plural(more, "more provider")} with an API key or an account. Search to find one.</p> : null}
 			</Section>
 			<FieldSeparator />
@@ -1233,7 +1204,7 @@ function Models() {
 						))}
 					</div>
 				) : servers.error ? (
-					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{servers.error}</AlertDescription></Alert>
+					<Failed error={servers.error} />
 				) : servers.data ? null : (
 					<ItemGroup><SettingsItemsSkeleton count={1} /></ItemGroup>
 				)}
@@ -1292,7 +1263,7 @@ function DecisionModels({ servers }: { servers: string[] }) {
 						<TypesafeRow decisions={list.data} reload={list.reload} />
 					</>
 				) : list.error ? (
-					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
+					<Failed error={list.error} />
 				) : (
 					<SettingsItemsSkeleton count={2} />
 				)}
@@ -1541,41 +1512,31 @@ function McpList({ agent }: { agent?: string }) {
 				</Dialog>
 			}
 		>
-			{list && !list.length ? (
-				agent ? <FieldDescription>None yet.</FieldDescription> : <Empty><EmptyHeader><EmptyMedia variant="icon"><PlugIcon /></EmptyMedia><EmptyTitle>No MCP servers for all agents</EmptyTitle><EmptyDescription>Add one by address or command, or ask an agent to add one.</EmptyDescription></EmptyHeader></Empty>
-			) : (
-				<ItemGroup>
-					{list ? (
-						list.map((x) => {
-							const state = !x.enabled ? "turned off" : (states.data?.[x.name] ?? (states.loading ? undefined : x.remote ? "unknown" : "local"));
-							const of = x.scope === "global" ? undefined : x.scope;
-							const tone = state === undefined ? undefined : /connected|ok|local|authenticated/i.test(state) ? "good" : /needs|error|fail|unauth/i.test(state) ? "warn" : undefined;
-							return (
-								<SettingsItem
-									key={`${x.scope}:${x.name}`}
-									data-find={`mcp:${x.scope}:${x.name}`}
-									title={<>
-											{x.name}
-											{state === undefined ? <Skeleton className="h-5 w-16 rounded-full" /> : <Badge variant={tone === "good" ? "default" : tone === "warn" ? "outline" : "secondary"}>{state}</Badge>}
-											<OnlyIn session={x.session} />
-											{x.taints ? <Badge variant="outline">brings in outside content</Badge> : null}
-											{x.approve !== "never" ? <Badge variant="secondary">asks first: {x.approve}</Badge> : null}
-										</>}
-									description={<span className="font-mono">{x.target}</span>}
-									actions={<>
-										{x.remote ? <Button variant="outline" size="sm" disabled={busy === x.name} onClick={() => void login(x.name, of)}>{busy === x.name ? <><Pulse label="Loading" data-icon="inline-start" />In your browser…</> : "Sign in"}</Button> : null}
-										{x.target.startsWith("bundled:") ? null : <RemoveButton what={`the MCP server ${x.name}`} onRemove={() => store.attempt(() => api.removeMcp(x.name, of)).then((r) => r && (store.flash(`Removed ${x.name}.`), changed()))} />}
-									</>}
-								/>
-							);
-						})
-					) : servers.error ? (
-						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{servers.error}</AlertDescription></Alert>
-					) : (
-						<SettingsItemsSkeleton count={agent ? 1 : 3} />
-					)}
-				</ItemGroup>
-			)}
+			<Listed load={servers} list={list} bars={agent ? 1 : 3} empty={<NoneYet agent={agent} icon={PlugIcon} title="No MCP servers for all agents">Add one by address or command, or ask an agent to add one.</NoneYet>}>
+				{(x) => {
+					const state = !x.enabled ? "turned off" : (states.data?.[x.name] ?? (states.loading ? undefined : x.remote ? "unknown" : "local"));
+					const of = x.scope === "global" ? undefined : x.scope;
+					const tone = state === undefined ? undefined : /connected|ok|local|authenticated/i.test(state) ? "good" : /needs|error|fail|unauth/i.test(state) ? "warn" : undefined;
+					return (
+						<SettingsItem
+							key={`${x.scope}:${x.name}`}
+							data-find={`mcp:${x.scope}:${x.name}`}
+							title={<>
+									{x.name}
+									{state === undefined ? <Skeleton className="h-5 w-16 rounded-full" /> : <Badge variant={tone === "good" ? "default" : tone === "warn" ? "outline" : "secondary"}>{state}</Badge>}
+									<OnlyIn session={x.session} />
+									{x.taints ? <Badge variant="outline">brings in outside content</Badge> : null}
+									{x.approve !== "never" ? <Badge variant="secondary">asks first: {x.approve}</Badge> : null}
+								</>}
+							description={<span className="font-mono">{x.target}</span>}
+							actions={<>
+								{x.remote ? <Button variant="outline" size="sm" disabled={busy === x.name} onClick={() => void login(x.name, of)}>{busy === x.name ? <><Pulse label="Loading" data-icon="inline-start" />In your browser…</> : "Sign in"}</Button> : null}
+								{x.target.startsWith("bundled:") ? null : <RemoveButton what={`the MCP server ${x.name}`} onRemove={() => store.attempt(() => api.removeMcp(x.name, of)).then((r) => r && (store.flash(`Removed ${x.name}.`), changed()))} />}
+							</>}
+						/>
+					);
+				}}
+			</Listed>
 			{out ? (
 				<CodeBlock size="sm">
 					<CodeBlockContent wrap className="max-h-60 select-text">{out}</CodeBlockContent>
@@ -1677,33 +1638,23 @@ function SkillList({ agent }: { agent?: string }) {
 			about={agent ? `Skills only ${agent} uses.` : undefined}
 			actions={<Button variant="outline" onClick={() => openThing({ kind: "skill", agent })}><PlusIcon data-icon="inline-start" />New skill</Button>}
 		>
-			{list && !list.length ? (
-				agent ? <FieldDescription>None yet.</FieldDescription> : <Empty><EmptyHeader><EmptyMedia variant="icon"><BookIcon /></EmptyMedia><EmptyTitle>No skills for all agents</EmptyTitle><EmptyDescription>Ask an agent to make one (“make a skill of this”), or add one here.</EmptyDescription></EmptyHeader></Empty>
-			) : (
-				<ItemGroup>
-					{list ? (
-						list.map((x) => (
-							<SettingsItem
-								key={x.dir}
-								data-find={`skill:${x.dir}`}
-								render={<button type="button" />}
-								onClick={() => openThing({ kind: "skill", skill: x })}
-								title={<>
-										{x.name}
-										<OnlyIn session={x.session} />
-										{x.managed ? null : <Badge variant="secondary">in your own folder</Badge>}
-									</>}
-								description={short(x.description, 220)}
-								actions={<ChevronRightIcon />}
-							/>
-						))
-					) : skills.error ? (
-						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{skills.error}</AlertDescription></Alert>
-					) : (
-						<SettingsItemsSkeleton count={agent ? 1 : 3} />
-					)}
-				</ItemGroup>
-			)}
+			<Listed load={skills} list={list} bars={agent ? 1 : 3} empty={<NoneYet agent={agent} icon={BookIcon} title="No skills for all agents">Ask an agent to make one (“make a skill of this”), or add one here.</NoneYet>}>
+				{(x) => (
+					<SettingsItem
+						key={x.dir}
+						data-find={`skill:${x.dir}`}
+						render={<button type="button" />}
+						onClick={() => openThing({ kind: "skill", skill: x })}
+						title={<>
+								{x.name}
+								<OnlyIn session={x.session} />
+								{x.managed ? null : <Badge variant="secondary">in your own folder</Badge>}
+							</>}
+						description={short(x.description, 220)}
+						actions={<ChevronRightIcon />}
+					/>
+				)}
+			</Listed>
 		</Section>
 	);
 }
@@ -1742,20 +1693,7 @@ function OptionField({ name, schema, required, value, onChange }: { name: string
 		return (
 			<Field>
 				<FieldLabel htmlFor={id}>{label}</FieldLabel>
-				<Select items={items} value={String(value ?? "")} onValueChange={(v) => onChange(v || undefined)}>
-					<SelectTrigger id={id} aria-required={required || undefined}>
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectGroup>
-							{items.map((o) => (
-								<SelectItem key={o.value} value={o.value}>
-									{o.label}
-								</SelectItem>
-							))}
-						</SelectGroup>
-					</SelectContent>
-				</Select>
+				<Choose id={id} items={items} value={String(value ?? "")} onChange={(v) => onChange(v || undefined)} required={required} />
 				{hint ? <FieldDescription>{hint}</FieldDescription> : null}
 			</Field>
 		);
@@ -1882,20 +1820,7 @@ function NewSource({ types, agent, made }: { types: SourceType[]; agent?: string
 							{agent ? null : <ForField id={`${field}-for`} items={forItems} value={f.agent} onChange={(v) => setF({ ...f, agent: v })} />}
 							<Field className="col-span-full">
 								<FieldLabel htmlFor={`${field}-type`}>Type</FieldLabel>
-								<Select items={typeItems} value={f.type} onValueChange={(next) => (setF({ ...f, type: next ?? "" }), setOptions({}))}>
-									<SelectTrigger id={`${field}-type`}>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectGroup>
-											{typeItems.map((o) => (
-												<SelectItem key={o.value} value={o.value}>
-													{o.label}
-												</SelectItem>
-											))}
-										</SelectGroup>
-									</SelectContent>
-								</Select>
+								<Choose id={`${field}-type`} items={typeItems} value={f.type} onChange={(type) => (setF({ ...f, type }), setOptions({}))} />
 								{type?.summary ? <FieldDescription>{type.summary}</FieldDescription> : null}
 							</Field>
 							{type ? (
@@ -1974,52 +1899,42 @@ function Sources({ agent }: { agent?: string }) {
 				</Dialog>
 			</>}
 		>
-			{list && !list.length ? (
-				agent ? <FieldDescription>None yet.</FieldDescription> : <Empty><EmptyHeader><EmptyMedia variant="icon"><ZapIcon /></EmptyMedia><EmptyTitle>No sources for all agents</EmptyTitle><EmptyDescription>Add one, or ask an agent: “watch ~/Scans”, “tell me when the price drops”.</EmptyDescription></EmptyHeader></Empty>
-			) : (
-				<ItemGroup>
-					{list ? (
-						list.map((x) => {
-							const all = x.subscribers.includes("all agents");
-							// On an agent's page only its own subscriptions can be ended; "all agents" is ended on the Events page.
-							const who = x.subscribers.filter((w) => (agent ? w !== "all agents" && subscriber(w).agent === agent : true));
-							return (
-								<SettingsItem
-									key={`${x.scope}:${x.name}`}
-									data-find={`source:${x.scope}:${x.name}`}
-									media={<span className={cn("size-2 rounded-full", x.error ? "bg-destructive" : x.running ? "bg-primary" : "bg-muted-foreground")} />}
-									title={<>
-											{x.name}
-											<Badge variant="secondary">{x.type}</Badge>
-											{agent && x.scope === "global" ? <Badge variant="secondary">for all agents</Badge> : null}
-											{x.trust === "owner" ? <Badge>counts as you</Badge> : null}
-										</>}
-									description={<>
-											{x.description ? <>{x.description}<br /></> : null}
-											{x.error ? `not running: ${x.error}` : x.running ? (x.status ?? "running") : "idle, nobody is listening"} · {x.last ? `last event ${ago(x.last.ts)}, ${x.events} since pine started` : "no events since pine started"}
-										</>}
-									actions={agent && x.scope === "global" ? undefined : <RemoveButton what={`the source ${x.name}`} onRemove={() => store.attempt(() => api.removeSource(x.name, x.scope === "global" ? undefined : x.scope)).then((r) => r && (store.flash(`Removed the source ${x.name}.`), changed()))} />}
-								>
-									<div className="flex flex-wrap items-center gap-1">
-										{agent && all ? <Badge variant="secondary">all agents listen</Badge> : null}
-										{who.map((w) => (
-											<HoverTooltip key={w}>
-												<TooltipTrigger render={<Button variant="outline" size="sm" aria-label={`Stop ${w} listening`} onClick={() => void unsubscribe(x.name, w)}>{agent ? (subscriber(w).session === "main" ? "main conversation" : subscriber(w).session === "new" ? "a new conversation each time" : `“${subscriber(w).session}”`) : w}<XIcon data-icon="inline-end" /></Button>} />
-												<TooltipContent>Stop {w} listening</TooltipContent>
-											</HoverTooltip>
-										))}
-										{agent && who.length ? null : <Button variant="outline" size="sm" onClick={() => void subscribe(x.name)}><PlusIcon data-icon="inline-start" />{agent ? "Listen" : "Add listener"}</Button>}
-									</div>
-								</SettingsItem>
-							);
-						})
-					) : sources.error ? (
-						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{sources.error}</AlertDescription></Alert>
-					) : (
-						<SettingsItemsSkeleton count={agent ? 1 : 3} />
-					)}
-				</ItemGroup>
-			)}
+			<Listed load={sources} list={list} bars={agent ? 1 : 3} empty={<NoneYet agent={agent} icon={ZapIcon} title="No sources for all agents">Add one, or ask an agent: “watch ~/Scans”, “tell me when the price drops”.</NoneYet>}>
+				{(x) => {
+					const all = x.subscribers.includes("all agents");
+					// On an agent's page only its own subscriptions can be ended; "all agents" is ended on the Events page.
+					const who = x.subscribers.filter((w) => (agent ? w !== "all agents" && subscriber(w).agent === agent : true));
+					return (
+						<SettingsItem
+							key={`${x.scope}:${x.name}`}
+							data-find={`source:${x.scope}:${x.name}`}
+							media={<span className={cn("size-2 rounded-full", x.error ? "bg-destructive" : x.running ? "bg-primary" : "bg-muted-foreground")} />}
+							title={<>
+									{x.name}
+									<Badge variant="secondary">{x.type}</Badge>
+									{agent && x.scope === "global" ? <Badge variant="secondary">for all agents</Badge> : null}
+									{x.trust === "owner" ? <Badge>counts as you</Badge> : null}
+								</>}
+							description={<>
+									{x.description ? <>{x.description}<br /></> : null}
+									{x.error ? `not running: ${x.error}` : x.running ? (x.status ?? "running") : "idle, nobody is listening"} · {x.last ? `last event ${ago(x.last.ts)}, ${x.events} since pine started` : "no events since pine started"}
+								</>}
+							actions={agent && x.scope === "global" ? undefined : <RemoveButton what={`the source ${x.name}`} onRemove={() => store.attempt(() => api.removeSource(x.name, x.scope === "global" ? undefined : x.scope)).then((r) => r && (store.flash(`Removed the source ${x.name}.`), changed()))} />}
+						>
+							<div className="flex flex-wrap items-center gap-1">
+								{agent && all ? <Badge variant="secondary">all agents listen</Badge> : null}
+								{who.map((w) => (
+									<HoverTooltip key={w}>
+										<TooltipTrigger render={<Button variant="outline" size="sm" aria-label={`Stop ${w} listening`} onClick={() => void unsubscribe(x.name, w)}>{agent ? (subscriber(w).session === "main" ? "main conversation" : subscriber(w).session === "new" ? "a new conversation each time" : `“${subscriber(w).session}”`) : w}<XIcon data-icon="inline-end" /></Button>} />
+										<TooltipContent>Stop {w} listening</TooltipContent>
+									</HoverTooltip>
+								))}
+								{agent && who.length ? null : <Button variant="outline" size="sm" onClick={() => void subscribe(x.name)}><PlusIcon data-icon="inline-start" />{agent ? "Listen" : "Add listener"}</Button>}
+							</div>
+						</SettingsItem>
+					);
+				}}
+			</Listed>
 		</Section>
 	);
 }
@@ -2116,18 +2031,7 @@ export function ScheduleForm({ schedule: was, agent, made }: { schedule?: Schedu
 						<FieldGroup>
 							<Field>
 								<FieldLabel htmlFor={`${field}-for`}>Wake</FieldLabel>
-								<Select items={forItems} value={f.agent} onValueChange={(v) => setF({ ...f, agent: v ?? "" })}>
-									<SelectTrigger id={`${field}-for`} disabled={fixed}>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectGroup>
-											{forItems.map((o) => (
-												<SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-											))}
-										</SelectGroup>
-									</SelectContent>
-								</Select>
+								<Choose id={`${field}-for`} items={forItems} value={f.agent} onChange={(agent) => setF({ ...f, agent })} disabled={fixed} />
 								{fixed ? null : <FieldDescription>{f.agent ? `The schedule appears on ${f.agent}'s page.` : "All agents get the task, which is rarely what you want. For most schedules, pick one agent."}</FieldDescription>}
 							</Field>
 							<Field>
@@ -2169,36 +2073,26 @@ export function Schedules({ agent }: { agent?: string }) {
 			about={agent ? `Tasks ${agent} gets at set times, as if you had sent them.` : "Tasks that all agents get at set times. For a single agent, add the schedule on that agent's page, or just ask the agent: “every morning at seven…”."}
 			actions={<Button variant="outline" onClick={() => openThing({ kind: "schedule", agent })}><PlusIcon data-icon="inline-start" />New schedule</Button>}
 		>
-			{mine && !mine.length ? (
-				agent ? <FieldDescription>None yet.</FieldDescription> : <Empty><EmptyHeader><EmptyMedia variant="icon"><ClockIcon /></EmptyMedia><EmptyTitle>No schedules for all agents</EmptyTitle><EmptyDescription>Schedules for a single agent are on that agent's page.</EmptyDescription></EmptyHeader></Empty>
-			) : (
-				<ItemGroup>
-					{mine ? (
-						mine.map((x) => (
-							<SettingsItem
-								key={`${x.scope}:${x.name}`}
-								data-find={`schedule:${x.scope}:${x.name}`}
-								render={<button type="button" />}
-								onClick={() => openThing({ kind: "schedule", schedule: x })}
-								title={<>
-										{x.name}
-										<OnlyIn session={x.session} />
-										{x.next ? <Badge variant="secondary">next {new Date(x.next).toLocaleString("sv-SE").slice(0, 16)}</Badge> : null}
-									</>}
-								description={[
-									<><span className="font-medium text-foreground">When</span> {x.when}</>,
-									<><span className="font-medium text-foreground">Then</span> {x.task ? `wake ${wakes(x.scope, x.session)}: “${short(x.task, 160)}”` : `publish ${x.topic}`}</>,
-								]}
-								actions={<ChevronRightIcon />}
-							/>
-						))
-					) : list.error ? (
-						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
-					) : (
-						<SettingsItemsSkeleton count={agent ? 1 : 3} />
-					)}
-				</ItemGroup>
-			)}
+			<Listed load={list} list={mine} bars={agent ? 1 : 3} empty={<NoneYet agent={agent} icon={ClockIcon} title="No schedules for all agents">Schedules for a single agent are on that agent's page.</NoneYet>}>
+				{(x) => (
+					<SettingsItem
+						key={`${x.scope}:${x.name}`}
+						data-find={`schedule:${x.scope}:${x.name}`}
+						render={<button type="button" />}
+						onClick={() => openThing({ kind: "schedule", schedule: x })}
+						title={<>
+								{x.name}
+								<OnlyIn session={x.session} />
+								{x.next ? <Badge variant="secondary">next {new Date(x.next).toLocaleString("sv-SE").slice(0, 16)}</Badge> : null}
+							</>}
+						description={[
+							<><span className="font-medium text-foreground">When</span> {x.when}</>,
+							<><span className="font-medium text-foreground">Then</span> {x.task ? `wake ${wakes(x.scope, x.session)}: “${short(x.task, 160)}”` : `publish ${x.topic}`}</>,
+						]}
+						actions={<ChevronRightIcon />}
+					/>
+				)}
+			</Listed>
 		</Section>
 	);
 }
@@ -2248,7 +2142,7 @@ export function RouteForm({ route: was, agent, made, does: first = "wake" }: { r
 	const decideName = f.decide_name.trim() || "answer";
 	const decideReady = decider && f.decide_question.trim() && (f.decide_type === "yesno" || f.decide_choices.split("\n").filter((l) => l.trim()).length >= 2) && f.publish_topic.trim();
 	const agentItems = s.agents.map((a) => ({ value: a.id, label: a.id }));
-	const modelItems = [{ value: "", label: "The default model" }, ...(models.data ?? []).map((m) => ({ value: m, label: m }))];
+	const modelItems = modelChoices(models.data);
 	const does = ROUTE_DOES[f.does];
 	const pace = ROUTE_PACE[f.pace];
 	const ready = f.name.trim() && f.on.trim() && (f.pace === "every" || f.time.trim()) && { wake: f.agent, set: f.set.trim(), publish: f.publish_topic.trim(), ask: f.call_prompt.trim() && f.publish_topic.trim(), decide: decideReady }[f.does];
@@ -2324,18 +2218,7 @@ export function RouteForm({ route: was, agent, made, does: first = "wake" }: { r
 								<>
 									<Field>
 										<FieldLabel htmlFor={`${field}-agent`}>Agent</FieldLabel>
-										<Select items={agentItems} value={f.agent || null} onValueChange={(agent) => setF({ ...f, agent: agent ?? "" })}>
-											<SelectTrigger id={`${field}-agent`}>
-												<SelectValue placeholder="Choose an agent…" />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectGroup>
-													{agentItems.map((o) => (
-														<SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-													))}
-												</SelectGroup>
-											</SelectContent>
-										</Select>
+										<Choose id={`${field}-agent`} items={agentItems} value={f.agent} onChange={(agent) => setF({ ...f, agent })} placeholder="Choose an agent…" />
 									</Field>
 									<Field>
 										<FieldLabel htmlFor={`${field}-session`}>In the conversation</FieldLabel>
@@ -2394,18 +2277,7 @@ export function RouteForm({ route: was, agent, made, does: first = "wake" }: { r
 									<Field>
 										<FieldLabel htmlFor={`${field}-decide-by`}>Decided by</FieldLabel>
 										{decisions.data || decisions.error ? (
-											<Select items={decideItems} value={f.decide_by || null} onValueChange={(by) => setF({ ...f, decide_by: by ?? "" })}>
-												<SelectTrigger id={`${field}-decide-by`} disabled={!decideItems.length}>
-													<SelectValue placeholder={decideItems.length ? "Choose a decision model…" : "No decision model yet"} />
-												</SelectTrigger>
-												<SelectContent className={LIST}>
-													<SelectGroup>
-														{decideItems.map((o) => (
-															<SelectItem key={o.value} value={o.value}><Wrapped>{o.label}</Wrapped></SelectItem>
-														))}
-													</SelectGroup>
-												</SelectContent>
-											</Select>
+											<Choose id={`${field}-decide-by`} items={decideItems} value={f.decide_by} onChange={(by) => setF({ ...f, decide_by: by })} placeholder={decideItems.length ? "Choose a decision model…" : "No decision model yet"} disabled={!decideItems.length} />
 										) : <SelectPending id={`${field}-decide-by`} />}
 										<FieldDescription>{decider ? `The event's contents are sent to ${decider.where}.` : decideItems.length ? "A decision model answers in a fraction of a second." : "Add one first, under Models: Decision models."}</FieldDescription>
 									</Field>
@@ -2435,18 +2307,7 @@ export function RouteForm({ route: was, agent, made, does: first = "wake" }: { r
 									<Field>
 										<FieldLabel htmlFor={`${field}-model`}>Model</FieldLabel>
 										{models.data || models.error ? (
-											<Select items={modelItems} value={f.call_model} onValueChange={(m) => setF({ ...f, call_model: m ?? "" })}>
-											<SelectTrigger id={`${field}-model`}>
-												<SelectValue />
-											</SelectTrigger>
-											<SelectContent className={LIST}>
-												<SelectGroup>
-													{modelItems.map((o) => (
-														<SelectItem key={o.value} value={o.value}><Wrapped>{o.label}</Wrapped></SelectItem>
-													))}
-												</SelectGroup>
-											</SelectContent>
-										</Select>
+											<Choose id={`${field}-model`} items={modelItems} value={f.call_model} onChange={(m) => setF({ ...f, call_model: m })} />
 							) : <SelectPending id={`${field}-model`} />}
 									</Field>
 									<Field>
@@ -2520,38 +2381,28 @@ export function Routes({ agent }: { agent?: string }) {
 			about={agent ? `Rules that wake ${agent} or act for it when a certain event arrives. They are removed along with ${agent}.` : "Rules for events. When an event arrives, a route does one thing, often without waking an agent. Most setups need none. To react to a source, let an agent listen to it."}
 			actions={<Button variant="outline" onClick={() => openThing({ kind: "route", agent })}><PlusIcon data-icon="inline-start" />New route</Button>}
 		>
-			{mine && !mine.length ? (
-				agent ? <FieldDescription>None yet.</FieldDescription> : <Empty><EmptyHeader><EmptyMedia variant="icon"><GitBranchIcon /></EmptyMedia><EmptyTitle>No routes</EmptyTitle><EmptyDescription>You don’t need any to start.</EmptyDescription></EmptyHeader></Empty>
-			) : (
-				<ItemGroup>
-					{mine ? (
-						mine.map((r) => {
-							const said = routeSaid(r);
-							return (
-								<SettingsItem
-									key={r.name}
-									data-find={`route:${r.name}`}
-									render={<button type="button" />}
-									onClick={() => openThing({ kind: "route", route: r })}
-									title={<>
-											{r.name}
-											{r.trust === "owner" ? <Badge variant="outline">counts as you</Badge> : null}
-										</>}
-									description={[
-										<><span className="font-medium text-foreground">When</span> {said.when}</>,
-										<><span className="font-medium text-foreground">Then</span> {said.then}</>,
-									]}
-									actions={<ChevronRightIcon />}
-								/>
-							);
-						})
-					) : list.error ? (
-						<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{list.error}</AlertDescription></Alert>
-					) : (
-						<SettingsItemsSkeleton count={agent ? 1 : 3} />
-					)}
-				</ItemGroup>
-			)}
+			<Listed load={list} list={mine} bars={agent ? 1 : 3} empty={<NoneYet agent={agent} icon={GitBranchIcon} title="No routes">You don’t need any to start.</NoneYet>}>
+				{(r) => {
+					const said = routeSaid(r);
+					return (
+						<SettingsItem
+							key={r.name}
+							data-find={`route:${r.name}`}
+							render={<button type="button" />}
+							onClick={() => openThing({ kind: "route", route: r })}
+							title={<>
+									{r.name}
+									{r.trust === "owner" ? <Badge variant="outline">counts as you</Badge> : null}
+								</>}
+							description={[
+								<><span className="font-medium text-foreground">When</span> {said.when}</>,
+								<><span className="font-medium text-foreground">Then</span> {said.then}</>,
+							]}
+							actions={<ChevronRightIcon />}
+						/>
+					);
+				}}
+			</Listed>
 		</Section>
 	);
 }
@@ -2646,7 +2497,7 @@ function SharedInstructions() {
 					)}
 				</FileTabs>
 			) : files.error ? (
-				<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{files.error}</AlertDescription></Alert>
+				<Failed error={files.error} />
 			) : (
 				<FilesSkeleton />
 			)}
@@ -2942,7 +2793,7 @@ export function MachineList() {
 							<FieldDescription>{s.local ? "Write it as you would after ssh: host, user@host, or a name from ~/.ssh/config. The app connects when you pick the machine." : "Write it as you would after ssh: user@host, or user@host:port. The app connects when you pick the machine."}</FieldDescription>
 							{refused ? <FieldError>{refused}</FieldError> : null}
 						</Field>
-						{error ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{error}</AlertDescription></Alert> : null}
+						{error ? <Failed error={error} /> : null}
 					</FieldGroup>
 				</Section>
 			) : null}
@@ -3296,7 +3147,7 @@ function Found({ query, list, pick, back }: { query: string; list: Entry[]; pick
 					))}
 				</ItemGroup>
 			) : (
-				<Empty><EmptyHeader><EmptyMedia variant="icon"><SearchIcon /></EmptyMedia><EmptyTitle>No matches in Settings</EmptyTitle><EmptyDescription>Try another word, or fewer words. You can also ask the main agent, which knows all the settings.</EmptyDescription></EmptyHeader></Empty>
+				<NoneYet icon={SearchIcon} title="No matches in Settings">Try another word, or fewer words. You can also ask the main agent, which knows all the settings.</NoneYet>
 			)}
 		</Page>
 	);
