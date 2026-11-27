@@ -1,4 +1,4 @@
-// "Setup Pine", a model on this computer (src/setup/local.tsx): the daemon asks the usual local
+// "Onboarding", a model on this computer (src/setup/local.tsx): the daemon asks the usual local
 // ports what they serve (`GET /models/local`), and the owner picks what answered, unlocks it with
 // its key, or types an address. The usual ports are moved to stand-ins on port 0 for the daemon of
 // this test (`PINE_LOCAL_PORTS`, for tests only): a llama.cpp server with Pinecone's MCP server
@@ -42,7 +42,11 @@ const shot = async (name: string) => {
 const card = "[data-slot=composer-question] [data-slot=questionnaire]";
 /** The card that is open, by what it asks (`data-question`), never by its words. */
 const question = (id: string) => sees(`${card}[data-question=${id}]`);
-const pick = (option: string) => page.click(`${card} [data-slot=questionnaire-choice][data-option="${option}"]`);
+/** Picks an option, then sends it: a pick alone only selects. */
+const pick = async (option: string) => {
+	await page.click(`${card} [data-slot=questionnaire-choice][data-option="${option}"]`);
+	await page.click(`${card} [data-action=send]`);
+};
 const options = () => page.$$eval(`${card} [data-slot=questionnaire-choice]`, (els: Element[]) => els.map((e) => e.getAttribute("data-option")));
 /** What an option of the open card is called on screen, whatever it says: looked for again where the answer folds. */
 const label = async (option: string): Promise<string> => (await page.locator(`${card} [data-option="${option}"] [data-slot=question-card-label]`).textContent()) ?? "";

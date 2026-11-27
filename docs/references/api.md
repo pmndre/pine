@@ -12,7 +12,7 @@ errors are `{ "error": "..." }`. `session` names a conversation and defaults to 
 | Request | Purpose |
 |---|---|
 | `GET /health` | Liveness (no token) |
-| `GET /status`, `/agents`, `/approvals` | As the CLI commands; `modelProblem` says why an agent's model cannot answer |
+| `GET /status`, `/agents`, `/approvals` | As the CLI commands; `modelProblem` says why an agent's model cannot answer. `/status` has `approvals` (open approvals) and `questions` (open questions of agents: those of a conversation's latest turn, until you write again) |
 | `GET /models` | Models with credentials, as `provider/id` |
 | `POST /models/refresh` | Reads `models.json` and `.env` again |
 | `GET /manual` | The manual's chapters in index order, with their part (`group`) and sections, for the Manual tab |
@@ -60,7 +60,7 @@ errors are `{ "error": "..." }`. `session` names a conversation and defaults to 
 | `POST /agents/<id>/prompt` `{ prompt, session?, wait?, attachments?, whenBusy?, mentions?, quotes?, via?, cancelOnDisconnect? }` | Gives a task and waits for the result unless `wait: false` |
 | `POST /tasks/<id>/now` | Stops the step under way so the work reads your steered message now; answers `{ sent }` |
 | `POST /tasks/<id>/cancel` | Cancels a task |
-| `GET /tasks?agent=&session=&status=&limit=`, `GET /tasks/<id>` | Tasks. Kind `notify` is pine's note to the agent, never your message (`meta.label`, `meta.body`) |
+| `GET /tasks?agent=&session=&status=&limit=`, `GET /tasks/<id>` | Tasks. Kind `notify` is pine's note to the agent, never your message (`meta.label`, `meta.body`). `meta.asked`: the questions that turn asked you, in call order (`question`, `header?`, `options?` `{ label, description? }`, `multiSelect?`) |
 | `GET /tasks/<id>/transcript` | A task's steps with the start of each tool result; `?full=1` for whole results (up to 200,000 characters) |
 | `POST /agents/<id>/terminal` `{ session, command, state, code?, seconds?, output? }` | The Pine app reports a command run with ▶ as `running` or `ended`; the conversation gets the output's end. Not for a conversation outside content started |
 
@@ -79,13 +79,11 @@ errors are `{ "error": "..." }`. `session` names a conversation and defaults to 
 
 | Request | Purpose |
 |---|---|
-| `POST /approvals/<id>` `{ allow, always?, values? }` | Answers an approval or a `question` |
+| `POST /approvals/<id>` `{ allow, always?, values? }` | Answers an approval |
 
 `always: true` stops the same question for the conversation. A request with `inputs` (a token, a
-password) needs `values: { <name>: "..." }`. A `question` (`tool: "question"`, with `options` `{ label, description? }`,
-`choices`, `multiSelect`, `header`) takes `values: { "answer": "..." }`: a label, labels joined by
-", ", or option numbers from 1 (`1,3`); other text reaches the agent as your words. `allow: false`
-gives no answer.
+password) needs `values: { <name>: "..." }`. An agent's `question` is no approval: it is answered by
+`POST /agents/<id>/prompt` in its conversation, as any message.
 
 ## Folders, worktrees and files
 

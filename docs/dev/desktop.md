@@ -214,7 +214,7 @@ desktop/
     api.ts         the control API, typed
     App.tsx        the window: side bar, tab groups, dialogs for keys, updates and the browser
     dock.ts        a window's arrangement of tabs: a tree of splits and groups (no DOM)
-    ApprovalDialog.tsx, components/question-card.tsx  an approval; an agent's question
+    ApprovalDialog.tsx, components/question-card.tsx  an approval; the cards above the input (an agent's questions, from its turn; pine's own steps; a sign-in's choice)
     Palette.tsx, PickDialog.tsx  everything by name; a choice from a list
     Conversation.tsx, Composer.tsx, markdown.tsx  a conversation, the input, an answer drawn
     CodePanel.tsx  the side panel; Board.tsx its Board tab; Browser.tsx its browser
@@ -229,9 +229,9 @@ desktop/
                    one dialog App.tsx holds (`ThingDialog` in Settings.tsx)
     Manual.tsx     the Manual tab: pine's manual from the daemon (`GET /manual`), its parts, chapters, a chapter, its search
     sign-in.ts     a provider sign-in as the page follows it; components/sign-in-card.tsx its card
-    setup/         Setup Pine's steps: engine.tsx walks them, types.ts, branches.ts (`BRANCHES`: one
-                   module per way to a model, subscription.tsx, api-key.tsx, local.tsx; `AFTER`:
-                   handoff.tsx, the card "Next"). A new way is a module and one line there
+    setup/         Onboarding's steps: engine.tsx walks them (and asks the default model), types.ts,
+                   branches.ts (`BRANCHES`: one module per way to a model, subscription.tsx,
+                   api-key.tsx, local.tsx). A new way is a module and one line there
     BrowserAccess.tsx, machines.ts, DevicePairing.tsx, Pairing.tsx  browser access and pairing
     commands.ts    one list of commands for the palette, the menus and the slash
     components/ui/ shadcn's components, as its CLI added them
@@ -254,7 +254,7 @@ desktop/
   daemon, `scripts/preview.ts` routes it under `/__pine/`.
 - The page is also the mobile app's (`mobile/src/mobile-bridge.ts`) and the web client's
   (`web/src/frame-bridge.ts`), on the same `Bridge` type. Only those two give `local: false` (no
-  machine of its own: the page hides This Mac, Use this Mac, Set up pine and the local parts of
+  machine of its own: the page hides This Mac, Use this Mac and the local parts of
   Settings), `mediaBase`, `deviceKey` and `trustHostKey`; only the web client `disconnect`,
   `renameHost` and `openApp`; only the mobile app `pair`, `stopPairing`, `onPairLink`, `nearby` and
   `pairNearby`; only the desktop app browser access, its own update and its browser. `contextMenu`

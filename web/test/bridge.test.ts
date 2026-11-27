@@ -240,6 +240,9 @@ test("prefs: the page's own, checked; the machines change by their own methods o
 	await c.page.state();
 	const p = await c.page.prefs({ notify: true, agentAccent: false, hosts: ["evil@host"], use: "evil@host", look: { id: "x" } });
 	assert.equal(p.notify, true);
+	assert.equal(p.questionCards, true, "the questions' card is on unless turned off");
+	assert.equal((await c.page.prefs({ questionCards: false })).questionCards, false);
+	assert.equal((await c.page.prefs({ questionCards: "no" })).questionCards, false, "only a boolean changes it");
 	assert.equal("agentAccent" in p, false, "the agent's color in front is no preference any more");
 	assert.deepEqual(p.hosts, []);
 	assert.equal(p.use, undefined);

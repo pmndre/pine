@@ -1,7 +1,7 @@
 // Where the owner writes: the message, the files that go with it, and under it what the
 // conversation runs on (folder, model, reasoning, mode), each a click away.
 import { Combobox as ComboboxPrimitive } from "@base-ui/react";
-import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CpuIcon, EyeIcon, FileIcon, FolderIcon, MicIcon, PlusIcon, ShieldIcon, SparkleIcon, SquareIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, ChevronDownIcon, ChevronUpIcon, ClockIcon, CpuIcon, EyeIcon, FileIcon, FolderIcon, MicIcon, PlusIcon, ShieldIcon, SparkleIcon, SquareIcon, XIcon } from "lucide-react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Attachment as Chip, AttachmentAction, AttachmentActions, AttachmentGroup, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +66,33 @@ interface Suggestion {
 
 /** A key event that went through Base UI: `preventBaseUIHandler` keeps the combobox's own handling out of it. */
 type ListKeyEvent = React.KeyboardEvent<HTMLTextAreaElement> & { preventBaseUIHandler: () => void };
+
+/**
+ * While this conversation has open questions of its own (or a sign-in's choice, which comes first), a small button on
+ * the composer's top edge folds their card away and brings it back: a disclosure, its chevron down while the card
+ * shows, up once it is folded. Folded, the thread shows the questions in full, and what the owner types goes as an
+ * ordinary message, as it always does. (A folded sign-in's choice is closed without an answer by that message,
+ * `submit`, so that its flow goes on.) The status line says nothing of it.
+ */
+function QuestionToggle({ tab }: { tab: Tab }) {
+	const choice = store.openChoice(tab) ?? store.hiddenChoice(tab);
+	// With the card turned off (Settings > General) there is nothing to fold: the thread shows the questions in full.
+	const questions = choice || !store.questionCards ? undefined : store.openQuestions(tab);
+	if (!choice && !questions) return null;
+	const open = choice ? choice === store.openChoice(tab) : Boolean(store.shownQuestions(tab));
+	const what = choice || questions!.asked.filter(Boolean).length < 2 ? "question" : "questions";
+	const label = `${open ? "Hide" : "Show"} ${choice?.req.agent ?? questions!.agent}'s ${what}`;
+	const toggle = () => (choice ? (open ? store.putOff(choice.req.id) : store.ask(choice.req.id)) : store.foldQuestions(tab, open));
+	return (
+		<HoverTooltip>
+			{/* Outline as stock, but its dark tint mixed into the page color: it sits on the composer's border, which a see-through fill would show. */}
+			<TooltipTrigger render={<Button data-question-toggle variant="outline" size="icon-xs" className="absolute end-3 -top-3 dark:bg-[color-mix(in_oklch,var(--input)_30%,var(--background))] dark:hover:bg-[color-mix(in_oklch,var(--input)_50%,var(--background))]" aria-expanded={open} aria-label={label} onClick={toggle} />}>
+				{open ? <ChevronDownIcon /> : <ChevronUpIcon />}
+			</TooltipTrigger>
+			<TooltipContent>{label}</TooltipContent>
+		</HoverTooltip>
+	);
+}
 
 /** `host`: what the card above the composer says (`HostedCard`): whether it takes what is typed, and how. */
 export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
@@ -232,8 +259,8 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 			set("");
 			return runSlash(value.slice(1), tab);
 		}
-		// The card above takes what is typed (an agent's question, in the owner's own words; pine's own
-		// step in "Setup Pine" before a model answers): it does not wait behind the work, and is the card's.
+		// The card above takes what is typed (pine's own step in "Onboarding" before a model answers): it does
+		// not wait behind the work, and is the card's. An agent's questions take nothing: what is typed is a message.
 		if (value && above?.type?.(value)) return set("");
 		await store.submit(tab, value, whenBusy);
 	};
@@ -361,6 +388,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 			    AGENTS.md rule 10), so the Send button sends by its click and Enter by `onKey`. */}
 			<div
 				data-slot="composer"
+				className="relative"
 				onDragOver={(e) => {
 					if (![...e.dataTransfer.types].includes("Files")) return;
 					e.preventDefault();
@@ -584,6 +612,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 						)}
 					</InputGroupAddon>
 				</InputGroup>
+				<QuestionToggle tab={tab} />
 			</div>
 			<input ref={picker} type="file" multiple hidden onChange={(e) => (void attach(tab, [...(e.target.files ?? [])]), (e.target.value = ""))} />
 			{tab.folder && !tab.items.length ? <div className="px-1 text-faint text-xs">{tab.agent}'s tools start in {tilde(tab.folder)} and can read and change the files there.</div> : null}

@@ -150,7 +150,8 @@ function work(world: World, j: Job, holdings: Map<string, Holdings>): ViewWork {
 			const name = toolName(c.tool);
 			return name ? [{ tool: name, ...(mcpOf(name) ? { mcp: mcpOf(name) } : {}), at: page(c.at), ...(c.ms !== undefined ? { ms: c.ms, ok: c.ok !== false } : {}) }] : [];
 		}),
-		asking: Boolean(j.ask) && !ENDED.includes(j.doing),
+		// Waiting for an approval, or its questions open (the work itself has ended: a question holds nothing up).
+		asking: (Boolean(j.ask) && !ENDED.includes(j.doing)) || world.asksOpen(j),
 		...(mode ? { mode } : {}),
 		held: Boolean(mode && own && stricter(mode, own)),
 		outside: Boolean(world.outside(j)),
@@ -194,6 +195,7 @@ export function happeningsOf(batch: Array<{ topic: string; payload: any; source?
 		}
 		else if (e.topic === "pine/board" && typeof p.board === "number" && ["posted", "taken", "released", "settled", "removed"].includes(p.change)) out.push({ k: "board", board: p.board, change: p.change, ...(typeof p.agent === "string" && world.places.has(p.agent) ? { agent: p.agent } : {}), ...(p.kind === "task" && typeof p.item === "number" ? { task: p.item, ...(TASK_STATES.includes(p.state) ? { state: p.state } : {}) } : {}) });
 		else if (e.topic === "approval/requested" && typeof p.task === "number") out.push({ k: "asked", work: p.task, agent: String(p.agent ?? "") });
+		else if (e.topic === "question/asked" && p.at === 0 && typeof p.task === "number") out.push({ k: "asked", work: p.task, agent: String(p.agent ?? "") });
 		else if (e.topic === "approval/decided") out.push({ k: "decided", allowed: p.allow === true });
 		if (ns === "agent" && kind === "swarm" && typeof p.session === "string" && world.places.has(who)) {
 			const w = world.swarms.get(`${who}:${p.session}`);

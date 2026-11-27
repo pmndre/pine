@@ -1,4 +1,4 @@
-// "Setup Pine" with an API key: which provider (the most common ones, and "Another…", the pick
+// "Onboarding" with an API key: which provider (the most common ones, and "Another…", the pick
 // dialog with its search), then a card with a secret field of its own, whose key goes straight to
 // pi's sign-in for that provider. The conversation says only that a key was saved: the key is in
 // nothing the window shows and in nothing of the conversation's history, only in auth.json.
@@ -23,7 +23,11 @@ const api = (method: string, url: string, body?: unknown) => page.evaluate(([m, 
 const card = "[data-slot=composer-question] [data-slot=questionnaire]";
 /** The card that is open, by what it asks (`data-question`), never by its words. */
 const question = (id: string) => sees(`${card}[data-question=${id}]`);
-const pick = (option: string) => page.click(`${card} [data-slot=questionnaire-choice][data-option="${option}"]`);
+/** Picks an option, then sends it: a pick alone only selects. */
+const pick = async (option: string) => {
+	await page.click(`${card} [data-slot=questionnaire-choice][data-option="${option}"]`);
+	await page.click(`${card} [data-action=send]`);
+};
 const offered = () => page.$$eval(`${card} [data-slot=questionnaire-choice]`, (els: Element[]) => els.map((e) => e.getAttribute("data-option")));
 /** What an option of the open card is called on screen, whatever it says: looked for again where the answer folds. */
 const label = async (option: string): Promise<string> => (await page.locator(`${card} [data-option="${option}"] [data-slot=question-card-label]`).textContent()) ?? "";

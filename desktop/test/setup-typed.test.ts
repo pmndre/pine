@@ -1,4 +1,4 @@
-// "Setup Pine" before any model answers: what the owner types in the composer is matched against the
+// "Onboarding" before any model answers: what the owner types in the composer is matched against the
 // open card's option labels, whatever the case, and picks the one it names. Anything else gets one
 // fixed line of pine's, and nothing goes to the daemon as a prompt: there is no model to answer it.
 // The sign-in runs on the daemon's stand-in for a browser sign-in (`PINE_LOGIN_STAND_IN`, for tests only).

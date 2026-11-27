@@ -7,9 +7,9 @@
 // list for each would be the slowest thing the app does.
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
-import { type AgentInfo, api, type Approval, type Conversation, type GoalInfo, type SwarmInfo, type GroupList, media, type WorktreeMade, type BoardBrief, type PineEvent, type Program, type Stats, type Task, type Todo, type TranscriptEntry } from "./api.ts";
+import { type AgentInfo, api, type Approval, type AskedQuestion, type Conversation, type GoalInfo, type SwarmInfo, type GroupList, media, type WorktreeMade, type BoardBrief, type PineEvent, type Program, type Stats, type Task, type Todo, type TranscriptEntry } from "./api.ts";
 import { bridge, type ChromeLayout, type Prefs, type ServiceState, type Update, type WindowDraft, type WindowLayout, type WindowTabRef, type WindowWidths } from "./bridge.ts";
-import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, localAddress, MODES, oneLine, plural, short, shortcut, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
+import { addPrinted, baseName, childKind, errText, eventBody, isGoalRound, learnHome, localAddress, MODES, oneLine, plural, short, shortcut, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
 import { runnable } from "./runnable.ts";
 import { type QuoteSource, type SentQuote, withQuotes } from "../../src/quotes.ts";
 import { silent } from "../../src/silent.ts";
@@ -68,6 +68,8 @@ export type Item = Base &
 		/** A message was not answered because the agent has no model that answers (`ModelNotice`). */
 		| { t: "model"; agent: string }
 		| { t: "approval"; req: Approval; state: "open" | "allowed" | "denied" | "gone"; by?: string; always?: boolean; /** What the owner answered a question with here, for the line it folds into. */ answer?: string }
+		/** The questions a turn asked the owner (its `question` calls), by their place in the turn. */
+		| { t: "questions"; task: number; agent: string; asked: AskedQuestion[] }
 		| { t: "steps"; task: number; items: Todo[] }
 		| { t: "media"; name: string; url: string; kind: "image" | "video" | "audio" }
 		| { t: "goal"; goal: GoalInfo; full?: boolean }
@@ -83,6 +85,8 @@ export interface Steer {
 	task: number;
 	into: number;
 	read?: number;
+	/** When it came (the daemon's clock, ms), where the history says: placed after a question, it may still have come before it. */
+	at?: number;
 }
 
 export interface Attachment {
@@ -162,11 +166,11 @@ const MEDIA_KIND = (name: string): "image" | "video" | "audio" | undefined => (/
 export const mediaKind = MEDIA_KIND;
 
 /**
- * A request answered by picking one of its options, on the question card above the composer: an
- * agent's question, or a request with choices (what a sign-in's flow asks to choose). Neither opens
- * the approval dialog.
+ * A request answered by picking one of its choices, on the question card above the composer: what a
+ * sign-in's flow asks to choose. It opens no approval dialog. (An agent's question is no request: it
+ * is a call of its turn, `openQuestions`.)
  */
-export const isPick = (req: Approval): boolean => req.tool === "question" || Boolean(req.choices?.length);
+export const isPick = (req: Approval): boolean => Boolean(req.choices?.length);
 
 /** One tab: a conversation, the work of one task, or the event log. */
 export class Tab extends Model {
@@ -195,6 +199,8 @@ export class Tab extends Model {
 	children = new Map<number, { agent: string; kind: string; label: string; running: boolean }>();
 	approvals = new Map<string, Of<"approval">>();
 	steps?: Of<"steps">;
+	/** The turn whose questions' card the owner folded away (the button on the composer's edge). The page's alone, not kept. */
+	folded?: number;
 
 	unread = false;
 	startedAt = 0;
@@ -282,7 +288,7 @@ export class Tab extends Model {
 		this.items = [];
 		for (const live of [this.roots, this.running, this.answers, this.streamed, this.tools, this.thoughts, this.children, this.approvals]) live.clear();
 		this.awaiting = [];
-		this.work = this.said = this.lastThought = this.steps = undefined;
+		this.work = this.said = this.lastThought = this.steps = this.folded = undefined;
 		this.thinking = false;
 	}
 }
@@ -291,7 +297,7 @@ const STOP_GRACE = 3000;
 /** What the gate says of a pine that answered with no agent at all, until one is made there. */
 const NO_AGENTS = "This pine has no agents.";
 
-/** The main agent's conversation that sets pine up ("Setup Pine", src/setup/). */
+/** The main agent's conversation that sets pine up ("Onboarding", src/setup/). */
 export const SETUP = "setup";
 /** Kept once the home-screen suggestion was made, so that it is never made again. */
 const HOME_SCREEN_KEY = "pine.homeScreen";
@@ -326,7 +332,7 @@ export class Store extends Model {
 	/** Why the agents of the pine that answered could not be loaded, until they are asked again: the gate says it and offers to try again. */
 	loadError?: string;
 	connected = false;
-	prefs: Prefs = { keepRunning: false, hosts: [], notify: true, updates: true };
+	prefs: Prefs = { keepRunning: false, hosts: [], notify: true, updates: true, questionCards: true };
 	/** The themes in the themes folder of pine's home, and the one in force (`ui.theme`, pmndre when none is chosen). */
 	themes: ThemeEntry[] = [];
 	/** Whether `refreshThemes` has answered once, read or not: Settings draws skeletons until then. */
@@ -448,10 +454,12 @@ export class Store extends Model {
 	picker?: Picker;
 	/** The form that publishes an event as the owner, while it is open. */
 	publishing = false;
-	/** The approval whose dialog is open. (A question has no dialog: its card is above the composer.) */
+	/** The approval whose dialog is open. (A sign-in's choice has none: its card is above the composer.) */
 	asking?: string;
-	/** The questions the owner put off ("Later"): their card is not shown until they are opened again. */
+	/** The sign-in choices the owner folded away: their card is not shown until they are opened again. */
 	later = new Set<string>();
+	/** What the app's icon last said, so that it is told only when that changes. */
+	private badged = -1;
 	/** The tabs of last time are open (there may be none): until then the window shows that pine is starting. */
 	opened = false;
 	/** What was typed into a conversation's input and not sent when its tab closed, given back when it opens again. */
@@ -459,6 +467,8 @@ export class Store extends Model {
 	asked = new Set<string>();
 	initLines: string[] = [];
 	initRunning = false;
+	/** pine init ended badly and the app asked for its pine all the same: the answer to that asking starts no second pine init. */
+	private initFailed = false;
 	/** Whether the browser build this pine drives is on this computer; nothing while it is not known. */
 	browser?: boolean;
 	/** Whether `checkBrowser` has answered once, read or not (at once for another machine's pine, which has nothing to check here). */
@@ -539,8 +549,7 @@ export class Store extends Model {
 			this.touch();
 		});
 		bridge.onInitLine((line: string) => {
-			this.initLines.push(line);
-			if (this.initLines.length > 200) this.initLines.shift();
+			addPrinted(this.initLines, line);
 			this.touch();
 		});
 		bridge.onOpenHosts?.((hosts: string[]) => {
@@ -811,6 +820,27 @@ export class Store extends Model {
 		this.touch();
 	}
 
+	/**
+	 * This computer has no pine home: `pine init` makes one, without a question, and the app asks for its pine again.
+	 * What it prints is shown as it comes (the Gate in App.tsx).
+	 */
+	private async setUp(): Promise<void> {
+		if (this.initRunning) return;
+		this.initRunning = true;
+		this.initLines = [];
+		this.touch();
+		const code = await bridge.init().catch(() => 1);
+		this.initRunning = false;
+		this.touch();
+		// What needs an administrator (Linux) is printed on the screen, for a terminal: it stays in view until Try again.
+		if (code === "administrator") this.flash("Part of the setup needs an administrator. Run the command shown above in a terminal, then press Try again.", "warn", 15000);
+		else {
+			// Ended badly: the home may be there all the same, so the app asks for its pine and says what came of it (onService).
+			this.initFailed = code !== 0;
+			await bridge.retry();
+		}
+	}
+
 	private async onService(s: ServiceState): Promise<void> {
 		const was = this.service.status;
 		// Another pine than before (another machine was picked): nothing of the last one is kept, not even what an agent of the same name was doing.
@@ -827,6 +857,16 @@ export class Store extends Model {
 		else if (s.host || (s.status === "starting" && s.pairing)) this.pairFailed = false;
 		this.service = s;
 		if (ended === "paired") void this.paired();
+		if (moved && s.status !== "starting") {
+			const failed = this.initFailed;
+			this.initFailed = false;
+			const noHome = s.status === "error" && s.kind === "no-home" && !s.host && this.local;
+			// Each time this computer's pine is asked for and has no home, pine init makes one: but not again by itself after one that failed, only by Try again.
+			if (noHome && !failed) void this.setUp();
+			else if (noHome) this.flash("pine init did not finish. The output is shown above.", "bad");
+			// A home was made and something else was not (the browser, when offline): the app goes on, and asks about the browser as at any start.
+			else if (failed && s.status === "ready") this.flash("pine is set up, but pine init did not finish all of it. The browser of the web tools may be missing: see Settings > General.", "warn", 10000);
+		}
 		const envKey = s.host ?? "";
 		const again = s.status === "ready" && (was !== "ready" || (!this.agents.length && this.loadingHost !== envKey));
 		// A reason the agents did not load is wiped only by a new attempt or another pine: never left in place of one, never wiped without one.
@@ -1337,7 +1377,7 @@ export class Store extends Model {
 	 */
 	titleOf(agent: string, session: string): string {
 		if (session === "main") return "main conversation";
-		if (session === SETUP && this.agent(agent)?.main) return "Setup Pine";
+		if (session === SETUP && this.agent(agent)?.main) return "Onboarding";
 		// A branch of a conversation that has no name of its own is called after that one's title.
 		const branch = /^(s[0-9a-z]{6,10})-branch(?:-(\d+))?$/.exec(session);
 		if (branch) return `${this.titleOf(agent, branch[1])} · branch${branch[2] ? ` ${branch[2]}` : ""}`;
@@ -1421,7 +1461,7 @@ export class Store extends Model {
 		this.activate(tab);
 	}
 
-	/** Questions that were asked before this window was there. */
+	/** Approvals that were asked for before this window was there. (Questions come with the history of their conversation.) */
 	private async pending(): Promise<void> {
 		const list = await api.approvals().catch(() => [] as Approval[]);
 		for (const req of list) {
@@ -1529,7 +1569,7 @@ export class Store extends Model {
 	}
 
 	/**
-	 * Open "Setup Pine", the main agent's conversation that sets pine up, in front and pinned. The
+	 * Open "Onboarding", the main agent's conversation that sets pine up, in front and pinned. The
 	 * pin is the daemon's like any other; a conversation with nothing said in it is not in its list,
 	 * so the page marks it here too.
 	 */
@@ -1551,7 +1591,7 @@ export class Store extends Model {
 	 * Say once, in a toast that stays (the stock Toaster, no timeout), that the main agent has no model
 	 * that answers, with the way to the setup conversation. Shown from `main`'s welcome card; gone when
 	 * a model answers, and not shown again for this page once the owner closed it. Kept back while
-	 * "Setup Pine" is in front, which it points to and would only cover (`placeNoModelNotice`).
+	 * "Onboarding" is in front, which it points to and would only cover (`placeNoModelNotice`).
 	 */
 	noModelNotice(text: { title: string; description: string }): void {
 		if (this.hasModel || this.noModel.closed) return;
@@ -1571,7 +1611,7 @@ export class Store extends Model {
 		});
 	}
 
-	/** The toast goes away when "Setup Pine" comes to the front, not as closed by the owner, and comes back on any other tab. */
+	/** The toast goes away when "Onboarding" comes to the front, not as closed by the owner, and comes back on any other tab. */
 	private placeNoModelNotice(tab: Tab): void {
 		if (!this.isSetup(tab)) {
 			if (this.noModel.text) this.noModelNotice(this.noModel.text);
@@ -1604,9 +1644,10 @@ export class Store extends Model {
 	/**
 	 * Choose the model of every agent that has none of its own (`defaults.model`), from `among` or
 	 * from all that can be used now. Offered where a model was just made available, and where an
-	 * agent's model cannot answer.
+	 * agent's model cannot answer. Gives the model picked (the one there was, too), nothing when the
+	 * picker was closed or the change failed.
 	 */
-	async chooseDefaultModel(among?: string[]): Promise<void> {
+	async chooseDefaultModel(among?: string[]): Promise<string | undefined> {
 		const title = "Default model for agents without one of their own";
 		// Settings that cannot be read only leave the picker without the current value.
 		const loaded = await this.loadPick(title, async () => {
@@ -1615,13 +1656,23 @@ export class Store extends Model {
 		});
 		if (!loaded) return;
 		const { models } = loaded;
-		if (!models.length) return this.connectModel();
+		if (!models.length) {
+			await this.connectModel();
+			return;
+		}
 		const now = loaded.settings.find((x) => x.key === "defaults.model")?.now;
 		const model = await this.pick({ title, items: models.map((m) => ({ value: m, label: m })), current: now, placeholder: "Search models" });
-		if (!model || model === now) return;
-		if (!(await this.attempt(() => api.setSetting("defaults.model", model)))) return;
+		if (!model) return;
+		if (model === now) return model;
+		return (await this.setDefaultModel(model)) ? model : undefined;
+	}
+
+	/** Set the model of every agent that has none of its own (`defaults.model`): true when the daemon took it. */
+	async setDefaultModel(model: string): Promise<boolean> {
+		if (!(await this.attempt(() => api.setSetting("defaults.model", model)))) return false;
 		await this.refreshAgents();
 		this.flash(`Your agents now run on ${model}. Agents with their own model keep it.`, "good", 6000);
+		return true;
 	}
 
 	/** Open or close the form that publishes an event as the owner. What waits for an answer is asked once it is closed. */
@@ -1704,7 +1755,10 @@ export class Store extends Model {
 
 	/** How many tabs want the owner: shown on the app's icon. */
 	private badge(): void {
-		void bridge.badge(this.tabs.filter((t) => t.approvals.size > 0).length);
+		const n = this.tabs.filter((t) => this.waits(t)).length;
+		if (n === this.badged) return;
+		this.badged = n;
+		void bridge.badge(n);
 	}
 
 	/**
@@ -1959,7 +2013,8 @@ export class Store extends Model {
 			const told = new Set(history.map((t) => t.id));
 			const done = new Set(history.filter((t) => t.status !== "running" && t.status !== "pending").map((t) => t.id));
 			// The owner's message is in the history once it is a task; the rest of a task that is over is too.
-			for (const item of early) if (!("task" in item && item.task !== undefined && (done.has(item.task) || (item.t === "user" && told.has(item.task))))) tab.items.push(item);
+			// A turn's questions are in its record from the moment they were asked.
+			for (const item of early) if (!("task" in item && item.task !== undefined && (done.has(item.task) || ((item.t === "user" || item.t === "questions") && told.has(item.task))))) tab.items.push(item);
 			this.takeStats(tab, history.at(-1)?.meta?.stats);
 			// What is still at work goes on live from here.
 			for (const t of history) {
@@ -2016,10 +2071,11 @@ export class Store extends Model {
 		if (t.kind === "event" && t.meta?.label) tab.add({ t: "event", label: t.meta.label, body: eventBody(t.prompt) });
 		else if (isGoalRound(t.kind, t.meta?.label)) tab.note(`↻ ${t.meta.label}`);
 		else if (t.kind === "notify") tab.add(pineNote(t.meta?.label, t.meta?.body));
-		else tab.add({ t: "user", ...ownerText({ prompt: t.prompt, quotes: t.meta?.quotes, body: t.meta?.body }), from: t.kind === "prompt" ? undefined : t.kind, task: t.kind === "prompt" && t.meta?.trust === "owner" && t.meta?.steered === undefined ? t.id : undefined, steer: t.meta?.steered === undefined ? undefined : { task: t.id, into: t.meta.steered, read: t.meta.read } });
+		else tab.add({ t: "user", ...ownerText({ prompt: t.prompt, quotes: t.meta?.quotes, body: t.meta?.body }), from: t.kind === "prompt" ? undefined : t.kind, task: t.kind === "prompt" && t.meta?.trust === "owner" && t.meta?.steered === undefined ? t.id : undefined, steer: t.meta?.steered === undefined ? undefined : { task: t.id, into: t.meta.steered, read: t.meta.read, at: t.created } });
 		(t.meta?.images ?? []).forEach((_, i) => tab.add({ t: "media", kind: "image", name: `attached picture ${i + 1}`, url: media.task(t.id, i) }));
 		// It was read by work that was already running; the answer is that work's.
 		if (t.meta?.steered !== undefined) return;
+		if (t.meta?.asked?.length) tab.add({ t: "questions", task: t.id, agent: t.agent, asked: [...t.meta.asked] });
 		if (t.status === "done") {
 			// NO_REPLY: the agent had nothing to say, which is shown as nothing.
 			if (silent(t.result)) return;
@@ -2601,28 +2657,40 @@ export class Store extends Model {
 
 	// ---- what the owner does in a conversation -----------------------------------------------------
 
-	async submit(tab: Tab, raw: string, whenBusy: "steer" | "queue" = "steer"): Promise<void> {
+	/**
+	 * Send a message of the owner's. `alone`: these words and nothing of the composer's (its draft, its
+	 * files, its quotes stay where they are), as the questions' card sends its answers.
+	 */
+	async submit(tab: Tab, raw: string, whenBusy: "steer" | "queue" = "steer", alone = false): Promise<void> {
 		const typed = raw.trim();
-		if ((!typed && !tab.quotes.length) || tab.kind !== "chat") return;
+		if ((!typed && (alone || !tab.quotes.length)) || tab.kind !== "chat") return;
 		if (typed) tab.inputs.push(typed);
-		const quotes = tab.quotes.splice(0);
-		tab.replying = undefined;
+		const quotes = alone ? [] : tab.quotes.splice(0);
+		if (!alone) tab.replying = undefined;
 		const sent = quotes.length ? quotes.map((q): SentQuote => ({ text: q.text, source: q.source, ...(q.reply?.trim() ? { reply: q.reply.trim() } : {}) })) : undefined;
 		const text = withQuotes(sent ?? [], typed);
-		const files = tab.attachments.splice(0);
-		tab.draft = "";
+		const files = alone ? [] : tab.attachments.splice(0);
+		if (!alone) tab.draft = "";
 		const mine = tab.add({ t: "user", text: typed, files: files.map((f) => f.name), quotes: sent });
 		for (const f of files) if (f.preview) tab.add({ t: "media", kind: "image", name: f.name, url: f.preview });
 		tab.awaiting.push(text);
 		tab.touch();
+		// What it answered is no longer open: the tab's mark and the app's icon say so at once.
+		this.touch();
+		this.badge();
 		try {
 			const busy = tab.busy;
 			const mentions = [...typed.matchAll(/(?:^|\s)@([^\s@]+)/g)].map((m) => m[1]).filter((m) => tab.files.has(m.split("#")[0]));
 			const { task, steered } = await api.prompt(tab.agent, typed, tab.session, files.length ? files.map((f) => ({ name: f.name, data: f.data })) : undefined, whenBusy, mentions.length ? mentions : undefined, sent, !this.remote);
 			tab.roots.add(task);
+			// A sign-in's choice the owner folded away is set aside by what they wrote: it is closed without an answer, so that
+			// the agent goes on and reads the message, which was given to its work first (a message after it would wait for the choice).
+			const aside = this.openChoice(tab) ? undefined : this.hiddenChoice(tab);
+			if (aside) void this.decide(aside.req.id, false, false, undefined, true);
 			if (steered === undefined) (mine.task = task), mine.v++;
 			if (steered !== undefined) {
-				mine.steer ??= { task, into: steered };
+				// When it came, until the daemon's event says it on its own clock.
+				mine.steer ??= { task, into: steered, at: Date.now() };
 				mine.v++;
 				tab.awaiting = tab.awaiting.filter((p) => p !== text);
 				this.flash(`Sent to the agent while it works. Use ${shortcut("⌥↩")} to queue a message until the agent is done instead.`, "muted", 3000);
@@ -2632,7 +2700,7 @@ export class Store extends Model {
 			tab.attachments.unshift(...files);
 			tab.quotes.unshift(...quotes);
 			tab.remove(mine);
-			tab.draft = typed;
+			if (!alone) tab.draft = typed;
 			tab.note(`Not sent: ${errText(e)}`, "bad");
 			tab.touch();
 		}
@@ -2736,7 +2804,7 @@ export class Store extends Model {
 		if (!info) return;
 		const models = await this.loadPick(`Model for ${tab.agent}`, () => api.models());
 		if (!models) return;
-		if (!models.length) return this.connectModel();
+		if (!models.length) return void (await this.connectModel());
 		const model = await this.pick({ title: `Model for ${tab.agent}`, items: models.map((m) => ({ value: m, label: m })), current: info.model, placeholder: "Search models" });
 		if (!model || model === info.model) return;
 		if (!(await this.attempt(() => api.setModel(tab.agent, model)))) return;
@@ -2978,23 +3046,102 @@ export class Store extends Model {
 		return tab.kind === "chat" && req.agent === tab.agent && (req.root === undefined || tab.roots.has(req.root));
 	}
 
-	/** The question of a conversation whose card is shown above its composer: the first of its own that is open and not put off. */
-	openQuestion(tab: Tab): Of<"approval"> | undefined {
+	/**
+	 * The questions of a conversation that are open, by the one rule the daemon goes by too
+	 * (`openQuestions` in src/agents.ts): those its latest turn asked after the last message of the
+	 * owner's that was steered into it, while no other message of the owner's has come after them (a
+	 * turn of its own, or one on its way), and the agent's next turn has not begun. What comes back is
+	 * the turn's questions with only the open ones in `asked`. The card, the button on the composer's
+	 * edge, the thread, the tab's mark and the app's icon all ask this, so that they always agree.
+	 */
+	openQuestions(tab: Tab): Of<"questions"> | undefined {
+		if (tab.kind !== "chat" || !tab.roots.size) return undefined;
+		const at = tab.items.findLastIndex((it) => it.t === "questions");
+		const item = tab.items[at];
+		if (item?.t !== "questions") return undefined;
+		// The latest turn: a message steered into running work is no turn of its own.
+		const steered = new Set(tab.items.flatMap((it) => (it.t === "user" && it.steer ? [it.steer.task] : [])));
+		if (item.task !== Math.max(...[...tab.roots].filter((id) => !steered.has(id)))) return undefined;
+		// A message after them that is not steered into the turn answers them all: one on its way too (not a task yet).
+		const into = (it: Item): it is Of<"user"> & { steer: Steer } => it.t === "user" && it.steer?.into === item.task;
+		if (tab.items.slice(at + 1).some((it) => it.t === "user" && !into(it))) return undefined;
+		// One steered into the turn answers what the turn asked before it came, not what it asks after (both clocks the
+		// daemon's). Where its time is not known, one placed after the questions answers them all.
+		const told = Math.max(-Infinity, ...tab.items.map((it, i) => (into(it) ? (it.steer.at ?? (i > at ? Infinity : -Infinity)) : -Infinity)));
+		const open = item.asked.filter((q) => q && (q.when ?? 0) > told);
+		if (!open.length) return undefined;
+		return open.length === item.asked.filter(Boolean).length ? item : { ...item, asked: open };
+	}
+
+	/** Whether an agent's open questions get their card above the composer (Settings > General); off, the thread shows them in full. */
+	get questionCards(): boolean {
+		return this.prefs.questionCards !== false;
+	}
+
+	/** The open questions whose card stands above the composer: those the owner did not fold away, while the card is on at all. */
+	shownQuestions(tab: Tab): Of<"questions"> | undefined {
+		if (!this.questionCards) return undefined;
+		const open = this.openQuestions(tab);
+		return open && tab.folded !== open.task ? open : undefined;
+	}
+
+	/** Fold the open questions' card away, or bring it back (the button on the composer's edge). */
+	foldQuestions(tab: Tab, fold: boolean): void {
+		const open = this.openQuestions(tab);
+		if (!open) return;
+		tab.folded = fold ? open.task : undefined;
+		tab.touch();
+		this.touch();
+	}
+
+	/** Whether a tab waits for the owner: an approval, or questions that are open (its "!", the app's icon). */
+	waits(tab: Tab): boolean {
+		return tab.approvals.size > 0 || Boolean(this.openQuestions(tab));
+	}
+
+	/** Answer the open questions from their card: an ordinary message of the owner's, which starts the agent's next turn. */
+	async answerQuestions(tab: Tab, text: string): Promise<void> {
+		await this.submit(tab, text, "steer", true);
+	}
+
+	/** A question a turn asked, live: it joins the turn's questions, at its place, after the work before it. */
+	private noteAsked(tab: Tab, task: number, asked: AskedQuestion & { at: number }): void {
+		const { at, ...question } = asked;
+		let item = tab.items.findLast((it): it is Of<"questions"> => it.t === "questions" && it.task === task);
+		if (!item) {
+			this.endWork(tab);
+			item = tab.add({ t: "questions", task, agent: tab.agent, asked: [] });
+		}
+		item.asked[at] = question;
+		item.v++;
+		// The tab's mark and the side bar's say that it waits for the owner.
+		this.dirty.add(tab).add(this);
+	}
+
+	/** The sign-in choice of a conversation whose card is shown above its composer: the first of its own that is open and not folded. */
+	openChoice(tab: Tab): Of<"approval"> | undefined {
 		return [...tab.approvals.values()].find((a) => isPick(a.req) && !this.later.has(a.req.id) && this.ownAsk(tab, a.req));
 	}
 
-	/** "Setup Pine": the main agent's conversation `setup`. */
+	/** A sign-in choice of this conversation's own that the owner folded: its card comes back by the button on the composer's edge (`QuestionToggle`). */
+	hiddenChoice(tab: Tab): Of<"approval"> | undefined {
+		return [...tab.approvals.values()].find((a) => isPick(a.req) && this.later.has(a.req.id) && this.ownAsk(tab, a.req));
+	}
+
+	/** "Onboarding": the main agent's conversation `setup`. */
 	isSetup(tab: Tab): boolean {
 		return tab.kind === "chat" && tab.session === SETUP && Boolean(this.agent(tab.agent)?.main);
 	}
 
 	/**
-	 * Which card stands above a conversation's composer: its own open question first, else pine's own
-	 * step in "Setup Pine". The one place that decides it.
+	 * Which card stands above a conversation's composer: a sign-in's choice first (its flow waits for
+	 * it), else the agent's open questions, else pine's own step in "Onboarding". The one place that
+	 * decides it.
 	 */
-	cardAbove(tab: Tab): "question" | "setup" | undefined {
+	cardAbove(tab: Tab): "choice" | "questions" | "setup" | undefined {
 		if (tab.kind !== "chat") return undefined;
-		if (this.openQuestion(tab)) return "question";
+		if (this.openChoice(tab)) return "choice";
+		if (this.shownQuestions(tab)) return "questions";
 		return this.isSetup(tab) ? "setup" : undefined;
 	}
 
@@ -3006,23 +3153,7 @@ export class Store extends Model {
 		if (task?.session) await this.openTab(req.agent, task.session);
 	}
 
-	/**
-	 * Answer the open question with what the owner typed in the composer: it shows as their message,
-	 * and the agent is told it as their own words (which may answer the question, or ask back). When the
-	 * question was answered meanwhile elsewhere, the words are not lost: they go as an ordinary message.
-	 */
-	async answerInWords(tab: Tab, item: Of<"approval">, text: string): Promise<void> {
-		tab.draft = "";
-		tab.touch();
-		const taken = await this.decide(item.req.id, true, false, { answer: text }, true);
-		if (!taken) return this.submit(tab, text);
-		item.answer = text;
-		tab.inputs.push(text);
-		tab.add({ t: "user", text });
-		tab.touch();
-	}
-
-	/** Put a question off: its card goes, and the line under the conversation brings it back. */
+	/** Fold a sign-in's choice away: its card goes, and the button on the composer's edge brings it back. */
 	putOff(id: string): void {
 		this.later.add(id);
 		this.tabs.find((t) => t.approvals.has(id))?.touch();
@@ -3030,11 +3161,11 @@ export class Store extends Model {
 	}
 
 	/**
-	 * Answer a question with the options picked (counted from 1): their labels, joined by ", " for
-	 * several. The line the card folds into says them.
+	 * Answer a sign-in's choice with the choices picked (counted from 1): their labels, joined by ", "
+	 * for several. The line the card folds into says them.
 	 */
 	async answer(req: Approval, picked: number[]): Promise<void> {
-		const labels = picked.map((n) => req.options?.[n - 1]?.label ?? req.choices?.[n - 1]).filter((l): l is string => Boolean(l));
+		const labels = picked.map((n) => req.choices?.[n - 1]).filter((l): l is string => Boolean(l));
 		if (!labels.length) return;
 		const text = labels.join(", ");
 		const item = this.tabs.map((t) => t.approvals.get(req.id)).find(Boolean);
@@ -3357,6 +3488,8 @@ export class Store extends Model {
 		}
 		for (const m of this.dirty) m.touch();
 		this.dirty.clear();
+		// Questions open and close with the turns of a conversation: the app's icon follows.
+		this.badge();
 	}
 
 	private onEvent(e: PineEvent): void {
@@ -3392,6 +3525,16 @@ export class Store extends Model {
 				this.dirty.add(this);
 				this.badge();
 			}
+			return;
+		}
+		if (e.topic === "question/asked") {
+			// Said once for a turn's questions, in pine's words: what they ask is shown in the conversation.
+			if (p.at !== 0) return;
+			const tab = this.tabs.find((t) => t.kind === "chat" && t.agent === p.agent && t.session === p.session) ?? this.tabs.find((t) => t.kind === "chat" && t.agent === p.agent) ?? this.active;
+			if (!tab) return;
+			if (tab !== this.active) tab.unread = true;
+			this.attention("Pine", `${String(p.agent)} has a question for you`, tab);
+			this.dirty.add(tab);
 			return;
 		}
 		if (e.topic === "pine/conversation") return void this.followed(p);
@@ -3445,10 +3588,18 @@ export class Store extends Model {
 		if (kind === "steered") {
 			// A message that went into running work: ours is on screen already, somebody else's is shown.
 			const tab = this.tabs.find((t) => t.kind === "chat" && t.agent === p.agent && t.session === p.session);
-			if (!tab || tab.roots.has(p.by)) return;
+			if (!tab) return;
+			// When it came, on the daemon's clock as a question's `when` is: what the turn asked before it, it answers.
+			const at = Number(e.ts) || Date.now();
+			if (tab.roots.has(p.by)) {
+				// Ours, whose request came back first: it had only the page's clock until now.
+				const it = tab.items.findLast((x): x is Of<"user"> => x.t === "user" && x.steer?.task === Number(p.by));
+				if (it?.steer) ((it.steer.at = at), it.v++, this.dirty.add(tab));
+				return;
+			}
 			tab.roots.add(p.by);
 			const i = tab.awaiting.findIndex((x) => ownMessage(p.prompt, x));
-			const steer = { task: Number(p.by), into: Number(p.task) };
+			const steer: Steer = { task: Number(p.by), into: Number(p.task), at };
 			if (i >= 0) {
 				// Ours: the bubble on screen gets its line now, before the answer to the request comes.
 				const text = tab.awaiting.splice(i, 1)[0];
@@ -3729,11 +3880,22 @@ export class Store extends Model {
 					if (/(^|_)browser_show$/.test(String(p.tool)) && tab === this.active && depth === 0) ((this.codeView = "browser"), this.open("code"));
 					tab.toolCalls++;
 					if (depth === 0) this.foldWords(tab, p.task);
+					// A question to the owner is not work: it stands in the thread as what was asked. What it asked comes with
+					// the call's start or its end, whichever the daemon says it on; a call that failed gets its line at its end.
+					if (p.tool === "question" && depth === 0) {
+						if (typeof p.asked?.question === "string") this.noteAsked(tab, p.task, p.asked);
+						break;
+					}
 					const part: Extract<Part, { p: "tool" }> = { p: "tool", key, tool: p.tool, subject: p.subject ? short(oneLine(String(p.subject)), 200) : undefined, status: "run", depth };
 					tab.tools.set(key, part);
 					this.did(tab, part);
 				} else {
 					let part = tab.tools.get(key);
+					// A question has no line of its own (above); one asked before this tab was opened is in the turn's record.
+					if (!part && p.tool === "question" && depth === 0) {
+						if (typeof p.asked?.question === "string") this.noteAsked(tab, p.task, p.asked);
+						if (p.asked || p.ok !== false) break;
+					}
 					// A call that began before this tab was opened has no line of its own yet.
 					if (!part) {
 						part = { p: "tool", key, tool: p.tool, subject: p.subject ? short(oneLine(String(p.subject)), 200) : undefined, status: "run", depth };

@@ -93,6 +93,8 @@ interface Prefs {
 	/** The one of them the app uses; none: the pine of this computer. */
 	use?: string;
 	notify: boolean;
+	/** Whether an agent's open questions get their card above the composer (Settings > General); off: the thread shows them in full. */
+	questionCards: boolean;
 	/** Whether GitHub is asked for a newer app when this one starts. */
 	updates: boolean;
 	/** Whether a newer app is downloaded and installed when the app restarts or quits; off: the owner gets the link to its page. */
@@ -114,7 +116,7 @@ interface Prefs {
 }
 
 const prefsFile = () => path.join(app.getPath("userData"), "prefs.json");
-let prefs: Prefs = { keepRunning: false, hosts: [], notify: true, updates: true, autoUpdate: true, commandTried: false, access: readAccessPrefs(undefined) };
+let prefs: Prefs = { keepRunning: false, hosts: [], notify: true, questionCards: true, updates: true, autoUpdate: true, commandTried: false, access: readAccessPrefs(undefined) };
 
 /** Preferences shape exposed to renderer pages (omits main-process window geometry and snapshots). */
 const publicPrefs = () => ({ ...prefs, bounds: undefined, layout: undefined, windows: undefined });
@@ -142,6 +144,7 @@ function loadPrefs(): void {
 			hosts,
 			use: undefined,
 			notify: raw.notify !== false,
+			questionCards: raw.questionCards !== false,
 			updates: raw.updates !== false,
 			autoUpdate: raw.autoUpdate !== false,
 			commandTried: raw.commandTried === true,
@@ -596,7 +599,7 @@ async function syncDaemonTabs(host: string | undefined, preferred: ManagedWindow
 	await callDaemon(s, "POST", "/ui/tabs", { tabs: union, active, code: preferred.layout?.code === true }).catch(() => {});
 }
 
-/** Recomputes OS Dock/taskbar badges from distinct open approvals across all connected environments. */
+/** Recomputes OS Dock/taskbar badges from what waits for the owner (approvals, open questions) across all connected environments. */
 function refreshBadges(): void {
 	const envCounts = new Map<string, number>();
 	for (const w of windows.values()) {
@@ -604,7 +607,8 @@ function refreshBadges(): void {
 		const envKey = w.host ?? "";
 		const streamCount = streams.get(envKey)?.approvals.size ?? 0;
 		const prev = envCounts.get(envKey) ?? 0;
-		envCounts.set(envKey, Math.max(prev, streamCount, streamCount > 0 ? 0 : w.badgeCount));
+		// A window counts its conversations that wait (approvals and open questions); the stream, the approvals of windows not told yet.
+		envCounts.set(envKey, Math.max(prev, streamCount, w.badgeCount));
 	}
 	let total = 0;
 	for (const n of envCounts.values()) total += n;
@@ -1531,6 +1535,10 @@ function wire(): void {
 		let globalChanged = false;
 		if (typeof change.notify === "boolean") {
 			prefs.notify = change.notify;
+			globalChanged = true;
+		}
+		if (typeof change.questionCards === "boolean") {
+			prefs.questionCards = change.questionCards;
 			globalChanged = true;
 		}
 		if (typeof change.updates === "boolean") {

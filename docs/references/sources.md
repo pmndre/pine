@@ -347,8 +347,9 @@ Without `plan`, every set-up is put to you. `setup` holds `name`, `key`, `agent`
 | `status(line)` | One status line, shown where sources are listed. |
 | `onSend(handler)` | Gets an answer (`text` plus `reply` fields) or an unasked send. Return a line, or throw to refuse. |
 | `onRead(handler)` | Gets a query, returns text, never beyond what the source listens to. Throw to refuse. |
-| `on(pattern, handler)` | System events, read only (`agent/+/started`, `approval/requested`). |
-| `approvals` | `ask(summary, why)`; `request(summary, why, inputs)` → `{ allow, by, values }`; `pending()`; `decide(id, allow, by, always?)`; `choose(id, n, by)` picks the n-th of a question's `choices` (from 0); `answer(id, text, by)`. An agent's own source sees only that agent's requests. |
+| `on(pattern, handler)` | System events, read only (`agent/+/started`, `approval/requested`, `question/asked`). |
+| `approvals` | `ask(summary, why)`; `request(summary, why, inputs)` → `{ allow, by, values }`; `pending()`; `decide(id, allow, by, always?)`. An agent's own source sees only that agent's requests. |
+| `answerQuestion({ task, at }, text, reply)` | The owner's reply to an agent's question this source relayed (`question/asked`), posted as their message in the conversation that asked. A bare number picks that option. False when there is no such question. |
 | `poll(every, look)` | Runs `look(signal)` now and every `every` (`"30s"`), never twice at once. A throw is a failed look, and pine backs off ([source-types.md](source-types.md), "Looking again and again"). |
 | `changed(value, slot?)` | `{ previous }` when the value differs from the last look. Nothing on the first look or without a change. |
 | `exec(command, opts?)` | A command in the sandbox of the source's agent (the main agent for all agents) → `{ code, output, truncated }`. Throws if it cannot start or after `opts.timeoutMs` (30 s). |

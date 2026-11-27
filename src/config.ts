@@ -76,7 +76,7 @@ export const SOURCE_TYPES = ["folder", "mqtt", "webhook", "ftp", "telegram", "ht
 export const EVERYDAY_TYPES = ["folder", "mqtt", "webhook", "ftp", "telegram", "http", "command"];
 
 /** Topics only the daemon itself publishes on: the publish_event tool and route definitions refuse them. */
-export const RESERVED_TOPICS = ["approval/#", "agent/#", "pine/#", "state/#", "timer/#", "board/#"];
+export const RESERVED_TOPICS = ["approval/#", "agent/#", "pine/#", "state/#", "timer/#", "board/#", "question/#"];
 
 /**
  * A subscription: one conversation of an agent listens to one source, and each event of the source

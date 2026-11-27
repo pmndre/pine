@@ -35,7 +35,7 @@ import {
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import type { TranscriptEntry } from "../types.ts";
-import type { PineEvent, Task } from "../types.ts";
+import type { AskedQuestion, PineEvent, Task } from "../types.ts";
 import { silent } from "../silent.ts";
 import { errText, expandHome, openInSystem, safeName, type Speed, speedOf, speedText, unfolded } from "../util.ts";
 import { Listening, type VoiceTools, voiceTools } from "./voice.ts";
@@ -89,6 +89,11 @@ interface Tab {
 	/** Text of the message a task streamed last, so a finished task's answer is not shown twice. */
 	streamed: Map<number, string>;
 	approvals: Map<string, { card: Text; req: any }>;
+	/**
+	 * The questions of the conversation's latest turn, while the owner has written nothing since it
+	 * began: the turn, and each question with its block in the conversation. What a digit sends goes by it.
+	 */
+	asks?: { task: number; questions: Array<{ q: AskedQuestion; block: Text }> };
 	unread: boolean;
 	startedAt: number;
 	toolCalls: number;
@@ -1152,92 +1157,20 @@ class ApprovalDialog implements Component {
 }
 
 /**
- * A question of the agent's (its `question` tool): the answers it offers, one to a line with the
- * line that says what each means under it, and a line for the owner's own words. Arrows and enter
- * or a click pick an answer, a digit picks by number; anything typed is an answer of the owner's
- * own. Where several may be picked, a digit is no answer by itself: the owner types the numbers
- * ("1,3"), which the daemon turns into the labels, or words of their own.
+ * An agent's question (its `question` tool) as the conversation shows it: the header, the text, and
+ * the answers it offers one to a line with their numbers, what each means under it. The owner
+ * answers by a message like any other. `hint` says how, and is given only while the question is
+ * open: what a digit does depends on that.
  */
-class QuestionDialog implements Component {
-	private req: any;
-	private done: (answer: string | undefined, dismissed?: boolean) => void;
-	private options: Array<{ label: string; description?: string }>;
-	private multi: boolean;
-	private at = 0;
-	private own = "";
-	private rows: Array<{ row: number; index: number }> = [];
-
-	constructor(req: any, done: (answer: string | undefined, dismissed?: boolean) => void) {
-		this.req = req;
-		this.done = done;
-		// `options` carries the descriptions; `choices` alone is what a request of the old shape has.
-		const given = Array.isArray(req.options) && req.options.length ? req.options : Array.isArray(req.choices) ? req.choices.map((label: unknown) => ({ label })) : [];
-		this.options = given.map((o: any) => ({ label: String(o?.label ?? ""), ...(o?.description ? { description: String(o.description) } : {}) }));
-		this.multi = req.multiSelect === true && this.options.length > 0;
-	}
-
-	invalidate(): void {}
-
-	handleMouse(e: any) {
-		const hit = this.rows.find((r) => r.row === e.y);
-		if (hit && e.type === "click" && e.button === "left") {
-			// A click on an answer of several adds its number to what is typed, and takes it away again.
-			if (this.multi) this.toggle(hit.index + 1);
-			else this.done(this.options[hit.index].label);
-		}
-		return { handled: true, render: true };
-	}
-
-	/** Adds a number to the typed answer, or takes it away, while that answer is numbers only. */
-	private toggle(n: number): void {
-		const parts = this.own.split(/\s*,\s*/).filter(Boolean);
-		if (!parts.every((x) => /^\d+$/.test(x))) return;
-		this.own = (parts.includes(String(n)) ? parts.filter((x) => x !== String(n)) : [...parts, String(n)]).join(",");
-	}
-
-	handleInput(data: string): void {
-		const paste = data.match(/\x1b\[200~([\s\S]*?)\x1b\[201~/);
-		if (paste) return void (this.own += paste[1].replace(/[\r\n\t]+/g, " ").trim());
-		if (matchesKey(data, "escape")) return this.done(undefined);
-		if (matchesKey(data, "enter")) {
-			if (this.own.trim()) return this.done(this.own.trim());
-			return this.options.length && !this.multi ? this.done(this.options[this.at].label) : undefined;
-		}
-		const count = Math.max(1, this.options.length);
-		if (matchesKey(data, "up") || matchesKey(data, "shift+tab")) this.at = (this.at + count - 1) % count;
-		else if (matchesKey(data, "down") || matchesKey(data, "tab")) this.at = (this.at + 1) % count;
-		else if (matchesKey(data, "backspace")) this.own = this.own.slice(0, -1);
-		else if (matchesKey(data, "ctrl+u")) this.own = "";
-		else if (!this.multi && !this.own && /^[1-9]$/.test(data) && Number(data) <= this.options.length) return this.done(this.options[Number(data) - 1].label);
-		else if (data.length === 1 && data >= " " && data !== "\x7f") this.own += data;
-	}
-
-	render(width: number): readonly string[] {
-		const inner = Math.max(20, width - 4);
-		const header = String(this.req.header ?? "").trim();
-		const title = c.bold(c.accent(`${this.req.agent} asks`));
-		const body = [header ? `${title}  ${c.inverse(` ${asText(header)} `)}` : title, "", ...asText(this.req.summary).split("\n").flatMap((l) => wrapTextWithAnsi(l, inner)).slice(0, 14), ""];
-		this.rows = [];
-		const ticked = new Set(this.multi ? this.own.split(/\s*,\s*/).filter((x) => /^\d+$/.test(x)).map(Number) : []);
-		this.options.forEach((option, i) => {
-			this.rows.push({ row: 1 + body.length, index: i });
-			const mark = this.multi ? (ticked.has(i + 1) ? "[x] " : "[ ] ") : "";
-			const label = truncateToWidth(`${mark}${i + 1}  ${asText(option.label)}`, inner - 2);
-			body.push(i === this.at && !this.own && !this.multi ? c.bgAccent(` ${label} `) : ` ${label}`);
-			if (option.description) {
-				const indent = " ".repeat(mark.length + 4);
-				for (const l of wrapTextWithAnsi(asText(option.description), inner - indent.length - 1).slice(0, 2)) {
-					this.rows.push({ row: 1 + body.length, index: i });
-					body.push(c.gray(`${indent}${l}`));
-				}
-			}
-		});
-		const prompt = !this.options.length ? "your answer:" : this.multi ? "the numbers, or your own words:" : "or in your own words:";
-		const hint = !this.options.length ? "enter answers · esc: later" : this.multi ? "several answers: type their numbers, such as 1,3, or click them · enter answers · esc: later" : "enter or a click answers · 1-9 picks by number · esc: later";
-		body.push("", `${c.gray(prompt)} ${c.yellow(this.own.slice(-(inner - 34)))}${c.inverse(" ")}`, "", c.gray(hint));
-		const pad = (l: string) => `${c.accent("│")} ${l}${" ".repeat(Math.max(0, inner - visibleWidth(l)))} ${c.accent("│")}`;
-		return [c.accent(`╭${"─".repeat(inner + 2)}╮`), ...body.map((l) => pad(truncateToWidth(l, inner))), c.accent(`╰${"─".repeat(inner + 2)}╯`)];
-	}
+function questionText(q: AskedQuestion, hint?: string): string {
+	const header = String(q.header ?? "").trim();
+	const lines = [`${c.accent("?")} ${header ? `${c.inverse(` ${asText(header)} `)} ` : ""}${c.bold(asText(q.question))}`];
+	(q.options ?? []).forEach((option, i) => {
+		lines.push(`   ${i + 1}  ${asText(option.label)}`);
+		if (option.description) lines.push(c.gray(`      ${asText(option.description)}`));
+	});
+	if (hint) lines.push(c.gray(`  ${hint}`));
+	return lines.join("\n");
 }
 
 /**
@@ -1564,7 +1497,7 @@ export class PineTui {
 			// folder lies (agents/main/workspace).
 			if (!history.length && info?.main && session === "main") this.say(tab, welcome(info.id, info.modelProblem, tilde(path.dirname(path.dirname(path.dirname(info.workspace))))));
 			if (history.length) this.say(tab, c.gray(`── earlier in this session (${history.length}) ──`));
-			for (const t of history) this.renderPast(tab, t);
+			this.renderHistory(tab, history);
 			this.takeStats(tab, history.at(-1)?.meta?.stats);
 			// What the agent listed for itself and has not finished is still its plan.
 			const steps = await this.client.todos(agent, session).catch(() => []);
@@ -2096,13 +2029,71 @@ export class PineTui {
 		this.endWork(tab);
 		const history = (await this.client.history(tab.agent, tab.session).catch(() => [] as Task[])).filter((t) => t.depth === 0).reverse();
 		if (history.length) this.say(tab, c.gray(`── earlier in this session (${history.length}) ──`));
-		for (const t of history) this.renderPast(tab, t);
+		tab.asks = undefined;
+		this.renderHistory(tab, history);
 		this.say(tab, redo ? redoText(r) : undoText(r));
 		if (!redo && tab === this.active) this.editor.setText(r.prompt);
 		tab.scroll.scrollToEnd();
 		if (this.codeOpen && tab === this.active) this.code.touch();
 		void this.refreshTaints();
 		this.tui.requestRender();
+	}
+
+	/** A question the agent asked in its turn `task`, shown in the conversation and open until the owner writes or a new turn begins. */
+	private showAsked(tab: Tab, task: number, q: AskedQuestion): void {
+		if (tab.asks?.task !== task) {
+			this.closeAsks(tab);
+			tab.asks = { task, questions: [] };
+		}
+		tab.asks.questions.push({ q, block: this.say(tab, questionText(q)) });
+		this.hintAsks(tab);
+		this.attention(`pine: ${tab.agent} has a question for you`);
+	}
+
+	/** What the open questions say about answering them: a number only where one question with answers is open. */
+	private hintAsks(tab: Tab): void {
+		const open = tab.asks?.questions ?? [];
+		for (const { q, block } of open) {
+			const hint = open.length > 1 ? "answer in a message of your own" : q.options?.length ? "type a number to answer, or answer in your own words" : "answer in a message of your own";
+			block.setText(asText(questionText(q, hint), true));
+		}
+		this.tui.requestRender();
+	}
+
+	/** The questions are no longer open: their blocks stay, without the hint. */
+	private closeAsks(tab: Tab): void {
+		for (const { q, block } of tab.asks?.questions ?? []) block.setText(asText(questionText(q), true));
+		tab.asks = undefined;
+	}
+
+	/** What the owner's message sends: a bare digit of the one open question with answers is that answer's label. */
+	private answerOf(tab: Tab, text: string): string {
+		const open = tab.asks?.questions ?? [];
+		const options = open.length === 1 ? (open[0].q.options ?? []) : [];
+		const n = /^[1-9]$/.test(text) ? Number(text) : 0;
+		return n && n <= options.length ? options[n - 1].label : text;
+	}
+
+	/** Each question a past turn asked, shown as it was asked. */
+	private pastAsked(tab: Tab, t: Task): void {
+		const questions = (t.meta?.asked ?? []).map((q) => ({ q, block: this.say(tab, questionText(q)) }));
+		if (questions.length) tab.asks = { task: t.id, questions };
+	}
+
+	/**
+	 * The history: the last turn's questions are open, but for those a message of the owner's steered
+	 * into that turn came after (one steered in before a question does not answer it).
+	 */
+	private renderHistory(tab: Tab, history: Task[]): void {
+		for (const t of history) this.renderPast(tab, t);
+		const last = history.filter((t) => t.meta?.steered === undefined).at(-1);
+		const steered = history.filter((t) => last && t.meta?.steered === last.id).map((t) => t.created);
+		const told = steered.length ? Math.max(...steered) : undefined;
+		if (tab.asks && last && tab.asks.task === last.id) {
+			if (told !== undefined) tab.asks.questions = tab.asks.questions.filter(({ q }) => (q.when ?? last.started ?? last.created) > told);
+			if (tab.asks.questions.length) return this.hintAsks(tab);
+		}
+		tab.asks = undefined;
 	}
 
 	private renderPast(tab: Tab, t: Task): void {
@@ -2114,6 +2105,7 @@ export class PineTui {
 		(t.meta?.images ?? []).forEach((_, i) => this.picture(tab, `attached picture ${i + 1}`, () => this.client.taskImage(t.id, i)));
 		// It was read by work that was already running; the answer is that work's.
 		if (t.meta?.steered !== undefined) return;
+		this.pastAsked(tab, t);
 		if (t.status === "done") {
 			// NO_REPLY: the agent had nothing to say, which is shown as nothing.
 			if (silent(t.result)) return;
@@ -2255,7 +2247,7 @@ export class PineTui {
 			if (files) return files.forEach((f) => this.attachFile(f)), true;
 		}
 		const empty = this.editor.getText().length === 0;
-		// A question that was put off ("Later") is still waiting, and counts as a no when its time
+		// An approval that was put off ("Later") is still waiting, and counts as a no when its time
 		// is up: enter on an empty line opens it again.
 		if (matchesKey(data, "enter") && empty && !isKeyRepeat(data)) {
 			const waiting = [...this.active.approvals.values()][0];
@@ -2327,13 +2319,16 @@ export class PineTui {
 	 * ("steer"), so a correction lands without stopping anything; "queue" keeps it for afterwards.
 	 */
 	private async submit(raw: string, whenBusy: "steer" | "queue" = "steer"): Promise<void> {
-		const text = raw.trim();
-		if (!text) return;
-		this.editor.addToHistory(text);
+		const typed = raw.trim();
+		if (!typed) return;
+		this.editor.addToHistory(typed);
 		this.editor.setText("");
-		if (text.startsWith("/")) return this.run(text.slice(1));
+		if (typed.startsWith("/")) return this.run(typed.slice(1));
 		const tab = this.active;
 		if (tab.kind !== "chat") return this.flash(tab.kind === "task" ? "this tab shows one task's work and takes no messages; write in the conversation tab" : "this tab only shows events; switch to a conversation tab to write");
+		// The owner's message answers what was asked, whatever it says: after it nothing is open.
+		const text = this.answerOf(tab, typed);
+		this.closeAsks(tab);
 		const files = tab.attachments.splice(0);
 		this.user(tab, files.length ? `${text}\n${c.gray(`attached: ${files.map((f) => f.name).join(", ")}`)}` : text);
 		for (const f of files.filter((x) => isImageFile(x.name))) this.picture(tab, f.name, async () => ({ mime: mimeOf(f.name), bytes: await fs.promises.readFile(f.path) }));
@@ -3145,18 +3140,11 @@ export class PineTui {
 
 	private ask(tab: Tab, req: any): void {
 		if (this.dialog || tab !== this.active) return;
-		const dialog =
-			req.tool === "question"
-				? new QuestionDialog(req, (answer) => {
-						this.closeDialog();
-						if (answer === undefined) return; // later: the status line keeps saying that something waits
-						void this.client.decide(req.id, true, false, { answer }).catch((e) => this.flash(errText(e)));
-					})
-				: new ApprovalDialog(req, (answer, values) => {
-						this.closeDialog();
-						if (answer === "later") return; // the status line keeps saying that an approval is open
-						void this.client.decide(req.id, answer !== "deny", answer === "always", values).catch((e) => this.flash(errText(e)));
-					});
+		const dialog = new ApprovalDialog(req, (answer, values) => {
+			this.closeDialog();
+			if (answer === "later") return; // the status line keeps saying that an approval is open
+			void this.client.decide(req.id, answer !== "deny", answer === "always", values).catch((e) => this.flash(errText(e)));
+		});
 		const handle = this.tui.showOverlay(dialog, { anchor: "center", width: "76%", minWidth: 40 });
 		handle.focus();
 		this.dialog = { id: req.id, handle, dismiss: () => this.closeDialog(), waits: true };
@@ -3184,7 +3172,7 @@ export class PineTui {
 		for (const tab of this.tabs) {
 			for (const [id, a] of tab.approvals) {
 				if (open.has(id)) continue;
-				a.card.setText(`${c.gray("– no longer open:")} ${c.bold(asText(a.req.tool))} ${c.gray("(pine was restarted, or the question ran out of time)")}`);
+				a.card.setText(`${c.gray("– no longer open:")} ${c.bold(asText(a.req.tool))} ${c.gray("(pine was restarted, or the request ran out of time)")}`);
 				tab.approvals.delete(id);
 				this.asked.delete(id);
 				if (this.dialog?.id === id) this.closeDialog();
@@ -3235,20 +3223,15 @@ export class PineTui {
 		if (ns === "approval") {
 			if (e.topic === "approval/requested") {
 				const tab = this.tabFor(p) ?? this.active;
-				// A question of the agent's is not a permission: it is shown as what it is.
-				const card =
-					p.tool === "question"
-						? this.say(tab, `${c.accent("? the agent asks")} ${short(oneLine(asText(p.summary)), 300)}\n${c.gray("  answer it in the dialog, or with /approve")}`)
-						: this.say(tab, `${c.yellow("⚠ approval needed")} ${c.bold(asText(p.tool))} ${c.gray(short(oneLine(asText(p.summary)), 120))}\n${c.gray(`  ${asText(p.why)} · ${p.inputs?.length ? "it needs something only you have: /approve opens the dialog to enter it" : `/approve${p.remember ? ", /approve always" : ""}`} or /deny`)}`);
+				const card = this.say(tab, `${c.yellow("⚠ approval needed")} ${c.bold(asText(p.tool))} ${c.gray(short(oneLine(asText(p.summary)), 120))}\n${c.gray(`  ${asText(p.why)} · ${p.inputs?.length ? "it needs something only you have: /approve opens the dialog to enter it" : `/approve${p.remember ? ", /approve always" : ""}`} or /deny`)}`);
 				tab.approvals.set(p.id, { card, req: p });
-				this.attention(p.tool === "question" ? `pine: ${tab.agent} has a question for you` : `pine: ${tab.agent} needs your approval`);
+				this.attention(`pine: ${tab.agent} needs your approval`);
 				this.ask(tab, p);
 			} else if (e.topic === "approval/decided") {
 				for (const tab of this.tabs) {
 					const a = tab.approvals.get(p.id);
 					if (!a) continue;
-					if (a.req.tool === "question") a.card.setText(`${c.accent("?")} ${short(oneLine(asText(a.req.summary)), 300)}\n${c.gray(`  ${p.allow ? `answered (${p.by})` : `no answer (${p.by})`}`)}`);
-					else a.card.setText(`${p.allow ? c.green("✓ allowed") : c.red("✗ denied")} ${c.bold(asText(a.req.tool))} ${c.gray(`(${p.by})${p.always ? ` · ${p.remember} will not ask again in this conversation` : ""}`)}`);
+					a.card.setText(`${p.allow ? c.green("✓ allowed") : c.red("✗ denied")} ${c.bold(asText(a.req.tool))} ${c.gray(`(${p.by})${p.always ? ` · ${p.remember} will not ask again in this conversation` : ""}`)}`);
 					tab.approvals.delete(p.id);
 				}
 				this.asked.delete(p.id);
@@ -3278,7 +3261,11 @@ export class PineTui {
 			tab.roots.add(p.by);
 			const i = tab.awaiting.findIndex((a) => String(p.prompt ?? "").startsWith(a));
 			if (i >= 0) tab.awaiting.splice(i, 1);
-			else this.user(tab, ownerWords(p.prompt, p), p.kind === "prompt" ? "elsewhere" : p.kind);
+			else {
+				this.user(tab, ownerWords(p.prompt, p), p.kind === "prompt" ? "elsewhere" : p.kind);
+				// Written elsewhere into the turn that asked, after its questions: they are answered.
+				if (tab.asks?.task === Number(p.task)) this.closeAsks(tab);
+			}
 			this.tui.requestRender();
 			return;
 		}
@@ -3460,6 +3447,8 @@ export class PineTui {
 		switch (kind) {
 			case "started":
 				if (depth <= 0) {
+					// The agent's next turn: what the last one asked is no longer open.
+					if (tab.asks && tab.asks.task !== p.task) this.closeAsks(tab);
 					tab.running.add(p.task);
 					tab.startedAt = Date.now();
 					break;
@@ -3533,6 +3522,8 @@ export class PineTui {
 					if (depth === 0) this.foldWords(tab, p.task);
 					const line = new Text(`${indent}${c.yellow("●")} ${label}`, 1, 0);
 					tab.tools.set(key, { line, label, part: this.did(tab, line, { tool: p.tool }, depth === 0 && !tab.tools.size) });
+					// A question is something the agent says to the owner: it stands in the conversation, not in the folded work.
+					if (p.tool === "question" && p.asked && depth === 0 && tab.kind === "chat") this.showAsked(tab, p.task, p.asked);
 				} else {
 					const t = tab.tools.get(key);
 					const took = p.ms !== undefined ? c.gray(` ${p.ms < 1000 ? `${Math.round(p.ms)} ms` : `${(p.ms / 1000).toFixed(1)} s`}`) : "";

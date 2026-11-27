@@ -949,23 +949,22 @@ test("an approval is asked in a dialog and answered from it; a question is a car
 	const card = "[data-slot=composer-question] [data-slot=questionnaire]";
 	await sees(card);
 	assert.equal(await page.locator(DIALOG).count(), 0, "no dialog opens for a question");
-	// The card holds all the agent wrote: the question, its header, each option with what it means, the first marked as the one the agent would pick.
+	// The card holds all the agent wrote: the question, its header, each option with what it means.
 	const shown = await page.textContent(card);
 	for (const said of ["Which database?", "Database", "the old one", "Nothing to move", "the new one", "Faster, after a migration"]) assert.ok(shown.includes(said), `the card lacks "${said}": ${shown}`);
-	assert.deepEqual(await page.locator(`${card} [data-recommended]`).evaluateAll((els: Element[]) => els.map((e) => e.closest("[data-slot=questionnaire-choice]")?.querySelector("[data-slot=question-card-label]")?.textContent)), ["the old one"]);
-	// The open question is not drawn in the conversation as well.
-	assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0);
 	await shot("03-question");
-	// The composer was empty: the card has the keyboard, and a digit answers.
+	// The composer was empty: the card has the keyboard; a digit picks, and Enter sends the pick as the owner's message.
 	await page.waitForFunction(() => document.activeElement?.closest("[data-slot=composer-question] [data-slot=questionnaire]"), null, { timeout: 5000 });
 	await page.keyboard.press("2");
-	// Answered, the card folds into a line in the conversation that says what was asked and what was answered.
-	await sees('[data-item="approval"][data-state="allowed"]:has-text("Which database?")');
-	assert.match(await page.textContent('[data-item="approval"][data-state="allowed"]:has-text("Which database?")'), /the new one/);
-	assert.equal(await page.locator(card).count(), 0);
+	await page.keyboard.press("Enter");
+	await page.waitForSelector(card, { state: "detached" });
+	await sees('[data-item="user"] >> text=the new one');
+	// The question returned at once, and the turn ended without the answer; the answer is the next turn's message.
 	await sees("[data-slot=markdown] >> text=done");
-	// The agent was handed the option that was picked.
-	assert.match(JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "tool")), /the new one/);
+	assert.ok(mock.state.requests.some((q: any) => q.body.messages.some((m: any) => m.role === "tool" && String(m.content).startsWith("Asked."))), "the question returned at once");
+	for (let i = 0; i < 100 && !mock.state.requests.some((q: any) => q.body.messages.at(-1)?.role === "user" && JSON.stringify(q.body.messages.at(-1)).includes("the new one")); i++) await new Promise((r) => setTimeout(r, 100));
+	assert.ok(mock.state.requests.some((q: any) => q.body.messages.at(-1)?.role === "user" && JSON.stringify(q.body.messages.at(-1)).includes("the new one")), "the answer starts a turn of its own");
+	await page.waitForFunction(() => !document.querySelector("[aria-busy=true]"), null, { timeout: 10_000 });
 });
 
 test("a value only the owner has, left empty, is marked as missing in the approval and nothing is allowed", { skip: process.platform === "win32" && "a local MCP server needs a sandbox, and Windows has none of pine's" }, async () => {
@@ -989,9 +988,8 @@ test("a value only the owner has, left empty, is marked as missing in the approv
 	assert.equal(read("agents", "main", "agent.json").mcp?.keyed, undefined);
 });
 
-test("what is asked is answered from the conversation too: an approval by its buttons, questions by a click, the arrows and Enter, ticks and Send; Later and No answer", async () => {
-	const pick = (question: string, extra: any = {}) => ({ tools: [{ name: "question", args: { question, options: [{ label: "green" }, { label: "blue" }, { label: "red" }], ...extra } }] });
-	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo again" } }] }, pick("Which color?"), pick("Which border?"), pick("Which colors?", { multiSelect: true }), pick("Which shade?"), pick("Which font?"), { text: "answered from the line" }], "ask in line "));
+test("an approval put off is answered from the conversation by its buttons", async () => {
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "bash", args: { command: "echo again" } }] }, { text: "allowed from the line" }], "ask in line "));
 	await page.keyboard.press("Enter");
 	// The dialog is put off ("Later"); the request stays in the conversation, with what it is and why.
 	await sees(APPROVAL);
@@ -1005,64 +1003,7 @@ test("what is asked is answered from the conversation too: an approval by its bu
 	// Allowed, it is a line that still says for which tool and which command.
 	await sees('[data-item="approval"][data-state="allowed"]:has-text("echo again")');
 	assert.match(await page.textContent('[data-item="approval"][data-state="allowed"]:has-text("echo again")'), /bash/);
-	const card = "[data-slot=composer-question] [data-slot=questionnaire]";
-	// The conversation holds what was asked before this test too: the questions are counted from here.
-	const before = await page.locator('[data-item="approval"]:not([data-state="open"])').count();
-	const answered = (n: number) => page.waitForFunction((n: number) => document.querySelectorAll('[data-item="approval"]:not([data-state="open"])').length === n, before + n, { timeout: 10_000 });
-	/** The last request that was settled: how (allowed: answered; denied: no answer), and its line. */
-	const last = async () => (await page.$$eval('[data-item="approval"]:not([data-state="open"])', (els: Element[]) => ({ state: els.at(-1)?.getAttribute("data-state"), text: els.at(-1)?.textContent ?? "" })));
-	const lastAnswer = async (question: string, answer: string) => {
-		const line = await last();
-		assert.ok(line.state === "allowed" && line.text.includes(question) && line.text.includes(answer), `"${question}" answered "${answer}": ${JSON.stringify(line)}`);
-	};
-	const shows = (question: string) => page.waitForFunction(([c, q]: string[]) => document.querySelector(c)?.textContent?.includes(q), [card, question], { timeout: 10_000 });
-	// A click answers.
-	await shows("Which color?");
-	await page.locator(card).getByRole("radio", { name: /blue/ }).click();
-	await answered(1);
-	await lastAnswer("Which color?", "blue");
-	// The arrows and Enter answer.
-	await shows("Which border?");
-	await page.locator(card).getByRole("radio", { name: /green/ }).focus();
-	await page.keyboard.press("ArrowDown");
-	await page.keyboard.press("ArrowDown");
-	await page.keyboard.press("Enter");
-	await answered(2);
-	await lastAnswer("Which border?", "red");
-	// Several are ticked, by a click and by a digit, and sent together.
-	await shows("Which colors?");
-	assert.equal(await page.locator(`${card} [data-slot=questionnaire-item]`).getAttribute("data-multiple"), "");
-	assert.ok(await page.locator(`${card} [data-action=send]`).isDisabled(), "nothing ticked, nothing to send");
-	assert.equal(await page.locator(`${card} [data-recommended]`).count(), 0, "no option is the recommended one when several may be picked");
-	await page.locator(card).getByRole("checkbox", { name: /green/ }).click();
-	await page.keyboard.press("3");
-	await page.click(`${card} [data-action=send]`);
-	await answered(3);
-	await lastAnswer("Which colors?", "green, red");
-	// Later puts the card away; the line under the conversation says a question waits, and brings it back.
-	await shows("Which shade?");
-	await page.click(`${card} [data-action=later]`);
-	await page.waitForSelector(card, { state: "detached" });
-	const waits = "[data-line=status][data-state=question-later]";
-	await sees(waits);
-	await page.click(`${waits} [data-action=open]`);
-	await page.locator(card).getByRole("radio", { name: /green/ }).click();
-	await answered(4);
-	await lastAnswer("Which shade?", "green");
-	// No answer: the line is one that was not allowed, and it names the question.
-	await shows("Which font?");
-	await page.click(`${card} [data-action=no-answer]`);
-	await answered(5);
-	const none = await last();
-	assert.ok(none.state === "denied" && none.text.includes("Which font?"), JSON.stringify(none));
-	await sees("[data-slot=markdown] >> text=answered from the line");
-	// The agent was handed each answer, in the order asked, and for the last question none of its options.
-	const results = (mock.state.requests.at(-1)?.body.messages ?? []).filter((m: any) => m.role === "tool").map((m: any) => JSON.stringify(m.content)).slice(-5);
-	for (const [i, picked] of [["blue"], ["red"], ["green", "red"], ["green"], []].entries()) {
-		for (const color of ["green", "blue", "red"]) assert.equal(new RegExp(`\\b${color}\\b`).test(results[i]), picked.includes(color), `question ${i + 1} was answered ${picked.join(", ") || "not at all"}, the agent was told: ${results[i]}`);
-	}
-	// The composer is as before once nothing is asked: what is typed is a message again.
-	assert.equal(await page.getAttribute("[data-slot=composer] textarea", "data-above"), null);
+	await sees("[data-slot=markdown] >> text=allowed from the line");
 	// The call the approval was for ended after its card closed the group it stood in: it is drawn as ended, and
 	// nothing in the window pulses once the agent is idle.
 	await page.waitForFunction(() => !document.querySelector("[data-slot=pulse]"), null, { timeout: 5000 }).catch(async () => {
@@ -1070,106 +1011,298 @@ test("what is asked is answered from the conversation too: an approval by its bu
 	});
 });
 
-test("a message typed while a question is open answers it in the owner's own words; one that asks back is answered, and the agent asks again", async () => {
-	const ask = { tools: [{ name: "question", args: { question: "Which store?", options: [{ label: "files" }, { label: "sqlite" }] } }] };
-	await page.fill("[data-slot=composer] textarea", mockMsg([ask, ask, { text: "store chosen" }], "pick a store "));
+/** The open questions' card above the composer of the conversation in front. */
+const QUESTIONS = "[data-slot=composer-question] [data-slot=questionnaire]";
+/** A `question` call of the agent's, with a few options. */
+const asks = (question: string, labels = ["yes", "no"], extra: Record<string, unknown> = {}) => ({ name: "question", args: { question, options: labels.map((label) => ({ label })), ...extra } });
+/** Whether the model was given a message of the owner's that says `text`: the start of a turn of its own. */
+const heard = (text: string) => mock.state.requests.some((q: any) => {
+	const last = q.body.messages.at(-1);
+	return last?.role === "user" && JSON.stringify(last.content).includes(JSON.stringify(text).slice(1, -1));
+});
+/** The model was given that message, and the turn it started is over (a message sent meanwhile would be given to it instead). */
+const hears = async (text: string) => {
+	for (let i = 0; i < 100 && !heard(text); i++) await new Promise((r) => setTimeout(r, 100));
+	assert.ok(heard(text), `the model was not given ${JSON.stringify(text)}`);
+	await page.waitForFunction(() => !document.querySelector("[aria-busy=true]"), null, { timeout: 10_000 });
+};
+/** The text of the owner's last message in the conversation in front. */
+const lastOwner = () => page.$$eval('[data-item="user"] [data-slot=bubble-content]', (els: Element[]) => els.at(-1)?.textContent ?? "");
+/** The turn's questions in the thread, as they stand: open, folded or closed. */
+const asked = (state: string) => `[data-item="questions"][data-state="${state}"]`;
+/** The card's buttons, by their stock slot. */
+const button = (slot: "previous" | "next" | "skip" | "submit") => page.locator(`${QUESTIONS} [data-slot=questionnaire-${slot}]`);
+/** The card's progress stands at question `n`. */
+const at = (n: number) => page.waitForFunction(([s, n]: string[]) => document.querySelector(s)?.getAttribute("aria-valuenow") === n, [`${QUESTIONS} [data-slot=questionnaire-progress]`, String(n)]);
+
+test("the questions of a turn are one card: Next, Previous and Skip, and where it stands; Send posts one message of the owner's, a line per question answered, the skipped left out", async () => {
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [asks("Which side?"), asks("Which end?", ["top", "bottom"]), { name: "question", args: { question: "Anything else?" } }] }, { text: "asked three" }], "ask three "));
 	await page.keyboard.press("Enter");
-	const card = "[data-slot=composer-question] [data-slot=questionnaire]";
-	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which store?"), card, { timeout: 10_000 });
-	// While it is open, the composer says that what is typed answers it.
+	// The question returns at once: the turn goes on and ends, and the card stays.
+	await sees("[data-slot=markdown] >> text=asked three");
+	await sees(QUESTIONS);
+	const progress = page.locator(`${QUESTIONS} [data-slot=questionnaire-progress]`);
+	assert.equal(await progress.getAttribute("aria-valuenow"), "1");
+	assert.equal(await progress.getAttribute("aria-valuemax"), "3");
+	// The thread says each in one line while the card shows them.
+	assert.equal(await page.locator(`${asked("open")} [data-slot=trace-line]`).count(), 3);
+	await shot("03-questions");
+	await page.locator(QUESTIONS).getByRole("radio", { name: /yes/ }).click();
+	await button("next").click();
+	await at(2);
+	// Previous goes back to the first, its pick kept.
+	await button("previous").click();
+	await at(1);
+	assert.ok(await page.locator(QUESTIONS).getByRole("radio", { name: /yes/ }).isChecked());
+	await button("next").click();
+	await page.locator(QUESTIONS).getByRole("radio", { name: /bottom/ }).click();
+	await button("next").click();
+	// The last has no options: it says to answer by typing, and Skip sends what was picked.
+	await at(3);
+	assert.equal(await page.locator(`${QUESTIONS} [data-slot=questionnaire-item]:not([hidden]) [data-slot=questionnaire-choice]`).count(), 0);
+	await button("skip").click();
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	assert.equal(await lastOwner(), "Which side? yes\nWhich end? bottom");
+	await hears("Which side? yes\nWhich end? bottom");
+	// Answered, the questions are one line each, followed by the owner's message.
+	await sees(asked("closed"));
+	const order = await page.$$eval('[data-item="questions"], [data-item="user"]', (els: Element[]) => els.slice(-2).map((e) => e.getAttribute("data-item")));
+	assert.deepEqual(order, ["questions", "user"]);
+	// A question alone says nothing of where it stands, and has no Skip.
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [asks("Alone?", ["just this", "not this"])] }, { text: "asked one" }], "ask one "));
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Alone?"), QUESTIONS, { timeout: 10_000 });
+	assert.equal(await page.locator(`${QUESTIONS} [data-slot=questionnaire-progress]`).count(), 0);
+	assert.ok(await button("skip").isHidden());
+	await page.locator(QUESTIONS).getByRole("radio", { name: /not this/ }).click();
+	await button("submit").click();
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	assert.equal(await lastOwner(), "not this");
+	await hears("not this");
+});
+
+test("a question is answered by a pick, a digit or the arrows, sent with Send or Enter; ticks go as one message", async () => {
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [asks("Which color?", ["green", "blue", "red"])] }, { text: "color asked" }], "ask a color "));
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which color?"), QUESTIONS, { timeout: 10_000 });
+	// The first option is the one the agent would pick.
+	assert.equal(await page.locator(`${QUESTIONS} [data-slot=questionnaire-choice]`).first().locator("[data-slot=badge]").count(), 1);
+	// A click only picks, and the pick can change before it goes.
+	const send = button("submit");
+	assert.ok(await send.isDisabled(), "nothing picked, nothing to send");
+	await page.locator(QUESTIONS).getByRole("radio", { name: /red/ }).click();
+	await page.locator(QUESTIONS).getByRole("radio", { name: /blue/ }).click();
+	// A digit picks too, the arrows move the pick, and Enter sends it.
+	await page.keyboard.press("1");
+	assert.ok(await page.locator(QUESTIONS).getByRole("radio", { name: /green/ }).isChecked());
+	await page.keyboard.press("ArrowDown");
+	await page.keyboard.press("ArrowDown");
+	await page.keyboard.press("Enter");
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	assert.equal(await lastOwner(), "red");
+	await hears("red");
+	// Several may be ticked, by a click and by a digit: one message, the labels joined.
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [asks("Which colors?", ["green", "blue", "red"], { multiSelect: true })] }, { text: "colors asked" }], "ask colors "));
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which colors?"), QUESTIONS, { timeout: 10_000 });
+	assert.equal(await page.locator(`${QUESTIONS} [data-slot=badge]`).count(), 0, "no option is the recommended one when several may be picked");
+	await page.locator(QUESTIONS).getByRole("checkbox", { name: /green/ }).click();
+	await page.keyboard.press("3");
+	await button("submit").click();
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	assert.equal(await lastOwner(), "green, red");
+	await hears("green, red");
+});
+
+test("the questions' card goes on a typed message and on the agent's next turn, comes back when the conversation is opened again, and folds away by the button on the composer's edge", async () => {
 	const field = "[data-slot=composer] textarea";
-	await sees(`${field}[data-above=typed]`);
-	const before = await page.locator('[data-item="approval"]:not([data-state="open"])').count();
+	await page.fill(field, mockMsg([{ tools: [asks("Which bin?", ["blue", "green"])] }, { text: "bin asked" }], "ask a bin "));
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which bin?"), QUESTIONS, { timeout: 10_000 });
+	await sees("[data-slot=markdown] >> text=bin asked");
+	// The tab says that it waits for the owner.
+	await sees("[data-slot=tab][data-active] [data-slot=badge][data-variant=destructive]");
+	// The button on the composer's edge folds the card away, and the thread then shows the question in full, read only.
+	const toggle = page.locator("[data-question-toggle]");
+	assert.equal(await toggle.getAttribute("aria-expanded"), "true");
+	assert.equal(await page.locator(asked("open")).count(), 1);
+	await toggle.click();
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	await sees(asked("folded"));
+	assert.match(await page.textContent(asked("folded")), /Which bin\?[\s\S]*blue[\s\S]*green/);
+	assert.equal(await page.locator(`${asked("folded")} input`).count(), 0, "read only");
+	assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+	await toggle.click();
+	await sees(QUESTIONS);
+	await sees(asked("open"));
+	// The conversation opened again (the page drawn anew) shows the card again, from the turn's record.
+	await page.reload();
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which bin?"), QUESTIONS, { timeout: 20_000 });
+	// What is typed while it is open is an ordinary message, and the card goes.
 	await page.click(field);
-	await page.keyboard.type("what is the difference?");
+	await page.keyboard.type("never mind the bins");
 	await page.keyboard.press("Enter");
-	// The message is the owner's, and the card folds as answered with it.
-	await sees('[data-item="user"] >> text=what is the difference?');
-	await page.waitForFunction((n: number) => document.querySelectorAll('[data-item="approval"]:not([data-state="open"])').length === n, before + 1, { timeout: 10_000 });
-	const folded = await page.$$eval('[data-item="approval"]:not([data-state="open"])', (els: Element[]) => ({ state: els.at(-1)?.getAttribute("data-state"), text: els.at(-1)?.textContent ?? "" }));
-	assert.ok(folded.state === "allowed" && folded.text.includes("Which store?") && folded.text.includes("what is the difference?"), JSON.stringify(folded));
-	// The agent read it as the owner's own words, and asks again: the second question is answered by a pick.
-	await page.waitForFunction((c: string) => document.querySelector(c), card, { timeout: 10_000 });
-	await page.locator(card).getByRole("radio", { name: /sqlite/ }).click();
-	await sees("[data-slot=markdown] >> text=store chosen");
-	// The agent got both as answers to its question: first the owner's words, said to be the owner's own
-	// (the one token of what the tool returns that tells the two apart), then the pick.
-	const results = (mock.state.requests.at(-1)?.body.messages ?? []).filter((m: any) => m.role === "tool").map((m: any) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content))).slice(-2);
-	assert.ok(results[0].includes("what is the difference?") && /own words/.test(results[0]), results[0]);
-	assert.ok(results[1].includes("sqlite") && !/own words/.test(results[1]), results[1]);
-	// Nothing was sent as a message besides the answer: the conversation had one turn.
-	assert.equal(mock.state.requests.filter((q: any) => JSON.stringify(q.body.messages).includes("what is the difference?") && q.body.messages.at(-1)?.role === "user" && JSON.stringify(q.body.messages.at(-1)).includes("what is the difference?")).length, 0);
-});
-
-test("a question of another conversation is never answered from this one: no card here, the line says it waits elsewhere, and Go there opens it", async () => {
-	const card = "[data-slot=composer-question] [data-slot=questionnaire]";
-	const field = "[data-slot=composer] textarea";
-	await sees(`${TAB("main")}[data-active]`);
-	// Asked in a conversation of main's that has no tab: this window shows it in a tab of main's (`holderFor`).
-	const ask = { tools: [{ name: "question", args: { question: "Which room?", options: [{ label: "kitchen" }, { label: "hall" }] } }] };
-	const started = await api("POST", "/agents/main/prompt", { prompt: mockMsg([ask, { text: "room chosen" }], "ask from elsewhere "), session: "elsewhere-q", wait: false });
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	await sees(asked("closed"));
+	await hears("never mind the bins");
+	await page.waitForFunction(() => !document.querySelector("[data-slot=tab][data-active] [data-slot=badge][data-variant=destructive]"), null, { timeout: 10_000 });
+	// Asked again, and then the agent's next turn begins without the owner's word (a message from another UI): the card goes.
+	await page.fill(field, mockMsg([{ tools: [asks("Which lid?", ["round", "square"])] }, { text: "lid asked" }], "ask a lid "));
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which lid?"), QUESTIONS, { timeout: 10_000 });
+	await sees("[data-slot=markdown] >> text=lid asked");
+	const started = await api("POST", "/agents/main/prompt", { prompt: "a word from elsewhere", session: "main", wait: false });
 	assert.ok(started.ok, JSON.stringify(started));
-	const waits = "[data-line=status][data-state=question-elsewhere]";
-	await sees(waits);
-	assert.equal(await page.$(card), null, "no card for another conversation's question");
-	assert.equal(await page.getAttribute(field, "data-above"), null, "what is typed here answers no question");
-	// What is typed here is a message of this conversation, and the question stays open.
-	await page.fill(field, "just a message here");
-	await page.keyboard.press("Enter");
-	await sees('[data-item="user"] >> text=just a message here');
-	await sees("[data-slot=markdown] >> text=just a message here");
-	const open = (await api("GET", "/approvals")).data as any[];
-	assert.ok(open.some((a) => a.summary.includes("Which room?")), "the question is still open");
-	// Go there opens its conversation, where the card is, and it is answered there.
-	await sees(waits);
-	await page.click(`${waits} [data-action=go]`);
-	await sees(`${TAB("main", "elsewhere-q")}[data-active]`);
-	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which room?"), card, { timeout: 10_000 });
-	await page.locator(card).getByRole("radio", { name: /hall/ }).click();
-	await sees("[data-slot=markdown] >> text=room chosen");
-	await page.click(`${TAB("main", "elsewhere-q")}[data-active] [data-action=close]`);
-	await sees(`${TAB("main")}[data-active]`);
+	await page.waitForSelector(QUESTIONS, { state: "detached", timeout: 10_000 });
+	await hears("a word from elsewhere");
 });
 
-test("words typed for a question that was answered meanwhile elsewhere are not lost: they go as an ordinary message", async () => {
-	const card = "[data-slot=composer-question] [data-slot=questionnaire]";
+test("a message steered into the work before the agent asks leaves the card open, also when the conversation is opened again; one steered in after it closes it", async () => {
 	const field = "[data-slot=composer] textarea";
-	const ask = { tools: [{ name: "question", args: { question: "Which tea?", options: [{ label: "green" }, { label: "black" }] } }] };
-	await page.fill(field, mockMsg([ask, { text: "tea chosen" }], "pick a tea "));
+	// Before: the owner writes while the work is at the model, and the agent asks after that.
+	let go = false;
+	mock.state.scripts.road = [{ tools: [asks("Which road?", ["north", "south"])], until: () => go }, { text: "road asked" }];
+	await page.fill(field, "@@REF:road@@ take me home ");
 	await page.keyboard.press("Enter");
-	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which tea?"), card, { timeout: 10_000 });
-	// Answered on another device the moment before the owner's words reach the daemon.
+	await sees("[data-slot=composer] [aria-label=Stop]");
+	await page.fill(field, "the quick way please");
+	await page.keyboard.press("Enter");
+	await sees("[data-item=user] >> text=/not read yet|read \\d/");
+	go = true;
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which road?"), QUESTIONS, { timeout: 10_000 });
+	// The work answers the steered message after it asked (the scripted model echoes it).
+	await sees("[data-slot=markdown] >> text=ECHO[the quick way please]");
+	await page.waitForFunction(() => !document.querySelector("[aria-busy=true]"), null, { timeout: 10_000 });
+	await sees(QUESTIONS);
+	await page.reload();
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which road?"), QUESTIONS, { timeout: 20_000 });
+	await page.click(field);
+	await page.keyboard.type("north it is");
+	await page.keyboard.press("Enter");
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	await hears("north it is");
+	// After: the agent asks, and the owner writes while the turn still works.
+	let end = false;
+	mock.state.scripts.lane = [{ tools: [asks("Which lane?", ["left", "right"])] }, { text: "lane asked", until: () => end }];
+	await page.fill(field, "@@REF:lane@@ and the lane ");
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which lane?"), QUESTIONS, { timeout: 10_000 });
+	await page.click(field);
+	await page.keyboard.type("the left one");
+	await page.keyboard.press("Enter");
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	end = true;
+	await sees("[data-slot=markdown] >> text=ECHO[the left one]");
+	await page.waitForFunction(() => !document.querySelector("[aria-busy=true]"), null, { timeout: 10_000 });
+	await page.reload();
+	await sees("[data-slot=markdown] >> text=ECHO[the left one]");
+	await sees(asked("closed"));
+	assert.equal(await page.locator(QUESTIONS).count(), 0, "a message that came after the question answered it");
+});
+
+test("a question asked after a message was steered into the turn is open alone: the one asked before the message is answered, live and when the conversation is opened again", async () => {
+	const field = "[data-slot=composer] textarea";
+	let go = false;
+	mock.state.scripts.paint = [{ tools: [asks("Which colour?", ["red", "blue"])] }, { tools: [asks("Which size?", ["small", "large"])], until: () => go }, { text: "paint asked" }];
+	await page.fill(field, "@@REF:paint@@ paint the shed ");
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which colour?"), QUESTIONS, { timeout: 10_000 });
+	// The owner writes into the running turn, which then asks again.
+	await page.click(field);
+	await page.keyboard.type("any colour will do");
+	await page.keyboard.press("Enter");
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	await sees("[data-item=user] >> text=/not read yet|read \\d/");
+	go = true;
+	const alone = async () => {
+		await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which size?"), QUESTIONS, { timeout: 20_000 });
+		assert.ok(!(await page.textContent(QUESTIONS))?.includes("Which colour?"), "the question asked before the message is not in the card");
+		assert.equal(await page.locator(`${QUESTIONS} [data-slot=questionnaire-progress]`).count(), 0, "one question");
+	};
+	await alone();
+	await page.waitForFunction(() => !document.querySelector("[aria-busy=true]"), null, { timeout: 10_000 });
+	await alone();
+	await page.reload();
+	await alone();
+	await page.click(field);
+	await page.keyboard.type("large");
+	await page.keyboard.press("Enter");
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	await hears("large");
+});
+
+test("with the questions' card turned off in Settings > General, a question shows in full in the thread, with no card and no button; turned on again, its card is back", async () => {
+	const field = "[data-slot=composer] textarea";
+	const toggle = "[data-question-toggle]";
+	const cards = "[data-slot=settings-page] [data-find=question-cards] [role=switch]";
+	const prefs = () => JSON.parse(fs.readFileSync(path.join(home, "desktop-data", "prefs.json"), "utf8"));
+	await page.fill(field, mockMsg([{ tools: [asks("Which mug?", ["red", "white"])] }, { text: "mug asked" }], "ask a mug "));
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which mug?"), QUESTIONS, { timeout: 10_000 });
+	await sees(toggle);
+	await menu("settings");
+	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=General");
+	await sees(`${cards}[aria-checked=true]`);
+	await page.click(cards);
+	await sees(`${cards}[aria-checked=false]`);
+	for (let i = 0; i < 50 && prefs().questionCards !== false; i++) await new Promise((r) => setTimeout(r, 40));
+	assert.equal(prefs().questionCards, false);
+	await menu("settings");
+	await sees(asked("folded"));
+	assert.match(await page.textContent(asked("folded")), /Which mug\?[\s\S]*red[\s\S]*white/);
+	assert.equal(await page.locator(QUESTIONS).count(), 0);
+	assert.equal(await page.locator(toggle).count(), 0);
+	// Still open: the tab waits for the owner, and a typed message answers it.
+	await sees("[data-slot=tab][data-active] [data-slot=badge][data-variant=destructive]");
+	// On again, the open question has its card back.
+	await menu("settings");
+	await page.click(cards);
+	await sees(`${cards}[aria-checked=true]`);
+	await menu("settings");
+	await sees(QUESTIONS);
+	await sees(toggle);
+	await page.click(field);
+	await page.keyboard.type("the white one");
+	await page.keyboard.press("Enter");
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	await hears("the white one");
+});
+
+test("the questions' card says quietly that the conversation has read outside content, and only then", async () => {
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [asks("Which tray?")] }, { text: "tray asked" }], "ask a tray "));
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which tray?"), QUESTIONS, { timeout: 10_000 });
+	await sees("[data-slot=markdown] >> text=tray asked");
+	assert.equal(await page.locator(`${QUESTIONS} [data-slot=questions-outside]`).count(), 0, "not without the mark");
+	// The daemon says the conversation has read outside content (it is told so as an answer of its own).
 	await app.evaluate(({ ipcMain }: any) => {
 		const g = globalThis as any;
 		const call = ipcMain._invokeHandlers.get("pine:call");
 		ipcMain.removeHandler("pine:call");
 		ipcMain.handle("pine:call", async (e: unknown, method: string, url: string, body?: any) => {
-			if (method === "POST" && /^\/approvals\//.test(url) && body?.values?.answer) await call(e, method, url, { allow: true, always: false, values: { answer: "green" } });
-			return call(e, method, url, body);
+			const out = await call(e, method, url, body);
+			if (method === "GET" && url === "/status" && out?.data?.sessions) for (const s of out.data.sessions) if (s.agent === "main" && s.session === "main") s.tainted = "a web page";
+			return out;
 		});
-		g.unrace = () => {
+		g.untaint = () => {
 			ipcMain.removeHandler("pine:call");
 			ipcMain.handle("pine:call", call);
 		};
 	});
 	try {
-		await page.click(field);
-		await page.keyboard.type("oolong, please");
+		// The page asks again when a turn ends: one that asks again.
+		await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [asks("Which shelf?")] }, { text: "shelf asked" }], "ask a shelf "));
 		await page.keyboard.press("Enter");
-		await sees("[data-slot=markdown] >> text=tea chosen");
-		// The words went as a message of their own, which the agent answered (the scripted model echoes it).
-		let asked: any[] = [];
-		for (let i = 0; i < 100 && !asked.some((t) => t.prompt === "oolong, please"); i++) {
-			asked = (await api("GET", "/tasks?agent=main&session=main&limit=5")).data as any[];
-			await new Promise((r) => setTimeout(r, 100));
-		}
-		assert.ok(asked.some((t) => t.prompt === "oolong, please"), `sent as a message: ${JSON.stringify(asked.map((t) => t.prompt))}`);
-		await sees("[data-slot=markdown] >> text=oolong, please");
-		const bubbles = await page.$$eval('[data-item="user"]', (els: Element[]) => els.filter((e) => e.textContent?.includes("oolong, please")).length);
-		assert.equal(bubbles, 1, "shown once, as the owner's message");
+		await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which shelf?"), QUESTIONS, { timeout: 10_000 });
+		await sees(`${QUESTIONS} [data-slot=questions-outside]`);
 	} finally {
-		await app.evaluate(() => (globalThis as any).unrace());
+		await app.evaluate(() => (globalThis as any).untaint());
 	}
+	// Answered, the turn it starts ends with the daemon's word again: the mark is gone with it.
+	await page.locator(QUESTIONS).getByRole("radio", { name: /yes/ }).click();
+	await button("submit").click();
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	await hears("yes");
 });
 
 test("in a short pane a question card keeps the composer in view and typable: its options scroll inside it, and the thread above still has room", async () => {
@@ -1227,10 +1360,12 @@ test("in a short pane a question card keeps the composer in view and typable: it
 		await page.setViewportSize({ width: 1280, height: 820 });
 	}
 	await page.locator(card).getByRole("radio", { name: /medium/ }).click();
-	await sees("[data-slot=markdown] >> text=plan chosen");
+	await page.locator(card).getByRole("button", { name: "Send" }).click();
+	await page.waitForSelector(card, { state: "detached" });
+	await sees('[data-item="user"] >> text=medium');
 });
 
-test("a sign-in's choices are a question card answered by a pick; what it then asks to be typed opens the approval dialog", async () => {
+test("a sign-in's choices are a question card answered by a pick and Send; what it then asks to be typed opens the approval dialog", async () => {
 	// Amazon Bedrock's sign-in in pi asks first how to sign in (a select), then for a token (a secret).
 	// The window is behind another app: what is asked is told in a notification.
 	// The main process asks the window too: under xvfb with no window manager, a window never shown says it is focused.
@@ -1272,8 +1407,9 @@ test("a sign-in's choices are a question card answered by a pick; what it then a
 	await focus(true);
 	assert.equal(await page.locator('[data-item="approval"][data-state="open"]').count(), 0, "the open choice is not drawn in the conversation as well");
 	await shot("03-sign-in-choice");
-	// A click answers it, and the card folds into a line that says what was picked.
+	// A click picks, Send answers it, and the card folds into a line that says what was picked.
 	await page.locator(card).getByRole("radio").first().click();
+	await page.click(`${card} [data-action=send]`);
 	await page.waitForSelector(card, { state: "detached" });
 	await sees(`[data-item="approval"][data-state="allowed"]:has-text("${offered[0]}")`);
 	// What the flow asks next is typed: that request has a field, and opens the approval dialog.

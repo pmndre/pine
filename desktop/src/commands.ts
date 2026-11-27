@@ -155,7 +155,7 @@ export const COMMANDS: Command[] = [
 		run: async (_a, tab) => {
 			const s = await store.attempt(() => api.status());
 			if (!s || !tab) return;
-			tab.note(`${plural(s.running.length, "task")} running, ${plural(s.sessions.length, "live session")}, ${plural(s.approvals, "open question")}`, "muted", {
+			tab.note(`${plural(s.running.length, "task")} running, ${plural(s.sessions.length, "live session")}, ${plural(s.approvals, "approval")} waiting, ${plural(s.questions ?? 0, "open question")}`, "muted", {
 				lines: [...s.running.map((r) => ({ text: `#${r.task} ${r.agent}/${r.session} (${r.kind})` })), ...s.sessions.map((x) => ({ text: `${x.agent}/${x.session} · ${x.busy ? "busy" : "idle"} · ${x.mode}${x.tainted ? ` · outside content: ${x.tainted}` : ""}` }))],
 			});
 			tab.touch();
@@ -285,7 +285,7 @@ async function answer(args: string, allow: boolean): Promise<void> {
 	const target = id || (pending.length === 1 ? pending[0].id : "");
 	if (!target) return store.flash(pending.length ? `Several requests are waiting: ${pending.map((p) => p.id).join(", ")}` : "Nothing is waiting for approval.");
 	const req = pending.find((p) => p.id === target);
-	// One that needs a value is answered in its dialog, a question from its card above the composer.
+	// One that needs a value is answered in its dialog, a sign-in's choice from its card above the composer.
 	if (allow && req && (req.inputs?.length || isPick(req))) return store.ask(target);
 	await store.decide(target, allow, always);
 }

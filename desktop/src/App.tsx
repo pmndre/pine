@@ -137,18 +137,6 @@ export function Gate() {
 	const s = useModel(store);
 	if (!s.stateRead) return <GateSkeleton />;
 	const state = s.service;
-	const init = async () => {
-		s.initRunning = true;
-		s.initLines = [];
-		s.touch();
-		const code = await bridge.init().catch(() => 1);
-		s.initRunning = false;
-		s.touch();
-		// What needs an administrator (Linux) is printed above, for a terminal: it stays in view until Try again.
-		if (code === "administrator") s.flash("Part of the setup needs an administrator. Run the command shown above in a terminal, then press Try again.", "warn", 15000);
-		else if (code === 0) await bridge.retry();
-		else s.flash("pine init did not finish. The output is shown above.", "bad");
-	};
 	const host = state.host;
 	const key = s.keyToTrust;
 	// With no local machine the machines are the only way to a pine: added, chosen or forgotten here,
@@ -205,14 +193,14 @@ export function Gate() {
 				: ["Starting pine", "Looking for a running pine, or starting one…", <Pulse label="Loading" key="s" />]
 			: state.status === "error" && state.kind === "no-home"
 				? [
-						"Welcome to pine",
-						`pine keeps your agents, their workspaces and your settings in a home folder (${s.prefs.home ?? s.home ?? "~/.pine"}), which does not exist yet. Setup copies the example home and downloads the browser that the web tools use (about 600 MB, one time).`,
+						// No home yet: this computer's is made without a question (setUp in model.ts), and what pine init says is shown as it comes.
+						s.initRunning ? "Setting up pine" : "pine is not ready yet",
+						s.local
+							? `pine keeps your agents, their workspaces and your settings in a home folder (${s.prefs.home ?? s.home ?? "~/.pine"}). Setup copies the example home and downloads the browser that the web tools use (about 600 MB, one time).`
+							: "There is no pine home on that machine yet. Run pine init there, then try again.",
 						<>
-							{s.initLines.length ? <Printed sm className="w-full text-start" text={s.initLines.slice(-40).join("\n")} /> : null}
-							<div className="flex items-center gap-2">
-								{s.local ? <Button data-action="init" data-busy={s.initRunning || undefined} disabled={s.initRunning} onClick={() => void init()}>{s.initRunning ? <><Pulse label="Loading" data-icon="inline-start" />Setting up…</> : "Set up pine"}</Button> : null}
-								<Button variant="outline" data-action="retry" disabled={s.initRunning} onClick={() => void bridge.retry()}>Try again</Button>
-							</div>
+							{s.initLines.length ? <Printed sm className="w-full text-start text-wrap" text={s.initLines.slice(-40).join("\n")} /> : null}
+							{s.initRunning ? <Pulse label="Loading" data-gate="setting-up" /> : <Button variant="outline" data-action="retry" onClick={() => void bridge.retry()}>Try again</Button>}
 						</>,
 					]
 				: state.status === "error"
@@ -410,7 +398,7 @@ function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth
 			onDragEnd={() => (dragging = undefined)}
 		>
 			<SidebarMenuButton isActive={on} data-agent={agent} data-session={c.session} data-pinned={c.pinned || undefined} onClick={() => setOpenMobile(false)} className={cn(INDENT[Math.min(depth + inset, INDENT.length - 1)], c.tasks && "pr-16 group-has-data-[sidebar=menu-action]/menu-item:pr-16")} render={<ListboxItem value={c.session} label={s.titleOf(agent, c.session)} title={`${agent} · ${c.session} · ${kept}${c.branch ? ` · a branch of ${c.branch.from}` : ""}${c.worktree ? ` · in the worktree ${c.worktree.branch} of ${c.worktree.repo}` : c.folder ? ` · works in ${c.folder}` : ""}`} />}>
-				<span className="grid h-4 w-6 flex-none place-items-center">{tab?.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Pulse /> : tab?.unread ? <Badge className="size-2 p-0" /> : main || c.pinned ? <StarIcon className="text-faint" /> : depth || c.worktree ? <GitBranchIcon className="text-faint" /> : c.folder ? <FolderIcon className="text-faint" /> : <MessageSquareIcon className="text-faint" />}</span>
+				<span className="grid h-4 w-6 flex-none place-items-center">{tab && s.waits(tab) ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Pulse /> : tab?.unread ? <Badge className="size-2 p-0" /> : main || c.pinned ? <StarIcon className="text-faint" /> : depth || c.worktree ? <GitBranchIcon className="text-faint" /> : c.folder ? <FolderIcon className="text-faint" /> : <MessageSquareIcon className="text-faint" />}</span>
 				<span className="min-w-0 flex-1"><Title agent={agent} session={c.session} /></span>
 			</SidebarMenuButton>
 			{/* The badge is drawn over the button, so the button keeps the room for the time (stock pr-8 fits an action alone; the same selector as stock, so it takes the place of its pr-8). */}
@@ -466,7 +454,7 @@ function ConversationGroup({ agent, name, rows }: { agent: string; name: string;
 	const folded = s.folded.has(`${agent}:group:${name}`);
 	const drop = useDrop(agent, name);
 	const tabs = s.tabs.filter((t) => t.kind === "chat" && t.agent === agent && rows.some((c) => c.session === t.session));
-	const waits = tabs.some((t) => t.approvals.size > 0);
+	const waits = tabs.some((t) => s.waits(t));
 	const working = rows.some((c) => s.isBusy(agent, c.session)) || tabs.some((t) => t.busy);
 	const unread = tabs.some((t) => t.unread);
 	const count = rows.filter((c) => c.session !== "main" || c.tasks).length;
@@ -546,7 +534,7 @@ function Group({ a }: { a: AgentInfo }) {
 	const lineDrop = useDrop(a.id, null);
 	const looseDrop = useDrop(a.id, null);
 	const tabs = s.tabs.filter((t) => t.agent === a.id && t.kind === "chat");
-	const waits = tabs.some((t) => t.approvals.size > 0);
+	const waits = tabs.some((t) => s.waits(t));
 	const working = s.isBusy(a.id) || tabs.some((t) => t.busy);
 	const unread = tabs.some((t) => t.unread);
 	const pickFolder = async () => {
@@ -923,7 +911,7 @@ function TabFace({ item }: { item: string }) {
 	return (
 		<>
 			<span className="grid size-5 flex-none place-items-center">
-				{!tab ? (pane === "code" ? <PanelRightIcon /> : <RadarIcon />) : tab.approvals.size ? <Badge variant="destructive" data-waiting="" className="size-4 p-0">!</Badge> : tab.busy ? <Pulse /> : tab.unread ? <Badge className="size-2 p-0" /> : tab.kind === "events" ? <AudioLinesIcon /> : tab.kind === "settings" ? <SettingsIcon /> : tab.kind === "manual" ? <BookOpenIcon /> : tab.kind === "task" ? <ListIcon /> : <AgentAvatar agent={{ id: tab.agent, color: s.agent(tab.agent)?.color, main: s.agent(tab.agent)?.main }} size="sm" className="data-[size=sm]:size-5" />}
+				{!tab ? (pane === "code" ? <PanelRightIcon /> : <RadarIcon />) : s.waits(tab) ? <Badge variant="destructive" data-waiting="" className="size-4 p-0">!</Badge> : tab.busy ? <Pulse /> : tab.unread ? <Badge className="size-2 p-0" /> : tab.kind === "events" ? <AudioLinesIcon /> : tab.kind === "settings" ? <SettingsIcon /> : tab.kind === "manual" ? <BookOpenIcon /> : tab.kind === "task" ? <ListIcon /> : <AgentAvatar agent={{ id: tab.agent, color: s.agent(tab.agent)?.color, main: s.agent(tab.agent)?.main }} size="sm" className="data-[size=sm]:size-5" />}
 			</span>
 			<span data-slot="tab-name" className="flex-1 truncate">
 				{pane ? <PaneLabel which={pane} /> : tab!.kind === "events" ? "Events" : tab!.kind === "settings" ? "Settings" : tab!.kind === "manual" ? "Manual" : tab!.kind === "task" ? <>{tab!.agent} #{tab!.task}</> : tab!.session === "main" ? tab!.agent : <>{tab!.agent} · <Title agent={tab!.agent} session={tab!.session} /></>}
@@ -1527,7 +1515,7 @@ function Asking() {
 	if (!s.asking) return null;
 	const req = s.tabs.map((t) => t.approvals.get(s.asking!)).find(Boolean)?.req;
 	if (!req) return null;
-	// A question, and a sign-in's choice, has no dialog: its card is above the composer of its conversation.
+	// A sign-in's choice has no dialog: its card is above the composer of its conversation.
 	return isPick(req) ? null : <ApprovalDialog key={req.id} req={req} />;
 }
 

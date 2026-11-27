@@ -145,7 +145,7 @@ export class HttpServer {
 			if (method === "GET") {
 				const q = url.searchParams;
 				const num = (k: string) => (q.has(k) ? Number(q.get(k)) : undefined);
-				if (url.pathname === "/status") return send(200, { ...this.manager.status(), agents: Object.keys(this.cfg.agents), approvals: this.approvals.pending().length, bypassWhenTainted: this.cfg.security.bypassWhenTainted, version: pineVersion() });
+				if (url.pathname === "/status") return send(200, { ...this.manager.status(), agents: Object.keys(this.cfg.agents), approvals: this.approvals.pending().length, questions: this.manager.openQuestions().reduce((n, q) => n + q.asked.length, 0), bypassWhenTainted: this.cfg.security.bypassWhenTainted, version: pineVersion() });
 				if (url.pathname === "/agents") {
 					// (`modelProblem` only where there is one: why that agent's model cannot answer.)
 					const problems = await this.manager.modelProblems();

@@ -1661,77 +1661,95 @@ test("tui: /paste and ctrl+v attach the picture that is on the clipboard", async
 	await t.close();
 });
 
-test("tui: an agent's question is a dialog with its answers to pick from; a number, a click or the owner's own words answer it", async () => {
-	const t = await open({ agents: { main: { agent: { mode: "plan" } } } });
+test("tui: an agent's question is shown in the conversation with its numbered answers, and a bare digit sends that answer as the owner's message", async () => {
+	const t = await open({ agents: { main: { agent: { mode: "plan" } } } }, [110, 40]);
 	await t.ready();
-	const ask = (choices?: string[]) => mockMsg([{ tools: [{ name: "question", args: { question: "Which way shall I do it?", ...(choices ? { choices } : {}) } }] }]);
+	const options = [{ label: "The mode", description: "how far your agents reach" }, { label: "A folder", description: "where they work" }, { label: "Telegram" }];
+	const ask = () => mockMsg([{ tools: [{ name: "question", args: { question: "What shall we set up?", header: "Next", options } }] }, { text: "ASKED-AND-DONE" }]);
 
-	// By number. It is there in plan mode too: asking changes nothing.
-	await t.send(ask(["The quick way", "The careful way"]));
-	await t.asked();
-	await t.sees(/2\s+The careful way/);
-	assert.match(t.text(), /1\s+The quick way/);
-	t.term.type("2");
-	await t.sees("FINAL:: Your owner answered: The careful way");
-	await t.dialog(undefined);
-	assert.ok(!/approval needed/i.test(t.text()), "a question is not shown as a permission");
-
-	// In the owner's own words, and with a click.
-	await t.send(ask(["Yes", "No"]));
-	await t.asked();
-	t.term.type("only for the first file");
-	t.term.type([KEY.enter]);
-	await t.sees("FINAL:: Your owner answered in their own words: only for the first file");
-	await t.send(ask(["Left", "Right"]));
-	await t.asked();
-	await t.sees(/1\s+Left/);
-	const row = t.app.screen().findIndex((l) => /1\s+Left/.test(l));
-	t.term.click(t.app.screen()[row].indexOf("Left") + 1, row);
-	await t.sees("FINAL:: Your owner answered: Left");
-
-	// Without answers to pick from it is a line to type into; esc leaves it for later, and no answer is said plainly.
+	// In plan mode too: asking changes nothing. It is in the thread, not in a dialog.
 	await t.send(ask());
-	await t.asked();
-	t.term.type([KEY.esc]);
-	await t.dialog(undefined);
-	assert.equal(t.h.pine.approvals.pending().length, 1, "left for later, it still waits");
-	await t.send("/deny");
-	await t.sees("Your owner did not answer");
+	await t.sees("3  Telegram");
+	await done(t.h, 1);
+	const screen = t.text();
+	for (const part of ["What shall we set up?", "Next", "1  The mode", "how far your agents reach", "2  A folder", "where they work", "3  Telegram"]) assert.ok(screen.includes(part), `${part}\n${screen}`);
+	assert.equal(t.app.state().dialog, undefined, "no dialog");
+	assert.equal(t.h.pine.approvals.pending().length, 0, "and no permission");
+
+	// A bare digit is that answer's label, sent as an ordinary message.
+	await t.send("2");
+	await t.sees("ECHO[A folder]");
+	await done(t.h, 2);
+	// Answered: a digit now goes as it is typed.
+	await t.send("3");
+	await t.sees("ECHO[3]");
+	await done(t.h, 3);
+
+	// Anything else goes as typed, even while a question is open.
+	await t.send(ask());
+	await done(t.h, 4);
+	await t.send("let us talk of something else");
+	await t.sees("ECHO[let us talk of something else]");
 
 	// A run that the owner did not start has nobody to ask: the tool is not there.
-	await t.h.pine.agents.run({ agent: "main", prompt: ask(["a", "b"]), trust: "untrusted" });
-	assert.match(t.h.toolResults().at(-1)!, /Tool question not found/);
+	await t.h.pine.agents.run({ agent: "main", prompt: ask(), trust: "untrusted" });
+	assert.match(t.h.toolResults().join("\n"), /Tool question not found/);
 	await t.close();
 });
 
-test("tui: a question's options show their descriptions, and one with several answers is answered by their numbers", async () => {
-	const t = await open({ agents: { main: { agent: { mode: "plan" } } } }, [110, 34]);
+test("tui: with several questions open a digit goes as typed, and a question still open is shown and answered by its number after the UI is opened again", async () => {
+	const t = await open({ agents: { main: {} } }, [110, 40]);
 	await t.ready();
-	const options = [{ label: "The mode", description: "how far your agents reach" }, { label: "A folder", description: "where they work" }, { label: "Telegram" }];
-	const ask = (multiSelect: boolean) => mockMsg([{ tools: [{ name: "question", args: { question: "What shall we set up?", header: "Next", options, multiSelect } }] }]);
+	const two = mockMsg([{ tools: [{ name: "question", args: { question: "Which colour?", options: ["Red", "Green"] } }, { name: "question", args: { question: "Which size?", options: ["Small", "Large"] } }] }, { text: "TWO-ASKED" }]);
+	await t.send(two);
+	await t.sees("2  Large");
+	await done(t.h, 1);
+	assert.ok(t.text().includes("Which colour?") && t.text().includes("2  Green"), t.text());
+	await t.send("1");
+	await t.sees("ECHO[1]");
+	await done(t.h, 2);
 
-	await t.send(ask(true));
-	await t.asked();
-	await t.sees(/3\s+Telegram/);
-	const screen = t.text();
-	assert.ok(screen.includes("Next"), screen);
-	assert.ok(/1\s+The mode/.test(screen) && screen.includes("how far your agents reach") && screen.includes("where they work"), screen);
-	// A digit is no answer by itself here: the numbers are typed, and enter sends them.
-	for (const k of "1,3") t.term.type(k);
-	await t.sees("1,3");
-	assert.equal(t.app.state().dialog, "asks", "one digit did not answer it");
-	t.term.type([KEY.enter]);
-	await t.sees("FINAL:: Your owner answered: The mode, Telegram");
+	await t.send(mockMsg([{ tools: [{ name: "question", args: { question: "Which database?", options: [{ label: "sqlite", description: "a file" }, { label: "postgres" }] } }] }, { text: "ONE-ASKED" }]));
+	await t.sees("2  postgres");
+	await done(t.h, 3);
+	await t.app.stop();
+	const term = new FakeTerminal(110, 40);
+	const again = new PineTui({ client: t.app.client, terminal: term });
+	apps.push(again);
+	await again.start();
+	const shows = (what: string) => until(() => again.screen().join("\n").includes(what), 4000, `${what}\n${again.screen().join("\n")}`);
+	await shows("2  postgres");
+	for (const part of ["Which database?", "1  sqlite", "a file", "2  postgres"]) assert.ok(again.screen().join("\n").includes(part), `${part}\n${again.screen().join("\n")}`);
+	term.type("1");
+	term.type([KEY.enter]);
+	await shows("ECHO[sqlite]");
+	await again.stop();
+	await t.h.close();
+});
 
-	// A single answer still goes with one digit, and its description stays on screen beside it.
-	await t.dialog(undefined);
-	await t.send(ask(false));
-	await t.asked();
-	await t.sees(/2\s+A folder/);
-	assert.ok(t.text().includes("where they work"), t.text());
-	t.term.type("2");
-	await t.sees("FINAL:: Your owner answered: A folder");
-	await t.close();
+test("tui: a message steered into the work before the agent asked leaves the question open, also after the UI is opened again", async () => {
+	const t = await open({ agents: { main: {} } }, [110, 40]);
+	await t.ready();
+	let steered = false;
+	t.h.mock.state.scripts.ask = [{ tools: [{ name: "question", args: { question: "Which database?", options: ["sqlite", "postgres"] } }], until: () => steered }, { text: "ONE-ASKED" }];
+	const turn = t.h.pine.agents.submit({ agent: "main", session: "main", prompt: "@@REF:ask@@", kind: "prompt", trust: "owner" });
+	await until(() => t.h.mock.state.requests.length >= 1, 5000, "the work to be at the model");
+	assert.equal(t.h.pine.agents.submit({ agent: "main", session: "main", prompt: "the fast one please", kind: "prompt", whenBusy: "steer", trust: "owner" }).meta.steered, turn.id);
+	steered = true;
+	await t.h.pine.agents.wait(turn.id);
+	await t.app.stop();
+	const term = new FakeTerminal(110, 40);
+	const again = new PineTui({ client: t.app.client, terminal: term });
+	apps.push(again);
+	await again.start();
+	const shows = (what: string) => until(() => again.screen().join("\n").includes(what), 4000, `${what}\n${again.screen().join("\n")}`);
+	// The question is open: it is on screen with its numbered answers.
+	await shows("2  postgres");
+	term.type("1");
+	term.type([KEY.enter]);
+	await shows("ECHO[sqlite]");
+	await again.stop();
+	await t.h.close();
 });
 
 test("tui: /board shows the conversation's board in the pane beside it: the tasks with who has each, a task in full on a click, and it follows what happens", async () => {

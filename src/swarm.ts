@@ -121,7 +121,7 @@ export const checkPrompt = (item: BoardItem) => `${item.text}\n\n[pine: this is 
 /** What a UI calls the sub-agent that does it. */
 const CHECK_LABEL = "checks the answer against what you asked";
 
-type Manager = Pick<AgentManager, "cfg" | "kv" | "tasks" | "bus" | "boards" | "goals" | "submit" | "cancel" | "taintOf" | "startBoardTask" | "retrying" | "resolveModel">;
+type Manager = Pick<AgentManager, "cfg" | "kv" | "tasks" | "bus" | "boards" | "goals" | "submit" | "cancel" | "taintOf" | "startBoardTask" | "retrying" | "resolveModel" | "openQuestions">;
 
 export class Swarms {
 	private m: Manager;
@@ -308,15 +308,15 @@ export class Swarms {
 		if (this.starting || session.endsWith("~u")) return;
 		if (kind !== "prompt" && !(kind === "event" && wantsAnswer)) return;
 		const swarm = this.m.kv.get<Swarm>(this.id(agent, session));
-		if (swarm?.status === "waiting") this.save({ ...swarm, told: heardToo(swarm.told, "", text), status: "active", task: undefined, round: swarm.round + 1, until: Math.max(swarm.until, swarm.round + 1), note: "goes on with your answer" }, "resumed");
-		else if (swarm?.status === "active" && text.trim()) this.m.kv.set(this.id(agent, session), { ...swarm, told: heardToo(swarm.told, "", text) });
-	}
-
-	/** The owner answered a question of the lead's (the `question` tool) while its swarm works: the check of the answer is told. */
-	heard(agent: string, session: string, asked: string, said: string): void {
-		if (session.endsWith("~u")) return;
-		const swarm = this.m.kv.get<Swarm>(this.id(agent, session));
-		if (swarm && (swarm.status === "active" || swarm.status === "waiting")) this.m.kv.set(this.id(agent, session), { ...swarm, told: heardToo(swarm.told, asked, said) });
+		if (!swarm) return;
+		// Where the lead's latest turn asked with `question` (and nothing came since), this message is the owner's answer:
+		// the check is told it with what was asked, so that a value they gave counts as given.
+		const asked = this.m
+			.openQuestions(agent, session)
+			.flatMap((q) => q.asked.map((a) => a.question))
+			.join(" / ");
+		if (swarm.status === "waiting") this.save({ ...swarm, told: heardToo(swarm.told, asked, text), status: "active", task: undefined, round: swarm.round + 1, until: Math.max(swarm.until, swarm.round + 1), note: "goes on with your answer" }, "resumed");
+		else if (swarm.status === "active" && text.trim()) this.m.kv.set(this.id(agent, session), { ...swarm, told: heardToo(swarm.told, asked, text) });
 	}
 
 	private live(id: number | undefined): boolean {
@@ -383,7 +383,8 @@ export class Swarms {
 		// answer, and goes on with it (`incoming`). A question at the end of an answer to a finished job is an offer,
 		// and changes nothing.
 		const idle = !tasks.length && !(task.meta.stats?.tools.length ?? 0);
-		if (asksAtEnd(answer) && (open.length || blocked.length || idle)) return void this.save({ ...swarm, status: "waiting", task: undefined, note: `${swarm.agent} asks you something: answer it, and the swarm goes on` }, "waiting");
+		// A turn that asked with `question` waits for the answer whatever else it did: the owner's next message is it.
+		if (task.meta.asked?.length || (asksAtEnd(answer) && (open.length || blocked.length || idle))) return void this.save({ ...swarm, status: "waiting", task: undefined, note: `${swarm.agent} asks you something: answer it, and the swarm goes on` }, "waiting");
 		if (open.length || blocked.length) return this.again(swarm, continuePrompts.unfinished(swarm.objective, open, blocked), `${open.length + blocked.length} task${open.length + blocked.length === 1 ? " is" : "s are"} not done: round ${swarm.round + 1} of ${swarm.until} starts`);
 		// Everything on the board is settled, and the lead has answered. That answer is what the owner reads, so it
 		// is what is checked: by a sub-agent that did none of the work, against the request and what was left. A

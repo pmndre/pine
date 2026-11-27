@@ -1,4 +1,4 @@
-// What the steps of "Setup Pine" are made of (src/setup/). The engine (engine.tsx) walks them; a
+// What the steps of "Onboarding" are made of (src/setup/). The engine (engine.tsx) walks them; a
 // way to a model is a branch of its own (subscription.tsx, and one module for each other way),
 // listed once in branches.ts. A branch holds what it is doing (a sign-in under way) and nothing
 // that has to outlive the page: what is done is read back from the daemon (`SetupFacts`).
@@ -45,14 +45,4 @@ export interface SetupBranch {
 	Card(props: { ctx: SetupContext }): ReactNode;
 	/** The owner left it, or a model answers now: what it has under way is let go. */
 	leave?(): void;
-}
-
-/**
- * A step once a model answers (the hand-off is one), in the order listed. Its card is shown until
- * it is done; nothing of it is kept but what `done` reads.
- */
-export interface SetupStage {
-	id: string;
-	done(facts: SetupFacts): boolean;
-	Card(props: { ctx: SetupContext; finish: () => void }): ReactNode;
 }

@@ -1,4 +1,4 @@
-// "Setup Pine": a home whose main agent has no model opens the main agent's conversation `setup`,
+// "Onboarding": a home whose main agent has no model opens the main agent's conversation `setup`,
 // pinned and in front, where pine's own steps (src/setup/) lead to a model. Nothing of them is
 // written into the conversation's history: they are derived from the daemon's state, and a reload
 // draws them again. The subscription's sign-in runs on the daemon's stand-in for a browser sign-in
@@ -32,7 +32,11 @@ const opened = () => app.evaluate(() => (globalThis as any).quiet.opened as stri
 const card = "[data-slot=composer-question] [data-slot=questionnaire]";
 /** The card that is open, by what it asks (`data-question`), never by its words. */
 const question = (id: string) => sees(`${card}[data-question=${id}]`);
-const pick = (option: string) => page.click(`${card} [data-slot=questionnaire-choice][data-option="${option}"]`);
+/** Picks an option, then sends it: a pick alone only selects. */
+const pick = async (option: string) => {
+	await page.click(`${card} [data-slot=questionnaire-choice][data-option="${option}"]`);
+	await page.click(`${card} [data-action=send]`);
+};
 const options = () => page.$$eval(`${card} [data-slot=questionnaire-choice]`, (els: Element[]) => els.map((e) => e.getAttribute("data-option")));
 /** What an option of the open card is called on screen, whatever it says: looked for again where the answer folds. */
 const label = async (option: string): Promise<string> => (await page.locator(`${card} [data-option="${option}"] [data-slot=question-card-label]`).textContent()) ?? "";
@@ -60,7 +64,7 @@ after(async () => {
 	fs.rmSync(home, { recursive: true, force: true });
 });
 
-test("a home with no model opens Setup Pine, pinned and in front, with pine's welcome and the first card", async () => {
+test("a home with no model opens Onboarding, pinned and in front, with pine's welcome and the first card", async () => {
 	// The question about the browser for the web tools comes at the start: put off, it lies over nothing.
 	await sees("[data-dialog=browser-ask]");
 	await page.click("[data-dialog=browser-ask] [data-action=later]");
@@ -118,11 +122,17 @@ test("a subscription reaches a model: pine names the one its agents run on now, 
 	// The owner signs in in the browser.
 	fs.writeFileSync(browserDone, "sk-ant-not-a-real-key-0123456789");
 	await model("anthropic/");
-	await question("keep");
-	assert.deepEqual(await options(), ["go-on", "another"]);
+	await question("default");
 	const agents = (await api("GET", "/agents")) as any[];
 	const main = agents.find((a) => a.main);
 	assert.match(main.model, /^anthropic\//);
+	// pine's choice first, then other models of the provider, and a search of every model last: six at most.
+	await sees(`${card} [data-slot=questionnaire-choice] >> text=Another…`);
+	const options = await page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
+	assert.equal(options[0], main.model);
+	assert.equal(options.at(-1), "Another…");
+	assert.ok(options.length <= 6, String(options));
+	for (const o of options.slice(1, -1)) assert.match(String(o), /^anthropic\//);
 	assert.equal(main.modelProblem, undefined);
 	assert.doesNotMatch(await page.textContent("[data-slot=message-scroller-content]"), /sk-ant-not-a-real-key/);
 	// What was answered is folded into lines above.
@@ -137,15 +147,13 @@ test("a reload draws the steps again from the daemon's state, and nothing of the
 	await sees("[data-slot=setup-welcome]");
 	await model("anthropic/");
 	await answered(said.provider);
-	await question("keep");
+	// What comes after it is setup-default-model.test.ts's.
+	await question("default");
 	const history = (await api("GET", "/tasks?agent=main&session=setup&limit=40")) as any[];
 	assert.deepEqual(history, []);
-	await pick("go-on");
-	// What comes next is setup-handoff.test.ts's.
-	await question("next");
 });
 
-test("a model that is gone opens Setup Pine again, and the no-model notice leads there", async () => {
+test("a model that is gone opens Onboarding again, and the no-model notice leads there", async () => {
 	await page.click("[data-slot=tab] >> nth=0");
 	await api("POST", "/models/logout", { provider: "anthropic" });
 	// The page asks which agents there are when the window comes to the front.

@@ -99,6 +99,23 @@ test("goal: the conversation goes on by itself until the judge says the objectiv
 	await h.close();
 });
 
+test("goal: a turn that asked the owner with question stops it as blocked, without the judge; /goal resume goes on", async () => {
+	const { h, shown } = await judged(() => "MET: the server answers");
+	h.pine.agents.goals.set("main", "main", mockMsg([{ tools: [call("question", { question: "What is the server called?" })] }, { text: "I asked for the name." }], "set up the server "));
+	await settled(h);
+	const goal = goalOf(h)!;
+	assert.deepEqual([goal.status, goal.round], ["blocked", 1]);
+	assert.match(goal.note, /main asked you something\. Answer it, then \/goal resume/);
+	assert.equal(shown.length, 0, "the judge is not asked");
+	await h.pine.agents.run({ agent: "main", prompt: "atlas", ...owner });
+	assert.equal(goalOf(h)!.status, "blocked", "the answer is a message; the goal waits for the owner's word");
+	h.pine.agents.goals.resume("main", "main");
+	await settled(h);
+	// (The next round runs the same script, which asks again.)
+	assert.deepEqual([goalOf(h)!.status, goalOf(h)!.round], ["blocked", 2]);
+	await h.close();
+});
+
 test("goal: a blocked verdict stops it until the owner says to go on", async () => {
 	const { h, shown } = await judged((_s, n) => (n === 1 ? "BLOCKED: it needs the name of the server" : "MET: the server answers"));
 	h.pine.agents.goals.set("main", "main", mockMsg(works(), "set up the server "));
