@@ -2409,6 +2409,7 @@ export class AgentManager {
 		let live: Live | undefined;
 		// Whether the agent meets its owner in this turn (src/hatch.ts).
 		let introducing = false;
+		let stepsBefore: string | undefined;
 		try {
 			live = await this.live(agent, task);
 			ctx.live = live;
@@ -2416,6 +2417,8 @@ export class AgentManager {
 			if (task.meta.tainted) live.taint(task.meta.tainted);
 			else if (this.cfg.security.taint === "run" && live.trust === "owner") live.tainted = undefined;
 			await this.refresh(live);
+			// A list of steps left open by an earlier turn, as it stood when the owner wrote again: dropped at the end if the agent left it so.
+			stepsBefore = task.kind === "prompt" && live.trust === "owner" && !live.leaf && this.todos(live.perm).some((t) => t.status !== "done") ? JSON.stringify(this.todos(live.perm)) : undefined;
 			introducing = this.cfg.defaults.introduce && task.kind === "prompt" && live.trust === "owner" && !live.leaf && !task.meta.compact && !this.kv.get(introducedKey(agent.id));
 			// For the owner's undo: where the conversation stands before this task, and what it may do there (src/undo.ts).
 			if (live.trust === "owner" && !live.ephemeral) this.turns.starting(task, { file: live.session.sessionManager.getSessionFile(), leaf: live.session.sessionManager.getLeafId(), root: realish(live.folder ?? agent.workspace), marks: { taint: this.kv.get<string>(`taint:${live.perm}`) ?? undefined, keep: this.kv.get(`keep:${live.perm}`) === true }, rights: this.rightsOf(live.perm) });
@@ -2613,6 +2616,9 @@ export class AgentManager {
 			if (!this.stopping) await this.turns.ended(task, top !== task.id && this.running.has(top) ? 0 : stats.tools.length);
 			// Met once it answered: a model that failed has met nobody.
 			if (status === "done" && introducing) this.kv.set(introducedKey(agent.id), Date.now());
+			// The owner wrote, the agent answered and left an earlier turn's open steps as they were: that work was
+			// stopped (a restart, the owner's stop) or set aside, and a list nobody keeps would stand "in work" for good.
+			if (status === "done" && live && stepsBefore !== undefined && JSON.stringify(this.todos(live.perm)) === stepsBefore) this.dropSteps(live, task);
 			this.finish(task, status, text, error, stats);
 		} finally {
 			this.running.delete(task.id);
@@ -3315,6 +3321,12 @@ export class AgentManager {
 		this.kv.set(`todos:${live.perm}`, list);
 		this.bus.publish(`agent/${live.agent.id}/todos`, { task: task.meta.root ?? task.id, root: task.meta.root ?? task.id, agent: live.agent.id, session: live.perm.slice(live.agent.id.length + 1), depth: 0, items: list }, { persist: false, source: `agent:${live.agent.id}` });
 		return list;
+	}
+
+	/** An abandoned list of steps goes, and the owner's UI is told so with an empty one. */
+	private dropSteps(live: Live, task: Task): void {
+		this.kv.set(`todos:${live.perm}`, []);
+		this.bus.publish(`agent/${live.agent.id}/todos`, { task: task.meta.root ?? task.id, root: task.meta.root ?? task.id, agent: live.agent.id, session: live.perm.slice(live.agent.id.length + 1), depth: 0, items: [] }, { persist: false, source: `agent:${live.agent.id}` });
 	}
 
 	/** The owner said no to this for a conversation: it is not asked again there. */

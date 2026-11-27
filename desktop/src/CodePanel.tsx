@@ -686,7 +686,7 @@ export function CodePanel({ tab }: { tab: Tab }) {
 				</>
 			}
 		>
-			{steps ? <ScrollArea className="flex max-h-48 min-h-0 flex-none flex-col border-b border-line-soft *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="px-3 py-2.5"><Steps items={steps} /></div></ScrollArea> : null}
+			{steps ? <ScrollArea className="flex max-h-48 min-h-0 flex-none flex-col border-b border-line-soft *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="px-3 py-2.5"><Steps items={steps} live={tab.busy} /></div></ScrollArea> : null}
 			{view === "agent" ? (
 				<AgentView tab={tab} />
 			) : view === "changes" || view === "turn" ? (

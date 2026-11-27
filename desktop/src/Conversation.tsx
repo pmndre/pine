@@ -475,13 +475,15 @@ function ComposerQuestion({ tab }: { tab: Tab }) {
 }
 
 /** The agent's list of steps (its todo tool, Plan): how far it is, and each step. */
-export function Steps({ items }: { items: Array<{ text: string; status: string }> }) {
+export function Steps({ items, live }: { items: Array<{ text: string; status: string }>; live: boolean }) {
 	const done = items.filter((t) => t.status === "done").length;
+	// A step in work that nobody works on (the turn was stopped, pine was restarted) is drawn still, not running.
+	const doing = (t: { status: string }) => t.status === "in_progress" && live;
 	return (
 		<Trace data-item="steps">
 			<TraceCollapsible defaultOpen>
 				<TraceCollapsibleTrigger>
-					<TraceLine status={items.some((t) => t.status === "in_progress") ? "running" : undefined}>
+					<TraceLine status={items.some(doing) ? "running" : undefined}>
 						<TraceIcon>
 							<ListChecksIcon />
 						</TraceIcon>
@@ -492,7 +494,7 @@ export function Steps({ items }: { items: Array<{ text: string; status: string }
 				<TraceCollapsibleContent>
 					<Trace>
 						{items.map((t, i) => (
-							<TraceLine key={i} status={t.status === "in_progress" ? "running" : t.status === "done" ? undefined : "pending"}>
+							<TraceLine key={i} status={doing(t) ? "running" : t.status === "done" ? undefined : "pending"}>
 								<TraceIcon>{t.status === "done" ? <CircleCheckIcon /> : t.status === "in_progress" ? <CircleDotIcon /> : <CircleIcon />}</TraceIcon>
 								<TraceTitle className="select-text" title={t.text}>{t.text}</TraceTitle>
 							</TraceLine>
@@ -562,7 +564,7 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 		case "approval":
 			return <ApprovalCard item={item} />;
 		case "steps":
-			return <Steps items={item.items} />;
+			return <Steps items={item.items} live={item === tab.steps && tab.busy} />;
 		case "media":
 			return (
 				<div className={MEDIA.box[item.kind]}>

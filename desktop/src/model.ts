@@ -3652,6 +3652,7 @@ export class Store extends Model {
 				if (depth <= 0) {
 					tab.running.add(p.task);
 					tab.startedAt = Date.now();
+					if (tab.steps) tab.steps.v++; // its step in work is at work again
 					break;
 				}
 				tab.children.set(p.task, { agent: p.agent, kind: p.kind, label: short(oneLine(String(p.label ?? p.prompt ?? "")), 60), running: true });
@@ -3781,6 +3782,8 @@ export class Store extends Model {
 					break;
 				}
 				tab.running.delete(p.task);
+				// A step "in work" is at work only while the conversation is: stopped, it stands still.
+				if (!tab.busy && tab.steps) tab.steps.v++;
 				// A message steered into that work and not read is not waiting for it any more: its line goes.
 				for (const it of tab.items) if (it.t === "user" && it.steer && it.steer.into === p.task && !it.steer.read) it.v++;
 				tab.thinking = false;

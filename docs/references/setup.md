@@ -327,7 +327,7 @@ and conversations are in the sections above.
 | `sign_in_mcp_server` `name` [`agent`] | Main agent only. After you confirm, signs in to a remote MCP server in the browser of pine's computer; pine keeps the token. Same as `pine mcp login <name>` |
 | **Asking, and keeping track** | |
 | `question` `question` [`header`] [`options`] [`multiSelect`] | Asks the owner one question the agent cannot go on without: two to six `options` (`{ label, description? }`, best first), a `header` of up to 12 characters, `multiSelect` for several. Works in plan mode, not in a run the owner did not start |
-| `todo` `items` | The agent's list of steps, sent whole: each `pending`, `in_progress` (one) or `done`, up to 30. The owner sees it; pine reminds the agent after six tool calls without a change. Not in a run the owner did not start |
+| `todo` `items` | The agent's list of steps, sent whole: each `pending`, `in_progress` (one) or `done`, up to 30. The owner sees it; pine reminds the agent after six tool calls without a change, and drops a list with open steps that an answer to the owner's next message left as it was. Not in a run the owner did not start |
 | **Other tools** | |
 | `stop_program` [`id`] | Stops a program the conversation's commands left running or started with `background: true`; without `id`, lists them. Never asks. Only with `bash` ([coding.md](coding.md)) |
 | `request_access` [`path`] [`write`] [`network`] `reason` | Asks you for a path outside the workspace (`write: true` to change it) or the network, until reset or restart ([security.md](security.md), "When a call needs something outside: pine asks you") |
