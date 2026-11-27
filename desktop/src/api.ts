@@ -372,6 +372,10 @@ export interface Schedule {
 	task?: string;
 	next?: number;
 	topic: string;
+	/** Its times as the form takes them: one of the three. */
+	cron?: string;
+	every?: string;
+	at?: string;
 }
 
 export interface AskQuestion {
@@ -398,6 +402,8 @@ export interface Route {
 	/** A command run in an agent's sandbox with no model, given the event as JSON on stdin. */
 	run?: { command: string; agent?: string };
 	trust?: string;
+	/** The agent the route belongs to, when that agent made it for itself: it goes when the agent goes. */
+	of?: string;
 }
 
 export interface SourceType {
@@ -626,7 +632,7 @@ export const api = {
 	subscribeAll: (source: string, details: Record<string, unknown> = {}) => post<any>("/subscribe", { source, ...details }),
 	unsubscribeAll: (source: string) => post<{ unsubscribed: boolean }>("/unsubscribe", { source }),
 	schedules: () => get<Schedule[]>("/schedules"),
-	addSchedule: (body: { name: string; task: string; cron?: string; every?: string; at?: string; agent?: string; session?: string }) => post<Schedule>("/schedules", body),
+	addSchedule: (body: { name: string; task: string; cron?: string; every?: string; at?: string; agent?: string; session?: string; replace?: string }) => post<Schedule>("/schedules", body),
 	removeSchedule: (name: string, agent?: string) => post<{ removed: boolean }>("/schedules/remove", { name, agent }),
 	routes: () => get<Route[]>("/routes"),
 	addRoute: (body: Record<string, string | undefined>) => post<{ name: string; lines: string[]; wider?: string }>("/routes", body),

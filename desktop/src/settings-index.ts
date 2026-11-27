@@ -83,9 +83,9 @@ export const PLACES: Static[] = [
 	{ id: "add-mcp", section: "mcp", title: "Add an MCP server", words: "tools connect integration plugin" },
 	{ id: "new-skill", section: "skills", title: "New skill", words: "add write recipe how-to" },
 
-	{ id: "sources", section: "events", title: "Sources", about: "Something that can wake an agent: a folder, a web page, a chat, a device.", words: "subscribe watch trigger telegram mail folder webhook", find: at("sources") },
-	{ id: "schedules", section: "events", title: "Schedules", about: "A task for an agent at set times, every so often, or once.", words: "cron timer reminder every morning later", find: at("schedules") },
-	{ id: "routes", section: "events", title: "Routes", about: "When an event arrives, one thing happens.", words: "rule automation filter", find: at("routes") },
+	{ id: "sources", section: "events", title: "Sources", about: "Things that report what happens: a folder, a web page, a chat, a device.", words: "subscribe watch trigger telegram mail folder webhook", find: at("sources") },
+	{ id: "schedules", section: "events", title: "Schedules", about: "Tasks for agents at set times.", words: "cron timer reminder every morning later", find: at("schedules") },
+	{ id: "routes", section: "events", title: "Routes", about: "Rules for events: when one arrives, one thing happens.", words: "rule automation filter", find: at("routes") },
 	{ id: "event-log", section: "events", title: "Event log", words: "history what happened" },
 
 	{ id: "add-machine", section: "environments", title: "Add a machine", about: "Use the pine of another machine over SSH.", words: "ssh remote server host computer", find: at("add-machine") },
@@ -106,7 +106,12 @@ export const AGENT_PLACES: Array<{ id: string; path: string; title: string; word
 	{ id: "tools", path: "Permissions", title: "Built-in tools", words: "bash edit write read grep" },
 	{ id: "delegates", path: "Permissions", title: "Can delegate to", words: "hand tasks other agents" },
 	{ id: "folders", path: "Folders outside the workspace", title: "Folders outside the workspace", words: "read write access directory" },
-	{ id: "holdings", path: "What this agent has", title: "What this agent has", words: "workspace conversations sources servers schedules skills" },
+	{ id: "skills", path: "Skills", title: "Skills", words: "recipe how-to own" },
+	{ id: "mcp", path: "MCP servers", title: "MCP servers", words: "tools connect integration own" },
+	{ id: "sources", path: "Sources", title: "Sources", words: "events subscribe listen watch trigger own" },
+	{ id: "schedules", path: "Schedules", title: "Schedules", words: "cron timer reminder every morning own" },
+	{ id: "routes", path: "Routes", title: "Routes", words: "rule automation filter events own" },
+	{ id: "conversations", path: "Conversations and workspace", title: "Conversations and workspace", words: "workspace folder files chats" },
 	{ id: "remove", path: "Remove this agent", title: "Remove this agent", words: "delete", main: false },
 ];
 
@@ -144,11 +149,15 @@ export function entries(shown: Shown, lists: Lists): Entry[] {
 	const mine = new Set((lists.modelServers ?? []).map((x) => x.name));
 	for (const p of lists.providers ?? []) if (p.id !== "mock" && !mine.has(p.id)) add({ id: `provider:${p.id}`, title: providerName(p), path: [LABELS.models, "Subscriptions and API keys"], about: p.signedIn ? "signed in" : undefined, words: `${providerWords(p)} provider sign in api key`, place: { section: "models", find: `[data-provider="${p.id}"]`, filter: p.id } });
 	for (const x of lists.modelServers ?? []) add({ id: `model-server:${x.name}`, title: x.name, path: [LABELS.models, "Models on your own computer"], about: x.baseUrl, words: x.models.map((m) => m.id).join(" "), place: { section: "models", find: at(`model-server:${x.name}`) } });
-	for (const x of lists.mcp ?? []) add({ id: `mcp:${x.scope}:${x.name}`, title: x.name, path: [LABELS.mcp], about: where(x.scope, x.session), words: x.target, place: { section: "mcp", find: at(`mcp:${x.scope}:${x.name}`) } });
-	for (const x of lists.skills ?? []) add({ id: `skill:${x.dir}`, title: x.name, path: [LABELS.skills], about: x.description, place: { section: "skills", find: at(`skill:${x.dir}`) } });
-	for (const x of lists.sources ?? []) add({ id: `source:${x.scope}:${x.name}`, title: x.name, path: [LABELS.events, "Sources"], about: x.description ?? x.type, words: `${x.type} source`, place: { section: "events", find: at(`source:${x.scope}:${x.name}`) } });
-	for (const x of lists.schedules ?? []) add({ id: `schedule:${x.scope}:${x.name}`, title: x.name, path: [LABELS.events, "Schedules"], about: x.when, words: `schedule ${x.task ?? ""}`, place: { section: "events", find: at(`schedule:${x.scope}:${x.name}`) } });
-	for (const r of lists.routes ?? []) add({ id: `route:${r.name}`, title: r.name, path: [LABELS.events, "Routes"], words: `route ${r.on.join(" ")}`, place: { section: "events", find: at(`route:${r.name}`) } });
+	// Each thing is where it belongs: what is for all agents on its page, an agent's own on the agent's page.
+	const home = (agent: string | undefined, section: string, part: string, find: string): { path: string[]; place: Place } =>
+		agent ? { path: [LABELS.agents, agent, part], place: { section: "agents", agent, find: at(find) } } : { path: section === "events" ? [LABELS.events, part] : [LABELS[section]], place: { section, find: at(find) } };
+	const own = (scope: string) => (scope === "global" ? undefined : scope);
+	for (const x of lists.mcp ?? []) add({ id: `mcp:${x.scope}:${x.name}`, title: x.name, about: where(x.scope, x.session), words: x.target, ...home(own(x.scope), "mcp", "MCP servers", `mcp:${x.scope}:${x.name}`) });
+	for (const x of lists.skills ?? []) add({ id: `skill:${x.dir}`, title: x.name, about: x.description, ...home(x.agent, "skills", "Skills", `skill:${x.dir}`) });
+	for (const x of lists.sources ?? []) add({ id: `source:${x.scope}:${x.name}`, title: x.name, about: x.description ?? x.type, words: `${x.type} source`, ...home(own(x.scope), "events", "Sources", `source:${x.scope}:${x.name}`) });
+	for (const x of lists.schedules ?? []) add({ id: `schedule:${x.scope}:${x.name}`, title: x.name, about: x.when, words: `schedule ${x.task ?? ""}`, ...home(own(x.scope), "events", "Schedules", `schedule:${x.scope}:${x.name}`) });
+	for (const r of lists.routes ?? []) add({ id: `route:${r.name}`, title: r.name, words: `route ${r.on.join(" ")}`, ...home(r.of, "events", "Routes", `route:${r.name}`) });
 	for (const m of lists.machines ?? []) add({ id: `machine:${m.host}`, title: m.name, path: [LABELS.environments], about: m.name === m.host ? undefined : m.host, words: `${m.host} machine ssh`, place: { section: "environments", find: `[data-environment="${m.host}"]` } });
 	return out;
 }

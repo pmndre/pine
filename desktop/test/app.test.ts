@@ -1475,7 +1475,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await scheduleForm.getByRole("button", { name: "Add schedule" }).click();
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
 	await sees("[data-slot=settings-page] [data-slot=item-title] >> text=morning");
-	await sees("[data-slot=settings-page] [data-slot=item-description] >> text=wake all agents, each in their main conversation");
+	await sees("[data-slot=settings-page] [data-slot=item-description] >> text=wake all agents, each in its main conversation");
 	assert.match(fs.readFileSync(path.join(home, "pine.json"), "utf8"), /"morning"/);
 	await shot("08-settings-schedules");
 	// Events: a route, as When and Then. Only the fields of the action chosen are shown, and only they are sent.
@@ -1495,6 +1495,31 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await sees("[data-slot=settings-page] [data-slot=item-description] >> text=set house/mode to");
 	const route = JSON.parse(fs.readFileSync(path.join(home, "pine.json"), "utf8")).routes.find((r: { name: string }) => r.name === "mode");
 	assert.deepEqual(route, { name: "mode", on: "source/house/message", when: { "payload.topic": "house/mode" }, set: { "house/mode": "{{payload.value}}" } });
+	// A route opens from its row with what it does filled in, and is saved in its place.
+	await page.click("[data-slot=settings-page] [data-find='route:mode']");
+	assert.equal(await routeForm.getByLabel("Shared state").inputValue(), '{"house/mode":"{{payload.value}}"}');
+	await routeForm.getByLabel("Only if").fill('{"payload.topic": "house/level"}');
+	await routeForm.getByRole("button", { name: "Save changes" }).click();
+	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
+	await sees("[data-slot=settings-page] [data-find='route:mode'] >> text=house/level");
+	const routes = JSON.parse(fs.readFileSync(path.join(home, "pine.json"), "utf8")).routes;
+	assert.deepEqual(routes.map((r: { name: string }) => r.name), ["mode"]);
+	assert.deepEqual(routes[0].when, { "payload.topic": "house/level" });
+	// An agent's own schedule is added on its page, and the Events page points there.
+	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=Agents");
+	await page.click("[data-slot=settings-page] [data-slot=item] >> text=books");
+	await page.locator("[data-find=agent-schedules]").getByRole("button", { name: "New schedule" }).click();
+	assert.equal(await scheduleForm.getByLabel("Wake").isDisabled(), true, "it is the agent's");
+	await scheduleForm.getByLabel("Times").fill("0 9 * * 1");
+	await scheduleForm.getByLabel("With the task").fill("Sum up last week's spending.");
+	await scheduleForm.getByLabel("Name", { exact: true }).fill("weekly");
+	await scheduleForm.getByRole("button", { name: "Add schedule" }).click();
+	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
+	await sees("[data-find=agent-schedules] [data-slot=item-title] >> text=weekly");
+	assert.equal(JSON.parse(fs.readFileSync(path.join(home, "agents", "books", "agent.json"), "utf8")).schedules[0].name, "weekly");
+	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=Events");
+	await sees("[data-find=own-sources] [data-slot=item-description] >> text=1 schedule");
+	assert.equal(await page.locator("[data-find=schedules] [data-slot=item-title]", { hasText: "weekly" }).count(), 0, "not among those for all agents");
 	// A decision model at an address of its own (Models), which a route then names.
 	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=Models");
 	await page.locator("[data-slot=settings-page]").getByRole("button", { name: "Add a decision model" }).click();
@@ -1623,10 +1648,11 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=Skills");
 	await page.locator("[data-slot=settings-page]").getByRole("button", { name: "New skill" }).click();
 	await page.fill("input[placeholder='invoices']", "invoices");
-	await page.fill("[data-slot=settings-page] textarea", "File an invoice. Use when a bill arrives.");
-	await page.click("[data-slot=settings-page] .cm-content");
+	await page.fill("[data-slot=dialog-content] textarea", "File an invoice. Use when a bill arrives.");
+	await page.click("[data-slot=dialog-content] .cm-content");
 	await page.keyboard.type("1. Read the bill.");
-	await page.locator("[data-slot=settings-page]").getByRole("button", { name: "Save skill" }).click();
+	await page.locator("[data-slot=dialog-content]").getByRole("button", { name: "Add skill" }).click();
+	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
 	await sees("[data-slot=settings-page] [data-slot=item-title] >> text=invoices");
 	assert.match(fs.readFileSync(path.join(home, "skills", "invoices", "SKILL.md"), "utf8"), /Read the bill/);
 	// Events: a folder to watch, set up from the type's own options.

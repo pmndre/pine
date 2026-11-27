@@ -18,9 +18,15 @@ const markup = (selector: string) => {
 	return `${m[1]}="${m[2]}"`;
 };
 
+/** Whether a page writes the mark: as it is (`data-find="x"`), or as one of the values an expression picks (`data-find={agent ? "agent-x" : "x"}`), for a list drawn on two pages. */
+const drawn = (mark: string) => {
+	const [, attr, value] = /^([\w-]+)="(.*)"$/.exec(mark)!;
+	return pages.includes(mark) || new RegExp(`${attr}=\\{[^}\\n]*"${value}"`).test(pages);
+};
+
 test("every place the search names is drawn by a page", () => {
-	for (const p of PLACES) if (p.find) assert.ok(pages.includes(markup(p.find)), `${p.id}: ${markup(p.find)} is on no page`);
-	for (const f of AGENT_PLACES) assert.ok(pages.includes(`data-find="agent-${f.id}"`), `the agent's ${f.id}: data-find="agent-${f.id}" is not on its page`);
+	for (const p of PLACES) if (p.find) assert.ok(drawn(markup(p.find)), `${p.id}: ${markup(p.find)} is on no page`);
+	for (const f of AGENT_PLACES) assert.ok(drawn(`data-find="agent-${f.id}"`), `the agent's ${f.id}: data-find="agent-${f.id}" is not on its page`);
 	// What pine has is marked by the lists that show it, with the same names the index builds.
 	for (const mark of ["data-find={`model-server:", "data-find={`mcp:", "data-find={`skill:", "data-find={`source:", "data-find={`schedule:", "data-find={`route:", "data-provider={p.id}", "data-environment={h ??", "data-setting-key={s.key}"]) assert.ok(pages.includes(mark), `${mark} is on no page`);
 });
@@ -78,4 +84,20 @@ test("a title that fits comes before a place that only mentions the words, and l
 	const loose = search(list, "ntfc").map((e) => e.id);
 	assert.ok(loose.includes("place:notifications"), loose.join());
 	assert.deepEqual(search(list, "   "), []);
+});
+
+test("what one agent has is found on its page, what is for all agents on the page of its kind", () => {
+	const list = entries(all, {
+		sources: [{ name: "scans", scope: "books", type: "folder" } as any, { name: "mail", scope: "global", type: "mail" } as any],
+		routes: [{ name: "flagged", on: ["state/agent/books/flag"], of: "books" } as any, { name: "door", on: ["source/door"], agent: "books" } as any],
+		skills: [{ name: "ledger", scope: "agent", agent: "books", dir: "/h/agents/books/skills/ledger", description: "Keep the ledger." } as any],
+	});
+	const one = (id: string) => list.find((e) => e.id === id)!;
+	assert.deepEqual(one("source:books:scans").place, { section: "agents", agent: "books", find: `[data-find="source:books:scans"]` });
+	assert.deepEqual(one("source:books:scans").path, ["Agents", "books", "Sources"]);
+	assert.deepEqual(one("source:global:mail").place, { section: "events", find: `[data-find="source:global:mail"]` });
+	// A route an agent made for itself is its own; one of pine's that wakes it stays on the Events page.
+	assert.equal(one("route:flagged").place.agent, "books");
+	assert.equal(one("route:door").place.section, "events");
+	assert.deepEqual(one("skill:/h/agents/books/skills/ledger").path, ["Agents", "books", "Skills"]);
 });

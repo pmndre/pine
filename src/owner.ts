@@ -9,7 +9,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { addRoute, applyModelLimit, applySetting, checkModelLimit, checkRoute, checkSetting, dropRoute, type ModelPlan, planModelAdd, planModelChange, planModelRemove, type RouteInput, SETTINGS, settleModel } from "./admin.ts";
+import { addRoute, replaceRoute, applyModelLimit, applySetting, checkModelLimit, checkRoute, checkSetting, dropRoute, type ModelPlan, planModelAdd, planModelChange, planModelRemove, type RouteInput, SETTINGS, settleModel } from "./admin.ts";
 import { AGENT_TOOLS } from "./agent-admin.ts";
 import type { AgentManager } from "./agents.ts";
 import { browserReady } from "./browser-build.ts";
@@ -352,7 +352,7 @@ export class OwnerApi {
 		if (at === "shared") return SHARED_FILES.map((name) => ({ name, about: SHARED_ABOUT[name] ?? "", text: ownText(textOf(path.join(cfg.home, name)) ?? "") }));
 		if (at === "skills") return allSkills(cfg).map((s) => ({ ...s, instructions: skillBody(s.dir) }));
 		if (at === "schedules") return this.need(this.schedules, "a scheduler").list();
-		if (at === "routes") return cfg.routes.map((r) => ({ name: r.name, on: r.on, when: r.when, throttleMs: r.throttleMs, debounceMs: r.debounceMs, agent: r.agent, prompt: r.prompt, session: r.session, set: r.set, publish: r.publish, call: r.call, ask: r.ask, run: r.run, trust: r.trust }));
+		if (at === "routes") return cfg.routes.map((r) => ({ name: r.name, on: r.on, when: r.when, throttleMs: r.throttleMs, debounceMs: r.debounceMs, agent: r.agent, prompt: r.prompt, session: r.session, set: r.set, publish: r.publish, call: r.call, ask: r.ask, run: r.run, trust: r.trust, of: r.of }));
 		if (at === "sources/types") return this.need(this.sources, "event sources").typeList().map((t) => ({ name: t.name, summary: t.summary, options: t.options, own: t.name in cfg.sourceTypes }));
 		// (Each model with its own number of runs at a time, where it has one; and what holds for the others.)
 		if (at === "decisions")
@@ -462,8 +462,10 @@ export class OwnerApi {
 				if (when! < Date.now() - 60_000) throw new Refusal(400, `${body.at} is in the past: it is ${localTime(Date.now()).replace("T", " ")} now`);
 			}
 			if (str(body.session) && !agent) throw new Refusal(400, '"session" names a conversation of an agent: give "agent" too');
-			const entry = sched.check({ name: body.name, task: body.task, cron: str(body.cron), every: str(body.every), at: when, session: agent ? str(body.session) : undefined });
-			return sched.add(agent?.id, entry);
+			const raw = { name: body.name, task: body.task, cron: str(body.cron), every: str(body.every), at: when, session: agent ? str(body.session) : undefined };
+			// `replace` names the schedule of the same agent (or of all agents) this one takes the place of.
+			if (str(body.replace)) return sched.replace(agent?.id, String(body.replace), raw);
+			return sched.add(agent?.id, sched.check(raw));
 		}
 		if (at === "schedules/remove") {
 			const agent = this.maybeAgent(body.agent);
@@ -474,8 +476,23 @@ export class OwnerApi {
 
 		if (at === "routes") {
 			const input = body as RouteInput;
-			const checked = checkRoute(cfg, input, input.call_model || input.ask_model ? await manager.availableModels() : []);
-			this.router?.add(addRoute(cfg, checked.entry));
+			// `replace` names the route this one takes the place of: it is checked as if that one were gone.
+			const old = str(body.replace) ? cfg.routes.find((r) => r.name === body.replace) : undefined;
+			if (str(body.replace) && !old) throw new Refusal(404, `there is no route "${String(body.replace)}"`);
+			// `of`: the route is the agent's own, as one it made itself: on its own sources and state, acting
+			// within it, and gone with it. A route that changes keeps the agent it was of.
+			const of = old ? old.of : str(body.of);
+			if (of && !old) {
+				const agent = this.maybeAgent(of)!;
+				if (agent.id === mainAgentId(cfg)) throw new Refusal(400, "the main agent's routes are pine's: leave out \"of\"");
+			}
+			const view = old ? { ...cfg, routes: cfg.routes.filter((r) => r !== old) } : cfg;
+			const checked = checkRoute(view, input, input.call_model || input.ask_model ? await manager.availableModels() : [], of);
+			if (old) {
+				const made = replaceRoute(cfg, old.name, checked.entry);
+				this.router?.remove(old.name);
+				this.router?.add(made);
+			} else this.router?.add(addRoute(cfg, checked.entry));
 			await manager.sources?.routesChanged();
 			return { name: String(checked.entry.name), lines: checked.lines, ...(checked.wider ? { wider: checked.wider } : {}) };
 		}

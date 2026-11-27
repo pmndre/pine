@@ -40,6 +40,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 	const cases: Array<[string, RegExp]> = [
 		["telegram pairing code", /^source-types#telegram$/],
 		["where can I read the documentation myself in the app", /^desktop#the-manual$/],
+		["where in the app do I see the schedules and routes one agent made for itself", /^desktop#settings/],
 		["my owner typed a message instead of picking one of the answers I offered", /^(agents#a-message-while-the-agent-works|desktop#when-the-agent-asks-you-something|setup)/],
 		["install the mac app with brew", /^desktop#getting-it/],
 		["only wake the agent for mail that is probably urgent, as a number I can filter on", /^events#typed-questions/],
