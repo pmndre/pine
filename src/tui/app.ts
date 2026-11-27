@@ -2069,11 +2069,20 @@ export class PineTui {
 		if (questions.length) tab.asks = { task: t.id, questions };
 	}
 
-	/** The history: the last turn's questions are open, since nothing the owner wrote came after it. */
+	/**
+	 * The history: the last turn's questions are open, but for those a message of the owner's steered
+	 * into that turn came after (one steered in before a question does not answer it).
+	 */
 	private renderHistory(tab: Tab, history: Task[]): void {
 		for (const t of history) this.renderPast(tab, t);
-		if (tab.asks && tab.asks.task === history.at(-1)?.id) this.hintAsks(tab);
-		else tab.asks = undefined;
+		const last = history.filter((t) => t.meta?.steered === undefined).at(-1);
+		const steered = history.filter((t) => last && t.meta?.steered === last.id).map((t) => t.created);
+		const told = steered.length ? Math.max(...steered) : undefined;
+		if (tab.asks && last && tab.asks.task === last.id) {
+			if (told !== undefined) tab.asks.questions = tab.asks.questions.filter(({ q }) => (q.when ?? last.started ?? last.created) > told);
+			if (tab.asks.questions.length) return this.hintAsks(tab);
+		}
+		tab.asks = undefined;
 	}
 
 	private renderPast(tab: Tab, t: Task): void {
@@ -3241,7 +3250,11 @@ export class PineTui {
 			tab.roots.add(p.by);
 			const i = tab.awaiting.findIndex((a) => String(p.prompt ?? "").startsWith(a));
 			if (i >= 0) tab.awaiting.splice(i, 1);
-			else this.user(tab, ownerWords(p.prompt, p), p.kind === "prompt" ? "elsewhere" : p.kind);
+			else {
+				this.user(tab, ownerWords(p.prompt, p), p.kind === "prompt" ? "elsewhere" : p.kind);
+				// Written elsewhere into the turn that asked, after its questions: they are answered.
+				if (tab.asks?.task === Number(p.task)) this.closeAsks(tab);
+			}
 			this.tui.requestRender();
 			return;
 		}

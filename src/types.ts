@@ -60,6 +60,8 @@ export interface AskedQuestion {
 	options?: Array<{ label: string; description?: string }>;
 	/** Several options may be picked. Only with options. */
 	multiSelect?: true;
+	/** When it was asked (ms): a message of the owner's steered into the turn after this answers it, one before does not. */
+	when?: number;
 }
 
 export interface TaskMeta {

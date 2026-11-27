@@ -194,6 +194,8 @@ export interface AskedQuestion {
 	options?: Array<{ label: string; description?: string }>;
 	/** Several of `options` may be picked. */
 	multiSelect?: true;
+	/** When it was asked (the daemon's clock, ms): a message steered into the turn before this does not answer it. */
+	when?: number;
 }
 
 export interface Approval {

@@ -51,8 +51,12 @@ export interface Job {
 	ask?: { id: string; tool: string; summary: string };
 	/** How many questions this turn asked the owner (its `question` calls): open until the conversation is written to again (`asksOpen`). */
 	questions?: number;
-	/** The owner wrote to this work while it ran: what it asked is answered. */
+	/** When it last asked (the daemon's clock), where its record says. */
+	askedAt?: number;
+	/** The owner wrote to this work after it asked: what it asked is answered. */
 	told?: boolean;
+	/** A message of the owner's given to work that was running: no turn of its own. */
+	steered?: boolean;
 	error?: string;
 }
 
@@ -429,7 +433,7 @@ export class World {
 	 * Recent tasks, as `/tasks` lists them, newest first: the work that was there before the view
 	 * opened. What the live events already said about a task is kept.
 	 */
-	seed(tasks: Array<{ id: number; agent: string; session: string; kind: string; prompt: string; status: string; created: number; started?: number; finished?: number; parent?: number; depth: number; error?: string; event?: number; meta: { label?: string; chain?: string[]; root?: number; stats?: { tools: string[] }; asked?: unknown[] } }>): void {
+	seed(tasks: Array<{ id: number; agent: string; session: string; kind: string; prompt: string; status: string; created: number; started?: number; finished?: number; parent?: number; depth: number; error?: string; event?: number; meta: { label?: string; chain?: string[]; root?: number; stats?: { tools: string[] }; asked?: Array<{ when?: number }>; steered?: number } }>): void {
 		for (const t of [...tasks].sort((a, b) => a.id - b.id)) {
 			if (this.jobs.has(t.id) || t.status === "pending") continue;
 			const parent = t.parent !== undefined ? this.jobs.get(t.parent) : undefined;
@@ -451,10 +455,14 @@ export class World {
 				heard: Date.now() + this.skew,
 				finished: doing === "thinking" ? undefined : (t.finished ?? t.started ?? t.created),
 				tools: t.meta.stats?.tools.length ?? 0,
-				...(t.depth === 0 && t.meta.asked?.length ? { questions: t.meta.asked.length } : {}),
+				...(t.depth === 0 && t.meta.asked?.length ? { questions: t.meta.asked.length, askedAt: Math.max(0, ...t.meta.asked.map((q) => q?.when ?? 0)) } : {}),
+				...(t.meta.steered !== undefined ? { steered: true } : {}),
 				error: t.error,
 			});
 			this.now = Math.max(this.now, t.finished ?? t.started ?? t.created);
+			// A message steered into a turn answers what the turn had asked before it came, not what it asked after.
+			const into = t.meta.steered !== undefined ? this.jobs.get(t.meta.steered) : undefined;
+			if (into?.questions && t.created >= (into.askedAt ?? 0)) into.told = true;
 		}
 		for (const j of this.jobs.values()) {
 			const p = j.parent !== undefined ? this.jobs.get(j.parent) : undefined;
@@ -662,6 +670,8 @@ export class World {
 				if (job.doing !== "asking") job.doing = /(^|_)(delegate|subagent)$/.test(job.tool) ? "waiting" : "tool";
 				if (p.asked && job.depth === 0) {
 					job.questions = (job.questions ?? 0) + 1;
+					// Asked after what the owner wrote into the work: that does not answer it.
+					job.told = false;
 					if (job.questions === 1) {
 						this.pulse(`agent:${agent}`, "you", "ask", at, job.id);
 						this.say(at, `${agent} asks you something`, { agent, job: job.id, tone: "ask" });
@@ -764,11 +774,12 @@ export class World {
 
 	/**
 	 * Whether the questions a turn asked are open, by the rule the daemon and the conversation go by: it
-	 * is the latest turn of its conversation, and the owner has not written to it since it began.
+	 * is the latest turn of its conversation, and the owner has not written to it since it asked (a
+	 * message steered into the turn before that leaves it open).
 	 */
 	asksOpen(job: Job): boolean {
 		if (!job.questions || job.depth !== 0 || job.told) return false;
-		for (const j of this.jobs.values()) if (j.depth === 0 && j.id > job.id && j.agent === job.agent && j.session === job.session) return false;
+		for (const j of this.jobs.values()) if (j.depth === 0 && !j.steered && j.id > job.id && j.agent === job.agent && j.session === job.session) return false;
 		return true;
 	}
 

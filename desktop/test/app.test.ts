@@ -1097,6 +1097,49 @@ test("the questions' card goes on a typed message and on the agent's next turn, 
 	await hears("a word from elsewhere");
 });
 
+test("a message steered into the work before the agent asks leaves the card open, also when the conversation is opened again; one steered in after it closes it", async () => {
+	const field = "[data-slot=composer] textarea";
+	// Before: the owner writes while the work is at the model, and the agent asks after that.
+	let go = false;
+	mock.state.scripts.road = [{ tools: [asks("Which road?", ["north", "south"])], until: () => go }, { text: "road asked" }];
+	await page.fill(field, "@@REF:road@@ take me home ");
+	await page.keyboard.press("Enter");
+	await sees("[data-slot=composer] [aria-label=Stop]");
+	await page.fill(field, "the quick way please");
+	await page.keyboard.press("Enter");
+	await sees("[data-item=user] >> text=/not read yet|read \\d/");
+	go = true;
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which road?"), QUESTIONS, { timeout: 10_000 });
+	// The work answers the steered message after it asked (the scripted model echoes it).
+	await sees("[data-slot=markdown] >> text=ECHO[the quick way please]");
+	await page.waitForFunction(() => !document.querySelector("[aria-busy=true]"), null, { timeout: 10_000 });
+	await sees(QUESTIONS);
+	await page.reload();
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which road?"), QUESTIONS, { timeout: 20_000 });
+	await page.click(field);
+	await page.keyboard.type("north it is");
+	await page.keyboard.press("Enter");
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	await hears("north it is");
+	// After: the agent asks, and the owner writes while the turn still works.
+	let end = false;
+	mock.state.scripts.lane = [{ tools: [asks("Which lane?", ["left", "right"])] }, { text: "lane asked", until: () => end }];
+	await page.fill(field, "@@REF:lane@@ and the lane ");
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which lane?"), QUESTIONS, { timeout: 10_000 });
+	await page.click(field);
+	await page.keyboard.type("the left one");
+	await page.keyboard.press("Enter");
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	end = true;
+	await sees("[data-slot=markdown] >> text=ECHO[the left one]");
+	await page.waitForFunction(() => !document.querySelector("[aria-busy=true]"), null, { timeout: 10_000 });
+	await page.reload();
+	await sees("[data-slot=markdown] >> text=ECHO[the left one]");
+	await sees(asked("closed"));
+	assert.equal(await page.locator(QUESTIONS).count(), 0, "a message that came after the question answered it");
+});
+
 test("the questions' card says quietly that the conversation has read outside content, and only then", async () => {
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [asks("Which tray?")] }, { text: "tray asked" }], "ask a tray "));
 	await page.keyboard.press("Enter");

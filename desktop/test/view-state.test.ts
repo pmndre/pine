@@ -209,3 +209,28 @@ test("a turn's questions are asking until the conversation is written to again, 
 	w.take([ev("agent/main/started", { agent: "main", session: "main", root: 2, depth: 0, task: 2, kind: "prompt", prompt: "a" })]);
 	assert.equal(state().work.find((x) => x.id === 1)?.asking, false);
 });
+
+test("a message steered into a turn before it asked leaves its question asking; one after it answers it, live and from the record alike", () => {
+	const talk = { agent: "main", session: "main", root: 1, depth: 0 };
+	const asking = (w: World) => viewStateOf(w, { colorOf: () => "#336699", holdings: new Map(), dark: false }).work.find((x) => x.id === 1)?.asking;
+	const live = new World();
+	live.setPlaces([{ id: "main", main: true, mode: "safe", description: "" }]);
+	live.take([
+		ev("agent/main/started", { ...talk, task: 1, kind: "prompt", prompt: "set it up" }),
+		ev("agent/main/steered", { ...talk, task: 1, by: 2, kind: "prompt", prompt: "quickly" }),
+		ev("agent/main/tool", { ...talk, task: 1, phase: "start", tool: "question", subject: "", asked: { at: 0, question: "Which?" } }),
+		ev("agent/main/done", { ...talk, task: 1, status: "done" }),
+	]);
+	assert.equal(asking(live), true, "steered in before it asked");
+	live.take([ev("agent/main/steered", { ...talk, task: 1, by: 3, kind: "prompt", prompt: "the first" })]);
+	assert.equal(asking(live), false, "steered in after it asked");
+	const task = (id: number, created: number, meta: object) => ({ id, agent: "main", session: "main", kind: "prompt", prompt: "", status: "done", created, depth: 0, meta });
+	const seeded = (steeredAt: number) => {
+		const w = new World();
+		w.setPlaces([{ id: "main", main: true, mode: "safe", description: "" }]);
+		w.seed([task(2, steeredAt, { steered: 1 }), task(1, 1000, { asked: [{ question: "Which?", when: 2000 }] })]);
+		return w;
+	};
+	assert.equal(asking(seeded(1500)), true, "the record: steered in before it asked");
+	assert.equal(asking(seeded(2500)), false, "the record: steered in after it asked");
+});

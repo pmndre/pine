@@ -85,6 +85,8 @@ export interface Steer {
 	task: number;
 	into: number;
 	read?: number;
+	/** When it came (the daemon's clock, ms), where the history says: placed after a question, it may still have come before it. */
+	at?: number;
 }
 
 export interface Attachment {
@@ -2069,7 +2071,7 @@ export class Store extends Model {
 		if (t.kind === "event" && t.meta?.label) tab.add({ t: "event", label: t.meta.label, body: eventBody(t.prompt) });
 		else if (isGoalRound(t.kind, t.meta?.label)) tab.note(`↻ ${t.meta.label}`);
 		else if (t.kind === "notify") tab.add(pineNote(t.meta?.label, t.meta?.body));
-		else tab.add({ t: "user", ...ownerText({ prompt: t.prompt, quotes: t.meta?.quotes, body: t.meta?.body }), from: t.kind === "prompt" ? undefined : t.kind, task: t.kind === "prompt" && t.meta?.trust === "owner" && t.meta?.steered === undefined ? t.id : undefined, steer: t.meta?.steered === undefined ? undefined : { task: t.id, into: t.meta.steered, read: t.meta.read } });
+		else tab.add({ t: "user", ...ownerText({ prompt: t.prompt, quotes: t.meta?.quotes, body: t.meta?.body }), from: t.kind === "prompt" ? undefined : t.kind, task: t.kind === "prompt" && t.meta?.trust === "owner" && t.meta?.steered === undefined ? t.id : undefined, steer: t.meta?.steered === undefined ? undefined : { task: t.id, into: t.meta.steered, read: t.meta.read, at: t.created } });
 		(t.meta?.images ?? []).forEach((_, i) => tab.add({ t: "media", kind: "image", name: `attached picture ${i + 1}`, url: media.task(t.id, i) }));
 		// It was read by work that was already running; the answer is that work's.
 		if (t.meta?.steered !== undefined) return;
@@ -3045,18 +3047,25 @@ export class Store extends Model {
 
 	/**
 	 * The questions of a conversation that are open, by the one rule the daemon goes by too
-	 * (`openQuestions` in src/agents.ts): those its latest turn asked, while nothing has come to the
-	 * conversation since that turn began (the owner's next message, by the card or typed, or the
-	 * agent's next turn). The card, the button on the composer's edge, the thread, the tab's mark and
-	 * the app's icon all ask this, so that they always agree.
+	 * (`openQuestions` in src/agents.ts): those its latest turn asked, while no message of the owner's
+	 * has come after them (by the card or typed, steered into the turn or a turn of its own), and the
+	 * agent's next turn has not begun. A message steered into the turn before it asked does not answer
+	 * it. The card, the button on the composer's edge, the thread, the tab's mark and the app's icon
+	 * all ask this, so that they always agree.
 	 */
 	openQuestions(tab: Tab): Of<"questions"> | undefined {
 		if (tab.kind !== "chat" || !tab.roots.size) return undefined;
 		const at = tab.items.findLastIndex((it) => it.t === "questions");
 		const item = tab.items[at];
-		if (item?.t !== "questions" || item.task !== Math.max(...tab.roots)) return undefined;
-		// A message of the owner's after it that is not a task yet (it is on its way) answers it too.
-		return tab.items.slice(at + 1).some((it) => it.t === "user") ? undefined : item;
+		if (item?.t !== "questions") return undefined;
+		// The latest turn: a message steered into running work is no turn of its own.
+		const steered = new Set(tab.items.flatMap((it) => (it.t === "user" && it.steer ? [it.steer.task] : [])));
+		if (item.task !== Math.max(...[...tab.roots].filter((id) => !steered.has(id)))) return undefined;
+		// A message after it answers it: one on its way too (not a task yet). The history puts a message steered into the
+		// turn after the turn's questions; the time it came says whether it came before the last of them.
+		const asked = Math.max(0, ...item.asked.map((q) => q?.when ?? 0));
+		const before = (it: Item) => it.t === "user" && it.steer?.into === item.task && it.steer.at !== undefined && it.steer.at < asked;
+		return tab.items.slice(at + 1).some((it) => it.t === "user" && !before(it)) ? undefined : item;
 	}
 
 	/** The open questions whose card stands above the composer: those the owner did not fold away. */

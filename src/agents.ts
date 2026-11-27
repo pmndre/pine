@@ -2640,8 +2640,9 @@ export class AgentManager {
 	 * says so. Nothing waits for an answer: the owner's answer is their next message.
 	 */
 	private noteQuestion(task: Task, args: unknown): (AskedQuestion & { at: number }) | undefined {
-		const q = askedOf(args);
-		if (!q) return undefined;
+		const cleaned = askedOf(args);
+		if (!cleaned) return undefined;
+		const q: AskedQuestion = { ...cleaned, when: Date.now() };
 		const at = (task.meta.asked ??= []).push(q) - 1;
 		this.tasks.update(task.id, { meta: task.meta });
 		// Started from outside: the turn's work began with an event (a schedule, a source, a message on Telegram), not the owner in a UI.
@@ -2651,15 +2652,22 @@ export class AgentManager {
 	}
 
 	/**
-	 * The open questions: those of a conversation's latest turn, while nothing has come to that
-	 * conversation since that turn began (the owner's next message is a turn of its own). The one rule
-	 * every reader goes by; with `agent` and `session`, of that conversation alone.
+	 * The open questions: those of a conversation's latest turn that no message of the owner's has come
+	 * after. The owner's next message is a turn of its own, or one steered into the turn: that answers
+	 * what was asked before it, not what the turn asks after it. The one rule every reader goes by; with
+	 * `agent` and `session`, of that conversation alone.
 	 */
 	openQuestions(agent?: string, session?: string): Array<{ agent: string; session: string; task: number; asked: AskedQuestion[] }> {
 		return this.tasks
 			.latestTurns(agent, session)
 			.filter((t) => t.meta.asked?.length && !t.session.endsWith("~u") && !t.session.startsWith("_t"))
-			.map((t) => ({ agent: t.agent, session: t.session, task: t.id, asked: t.meta.asked! }));
+			.map((t) => {
+				const told = this.tasks.lastSteered(t.id);
+				// A record made before questions had a time: asked when the turn began.
+				const asked = told === undefined ? t.meta.asked! : t.meta.asked!.filter((q) => (q.when ?? t.started ?? t.created) > told);
+				return { agent: t.agent, session: t.session, task: t.id, asked };
+			})
+			.filter((q) => q.asked.length);
 	}
 
 	/**

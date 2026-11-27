@@ -58,11 +58,15 @@ test("question: the turn keeps what it asked, in call order, in its record and i
 		{ question: "Which database?", header: "A very long", options: [{ label: "sqlite", description: "one file" }, { label: "postgres" }] },
 		{ question: "Which colors?", options: [{ label: "green" }, { label: "red" }, { label: "blue" }], multiSelect: true },
 	];
-	assert.deepEqual(h.pine.tasks.get(run.id)!.meta.asked, want);
+	// Each is kept with the time it was asked, within the turn.
+	const kept = h.pine.tasks.get(run.id)!;
+	assert.ok(kept.meta.asked!.every((q) => typeof q.when === "number" && q.when >= kept.started! && q.when <= kept.finished!));
+	const untimed = (list: any[]) => list.map(({ when: _, ...q }) => q);
+	assert.deepEqual(untimed(kept.meta.asked!), want);
 	const history = (await api(h)("GET", "/tasks?agent=main&session=main")).body;
-	assert.deepEqual(history.find((t: any) => t.id === run.id).meta.asked, want);
+	assert.deepEqual(history.find((t: any) => t.id === run.id).meta.asked, kept.meta.asked);
 	const starts = tools.filter((e) => e.phase === "start" && e.tool === "question");
-	assert.deepEqual(starts.map((e) => e.asked), [{ ...want[0], at: 0 }, { ...want[1], at: 1 }]);
+	assert.deepEqual(untimed(starts.map((e) => e.asked)), [{ ...want[0], at: 0 }, { ...want[1], at: 1 }]);
 	assert.deepEqual(
 		asked.map((e) => [e.agent, e.session, e.task, e.at, e.question, e.outside]),
 		[
@@ -104,5 +108,34 @@ test("question: /status counts the open questions: those of a conversation's lat
 	assert.equal((await status()).approvals, 0, "questions are not approvals");
 	await h.pine.agents.run({ agent: "main", prompt: "both yes", ...owner });
 	assert.equal((await status()).questions, 0);
+	await h.close();
+});
+
+test("question: a message the owner steered into the work before the agent asked leaves the question open; one steered in after it closes it", async () => {
+	const h = await harness({ pine: { http: { port: 0 } }, agents: { main: {} } });
+	const asked = heard(h, "question/asked");
+	const open = () => h.pine.agents.openQuestions("main", "main").flatMap((q) => q.asked.map((a) => a.question));
+	// Before: the owner writes while the work is at the model, and the agent asks only after it.
+	let steered = false;
+	h.mock.state.scripts.before = [{ tools: [call("question", { question: "Which database?", options: [{ label: "sqlite" }, { label: "postgres" }] })], until: () => steered }, { text: "asked" }];
+	const first = h.pine.agents.submit({ agent: "main", prompt: "@@REF:before@@", kind: "prompt", ...owner });
+	await until(() => h.mock.state.requests.length >= 1, 5000, "the work to be at the model");
+	assert.equal(h.pine.agents.submit({ agent: "main", prompt: "use the fastest one", kind: "prompt", whenBusy: "steer", ...owner }).meta.steered, first.id);
+	steered = true;
+	await h.pine.agents.wait(first.id);
+	assert.deepEqual(open(), ["Which database?"], "a message that came before the question does not answer it");
+	assert.equal((await api(h)("GET", "/status")).body.questions, 1);
+	await h.pine.agents.run({ agent: "main", prompt: "sqlite", ...owner });
+	assert.deepEqual(open(), []);
+	// After: the agent asks, and the owner writes while the turn still works.
+	let after = false;
+	h.mock.state.scripts.after = [{ tools: [call("question", { question: "Which color?" })] }, { text: "asked", until: () => after }];
+	const second = h.pine.agents.submit({ agent: "main", prompt: "@@REF:after@@", kind: "prompt", ...owner });
+	await until(() => asked.some((e) => e.task === second.id), 5000, "the question");
+	assert.deepEqual(open(), ["Which color?"]);
+	assert.equal(h.pine.agents.submit({ agent: "main", prompt: "green", kind: "prompt", whenBusy: "steer", ...owner }).meta.steered, second.id);
+	after = true;
+	await h.pine.agents.wait(second.id);
+	assert.deepEqual(open(), [], "a message that came after the question answers it");
 	await h.close();
 });

@@ -1722,6 +1722,30 @@ test("tui: with several questions open a digit goes as typed, and a question sti
 	await t.h.close();
 });
 
+test("tui: a message steered into the work before the agent asked leaves the question open, also after the UI is opened again", async () => {
+	const t = await open({ agents: { main: {} } }, [110, 40]);
+	await t.sees("type a message");
+	let steered = false;
+	t.h.mock.state.scripts.ask = [{ tools: [{ name: "question", args: { question: "Which database?", options: ["sqlite", "postgres"] } }], until: () => steered }, { text: "ONE-ASKED" }];
+	const turn = t.h.pine.agents.submit({ agent: "main", session: "main", prompt: "@@REF:ask@@", kind: "prompt", trust: "owner" });
+	await until(() => t.h.mock.state.requests.length >= 1, 5000, "the work to be at the model");
+	assert.equal(t.h.pine.agents.submit({ agent: "main", session: "main", prompt: "the fast one please", kind: "prompt", whenBusy: "steer", trust: "owner" }).meta.steered, turn.id);
+	steered = true;
+	await t.h.pine.agents.wait(turn.id);
+	await t.app.stop();
+	const term = new FakeTerminal(110, 40);
+	const again = new PineTui({ client: t.app.client, terminal: term });
+	apps.push(again);
+	await again.start();
+	const shows = (what: string) => until(() => again.screen().join("\n").includes(what), 4000, `${what}\n${again.screen().join("\n")}`);
+	await shows("type a number to answer");
+	term.type("1");
+	term.type([KEY.enter]);
+	await shows("ECHO[sqlite]");
+	await again.stop();
+	await t.h.close();
+});
+
 test("tui: /board shows the conversation's board in the pane beside it: the tasks with who has each, a task in full on a click, and it follows what happens", async () => {
 	const t = await open({ pine: { limits: { maxConcurrentRuns: 4 } }, agents: { main: { agent: { subagents: { maxParallel: 2 } } } } }, [170, 40]);
 	await t.sees("type a message");
