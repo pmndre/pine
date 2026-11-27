@@ -1,13 +1,12 @@
 {
 	"manifest_version": 3,
 	"name": "Pine",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Lets your pine agents work in this browser: in a tab group of their own, with the tabs you put there.",
 	"minimum_chrome_version": "125",
 	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqbVodt0NIs2PJRtWa/jFcg16DURH3KrZo+UBpA0J3hSOVoswGEv5DAV0YQYUCmK2Ub5HwunTPoysPvGDwETVNYdPQrH9bgOMH7Pqe/TYSqxlLGCU/VtcI2aIWkMh2hiByw5OJ3MjLep8Z/2r3AdFGSTKl1YljQS//cc4HOYvRVhYHvZM6XNLWvvz2y0EbIKf4SpdMzhBl1Rnk8wCCe2ku/VeLOc/ZrSsKKUBo2JxyA8ihes6yGmFJD6C7tjiJQButAczZou8ISiYDgLGKx/P8EFhXOUI7w/tW86znv6pc4hrAAdRyY1U0HY6gfvd0XaX+Bvl9MrBdUvx8HGcLTfLZQIDAQAB",
 	"icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
 	"action": { "default_title": "Pine", "default_popup": "popup.html", "default_icon": { "16": "icons/16.png", "32": "icons/32.png" } },
 	"background": { "service_worker": "background.js" },
-	"permissions": ["debugger", "tabs", "tabGroups", "nativeMessaging", "scripting", "storage", "alarms"],
-	"host_permissions": ["<all_urls>"]
+	"permissions": ["debugger", "tabGroups", "nativeMessaging", "storage", "alarms"]
 }

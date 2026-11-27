@@ -295,6 +295,8 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 	if (source.tabId === undefined || !tabs.has(source.tabId)) return;
 	// A page from another site is another process: it is kept awake like the one before it.
 	if (!source.sessionId && method === "Page.frameNavigated" && !params?.frame?.parentId) void awake(source.tabId);
+	// The pointer's own world is this worker's business alone: the host hears of what the page has without pine.
+	if (method === "Runtime.executionContextCreated" && params?.context?.name === WORLD) return;
 	send({ ev: "cdp", tabId: source.tabId, ...(source.sessionId ? { sessionId: source.sessionId } : {}), method, params });
 });
 
@@ -305,7 +307,11 @@ chrome.debugger.onDetach.addListener((source, reason) => {
 	if (reason === "canceled_by_user") void chrome.tabs.ungroup(source.tabId).catch(() => {});
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => gone(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => {
+	gone(tabId);
+	worlds.delete(tabId);
+	drawing.delete(tabId);
+});
 
 // The owner drags a tab into a conversation's group, or out of it.
 chrome.tabs.onUpdated.addListener(async (tabId, change) => {
@@ -332,14 +338,45 @@ chrome.tabGroups.onRemoved.addListener(async (group) => {
 
 // ---- the pointer -------------------------------------------------------------------------------
 
-/** Where the agent's pointer is, drawn into the page so that the owner sees what it does. */
+/** The world the pointer is drawn in: apart from the page's own scripts, and from the ones the agent's browser server runs there. */
+const WORLD = "pine-pointer";
+/** tabId -> that world in the page the tab shows now. */
+const worlds = new Map();
+/** tabId -> the drawing under way: one after the other, so that the pointer ends where the last event put it. */
+const drawing = new Map();
+
+/**
+ * Where the agent's pointer is, drawn into the page so that the owner sees what it does. Through the
+ * debugger the tab is attached to already, so the extension needs no access to sites of its own.
+ */
 function pointer(tabId, p) {
 	if (typeof p.x !== "number" || typeof p.y !== "number" || !/^mouse(Moved|Pressed)$/.test(String(p.type))) return;
-	chrome.scripting.executeScript({ target: { tabId }, world: "ISOLATED", func: paint, args: [p.x, p.y, p.type === "mousePressed"] }).catch(() => {});
+	const args = [p.x, p.y, p.type === "mousePressed"].map((value) => ({ value }));
+	drawing.set(
+		tabId,
+		(drawing.get(tabId) ?? Promise.resolve()).then(() => draw(tabId, args)).catch(() => {}),
+	);
+}
+
+async function draw(tabId, args) {
+	if (!tabs.has(tabId)) return;
+	const call = (executionContextId) => chrome.debugger.sendCommand({ tabId }, "Runtime.callFunctionOn", { functionDeclaration: PAINT, executionContextId, arguments: args, silent: true });
+	const known = worlds.get(tabId);
+	if (known !== undefined) {
+		try {
+			return await call(known);
+		} catch {
+			// The tab shows another page now: the world went with the one before.
+		}
+	}
+	const { frameTree } = await chrome.debugger.sendCommand({ tabId }, "Page.getFrameTree");
+	const { executionContextId } = await chrome.debugger.sendCommand({ tabId }, "Page.createIsolatedWorld", { frameId: frameTree.frame.id, worldName: WORLD });
+	worlds.set(tabId, executionContextId);
+	await call(executionContextId);
 }
 
 /**
- * Runs in the page, in a world of the extension's own. The pointer is a picture and nothing else:
+ * Runs in the page, in a world of its own (WORLD). The pointer is a picture and nothing else:
  * it takes no click, is no part of what the agent reads of the page, and fades when nothing moves.
  */
 function paint(x, y, pressed) {
@@ -350,11 +387,14 @@ function paint(x, y, pressed) {
 		host.setAttribute("aria-hidden", "true");
 		host.style.cssText = "all:initial;position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647;pointer-events:none";
 		const root = host.attachShadow({ mode: "closed" });
-		const style = document.createElement("style");
-		style.textContent =
+		// A style sheet made in script: a page's own policy may forbid a style element, and has no say over this.
+		const sheet = new CSSStyleSheet();
+		sheet.replaceSync(
 			".p{position:fixed;left:0;top:0;opacity:0;transition:transform 160ms cubic-bezier(.2,.8,.2,1),opacity 300ms;will-change:transform;pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}" +
-			".n{position:absolute;left:14px;top:16px;padding:1px 6px;border-radius:8px;background:#1c7c54;color:#fff;font:600 11px/16px system-ui,sans-serif;white-space:nowrap}" +
-			".r{position:fixed;left:0;top:0;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;border:2px solid #1c7c54;opacity:0;pointer-events:none}";
+				".n{position:absolute;left:14px;top:16px;padding:1px 6px;border-radius:8px;background:#1c7c54;color:#fff;font:600 11px/16px system-ui,sans-serif;white-space:nowrap}" +
+				".r{position:fixed;left:0;top:0;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;border:2px solid #1c7c54;opacity:0;pointer-events:none}",
+		);
+		root.adoptedStyleSheets = [sheet];
 		const el = document.createElement("div");
 		el.className = "p";
 		const svg = document.createElementNS(SVG, "svg");
@@ -374,7 +414,7 @@ function paint(x, y, pressed) {
 		el.append(svg, name);
 		const ring = document.createElement("div");
 		ring.className = "r";
-		root.append(style, el, ring);
+		root.append(el, ring);
 		document.documentElement.append(host);
 		c = globalThis.pinePointer = { host, el, ring, timer: 0 };
 	}
@@ -387,6 +427,8 @@ function paint(x, y, pressed) {
 	clearTimeout(c.timer);
 	c.timer = setTimeout(() => (c.el.style.opacity = "0"), 5000);
 }
+
+const PAINT = paint.toString();
 
 // ---- what the popup asks -----------------------------------------------------------------------
 

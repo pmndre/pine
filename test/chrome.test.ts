@@ -402,7 +402,10 @@ test("live: an agent works in a tab group of the owner's own browser, in the tab
 	// The page is a tab in a group named for the conversation, and that tab is not in front.
 	const groups = await owner("chrome.tabGroups.query({})");
 	assert.deepEqual(groups.map((g: any) => g.title), ["pine · main"]);
-	const tabs = await owner(`chrome.tabs.query({groupId: ${groups[0].id}}).then(ts => ts.map(t => ({id: t.id, url: t.url})))`);
+	// (The extension is not told a tab's address: what the debugger says of the tabs it may attach to stands in for it.)
+	const inGroup: number[] = await owner(`chrome.tabs.query({groupId: ${groups[0].id}}).then(ts => ts.map(t => t.id))`);
+	const pages = (): Promise<Array<{ id: number; url: string }>> => owner("chrome.debugger.getTargets().then(ts => ts.filter(t => t.type === 'page' && t.tabId !== undefined).map(t => ({id: t.tabId, url: t.url})))");
+	const tabs = (await pages()).filter((x) => inGroup.includes(x.id));
 	const tab = tabs.find((x: any) => x.url.startsWith(base));
 	assert.ok(tab, JSON.stringify(tabs));
 
@@ -411,7 +414,12 @@ test("live: an agent works in a tab group of the owner's own browser, in the tab
 	const click = await call("browser_click", { element: "press me", ref, target: ref });
 	assert.ok(!click.failed && click.text.includes("clicked 1"), click.text);
 	assert.ok((await call("browser_take_screenshot")).picture);
-	assert.equal(await owner(`chrome.scripting.executeScript({target:{tabId:${tab.id}}, world:"ISOLATED", func: () => Boolean(globalThis.pinePointer?.host.isConnected)}).then(r => r[0].result)`), true);
+	// (The pointer's picture hangs beside the page's own content, on top of everything and taking no click.)
+	const drawn = "[...document.documentElement.children].some(e => e.getAttribute('aria-hidden') === 'true' && e.style.pointerEvents === 'none' && e.style.zIndex === '2147483647')";
+	await until(async () => (await owner(`chrome.debugger.sendCommand({tabId:${tab!.id}}, "Runtime.evaluate", {expression: ${JSON.stringify(drawn)}, returnByValue: true}).then(r => r.result.value)`)) === true, 10_000, "the pointer in the page");
+	// The extension asks for no site and for no tab's address: what it does there, it does through the debugger.
+	assert.deepEqual(await owner("chrome.runtime.getManifest().host_permissions ?? []"), []);
+	assert.deepEqual(await owner("chrome.runtime.getManifest().permissions.filter(p => ['scripting', 'tabs', 'activeTab'].includes(p))"), []);
 
 	// A tab of the owner's outside the group is none of the agent's. Dragged into the group, it is, and the agent is told and reads it.
 	const theirs = await owner(`chrome.tabs.create({url: ${JSON.stringify(`${base}/owner`)}, active: false}).then(t => t.id)`);
@@ -434,6 +442,6 @@ test("live: an agent works in a tab group of the owner's own browser, in the tab
 	const back = await call("browser_to_pine");
 	assert.ok(!back.failed && back.text.startsWith("The browser is pine's own again."), back.text);
 	await until(async () => (await owner("chrome.debugger.getTargets().then(ts => ts.filter(t => t.attached && t.tabId !== undefined).length)")) === 0, 10_000, "nobody attached");
-	const left = await owner("chrome.tabs.query({}).then(ts => ts.map(t => t.url))");
+	const left = (await pages()).map((x) => x.url);
 	assert.ok(!left.includes(`${base}/`) && left.includes(`${base}/owner`), JSON.stringify(left));
 });

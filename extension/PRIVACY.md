@@ -37,12 +37,14 @@ nothing about you. It is gone when you remove the extension.
 
 | Permission | Why |
 |---|---|
-| `debugger` | To read and operate the pages in pine's tab groups, as an agent's browser does |
-| `tabs`, `tabGroups` | To make a tab group for a conversation and know which tabs are in it |
+| `debugger` | To read and operate the pages in pine's tab groups, as an agent's browser does, and to draw the agent's pointer there |
+| `tabGroups` | To make a tab group for a conversation and know which tabs are in it |
 | `nativeMessaging` | To talk to pine on your computer |
-| `scripting`, access to all sites | To draw the agent's pointer in a page it works in. An agent may be handed a tab of any site |
 | `storage` | To remember which group is whose while the browser runs |
 | `alarms` | To look for pine again when it was not running |
+
+The extension asks for no access to sites and is not told the addresses of your tabs. What it does
+in a page goes through the debugger, which it attaches only to the tabs in pine's tab groups.
 
 ## Changes and contact
 

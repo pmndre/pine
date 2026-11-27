@@ -7,7 +7,7 @@ built.
 
 | Part | Where | What it does |
 |---|---|---|
-| The extension | `extension/` | Manifest v3, plain JavaScript, no build step. A service worker (`background.js`) and a popup that says whether pine is connected. It makes a tab group per conversation, attaches `chrome.debugger` to the tabs of that group, forwards protocol commands and events, and draws the agent's pointer. It decides nothing |
+| The extension | `extension/` | Manifest v3, plain JavaScript, no build step. A service worker (`background.js`) and a popup that says whether pine is connected. It makes a tab group per conversation, attaches `chrome.debugger` to the tabs of that group, forwards protocol commands and events, and draws the agent's pointer (through the debugger too, in a world of the page that is the pointer's alone). It decides nothing |
 | The host | `mcp/chrome.ts` | Started by the browser for the extension (native messaging), over stdin and stdout. A WebSocket on the loopback that Playwright's server connects to with `--cdp-endpoint`, as it connects to the Pine app's `browser-host.ts`: a browser made of one conversation's tabs |
 | Registration | `src/chrome.ts` | Writes the native messaging manifest into each browser's folder (the registry on Windows), a launcher into `<home>/chrome/host`, and a copy of the extension into `<home>/chrome/extension`. Only when the owner asks; a start of pine refreshes it |
 | The browser server | `mcp/browser.ts` | `browser_to_chrome`, `browser_to_pine`, and the move (`moveNow`). Reads where the host is from `<data>/chrome/host.json`, which the host rewrites every five seconds |
@@ -59,7 +59,7 @@ is used by hand.
 | First upload | Developer console > New item > the zip. The item's id is in its address |
 | Tell pine | Add that id to `EXTENSION_IDS` (`mcp/chrome.ts`) and set `STORE` (`src/chrome.ts`) to `https://chromewebstore.google.com/detail/<id>`. Release pine: an installed pine registers the new id with the browsers at its next start |
 | Listing | The texts below, and at least one picture of 1280×800 without transparency (a page an agent works in, with its pointer). The privacy policy is `extension/PRIVACY.md`, by its address on GitHub |
-| Review | Submit. `debugger` and access to all sites get a closer look: days, sometimes weeks |
+| Review | Submit. `debugger` gets a closer look: days, sometimes weeks. The extension asks for no site (no host permission, no `scripting`, no `tabs`): what it does in a page, the pointer included, goes through the debugger, and the store's notice about broad host permissions stays away. Keep it so |
 | An update | Raise `version` in the manifest (and `PROTOCOL` in both files when a message changes meaning), pack, upload, submit |
 
 Once `STORE` is set, the app's Settings row and `pine chrome` offer the store instead of the
@@ -76,14 +76,11 @@ in `desktop/src/model.ts`), while a browser is there and the extension does not 
 | Category | Developer Tools |
 | Language | English |
 | Single purpose | Lets the AI agents of pine, a program the user runs on their own computer, operate browser tabs: the tabs of a tab group the extension makes for them, and the tabs the user drags into that group. |
-| `debugger` | The extension's purpose is to let the user's own agent read and operate web pages. It attaches the debugger only to tabs inside pine's tab groups, and uses the DevTools protocol to read the page, take pictures of it and send clicks and keys, exactly as an automated browser does. |
-| `tabs` | To create the agent's tabs and to know which tabs are in pine's tab groups, so that no other tab is touched. |
+| `debugger` | The extension's purpose is to let the user's own agent read and operate web pages. It attaches the debugger only to tabs inside pine's tab groups, and uses the DevTools protocol to read the page, take pictures of it, send clicks and keys, exactly as an automated browser does, and draw a pointer that shows the user where the agent clicks. |
 | `tabGroups` | To create and name a tab group for each conversation, and to notice when the user drags a tab into it or out of it. |
 | `nativeMessaging` | To talk to pine, which runs on the user's own computer. This is the extension's only connection: it contacts no server. |
-| `scripting` | To draw a pointer in the page that shows the user where the agent is clicking. |
 | `storage` | To remember, while the browser runs, which tab group belongs to which conversation and which tabs the agent opened. |
 | `alarms` | To look for pine again every half minute when it was not running. |
-| Host permission (all sites) | The user may hand the agent a tab of any site by dragging it into the group, and the pointer is drawn in whichever page the agent works in. |
 | Remote code | No. All code is in the package. |
 | Data usage | Website content: yes (the content of tabs in pine's groups is passed to pine on the user's own computer). Everything else: no. Not sold, not used for anything but the single purpose, not used for creditworthiness or lending. |
 
