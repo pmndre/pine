@@ -19,8 +19,8 @@ export const macKeys = (p = platform()) => p === "darwin" || p === "ios";
 /** What a newer app is on the release's page for this system, and what to do with it. */
 export function newApp(p = platform()): { what: string; how: string } {
 	if (p === "win32") return { what: "an installer", how: "download it, quit Pine and run it" };
-	if (p === "linux") return { what: "an AppImage and a .deb package", how: "download the kind you installed, quit Pine and put it in place of this one" };
-	return { what: "a disk image", how: "download it, quit Pine and put the new app in place of this one" };
+	if (p === "linux") return { what: "an AppImage and a .deb package", how: "download the kind you installed, quit Pine and replace this app with it" };
+	return { what: "a disk image", how: "download it, quit Pine and replace this app with the new one" };
 }
 
 const HELD: Record<string, string> = { "⌃": "Ctrl", "⌘": "Ctrl", "⌥": "Alt", "⇧": "Shift" };
@@ -113,28 +113,28 @@ const files = (n: number) => plural(n, "file");
  * than it did is worse than none.
  */
 export function undoLines(r: UndoResult, redo: boolean): { head: string; lines: Array<{ text: string; tone?: "good" | "warn" }> } {
-	if (!redo && r.waiting) return { head: `Withdrawn before work on it began: ${quoted(r.prompt)}`, lines: [{ text: "What you wrote is back in the message box: edit it and send it again." }] };
+	if (!redo && r.waiting) return { head: `Withdrawn before the agent started on it: ${quoted(r.prompt)}`, lines: [{ text: "Your message is back in the message box. Edit it and send it again." }] };
 	const lines: Array<{ text: string; tone?: "good" | "warn" }> = [];
-	if (!redo && r.stopped) lines.push({ text: `What was still running was stopped first (${plural(r.stopped, "task")}).` });
+	if (!redo && r.stopped) lines.push({ text: `Running work was stopped first (${plural(r.stopped, "task")}).` });
 	const f = r.restored;
 	if (f) {
 		const n = f.changed + f.removed + f.back;
 		const where = tilde(f.root);
-		if (!n) lines.push({ text: redo ? `No file had to be changed in ${where}.` : `No file had to be restored in ${where}: the message changed none that pine records.` });
+		if (!n) lines.push({ text: redo ? `No file had to be changed in ${where}.` : `No file had to be restored in ${where}. The message changed no files that pine tracks.` });
 		else {
 			const parts = [f.changed ? `${f.changed} changed back` : "", f.removed ? `${f.removed} removed` : "", f.back ? `${f.back} brought back` : ""].filter(Boolean).join(", ");
 			const names = `${f.files.join(", ")}${n > f.files.length ? `, and ${n - f.files.length} more` : ""}`;
-			lines.push({ tone: "good", text: redo ? `${files(n)} in ${where} ${n === 1 ? "is" : "are"} again as the message left ${n === 1 ? "it" : "them"} (${parts}): ${names}` : `${files(n)} restored in ${where} (${parts}): ${names}` });
+			lines.push({ tone: "good", text: redo ? `${files(n)} in ${where} ${n === 1 ? "is" : "are"} back to how the message left ${n === 1 ? "it" : "them"} (${parts}): ${names}` : `${files(n)} restored in ${where} (${parts}): ${names}` });
 		}
-		if (f.left.length) lines.push({ tone: "warn", text: `Left as ${f.left.length === 1 ? "it is" : "they are"}, too large to be recorded: ${f.left.slice(0, 8).join(", ")}` });
+		if (f.left.length) lines.push({ tone: "warn", text: `Left unchanged, too large to track: ${f.left.slice(0, 8).join(", ")}` });
 	}
 	if (r.note) lines.push({ tone: "warn", text: r.note });
-	if (redo) lines.push({ text: `Undo takes it back again${r.redo ? `; redo brings back ${r.redo === 1 ? "one more message" : `${r.redo} more messages`}` : ""}.` });
+	if (redo) lines.push({ text: `Undo takes this back again${r.redo ? `. Redo restores ${r.redo === 1 ? "one more message" : `${r.redo} more messages`}` : ""}.` });
 	else {
 		lines.push({ text: "Not undone: changes made outside this folder, files git ignores, files over 2 MB, and anything that was sent out." });
-		lines.push({ text: `What you wrote is back in the message box: edit it and send it again. Redo restores it until you send something new${r.more ? ". Undo again to take back the message before it too" : ""}.` });
+		lines.push({ text: `Your message is back in the message box. Edit it and send it again. Redo restores it until you send something new${r.more ? ". Undo again to take back the message before it as well" : ""}.` });
 	}
-	return { head: `${redo ? "Brought back" : "Taken back"}: ${quoted(r.prompt)}`, lines };
+	return { head: `${redo ? "Redone" : "Undone"}: ${quoted(r.prompt)}`, lines };
 }
 
 /** Letters in order, with anything between them: "agts" finds "src/agents.ts". Lower is better; -1 does not fit. */
@@ -170,11 +170,11 @@ export function narrow<T extends { label: string; about?: string; words?: string
 }
 
 export const MODES: Array<{ value: string; label: string; about: string }> = [
-	{ value: "auto", label: "Auto", about: "Works without asking and without a sandbox: your whole account and the network. Critical actions are still asked about." },
-	{ value: "safe", label: "Safe", about: "Works without asking inside a sandbox: the agent's own folders, no network. Asks for what lies outside." },
-	{ value: "plan", label: "Plan", about: "Looks, reads and asks, and changes nothing. The answer is a plan. Until pine restarts." },
-	{ value: "manual", label: "Manual", about: "In a sandbox, and each command, edit and message waits for your go-ahead." },
-	{ value: "bypass", label: "Bypass", about: "No sandbox and no questions. Nothing is checked. Until pine restarts." },
+	{ value: "auto", label: "Auto", about: "Works without asking and without a sandbox, with access to your whole account and the network. Still asks before critical actions." },
+	{ value: "safe", label: "Safe", about: "Works without asking inside a sandbox, limited to the agent's own folders with no network. Asks before reaching anything outside." },
+	{ value: "plan", label: "Plan", about: "Read-only: looks, reads and asks, but changes nothing. The answer is a plan. Lasts until pine restarts." },
+	{ value: "manual", label: "Manual", about: "Works in a sandbox and waits for your go-ahead before each command, edit and message." },
+	{ value: "bypass", label: "Bypass", about: "No sandbox and no questions. Nothing is checked. Lasts until pine restarts." },
 ];
 
 export const REASONING = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];

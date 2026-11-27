@@ -55,7 +55,7 @@ export function ApprovalDialog({ req }: { req: Approval }) {
 		<Dialog open onOpenChange={(open) => open || s.closeAsking()}>
 			<DialogContent showCloseButton={false} initialFocus={fields.length ? first : true} className="sm:max-w-xl">
 				<DialogHeader>
-					<DialogTitle className="flex items-center gap-2"><TriangleAlertIcon className="text-warn" /> {fields.length ? "Approval needed, and something only you have" : "Approval needed"}</DialogTitle>
+					<DialogTitle className="flex items-center gap-2"><TriangleAlertIcon className="text-warn" /> {fields.length ? "Approval needed, plus something only you can provide" : "Approval needed"}</DialogTitle>
 				</DialogHeader>
 				<ScrollArea className="-mx-4 max-h-[50vh] min-w-0 wrap-break-word flex min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
 				<div className="flex flex-col gap-3 px-4 select-text">
@@ -67,10 +67,10 @@ export function ApprovalDialog({ req }: { req: Approval }) {
 					<Printed sm text={req.summary} />
 					{/* Lines of their own inside it: a div, since the stock description is a paragraph. */}
 					<DialogDescription render={<div />}>
-						Why you are asked: {req.why}
-						{req.holds ? <div>“Allow” holds for {req.holds}: you are not asked about it again there.</div> : null}
+						Why pine is asking: {req.why}
+						{req.holds ? <div>“Allow” covers {req.holds}, so pine will not ask about it again there.</div> : null}
 						{req.remember ? <div>“Always here” stops asking about {req.remember} in this conversation.</div> : null}
-						{!req.remember && !req.holds && !fields.length ? <div>You are asked about this each time: there is no “always” for it.</div> : null}
+						{!req.remember && !req.holds && !fields.length ? <div>pine asks about this each time. It has no “always” option.</div> : null}
 					</DialogDescription>
 					{fields.length ? (
 						<FieldGroup>
@@ -82,7 +82,7 @@ export function ApprovalDialog({ req }: { req: Approval }) {
 										{about ? <FieldDescription>{about}</FieldDescription> : null}
 										<Input id={`ap-${f.name}`} ref={i === 0 ? first : undefined} aria-invalid={missing(f.name) || undefined} type={f.secret !== false ? "password" : "text"} autoComplete="off" spellCheck={false} value={values[f.name] ?? ""} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })} onKeyDown={(e) => e.key === "Enter" && allow()} />
 										{/* What becomes of the values, said once, under the last of them. */}
-										{i === fields.length - 1 ? <FieldDescription>{fields.some((f) => f.secret !== false) ? "What you type is not shown, goes into pine's .env file, and never reaches the agent or the model." : "Without it, this cannot be allowed."}</FieldDescription> : null}
+										{i === fields.length - 1 ? <FieldDescription>{fields.some((f) => f.secret !== false) ? "What you type stays hidden. It is saved in pine's .env file and never reaches the agent or the model." : "pine cannot allow this without it."}</FieldDescription> : null}
 									</Field>
 								);
 							})}

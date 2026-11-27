@@ -72,7 +72,7 @@ test("the Board tab appears with a conversation's board and shows who has what; 
 	await tab.click();
 	await sees(`${panel} [data-task="1"][data-state=done]`);
 	await sees(`${panel} [data-task="2"][data-state=blocked]`);
-	assert.match(await page.locator(`${panel} [data-task="2"]`).innerText(), /Waits for an answer[\s\S]*teal or blue\?/);
+	assert.match(await page.locator(`${panel} [data-task="2"]`).innerText(), /Waiting for an answer[\s\S]*teal or blue\?/);
 	// What the agent told all of its sub-agents stands there once, with the tasks it is for.
 	assert.match(await page.locator(`${panel} [data-note="3"]`).innerText(), /Measure against tokens\.css[\s\S]*for tasks 1–2/);
 	// What an agent wrote is text: its markup is shown, not carried out.
@@ -104,7 +104,7 @@ test("the Board tab appears with a conversation's board and shows who has what; 
 	await added.waitFor();
 	assert.match(await added.innerText(), /Open · yours/);
 	await shot("board-added");
-	await added.getByRole("button", { name: /What to do with task/ }).click();
+	await added.getByRole("button", { name: /Actions for task/ }).click();
 	await page.getByRole("menuitem", { name: "Remove" }).click();
 	await added.waitFor({ state: "detached" });
 	assert.deepEqual((await call("GET", "/boards/1")).data.tasks.map((t: any) => [t.id, t.state]), [[1, "done"], [2, "open"]]);

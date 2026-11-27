@@ -104,7 +104,7 @@ test("a subscription reaches a model: pine names the one its agents run on now, 
 	await sees("[data-card=sign-in-card] [data-sign-in=code]");
 	// The owner signs in in the browser.
 	fs.writeFileSync(browserDone, "sk-ant-not-a-real-key-0123456789");
-	await sees("[data-slot=setup-model] >> text=/Your agents run on anthropic\\//");
+	await sees("[data-slot=setup-model] >> text=/Your agents now run on anthropic\\//");
 	await question("Keep this model?");
 	const options = await page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
 	assert.deepEqual(options, ["Go on", "Choose another model"]);
@@ -123,7 +123,7 @@ test("a reload draws the steps again from the daemon's state, and nothing of the
 	await page.reload();
 	await sees("[data-slot=conversation-head] >> text=Setup Pine");
 	await sees("[data-slot=setup-welcome]");
-	await sees("[data-slot=setup-model] >> text=/Your agents run on anthropic\\//");
+	await sees("[data-slot=setup-model] >> text=/Your agents now run on anthropic\\//");
 	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=Claude");
 	await question("Keep this model?");
 	const history = (await api("GET", "/tasks?agent=main&session=setup&limit=40")) as any[];

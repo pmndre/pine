@@ -22,7 +22,7 @@ import type { SetupAnswer, SetupContext, SetupFacts } from "./types.ts";
 const FIRST = "How should your agents run?";
 const KEEP = "Keep this model?";
 /** pine's one line for what the owner typed that names no option, while no model can answer it. */
-export const NO_MODEL_LINE = "There is no model yet to answer that. Pick one of the options, or type its name: what each one means is in its description.";
+export const NO_MODEL_LINE = "There is no model yet to answer that. Pick one of the options, or type an option's name. Each description explains what the option means.";
 
 /** Text and labels compared as the owner may type them: any case, spaces at the ends and in between not counted. */
 const plain = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
@@ -196,7 +196,7 @@ export function SetupScript({ tab }: { tab: Tab }) {
 			<Message data-slot="setup-welcome">
 				<MessageContent className="select-text">
 					<p>
-						This conversation sets pine up. Your agents need a model to think with, and that is the one thing pine needs before they can answer you: choose below how they should run. Once a model answers, {facts.main.id} takes over here for the rest, as far as you want to go today.
+						This conversation sets pine up. Your agents need a model to think with, and that is the one thing pine needs before they can answer you. Choose below how they should run. Once a model answers, {facts.main.id} takes over here and helps with the rest, as far as you want to go today.
 					</p>
 				</MessageContent>
 			</Message>
@@ -214,7 +214,7 @@ export function SetupScript({ tab }: { tab: Tab }) {
 							<CpuIcon />
 						</MarkerIcon>
 						<MarkerContent>
-							Your agents run on <b className="font-mono">{facts.main.model}</b> now.
+							Your agents now run on <b className="font-mono">{facts.main.model}</b>.
 						</MarkerContent>
 					</Marker>
 				</div>

@@ -245,7 +245,7 @@ test("Settings > Browser access: a relay server is saved from its fields and tri
 		const section = "[data-slot=settings-page]";
 		const relay = `${section} [data-setting=access-relay]`;
 		await sees(`${relay} >> text=Relay server (TURN)`);
-		await sees(`${relay} >> text=Used when no direct connection can be made, for example from some mobile networks. Leave it empty if you have none.`);
+		await sees(`${relay} >> text=Used when a direct connection is not possible, for example on some mobile networks. Leave this empty if you have no relay.`);
 		await page.locator(`${relay} [data-slot=relay-address]`).fill(`turn:127.0.0.1:${turn.port}`);
 		await page.locator(`${relay} [data-slot=relay-username]`).fill(TURN_USER);
 		await page.locator(`${relay} [data-slot=relay-password]`).fill(TURN_PASSWORD);

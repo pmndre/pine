@@ -114,7 +114,7 @@ test("what answered on this computer is offered; a server that wants a key asks 
 	assert.equal(await page.$(`${local} [data-setup=address]`), null, "no address card");
 	await shot("setup-local-02-key");
 	await fill("key", KEY, "Unlock");
-	await sees("[data-slot=setup-model] >> text=/Your agents run on lmstudio\\/gemma/");
+	await sees("[data-slot=setup-model] >> text=/Your agents now run on lmstudio\\/gemma/");
 	assert.doesNotMatch(await page.textContent("[data-slot=message-scroller-content]"), new RegExp(KEY));
 	assert.deepEqual(await api("GET", "/tasks?agent=main&session=setup&limit=40"), []);
 	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=LM Studio");
@@ -125,7 +125,7 @@ test("Pinecone adds its model server and its MCP server for all agents", async (
 	await pick("A model on this computer");
 	await question("Which server?");
 	await pick("Pinecone");
-	await sees("[data-slot=setup-model] >> text=/Your agents run on pinecone\\/qwen3/");
+	await sees("[data-slot=setup-model] >> text=/Your agents now run on pinecone\\/qwen3/");
 	const mcp = ((await api("GET", "/mcp")) as any[]).find((s) => s.name === "pinecone");
 	assert.ok(mcp, "Pinecone's MCP server is there");
 	assert.equal(mcp.scope, "global", "for all agents");
@@ -179,5 +179,5 @@ test("with nothing found, the owner types the address of a server, and it reache
 	await fill("address", "http://127.0.0.1:1", "Connect");
 	await sees(`${local} [data-slot=field-error] >> text=/no model server answers/`);
 	await fill("address", `http://127.0.0.1:${other.port}`, "Connect");
-	await sees("[data-slot=setup-model] >> text=/Your agents run on .*\\/phi/");
+	await sees("[data-slot=setup-model] >> text=/Your agents now run on .*\\/phi/");
 });

@@ -50,7 +50,7 @@ export function relayAddress(value: string): { address: string; hostname: string
 	if (!host.startsWith("[") && (!/[A-Za-z0-9]/.test(hostname) || hostname.startsWith(".") || hostname.startsWith("-"))) throw new Error(RELAY_FORM);
 	const port = portText ? Number(portText) : 3478;
 	if (port < 1 || port > 65535) throw new Error(RELAY_FORM);
-	if (scheme === "turns" || transport === "tcp") throw new Error(`Browser access can only use turn: over UDP today, not TCP or TLS: write the relay's UDP address instead, for example turn:${host}:3478, without ?transport=tcp.`);
+	if (scheme === "turns" || transport === "tcp") throw new Error(`Browser access currently supports only turn: over UDP, not TCP or TLS. Write the relay's UDP address instead, for example turn:${host}:3478, without ?transport=tcp.`);
 	return { address: `turn:${host}:${port}${transport ? `?transport=${transport}` : ""}`, hostname, port };
 }
 
@@ -222,18 +222,18 @@ export interface AccessControl {
 
 // The page shows these as they are: they name this computer as the page does ("this Mac" on macOS).
 const COMPUTER = computerWord(process.platform);
-const NO_KEYCHAIN = `This ${COMPUTER}'s keychain cannot be used here, and browser access keeps this ${COMPUTER}'s key encrypted by it: browser access cannot be turned on.`;
-const NO_ADDRESS = "Browser access needs the address of the service a browser opens: write the address of your own deployment of pine's web client.";
-const REPLACED = `Another copy of Pine with this ${COMPUTER}'s key waits at the service now, so this one stopped. Turn browser access off and on again to wait here.`;
+const NO_KEYCHAIN = `Browser access cannot be turned on. It keeps this ${COMPUTER}'s key encrypted with the keychain, and the keychain cannot be used here.`;
+const NO_ADDRESS = "Browser access needs the address of the service that a browser opens. Enter the address of your own deployment of pine's web client.";
+const REPLACED = `Another copy of Pine with this ${COMPUTER}'s key is now waiting at the service, so this one stopped. Turn browser access off and on again to wait here instead.`;
 
 /** What a try of the relay found, said under its field. Nothing here repeats the user name or the password. */
 const TRIED: Record<RelayTry | "trying", { result: "trying" | "usable" | "failed"; message: string }> = {
 	trying: { result: "trying", message: "Trying the relay..." },
-	usable: { result: "usable", message: `This relay works: it gave this ${COMPUTER} an address.` },
-	refused: { result: "failed", message: "Could not use this relay: it refused the user name or password. It is kept; check them and save again." },
-	silent: { result: "failed", message: "Could not use this relay: it did not answer. It is kept and used when it answers; check the address and that the server is running." },
-	unknown: { result: "failed", message: "Could not use this relay: no server was found under that name. It is kept; check the address." },
-	unavailable: { result: "failed", message: "Could not try this relay: browser access cannot connect on this system." },
+	usable: { result: "usable", message: `This relay works. It gave this ${COMPUTER} an address.` },
+	refused: { result: "failed", message: "Could not use this relay because it refused the user name or password. The relay is saved. Check both and save again." },
+	silent: { result: "failed", message: "Could not use this relay because it did not answer. The relay is saved and will be used once it answers. Check the address and that the server is running." },
+	unknown: { result: "failed", message: "Could not use this relay because no server was found under that name. The relay is saved. Check the address." },
+	unavailable: { result: "failed", message: "Could not try this relay because browser access cannot connect on this system." },
 };
 
 /** The relay of the preferences as the host is handed it, without its password. */
@@ -516,7 +516,7 @@ export function createAccessControl(options: AccessControlOptions): AccessContro
 					} catch (e) {
 						// Nothing was changed: the host comes back as it was.
 						await up(options.prefs.read());
-						throw new Error(`The relay's password could not be kept, so nothing was changed: ${e instanceof Error && e.message === NO_KEYCHAIN ? NO_KEYCHAIN : "the password file could not be written. Try again."}`);
+						throw new Error(`Could not save the relay's password, so nothing was changed: ${e instanceof Error && e.message === NO_KEYCHAIN ? NO_KEYCHAIN : "the password file could not be written. Try again."}`);
 					}
 				}
 				options.prefs.write(prefs);
@@ -552,7 +552,7 @@ export function createAccessControl(options: AccessControlOptions): AccessContro
 			const now = asking;
 			if (!now) throw new Error("No device is waiting for an answer now.");
 			// The answer is to the question the owner saw: never to another one that took its place meanwhile.
-			if (id !== now.request.id) throw new Error("That device is no longer the one asking: look at the question again.");
+			if (id !== now.request.id) throw new Error("That device is no longer the one asking. Check the question again.");
 			asking = undefined;
 			now.resolve(yes === true);
 			emit();

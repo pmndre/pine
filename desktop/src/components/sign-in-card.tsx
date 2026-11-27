@@ -50,7 +50,7 @@ export function SignInCard({ provider, url, code, question, error, onOpen, onCop
 				error={error}
 				label={question.message}
 				type={question.secret ? "password" : "text"}
-				help={question.secret ? "It is not shown, and goes straight to the sign-in: no agent and no model reads it." : undefined}
+				help={question.secret ? "What you type stays hidden and goes straight to the sign-in. No agent or model reads it." : undefined}
 				button="Continue"
 				start={cancel}
 				onSend={onAnswer}

@@ -38,7 +38,7 @@ test("command: the link goes into a folder of the PATH that is the owner's, and 
 		const made = await install(w.resources, env, w.home);
 		assert.deepEqual(made, { state: "here", at: path.join(own, "pine") });
 		assert.equal(fs.readlinkSync(path.join(own, "pine")), path.join(w.resources, "bin", "pine"));
-		assert.match(said(made), /is the pine of this app/);
+		assert.match(said(made), /is this app's pine/);
 		// A second time changes nothing.
 		assert.deepEqual(await install(w.resources, env, w.home), made);
 
@@ -58,7 +58,7 @@ test("command: a pine that was installed by itself is left alone", { skip: links
 		const env = { PATH: [own, npm].join(path.delimiter) };
 		const now = look(w.resources, env, w.home);
 		assert.deepEqual(now, { state: "other", at: path.join(npm, "pine") });
-		assert.match(said(now), /another pine .*leaves it alone/);
+		assert.match(said(now), /a different pine .*leaves it alone/);
 		// Neither setting up nor removing does anything to it, or beside it.
 		assert.deepEqual(await install(w.resources, env, w.home), now);
 		assert.deepEqual(await remove(w.resources, env, w.home), now);
@@ -70,7 +70,7 @@ test("command: a pine that was installed by itself is left alone", { skip: links
 		fs.writeFileSync(path.join(own, "pine"), "notes, not a program\n", { mode: 0o644 });
 		const kept = await install(w.resources, env2, w.home);
 		assert.equal(kept.state, "none");
-		assert.match(kept.why ?? "", /does not replace it/);
+		assert.match(kept.why ?? "", /will not replace it/);
 		assert.equal(fs.readFileSync(path.join(own, "pine"), "utf8"), "notes, not a program\n");
 		fs.rmSync(path.join(own, "pine"));
 		fs.symlinkSync("/somewhere/else/pine", path.join(own, "pine"));
@@ -103,7 +103,7 @@ test("command: without a folder to write, the shared one and a password; from a 
 		fs.chmodSync(closed, 0o555);
 		const env = { PATH: [closed, "/usr/bin", "/bin"].join(path.delimiter) };
 		assert.deepEqual(look(w.resources, env, w.home), { state: "none", at: "/usr/local/bin/pine", password: true });
-		assert.match(said(look(w.resources, env, w.home)), /into \/usr\/local\/bin.*asks for your password/);
+		assert.match(said(look(w.resources, env, w.home)), /to \/usr\/local\/bin.*will ask for your password/);
 
 		// What the system is asked to run with the password: the path is an argument, never a part of the script.
 		const odd = `/Applications/It's "Pine"; rm -rf ~.app/Contents/Resources/bin/pine`;
@@ -162,7 +162,7 @@ test("command: an AppImage's link leads to the AppImage, never into the folder u
 		// In a Linux package the link leads to the launcher in the app, as on a Mac; the password is the system's.
 		const closed = w.dir("closed");
 		fs.chmodSync(closed, 0o555);
-		assert.match(said(look(w.resources, { PATH: closed }, w.home, "linux"), "linux"), /into \/usr\/local\/bin.*The system asks for your password/);
+		assert.match(said(look(w.resources, { PATH: closed }, w.home, "linux"), "linux"), /to \/usr\/local\/bin.*The system will ask for your password/);
 		fs.chmodSync(closed, 0o755);
 	} finally {
 		fs.rmSync(mount, { recursive: true, force: true });
@@ -180,11 +180,11 @@ test("command: on Windows the folder the installer put into the PATH is the app'
 		// Not on the PATH: the installer puts it there.
 		const none = look(resources, { Path: npm }, w.home, "win32");
 		assert.equal(none.state, "unavailable");
-		assert.match(said(none, "win32"), /installer puts pine into your PATH/);
+		assert.match(said(none, "win32"), /installer adds pine to your PATH/);
 		// On the PATH (by whatever name Windows gives the variable, with a separator at the end or not): the app's.
 		const here = look(resources, { Path: `${npm};${bin}\\` }, w.home, "win32");
 		assert.deepEqual(here, { state: "here", at: path.join(bin, "pine.cmd"), managed: true });
-		assert.match(said(here, "win32"), /uninstalling Pine takes it away/);
+		assert.match(said(here, "win32"), /uninstalling Pine removes it/);
 		assert.deepEqual(await install(resources, { Path: bin }, w.home, "win32"), here);
 		assert.deepEqual(await remove(resources, { Path: bin }, w.home, "win32"), here);
 		assert.equal(fs.existsSync(path.join(bin, "pine.cmd")), true);

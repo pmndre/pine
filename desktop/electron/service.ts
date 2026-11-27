@@ -239,7 +239,7 @@ export function connect(launch: Launch, opts: { home?: string; keep?: boolean } 
 		};
 		const timer = setTimeout(() => {
 			child.kill("SIGTERM");
-			fail(new ServiceError("failed", `pine did not come up within a minute.${err.trim() ? ` It said: ${err.trim().slice(-400)}` : ""}`));
+			fail(new ServiceError("failed", `pine did not start within a minute.${err.trim() ? ` It said: ${err.trim().slice(-400)}` : ""}`));
 		}, 60_000);
 		child.stderr?.on("data", (d: Buffer) => (err = (err + d.toString("utf8")).slice(-4000)));
 		child.stdout!.on("data", (d: Buffer) => {
@@ -288,7 +288,7 @@ export function connect(launch: Launch, opts: { home?: string; keep?: boolean } 
 		child.on("error", (e) => (clearTimeout(timer), fail(new ServiceError("failed", `pine could not be started: ${e.message}`))));
 		child.on("close", (code) => {
 			clearTimeout(timer);
-			if (!settled) fail(new ServiceError(/pine init|no pine home/i.test(err) ? "no-home" : "failed", err.trim().slice(-600) || `pine ended at once (exit ${code}) without saying why. An older pine has no "service" command: update it with "pine update".`));
+			if (!settled) fail(new ServiceError(/pine init|no pine home/i.test(err) ? "no-home" : "failed", err.trim().slice(-600) || `pine exited right away (exit ${code}) without giving a reason. An older pine has no "service" command, so update it with "pine update".`));
 		});
 	});
 }

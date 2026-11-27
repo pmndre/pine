@@ -208,7 +208,7 @@ export const SearchFindsNothing: Story = {
 	args: { section: "general" },
 	play: async ({ canvas, userEvent }) => {
 		await userEvent.type(await canvas.findByRole("searchbox", { name: "Search Settings" }), "zzqqxx");
-		await canvas.findByText("Nothing in Settings fits");
+		await canvas.findByText("No matches in Settings");
 	},
 };
 
@@ -239,7 +239,7 @@ export const EnvironmentsMultiWindow: Story = {
 		await expect(within(studio).getByText("in another window")).toBeVisible();
 		await expect(canvasElement.querySelectorAll('[data-slot="open-in-new-window"]')).toHaveLength(3);
 		await userEvent.click(within(studio).getByRole("button", { name: "Forget" }));
-		await expect(await within(document.body).findByRole("button", { name: "Close its window and forget" })).toBeVisible();
+		await expect(await within(document.body).findByRole("button", { name: "Close the window and forget" })).toBeVisible();
 	},
 };
 

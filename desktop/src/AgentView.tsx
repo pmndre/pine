@@ -92,17 +92,17 @@ export function AgentView({ tab }: { tab: Tab }) {
 				</ItemActions>
 			</Item>
 			<div className="mt-0.5 flex flex-wrap gap-1.5 px-3.5">
-				<HoverTooltip><TooltipTrigger render={<Badge variant="outline" render={<button type="button" onClick={() => void s.pickModel(tab)} />}><CpuIcon data-icon="inline-start" />{info.model}</Badge>} /><TooltipContent>The model it runs on</TooltipContent></HoverTooltip>
-				<HoverTooltip><TooltipTrigger render={<Badge variant="outline" render={<button type="button" onClick={() => void s.pickReasoning(tab)} />}><SparkleIcon data-icon="inline-start" />reasoning {info.thinking}</Badge>} /><TooltipContent>How long the model thinks before it answers</TooltipContent></HoverTooltip>
-				<HoverTooltip><TooltipTrigger render={<Badge variant="outline" render={<button type="button" onClick={() => void s.pickMode(tab)} />}><ShieldIcon data-icon="inline-start" />{info.mode} · {info.mode === "auto" || info.mode === "bypass" ? "your account" : "in a sandbox"}</Badge>} /><TooltipContent>{mode?.about ?? "How much it asks and how far it reaches"}</TooltipContent></HoverTooltip>
-				{info.delegates.length ? <Badge variant="outline">hands work to {info.delegates.includes("*") ? (info.main ? "all other agents" : `all agents except ${store.agents.find((a) => a.main)?.id ?? "the main one"}`) : info.delegates.join(", ")}</Badge> : null}
+				<HoverTooltip><TooltipTrigger render={<Badge variant="outline" render={<button type="button" onClick={() => void s.pickModel(tab)} />}><CpuIcon data-icon="inline-start" />{info.model}</Badge>} /><TooltipContent>The model this agent runs on</TooltipContent></HoverTooltip>
+				<HoverTooltip><TooltipTrigger render={<Badge variant="outline" render={<button type="button" onClick={() => void s.pickReasoning(tab)} />}><SparkleIcon data-icon="inline-start" />reasoning {info.thinking}</Badge>} /><TooltipContent>How long the model thinks before answering</TooltipContent></HoverTooltip>
+				<HoverTooltip><TooltipTrigger render={<Badge variant="outline" render={<button type="button" onClick={() => void s.pickMode(tab)} />}><ShieldIcon data-icon="inline-start" />{info.mode} · {info.mode === "auto" || info.mode === "bypass" ? "your account" : "in a sandbox"}</Badge>} /><TooltipContent>{mode?.about ?? "How often the agent asks you, and what it can reach"}</TooltipContent></HoverTooltip>
+				{info.delegates.length ? <Badge variant="outline">delegates to {info.delegates.includes("*") ? (info.main ? "all other agents" : `all agents except ${store.agents.find((a) => a.main)?.id ?? "the main one"}`) : info.delegates.join(", ")}</Badge> : null}
 			</div>
 
 			{tab.busy || helpers.length || elsewhere.length ? (
 				<section className={SECTION}>
 					{/* Each ItemMedia here is an icon's box (size-4): ItemMedia puts its content at the top beside a title with a
 					   description, and a dot smaller than an icon would sit above the middle of the title's line. */}
-					<h3 className={TITLE}>At work</h3>
+					<h3 className={TITLE}>Working</h3>
 					{tab.busy ? (
 						<Item size="xs">
 							<ItemMedia className="size-4"><Pulse /></ItemMedia>
@@ -127,7 +127,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 							<ItemMedia className="size-4"><Pulse /></ItemMedia>
 							<ItemContent>
 								<ItemTitle>{session}</ItemTitle>
-								<ItemDescription>another conversation of {tab.agent}</ItemDescription>
+								<ItemDescription>another conversation with {tab.agent}</ItemDescription>
 							</ItemContent>
 							<ItemActions><Badge variant="secondary">open</Badge></ItemActions>
 						</Item>
@@ -144,9 +144,9 @@ export function AgentView({ tab }: { tab: Tab }) {
 								<ItemTitle>{x.name}</ItemTitle>
 								<ItemDescription>{(x.local ?? x.agent ?? x.global)?.note || x.description || x.type}</ItemDescription>
 							</ItemContent>
-							<ItemActions><Badge variant="secondary">{x.local ? "this conversation" : x.agent ? "as an agent" : "all agents"}</Badge></ItemActions>
+							<ItemActions><Badge variant="secondary">{x.local ? "this conversation" : x.agent ? "this agent" : "all agents"}</Badge></ItemActions>
 						</Item>
-					)) : <div className={NONE}>Nothing wakes it by itself.{could > 0 ? ` ${could} event source${could === 1 ? "" : "s"} could: ask it to watch one, or subscribe it under Events.` : " Ask it to watch something (“tell me when a file lands in ~/Scans”)."}</div>}
+					)) : <div className={NONE}>Nothing wakes this agent yet.{could > 0 ? ` It can listen to ${could} event source${could === 1 ? "" : "s"}. Ask it to watch one, or subscribe it under Events.` : " Ask it to watch something, like “tell me when a file lands in ~/Scans”."}</div>}
 				</AgentSection>
 			}
 			{
@@ -163,7 +163,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 								{tag ? <ItemActions><Badge variant="secondary">{tag}</Badge></ItemActions> : null}
 							</Item>
 						);
-					}) : <div className={NONE}>Nothing is scheduled. Ask it (“every morning at seven …”).</div>}
+					}) : <div className={NONE}>Nothing is scheduled. Ask the agent, for example “every morning at seven …”.</div>}
 				</AgentSection>
 			}
 			{
@@ -180,7 +180,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 								{tag ? <ItemActions><Badge variant="secondary">{tag}</Badge></ItemActions> : null}
 							</Item>
 						);
-					}) : <div className={NONE}>No skills yet. Ask it to “make a skill for this”.</div>}
+					}) : <div className={NONE}>No skills yet. Ask the agent to “make a skill for this”.</div>}
 				</AgentSection>
 			}
 			{
@@ -201,11 +201,11 @@ export function AgentView({ tab }: { tab: Tab }) {
 				</AgentSection>
 			}
 			{detail.data && memory === undefined ? null : (
-				<AgentSection title="What it remembers" {...state(detail)}>
+				<AgentSection title="Memory" {...state(detail)}>
 					{memory ? <Printed capped text={short(memory, 6000)} className="mx-3.5 w-auto" contentClassName={CODE_LINES} /> : <div className={NONE}>MEMORY.md is empty.</div>}
 				</AgentSection>
 			)}
-			{detail.data ? <div className={cn(NONE, "pb-4")}>The agent's workspace is {detail.data.workspace}; the Files view shows {tab.folder ? "the folder this conversation works in" : "it"}.</div> : null}
+			{detail.data ? <div className={cn(NONE, "pb-4")}>The agent's workspace is {detail.data.workspace}. The Files view shows {tab.folder ? "this conversation's folder instead" : "it"}.</div> : null}
 		</div>
 		</ScrollArea>
 	);

@@ -132,7 +132,7 @@ function KeyCard({ run, name, ctx }: { run: SignInRun; name: string; ctx: SetupC
 			{...card}
 			label={q && !q.secret ? q.message : "API key"}
 			type={q && !q.secret ? "text" : "password"}
-			help="It is not shown, and goes straight to pine's store of keys: no agent and no model reads it."
+			help="What you type stays hidden and goes straight to pine's key store. No agent or model reads it."
 			button="Save"
 			waiting={!q || sent}
 			onSend={(key) => {
@@ -164,7 +164,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 				question={WHICH}
 				header="API key"
 				from="pine asks"
-				options={[...ids.map((id) => ({ label: KEY_PROVIDERS[id].title, description: KEY_PROVIDERS[id].about })), { label: ANOTHER, description: "Search among every provider pine knows." }]}
+				options={[...ids.map((id) => ({ label: KEY_PROVIDERS[id].title, description: KEY_PROVIDERS[id].about })), { label: ANOTHER, description: "Search all providers pine knows." }]}
 				autoFocus
 				actions={<Button size="sm" variant="ghost" onClick={ctx.back}>Back</Button>}
 				onAnswer={([n]) => {
@@ -182,7 +182,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 			<Item variant="outline" size="sm" data-slot="setup-signed-in">
 				<ItemContent>
 					<ItemTitle>Key saved for {picked.name}</ItemTitle>
-					<ItemDescription className="line-clamp-none">{run.state?.chosen ? `Your agents run on ${run.state.chosen} now.` : "Choose the model your agents run on."}</ItemDescription>
+					<ItemDescription className="line-clamp-none">{run.state?.chosen ? `Your agents now run on ${run.state.chosen}.` : "Choose the model your agents run on."}</ItemDescription>
 				</ItemContent>
 				{run.state?.chosen ? null : (
 					<ItemActions>

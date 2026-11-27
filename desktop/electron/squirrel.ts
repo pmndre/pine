@@ -6,7 +6,7 @@ import type { Updater } from "./updater.ts";
 import { ahead, type UpdaterState } from "./updates.ts";
 
 export const FAILED = "The update could not be downloaded or installed here.";
-export const READ_ONLY = "This app cannot replace itself where it is (the disk image, or a folder it cannot write): move it to Applications.";
+export const READ_ONLY = "This app cannot replace itself where it is now (on the disk image, or in a folder it cannot write to). Move it to Applications.";
 
 /** Minimal surface of Electron's autoUpdater used by Squirrel.Mac. */
 export interface SquirrelAutoUpdater {

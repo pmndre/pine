@@ -478,8 +478,8 @@ test("no key in the menus does two things, and the window closes as on a Mac: by
 	const as = (key: string) => key.split("+").map((p) => word[p.toLowerCase()] ?? p.toLowerCase()).sort().join("+");
 	const owners = new Map<string, string[]>();
 	for (const i of items) owners.set(as(i.key), [...(owners.get(as(i.key)) ?? []), i.label]);
-	// Electron's Redo and pine's Take Back Last Message share ⇧⌘Z on a Mac too: that is left as it is there.
-	const twice = [...owners].filter(([key, who]) => who.length > 1 && !(key === as("Shift+CmdOrCtrl+Z") && who.length === 2 && who.includes("Redo") && who.includes("Take Back Last Message")));
+	// Electron's Redo and pine's Undo Last Message share ⇧⌘Z on a Mac too: that is left as it is there.
+	const twice = [...owners].filter(([key, who]) => who.length > 1 && !(key === as("Shift+CmdOrCtrl+Z") && who.length === 2 && who.includes("Redo") && who.includes("Undo Last Message")));
 	assert.deepEqual(twice, [], `keys that do two things: ${JSON.stringify(twice)}`);
 	assert.deepEqual(owners.get(as("CmdOrCtrl+W")), ["Close Tab"]);
 	assert.ok(!items.some((i) => i.label === "Close"), "a menu item closes the window");
@@ -520,7 +520,7 @@ test("text selected in an answer is quoted: a badge above the input, a markdown 
 	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=old copy of the lockfile");
 	assert.equal(await page.$("[data-slot=selection-toolbar]"), null);
 	// A click on the badge above the input goes back to the answer.
-	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: /Go to where you quoted/ }).click();
+	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: /Go to the quoted text/ }).click();
 	await lit();
 	await unlit();
 	// Sent, the quote goes first, as markdown: that is what the agent reads.
@@ -534,15 +534,15 @@ test("text selected in an answer is quoted: a badge above the input, a markdown 
 	const sent = page.locator("[data-item=user]").last();
 	assert.equal(await sent.locator("[data-slot=quote-chip]").count(), 1);
 	assert.doesNotMatch(await sent.textContent(), /> old copy/);
-	await sent.locator("[data-slot=quote-chip]").getByRole("button", { name: /Go to where you quoted/ }).click();
+	await sent.locator("[data-slot=quote-chip]").getByRole("button", { name: /Go to the quoted text/ }).click();
 	await lit();
 	await unlit();
 	// Taken back, the quote is a badge above the input again and the rest is in the input, and the badge still finds its answer.
 	await menu("undo");
-	await sees("[data-slot=marker][data-tone=accent] >> text=Taken back");
+	await sees("[data-slot=marker][data-tone=accent] >> text=Undone");
 	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=old copy of the lockfile");
 	assert.match(await page.inputValue("[data-slot=composer] textarea"), /^why is that\? /);
-	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: /Go to where you quoted/ }).click();
+	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: /Go to the quoted text/ }).click();
 	await page.waitForFunction(() => [...document.querySelectorAll("[data-item=answer]")].some((e) => e.textContent!.includes("QUOTE-SOURCE") && (e.closest("[data-message-id]")?.getAnimations().length ?? 0) > 0));
 	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: "Remove quote" }).click();
 	assert.equal(await page.$("[data-slot=composer] [data-slot=quote-chip]"), null);
@@ -908,7 +908,7 @@ test("an approval is asked in a dialog and answered from it; a question is a car
 test("a value only the owner has, left empty, is marked as missing in the approval and nothing is allowed", { skip: process.platform === "win32" && "a local MCP server needs a sandbox, and Windows has none of pine's" }, async () => {
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "add_mcp_server", args: { name: "keyed", command: "npx -y example-mcp", secrets: ["EXAMPLE_KEY"] } }] }, { text: "not added then" }], "add a server with a key "));
 	await page.keyboard.press("Enter");
-	const asked = "role=dialog[name=/^Approval needed, and something only you have/]";
+	const asked = "role=dialog[name=/^Approval needed, plus something only you can provide/]";
 	await sees(asked);
 	const field = page.locator(asked).locator("[data-slot=field]", { has: page.locator("#ap-EXAMPLE_KEY") });
 	assert.equal(await field.getAttribute("data-invalid"), null, "not marked before the owner tried to allow it");
@@ -970,7 +970,7 @@ test("what is asked is answered from the conversation too: an approval by its bu
 	await shows("Which shade?");
 	await page.locator(card).getByRole("button", { name: "Later" }).click();
 	await page.waitForSelector(card, { state: "detached" });
-	const waits = page.locator("[data-slot=marker]", { hasText: "A question waits for your answer." });
+	const waits = page.locator("[data-slot=marker]", { hasText: "A question is waiting for your answer." });
 	await waits.waitFor();
 	await waits.getByRole("button", { name: "Open" }).click();
 	await page.locator(card).getByRole("radio", { name: /green/ }).click();
@@ -1029,7 +1029,7 @@ test("a question of another conversation is never answered from this one: no car
 	const ask = { tools: [{ name: "question", args: { question: "Which room?", options: [{ label: "kitchen" }, { label: "hall" }] } }] };
 	const started = await api("POST", "/agents/main/prompt", { prompt: mockMsg([ask, { text: "room chosen" }], "ask from elsewhere "), session: "elsewhere-q", wait: false });
 	assert.ok(started.ok, JSON.stringify(started));
-	const waits = page.locator("[data-slot=marker]", { hasText: /another conversation waits for you/ });
+	const waits = page.locator("[data-slot=marker]", { hasText: /has a question for you in another conversation/ });
 	await waits.waitFor({ timeout: 20_000 });
 	assert.equal(await page.$(card), null, "no card for another conversation's question");
 	assert.doesNotMatch((await page.getAttribute(field, "placeholder")) ?? "", /answer/i);
@@ -1199,7 +1199,7 @@ test("a sign-in's choices are a question card answered by a pick; what it then a
 	await page.waitForSelector(card, { state: "detached" });
 	await sees('[data-item="approval"][data-state="allowed"] >> text=/Bearer token/');
 	// The token the flow asks next is typed: that request has only a field, and opens the approval dialog.
-	const typed = "role=dialog[name=/^Approval needed, and something only you have/]";
+	const typed = "role=dialog[name=/^Approval needed, plus something only you can provide/]";
 	await sees(typed);
 	assert.match(await page.textContent(typed), /bearer token/i);
 	assert.equal(await page.locator(card).count(), 0);
@@ -1222,7 +1222,7 @@ test("a folder is opened for a conversation: changes, and a file edited and save
 	await sees("[data-slot=code-panel] [role=tab][aria-selected=true] >> text=Files");
 	await page.locator("[data-slot=code-panel]").getByRole("tab", { name: "Agent" }).click();
 	await sees("[data-slot=code-panel] [data-slot=item-title] >> text=main");
-	assert.match(await page.textContent("[data-slot=code-panel]"), /it administers pine[\s\S]*mock\/m[\s\S]*hands work to scout/);
+	assert.match(await page.textContent("[data-slot=code-panel]"), /it administers pine[\s\S]*mock\/m[\s\S]*delegates to scout/);
 	// The panel is as wide as it is dragged, by the edge before it, and the keyboard moves that edge too.
 	const was = await page.$eval("[data-slot=code-panel]", (el: Element) => el.getBoundingClientRect().width);
 	const edge = await page.$eval(CODE_EDGE, (el: Element) => el.getBoundingClientRect());
@@ -1321,7 +1321,7 @@ test("a file is opened from the panel's tree, its changes and its search with th
 	// So are the changes: Tab from the refresh button, Enter opens the diff.
 	await page.locator("[data-slot=code-panel]").getByRole("tab", { name: "Changes" }).click();
 	await sees("[data-slot=code-panel] [role=listbox] [role=option]");
-	await page.focus("[data-slot=code-panel] button[aria-label='Read again']");
+	await page.focus("[data-slot=code-panel] button[aria-label='Refresh']");
 	await page.keyboard.press("Tab");
 	assert.equal((await focused()).role, "option");
 	await page.keyboard.press("Enter");
@@ -1470,7 +1470,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await page.locator("[data-slot=settings-page]").getByRole("button", { name: "New schedule" }).click();
 	const scheduleForm = page.locator("[data-slot=dialog-content]");
 	await scheduleForm.getByLabel("Times").fill("0 7 * * *");
-	await scheduleForm.getByLabel("With the task").fill("Say good morning.");
+	await scheduleForm.getByLabel("Task", { exact: true }).fill("Say good morning.");
 	await scheduleForm.getByLabel("Name", { exact: true }).fill("morning");
 	await scheduleForm.getByRole("button", { name: "Add schedule" }).click();
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
@@ -1511,7 +1511,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await page.locator("[data-find=agent-schedules]").getByRole("button", { name: "New schedule" }).click();
 	assert.equal(await scheduleForm.getByLabel("Wake").isDisabled(), true, "it is the agent's");
 	await scheduleForm.getByLabel("Times").fill("0 9 * * 1");
-	await scheduleForm.getByLabel("With the task").fill("Sum up last week's spending.");
+	await scheduleForm.getByLabel("Task", { exact: true }).fill("Sum up last week's spending.");
 	await scheduleForm.getByLabel("Name", { exact: true }).fill("weekly");
 	await scheduleForm.getByRole("button", { name: "Add schedule" }).click();
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
@@ -1525,7 +1525,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await page.locator("[data-slot=settings-page]").getByRole("button", { name: "Add a decision model" }).click();
 	const decisionForm = page.locator("[data-slot=dialog-content]");
 	await decisionForm.getByLabel("Where it is").click();
-	await page.getByRole("option", { name: "Another server, by its address" }).click();
+	await page.getByRole("option", { name: "Another server, by address" }).click();
 	await decisionForm.getByLabel("Address").fill("http://127.0.0.1:9");
 	await decisionForm.getByLabel("Model", { exact: true }).fill("judge-7b");
 	await decisionForm.getByLabel("Name", { exact: true }).fill("judge");
@@ -1570,7 +1570,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	assert.match(fs.readFileSync(path.join(home, "auth.json"), "utf8"), /opencode/);
 	// A sign-in changes no agent's model, so the dialog offers the new ones for all agents.
 	await page.locator("[data-slot=dialog-content]").getByRole("button", { name: "Choose the model your agents run on" }).click();
-	await sees("[cmdk-group-heading] >> text=Model for all agents without a model of their own");
+	await sees("[cmdk-group-heading] >> text=Default model for agents without one of their own");
 	const offered = await page.$$eval("[data-slot=command-item] > :first-child", (els: Element[]) => els.map((e) => e.textContent ?? ""));
 	assert.ok(offered.length > 0 && offered.every((m) => m.startsWith("opencode/")), JSON.stringify(offered.slice(0, 5)));
 	await page.click("[data-slot=command-item] >> nth=0");
@@ -1601,7 +1601,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await sees("[data-slot=settings-page] h1 >> text=Models");
 	// "Change" offers every model that can be used now.
 	await page.locator("[data-setting=fallback-model]").getByRole("button", { name: "Change" }).click();
-	await sees("[cmdk-group-heading] >> text=Model for all agents without a model of their own");
+	await sees("[cmdk-group-heading] >> text=Default model for agents without one of their own");
 	await page.getByRole("option", { name: "mock/m" }).click();
 	await sees("[data-slot=toast] >> text=Your agents now run on mock/m");
 	await page.waitForSelector("[data-slot=settings-page] [data-slot=model-notice]", { state: "detached" });
@@ -1685,7 +1685,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	// General, where what was the App page went: the browser of the web tools is still not there, and can be fetched from here. (The
 	// test fetches nothing: PINE_SKIP_DOWNLOADS. What the command printed is shown.)
 	await sees(`[data-setting=browser] [data-slot=badge][data-variant=outline] >> text=not on this ${HERE}`);
-	await page.locator("[data-setting=browser]").getByRole("button", { name: "Fetch it" }).click();
+	await page.locator("[data-setting=browser]").getByRole("button", { name: "Download" }).click();
 	await sees("[data-setting=browser] [data-slot=code-block-content] >> text=Not fetched: PINE_SKIP_DOWNLOADS is set.");
 	// Fetched some other way (a terminal): the page says so when it is opened again.
 	const { browserPlaces } = await import("../../src/browser-build.ts");
@@ -1737,7 +1737,7 @@ test("settings are searched: what fits is listed in place of the page, and a pic
 	await sees("[data-slot=settings-results] [data-result$=':scans'] >> text=Events › Sources");
 	// Nothing fits: said so. Escape empties the field, and the page that was open is back.
 	await field.fill("zzqqxx");
-	await sees("[data-slot=settings-page] >> text=Nothing in Settings fits");
+	await sees("[data-slot=settings-page] >> text=No matches in Settings");
 	await field.press("Escape");
 	assert.equal(await field.inputValue(), "");
 	await sees("[data-slot=settings-page] h1 >> text=Models");
@@ -1831,6 +1831,6 @@ test("beside a conversation, the panel's Agent view says what the agent has been
 	await sees("[data-slot=code-panel] [role=tab][aria-selected=true] >> text=Agent");
 	await sees("[data-slot=code-panel] [data-slot=item-title] >> text=invoices");
 	await sees("[data-slot=code-panel] [data-slot=item-title] >> text=morning");
-	assert.match(await page.textContent("[data-slot=code-panel]"), /Nothing wakes it by itself\. 1 event source could/);
+	assert.match(await page.textContent("[data-slot=code-panel]"), /Nothing wakes this agent yet\. It can listen to 1 event source\./);
 	await shot("14-agent-view");
 });

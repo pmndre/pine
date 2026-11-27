@@ -97,7 +97,7 @@ test("the side bar is the agents: one made elsewhere appears, a group folds away
 	await sees("[data-slot=command-input]");
 	// By words that are only in an answer of the agent's, never in a name:
 	await page.keyboard.type("echo[where");
-	await sees("[cmdk-group-heading] >> text=Said in conversations");
+	await sees("[cmdk-group-heading] >> text=In conversations");
 	assert.match(await page.textContent("[data-slot=command-list]"), /scout · where is the okapi invoice[\s\S]*ECHO\[where is the okapi invoice\]/);
 	await shot("15-search");
 	// By words that are also its name, it is listed once, and still opens at the words.
@@ -184,7 +184,7 @@ test("a conversation is removed by its row's own button, which the keyboard reac
 	const option = group.locator("[role=option]", { hasText: "a conversation to remove" });
 	await option.focus();
 	await page.keyboard.press("Tab");
-	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Remove this conversation for good");
+	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Remove this conversation permanently");
 	await page.keyboard.press("Enter");
 	const dialog = page.locator("[role=alertdialog]");
 	await dialog.getByRole("button", { name: "Remove" }).click();
@@ -258,7 +258,7 @@ test("a right click on an agent renames it in place, colors it, and offers to re
 	await shown("spare", "rename");
 	await page.getByLabel("New name for spare").fill("Spare Hands");
 	await page.getByLabel("New name for spare").press("Enter");
-	await sees("[data-slot=toast] >> text=spare is called spare-hands now.");
+	await sees("[data-slot=toast] >> text=spare is now called spare-hands.");
 	await sees("[data-slot=agent-label] >> text=spare-hands");
 	assert.ok(fs.existsSync(path.join(home, "agents", "spare-hands", "agent.json")) && !fs.existsSync(path.join(home, "agents", "spare")));
 	// Color opens the color over its avatar, and a pick is kept at once.
@@ -275,7 +275,7 @@ test("a right click on an agent renames it in place, colors it, and offers to re
 	await page.mouse.click(5, 5);
 	await sees("[role=alertdialog]");
 	assert.ok(fs.existsSync(path.join(home, "agents", "spare-hands", "agent.json")));
-	await page.click("[data-slot=command-item]:has-text('Remove it with everything it has')");
+	await page.click("[data-slot=command-item]:has-text('Remove the agent and everything it owns')");
 	await sees("[data-slot=toast] >> text=Removed the agent spare-hands.");
 	await page.waitForFunction(() => ![...document.querySelectorAll("[data-slot=agent-label] > :first-child")].some((e) => e.textContent?.trim() === "spare-hands"));
 	assert.equal(fs.existsSync(path.join(home, "agents", "spare-hands")), false);
@@ -372,15 +372,15 @@ test("conversations are kept in groups: one made from the agent's menu is filled
 		return names.join(",") === "llama,okapi-api,okapi-try";
 	});
 	assert.deepEqual(await choose(group("Okapi").locator("[data-slot=group-label]"), "rename"), ["New Conversation in Okapi", "Rename…", "Remove Group…"]);
-	await page.fill("[data-slot=dialog-content] input[placeholder='The new name']", "Okapi 2026");
+	await page.fill("[data-slot=dialog-content] input[placeholder='New name']", "Okapi 2026");
 	await page.keyboard.press("Enter");
 	await group("Okapi 2026").locator("[role=option]", { hasText: /okapi-try$/ }).waitFor();
 	await shot("16-groups");
 
 	// Removing the group asks first, and takes its conversations with it.
 	await choose(group("Okapi 2026").locator("[data-slot=group-label]"), "remove");
-	await sees("[role=alertdialog] [cmdk-group-heading] >> text=Remove the group Okapi 2026 and the 3 conversations in it for good?");
-	await page.click("[data-slot=command-item]:has-text('Remove them for good')");
+	await sees("[role=alertdialog] [cmdk-group-heading] >> text=Remove the group Okapi 2026 and the 3 conversations in it permanently?");
+	await page.click("[data-slot=command-item]:has-text('Remove permanently')");
 	await sees("[data-slot=toast] >> text=Removed the group Okapi 2026 with 3 conversations.");
 	await group("Okapi 2026").waitFor({ state: "detached" });
 	assert.deepEqual([await row("okapi-api").count(), await row("llama").count(), await row("okapi-web").count()], [0, 0, 1], "what was in it is gone, and what was taken out before stays");
@@ -502,7 +502,7 @@ test("the last message is taken back, and its text is in the input again", async
 	await page.click("[data-slot=tab] >> nth=0");
 	const before = await page.$$eval("[data-item=user]", (els: Element[]) => els.length);
 	await menu("undo");
-	await sees("[data-slot=marker][data-tone=accent] >> text=Taken back");
+	await sees("[data-slot=marker][data-tone=accent] >> text=Undone");
 	assert.equal(await page.$$eval("[data-item=user]", (els: Element[]) => els.length), before - 1);
 	assert.match(await page.inputValue("[data-slot=composer] textarea"), /^ask a helper /);
 	await page.fill("[data-slot=composer] textarea", "");
@@ -739,7 +739,7 @@ test("a right click on a tab closes the others, those to its right or all of the
 	// Close Others from the second: every other tab goes, main's too, but the one that waits for an answer stays, and says why.
 	await choose(had + 1, "Close Others");
 	await count(2);
-	await sees("[data-slot=toast] >> text=1 tab stayed open: it waits for your answer.");
+	await sees("[data-slot=toast] >> text=1 tab stayed open because it is waiting for your answer.");
 	assert.notEqual(await tabs.nth(1).getAttribute("data-active"), null);
 	assert.equal(await page.locator("[data-slot=tab] [data-slot=tab-name]", { hasText: /^main$/ }).count(), 0);
 	// Close, the menu's first item, closes that tab alone.
@@ -780,7 +780,7 @@ test("the panel's Agent view scrolls up and down only, however narrow the panel 
 	// The menu's item opens the side panel on its Agent view whatever state the panel is in (a toggle could close it).
 	await menu("code-agent");
 	await sees("[data-slot=code-panel] [role=tab][aria-selected=true] >> text=Agent");
-	await sees("[data-slot=code-panel] [data-slot=scroll-area] >> text=What it remembers");
+	await sees("[data-slot=code-panel] [data-slot=scroll-area] >> text=Memory");
 	const width = () => page.$eval("[data-slot=code-panel]", (el: Element) => el.getBoundingClientRect().width);
 	const was = await width();
 	// A window short enough that the view has more to show than room, whatever the panel's width: it scrolls, and shows its bar.
@@ -793,7 +793,7 @@ test("the panel's Agent view scrolls up and down only, however narrow the panel 
 	// Narrower, or as narrow as a group gets already: never wider.
 	const now = await width();
 	assert.ok(now <= was, `the panel was made wider: ${was} → ${now}, at the edge ${JSON.stringify(edge)}`);
-	const fits = () => page.$eval("[data-slot=code-panel] [data-slot=scroll-area]:has-text(\"What it remembers\") > [data-slot=scroll-area-viewport]", (el: Element) => {
+	const fits = () => page.$eval("[data-slot=code-panel] [data-slot=scroll-area]:has-text(\"Memory\") > [data-slot=scroll-area-viewport]", (el: Element) => {
 		const wide = [...el.querySelectorAll("*")].filter((c) => c.getBoundingClientRect().right > el.getBoundingClientRect().right + 0.5).slice(0, 5).map((c) => `${c.tagName}.${c.className}`.slice(0, 120));
 		return { scroll: el.scrollWidth, client: el.clientWidth, wide };
 	});

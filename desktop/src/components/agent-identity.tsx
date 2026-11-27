@@ -27,7 +27,7 @@ export function AgentColorPicker({ agent, onChange, trigger, nativeButton = true
 			<PopoverContent align="start" className="w-auto" data-slot="agent-color">
 				<PopoverHeader>
 					<PopoverTitle>Color of {agent.id}</PopoverTitle>
-					<PopoverDescription>Used for the agent's avatar, wherever it is drawn.</PopoverDescription>
+					<PopoverDescription>The color of the agent's avatar throughout the app.</PopoverDescription>
 				</PopoverHeader>
 				<ToggleGroup aria-label={`Color of ${agent.id}`} variant="outline" size="sm" className="flex-wrap" value={[choice]} onValueChange={(v) => v[0] && v[0] !== "other" && onChange(v[0])}>
 					<ToggleGroupItem value="none">None</ToggleGroupItem>

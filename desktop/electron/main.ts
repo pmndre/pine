@@ -450,7 +450,7 @@ async function letGo(s: Service | undefined): Promise<void> {
 
 /** Changes which environment a single window views without affecting any other open window. */
 async function useInWindow(w: ManagedWindow, host: string | undefined): Promise<void> {
-	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list: add it in Settings > Environments.");
+	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list. Add it in Settings > Environments.");
 	if (host === w.host && w.service) return;
 	const wasLocal = !w.host;
 	w.host = host;
@@ -962,9 +962,9 @@ function createWindow(opts: CreateWindowOptions = {}): ManagedWindow {
 
 /** Opens a new window interactively (New Window menu/shortcut/palette, or with explicit host/tab/draft); `bounds` places it (a tab torn off). */
 function openNewWindow(options?: NewWindowOptions, caller?: ManagedWindow, bounds?: WindowBounds): ManagedWindow {
-	if (windows.size >= MAX_WINDOWS) throw new Error(`There are ${MAX_WINDOWS} windows open already: close one first.`);
+	if (windows.size >= MAX_WINDOWS) throw new Error(`${MAX_WINDOWS} windows are already open. Close one first.`);
 	const host = options?.host === null ? undefined : typeof options?.host === "string" ? options.host : (caller?.host ?? prefs.use);
-	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list: add it in Settings > Environments.");
+	if (host !== undefined && !prefs.hosts.includes(host)) throw new Error("That machine is not in the list. Add it in Settings > Environments.");
 	const envAlreadyOpen = windowsForHost(host).length > 0;
 	const hasTab = Boolean(options?.tab);
 	const chrome = caller?.layout ? chromeOf(caller.layout) : caller?.chromeLayout ?? prefs.layout;
@@ -1304,8 +1304,8 @@ function buildMenu(): void {
 			submenu: [
 				item("Stop", "stop", "CmdOrCtrl+."),
 				{ type: "separator" },
-				item("Take Back Last Message", "undo", "CmdOrCtrl+Shift+Z"),
-				item("Bring It Back", "redo", "CmdOrCtrl+Shift+Y"),
+				item("Undo Last Message", "undo", "CmdOrCtrl+Shift+Z"),
+				item("Redo Last Message", "redo", "CmdOrCtrl+Shift+Y"),
 				item("Shorten (Compact)", "compact"),
 				item("Start Over (Reset)…", "reset"),
 				{ type: "separator" },
@@ -1499,9 +1499,9 @@ function wire(): void {
 	handle("pine:hosts-add", (_w, value: string) => {
 		const host = hostOf(String(value ?? ""));
 		if (!host) throw new Error("Write the machine as you would after ssh: host or user@host.");
-		if (host.startsWith("wsl:") && process.platform !== "win32") throw new Error("WSL is Windows': this computer has none.");
+		if (host.startsWith("wsl:") && process.platform !== "win32") throw new Error("WSL exists only on Windows. This computer has none.");
 		if (!prefs.hosts.includes(host)) {
-			if (prefs.hosts.length >= 20) throw new Error("There are 20 machines in the list already: forget one first.");
+			if (prefs.hosts.length >= 20) throw new Error("The list already has 20 machines. Forget one first.");
 			prefs.hosts.push(host);
 			savePrefs();
 			broadcastPrefs();
@@ -1510,8 +1510,8 @@ function wire(): void {
 	});
 	handle("pine:hosts-forget", (w, host: string, options?: { closeWindows?: boolean }) => {
 		const using = windowsForHost(host);
-		if (using.includes(w)) throw new Error("The app uses this machine now. Use another one first.");
-		if (using.length && !options?.closeWindows) throw new Error("Another window uses this machine now.");
+		if (using.includes(w)) throw new Error("The app is using this machine. Switch to another one first.");
+		if (using.length && !options?.closeWindows) throw new Error("Another window is using this machine.");
 		if (prefs.hosts.includes(host)) notePrefs(prefsFile(), `machine ${host} left the list: forgotten in Settings > Environments`);
 		prefs.hosts = prefs.hosts.filter((h) => h !== host);
 		if (prefs.use === host) prefs.use = undefined;
@@ -1591,19 +1591,19 @@ function wire(): void {
 	// The link of the open pairing, put on the clipboard here: the page is never told the link, so it cannot copy it itself.
 	handle("pine:access-copy", async () => {
 		const { pairing } = await accessOn().state();
-		if (!pairing) throw new Error("No pairing is open now: press Add a device.");
+		if (!pairing) throw new Error("No pairing is open. Press Add a device.");
 		clipboard.writeText(pairing.link);
 	});
 	handle("pine:access-answer", (_w, yes: unknown, id: unknown) => accessOn().answer(yes === true, typeof id === "string" ? id.slice(0, 64) : undefined));
 	handle("pine:access-remove", (_w, id: unknown) => {
-		if (typeof id !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) throw new Error("That is not a device of the list.");
+		if (typeof id !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(id)) throw new Error("That device is not in the list.");
 		return accessOn().remove(id);
 	});
 	handle("pine:pick-folder", async (w, title?: string) => {
 		const r = await dialog.showOpenDialog(w.win, { title: typeof title === "string" ? title.slice(0, 80) : "Choose a folder", properties: ["openDirectory", "createDirectory"] });
 		if (r.canceled) return undefined;
 		const p = forDaemon(w.host, r.filePaths[0]);
-		if (!p) throw new Error(`${r.filePaths[0]} cannot be reached from ${wslOf(w.host)}: pick a folder on a drive of this computer, or one in the distribution.`);
+		if (!p) throw new Error(`${r.filePaths[0]} cannot be reached from ${wslOf(w.host)}. Pick a folder on one of this computer's drives, or one inside the distribution.`);
 		return p;
 	});
 	// A file dropped on the page, by the path the daemon knows it under.
@@ -1618,7 +1618,7 @@ function wire(): void {
 	// WSL on this Windows computer: its distributions, and the pine this app carries brought into one.
 	handle("pine:wsl-distros", async () => (process.platform === "win32" ? await wslDistros() : []));
 	handle("pine:wsl-install", async (_w, distro: string) => {
-		if (process.platform !== "win32" || !app.isPackaged) throw new Error("Only the Pine app for Windows brings pine into WSL.");
+		if (process.platform !== "win32" || !app.isPackaged) throw new Error("Only the Pine app for Windows installs pine into WSL.");
 		const d = hostOf(`wsl:${String(distro)}`)?.slice(4);
 		if (!d) throw new Error("There is no such distribution.");
 		await installIntoWsl(d, app.getVersion(), process.resourcesPath);
@@ -1682,19 +1682,19 @@ function wire(): void {
 				if (!isMac && !isWindows && process.platform !== "linux") throw new Error(NOT_HERE);
 				if (isWindows) {
 					const source = [...(app.isPackaged ? [path.join(process.resourcesPath, "pine")] : []), path.join(APP_ROOT, "..")].map((root) => path.join(root, "src", "tui", "voice.cs")).find((f) => fs.existsSync(f));
-					if (!source) throw new Error("this app has no voice input on Windows: its helper's source was not found. Update the app.");
+					if (!source) throw new Error("this app has no voice input on Windows because the voice helper's source was not found. Update the app.");
 					if (!csc()) throw new Error(NO_CSC);
 					command = [buildVoiceWindows(path.join(app.getPath("userData"), "voice"), { source })];
 				} else if (isMac) {
 					launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
 					const source = path.join(pineRoot(launch) ?? "", "src", "tui", "voice.swift");
-					if (!fs.existsSync(source)) throw new Error("this pine has no voice input: the source of the voice helper was not found. Update pine.");
+					if (!fs.existsSync(source)) throw new Error("this pine has no voice input because the voice helper's source was not found. Update pine.");
 					command = [await buildVoice(path.join(app.getPath("userData"), "voice"), source)];
 				} else {
 					launch ??= await findPine(APP_ROOT, app.isPackaged ? process.resourcesPath : undefined);
 					const root = pineRoot(launch) ?? "";
 					const helper = [".js", ".ts"].map((ext) => path.join(root, "src", "tui", `voice-whisper${ext}`)).find((f) => fs.existsSync(f));
-					if (!helper) throw new Error("this pine has no voice input on Linux: its helper was not found. Update pine.");
+					if (!helper) throw new Error("this pine has no voice input on Linux because the voice helper was not found. Update pine.");
 					const node = launch.argv.length > 1 ? launch.argv[0] : onPath("node", launch.env);
 					if (!node) throw new Error("voice input on Linux runs on Node, and no node was found on this computer. Install Node 24 or newer from https://nodejs.org, then try again.");
 					const tools = voiceTools("linux", undefined, { node, helper });

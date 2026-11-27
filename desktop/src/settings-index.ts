@@ -51,9 +51,9 @@ export const LABELS: Record<string, string> = {
 
 /** The groups of pine's settings on the General page, by the prefix of their key. */
 export const GROUPS: Array<{ prefix: string; title: string; about: string }> = [
-	{ prefix: "defaults.", title: "Defaults for agents", about: "What all agents use unless you set something else on an agent's own page." },
+	{ prefix: "defaults.", title: "Defaults for agents", about: "Used by all agents unless an agent's own page says otherwise." },
 	{ prefix: "limits.", title: "Limits", about: "How much work runs at the same time, and how large a download may be." },
-	{ prefix: "security.", title: "Security", about: "When pine asks you before an agent goes further." },
+	{ prefix: "security.", title: "Security", about: "When pine asks you before an agent continues." },
 ];
 
 const at = (name: string) => `[data-find="${name}"]`;
@@ -66,7 +66,7 @@ export const PLACES: Static[] = [
 	{ id: "updates-at-start", section: "general", path: ["This app"], title: "Check for updates at start", words: "github version", find: at("updates-at-start"), when: (s) => s.updates },
 	{ id: "auto-update", section: "general", path: ["This app"], title: "Update automatically", words: "background install download", find: at("auto-update"), when: (s) => s.updates && s.selfUpdate },
 	{ id: "notifications", section: "general", path: ["This app"], title: "Notifications", about: "When an agent is done, stops, or asks you something while the window is in the background.", words: "notify alert banner sound", find: at("notifications") },
-	{ id: "pine", section: "general", path: ["pine"], title: "pine and its log", about: "The program behind the app that runs your agents.", words: "daemon service connected version log restart sandbox", find: at("pine") },
+	{ id: "pine", section: "general", path: ["pine"], title: "pine and the log", about: "The program behind the app that runs your agents.", words: "daemon service connected version log restart sandbox", find: at("pine") },
 	{ id: "keep-running", section: "general", path: ["pine"], title: "Keep pine running after the app quits", words: "background quit close window daemon", find: at("keep-running"), when: (s) => s.local },
 	{ id: "command", section: "general", path: ["pine"], title: "The pine command in a terminal", words: "cli shell path install command line", find: at("command"), when: (s) => s.local },
 	{ id: "browser", section: "general", path: ["pine"], title: "Browser for the web tools", words: "chromium playwright download fetch web", find: "[data-setting=browser]", when: (s) => s.local },
@@ -78,18 +78,18 @@ export const PLACES: Static[] = [
 	{ id: "default-model", section: "models", title: "Default model", about: "The model all agents use unless an agent has its own.", words: "fallback llm", find: "[data-setting=fallback-model]" },
 	{ id: "providers", section: "models", title: "Subscriptions and API keys", about: "Sign in to a provider on the internet.", words: "sign in login account key token claude chatgpt openai anthropic gemini mistral openrouter copilot", find: at("providers") },
 	{ id: "model-servers", section: "models", title: "Models on your own computer", about: "Connect a model you run yourself.", words: "local llama.cpp llama ollama lm studio server offline limit runs at the same time at once parallel concurrent slots", find: at("model-servers") },
-	{ id: "decision-models", section: "models", title: "Decision models", about: "Models that answer routes' questions fast: a probability, an option, a level.", words: "decision decide typesafe jev pinecone classify classifier probability judge triage urgent route ask", find: at("decision-models") },
+	{ id: "decision-models", section: "models", title: "Decision models", about: "Fast models that answer a route's questions with a probability, an option or a level.", words: "decision decide typesafe jev pinecone classify classifier probability judge triage urgent route ask", find: at("decision-models") },
 
 	{ id: "add-mcp", section: "mcp", title: "Add an MCP server", words: "tools connect integration plugin" },
 	{ id: "new-skill", section: "skills", title: "New skill", words: "add write recipe how-to" },
 
-	{ id: "sources", section: "events", title: "Sources", about: "Things that report what happens: a folder, a web page, a chat, a device.", words: "subscribe watch trigger telegram mail folder webhook", find: at("sources") },
+	{ id: "sources", section: "events", title: "Sources", about: "Sources report when something happens in a folder, a web page, a chat or a device.", words: "subscribe watch trigger telegram mail folder webhook", find: at("sources") },
 	{ id: "schedules", section: "events", title: "Schedules", about: "Tasks for agents at set times.", words: "cron timer reminder every morning later", find: at("schedules") },
-	{ id: "routes", section: "events", title: "Routes", about: "Rules for events: when one arrives, one thing happens.", words: "rule automation filter", find: at("routes") },
+	{ id: "routes", section: "events", title: "Routes", about: "Rules that do one thing when an event arrives.", words: "rule automation filter", find: at("routes") },
 	{ id: "event-log", section: "events", title: "Event log", words: "history what happened" },
 
 	{ id: "add-machine", section: "environments", title: "Add a machine", about: "Use the pine of another machine over SSH.", words: "ssh remote server host computer", find: at("add-machine") },
-	{ id: "machine-needs", section: "environments", title: "What a machine needs", words: "ssh key authorized_keys setup", find: at("machine-needs") },
+	{ id: "machine-needs", section: "environments", title: "Machine requirements", words: "ssh key authorized_keys setup", find: at("machine-needs") },
 
 	{ id: "access-computer", section: "access", title: "Browser access on this computer", about: "Reach this computer's pine from a browser or a phone.", words: "remote phone mobile web pair qr", find: at("access-computer"), when: (s) => s.access },
 	{ id: "access-devices", section: "access", title: "Paired devices", words: "phone browser pair qr code remove", find: at("access-devices"), when: (s) => s.access },

@@ -12,7 +12,7 @@ import { store, type Tab } from "./model.ts";
 import { macKeys, plural } from "./text.ts";
 
 /** What "Show in …" is called on each system. */
-export const SHOW_IN: Record<string, string> = { darwin: "Show in the Finder", win32: "Show in Explorer", linux: "Show in Files" };
+export const SHOW_IN: Record<string, string> = { darwin: "Show in Finder", win32: "Show in Explorer", linux: "Show in Files" };
 
 /** The shortcuts, the Mac's and everybody else's (as VS Code has them), written as `shortcut()` takes them. */
 const KEYS: Record<string, [mac: string, other: string]> = {
@@ -57,8 +57,8 @@ const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name);
 function checkName(typed: string, nested: boolean): string | undefined {
 	const name = typed.trim().replace(/\/+$/, "");
 	const parts = name.split("/");
-	if (!name || name.startsWith("/") || name.includes("\0") || parts.some((x) => !x || x === "." || x === "..")) return void store.flash("That is not a name for a file or a folder.", "bad");
-	if (!nested && parts.length > 1) return void store.flash("A new name has no “/”: to move it to another folder, cut it and paste it there.", "bad");
+	if (!name || name.startsWith("/") || name.includes("\0") || parts.some((x) => !x || x === "." || x === "..")) return void store.flash("That is not a valid file or folder name.", "bad");
+	if (!nested && parts.length > 1) return void store.flash("A name cannot contain “/”. To move the item to another folder, cut it and paste it there.", "bad");
 	return name;
 }
 
@@ -88,7 +88,7 @@ export function useFileActions(host: FileHost) {
 	// Only in the agent's workspace (no folder opened): elsewhere an AGENTS.md is the project's own.
 	// The tree lists a name as it lies on disk, so it is compared as it is (the daemon decides by the file itself).
 	const own = (p: string) => !tab.folder && OWN.includes(p);
-	const keptSaid = (kept: string[], what: string) => kept.length && store.flash(`${kept.join(", ")} ${kept.length === 1 ? "stays" : "stay"} where ${kept.length === 1 ? "it is" : "they are"}: an agent's own files are edited, not ${what}.`, "warn", 6000);
+	const keptSaid = (kept: string[], what: string) => kept.length && store.flash(`${kept.join(", ")} ${kept.length === 1 ? "stays" : "stay"} where ${kept.length === 1 ? "it is" : "they are"}. The agent's own files can be edited but not ${what}.`, "warn", 6000);
 	/** Where a new name or a paste goes: into a folder, or beside a file; the top for nothing. */
 	const dirFor = (paths: string[]) => (paths.length === 1 ? (isDir(paths[0]) ? paths[0] : parentOf(paths[0])) : "");
 	const canPaste = (paths: string[]) => Boolean(clip && root && clip.root === root && paths.length <= 1);
@@ -143,7 +143,7 @@ export function useFileActions(host: FileHost) {
 			case "new-file":
 			case "new-folder": {
 				const file = id === "new-file";
-				const typed = await store.pick({ title: `New ${file ? "file" : "folder"} in ${dir || nameOf(root ?? "") || "the folder"}`, items: [], free: true, placeholder: file ? "Its name, as notes.md or docs/notes.md" : "Its name" });
+				const typed = await store.pick({ title: `New ${file ? "file" : "folder"} in ${dir || nameOf(root ?? "") || "the folder"}`, items: [], free: true, placeholder: file ? "A name, like notes.md or docs/notes.md" : "A name" });
 				const name = typed && checkName(typed, true);
 				if (!name) return;
 				const done = await change({ op: file ? "file" : "folder", path: join(dir, name) });
@@ -160,7 +160,7 @@ export function useFileActions(host: FileHost) {
 				const taken = paths.filter((p) => !kept.includes(p));
 				if (!root || !taken.length) return void keptSaid(kept, "moved");
 				clip = { root, op: id === "cut" ? "move" : "copy", paths: taken };
-				store.flash(`${id === "cut" ? "Cut" : "Copied"} ${taken.length === 1 ? nameOf(taken[0]) : plural(taken.length, "item")}: paste ${taken.length === 1 ? "it" : "them"} into a folder.`);
+				store.flash(`${id === "cut" ? "Cut" : "Copied"} ${taken.length === 1 ? nameOf(taken[0]) : plural(taken.length, "item")}. Paste ${taken.length === 1 ? "it" : "them"} into a folder.`);
 				keptSaid(kept, "moved");
 				tab.touch();
 				return;
@@ -183,10 +183,10 @@ export function useFileActions(host: FileHost) {
 				return void toClipboard(paths.join("\n"), paths.length > 1 ? `Copied ${plural(paths.length, "path")}.` : "Copied the path.");
 			case "rename": {
 				if (paths.length !== 1) return;
-				if (own(paths[0])) return void store.flash(`${paths[0]} is the agent's own file: it can be edited, not renamed.`, "warn");
+				if (own(paths[0])) return void store.flash(`${paths[0]} is the agent's own file. It can be edited but not renamed.`, "warn");
 				const was = nameOf(paths[0]);
 				const dot = was.lastIndexOf(".");
-				const typed = await store.pick({ title: `Rename ${was}`, items: [], free: true, placeholder: "The new name", initial: was, selected: dot > 0 && !isDir(paths[0]) ? dot : was.length });
+				const typed = await store.pick({ title: `Rename ${was}`, items: [], free: true, placeholder: "New name", initial: was, selected: dot > 0 && !isDir(paths[0]) ? dot : was.length });
 				const name = typed && checkName(typed, false);
 				if (!name || name === was) return;
 				const done = await change({ op: "rename", path: paths[0], to: join(parentOf(paths[0]), name) });
@@ -264,9 +264,9 @@ export function useFileActions(host: FileHost) {
 					<AlertDialogTitle>Delete {names.length === 1 ? names[0] : plural(names.length, "item")}?</AlertDialogTitle>
 					<AlertDialogDescription>
 						{names.length > 1 ? `${names.slice(0, 5).join(", ")}${names.length > 5 ? ` and ${names.length - 5} more` : ""}. ` : ""}
-						{deleting?.some(isDir) ? "A folder goes with everything in it. " : ""}
-						{names.length > 1 ? "They are" : "It is"} deleted for good, not moved to the trash.
-						{skipped.length ? ` ${skipped.join(", ")} ${skipped.length === 1 ? "is" : "are"} kept: an agent's own files are edited, not deleted.` : ""}
+						{deleting?.some(isDir) ? "Deleting a folder deletes everything in it. " : ""}
+						{names.length > 1 ? "They are" : "It is"} deleted permanently, not moved to the trash.
+						{skipped.length ? ` ${skipped.join(", ")} ${skipped.length === 1 ? "is" : "are"} kept. The agent's own files can be edited but not deleted.` : ""}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>

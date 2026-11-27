@@ -81,7 +81,7 @@ test("once a model answers and is kept, the card Next offers what to set up, Pin
 	write(path.join(home, "models.json"), JSON.stringify({ providers: { mock: { name: "Mock", baseUrl: mock.baseUrl, api: "openai-completions", apiKey: "sk-mock", models: [{ id: "m", name: "Mock", contextWindow: 128000, maxTokens: 4096, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } }));
 	await api("POST", "/models/refresh", {});
 	await visit();
-	await sees("[data-slot=setup-model] >> text=/Your agents run on mock\\/m/");
+	await sees("[data-slot=setup-model] >> text=/Your agents now run on mock\\/m/");
 	await question("Keep this model?");
 	await pick("Go on");
 	await question("What would you like to set up now?");

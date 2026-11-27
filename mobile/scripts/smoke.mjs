@@ -267,7 +267,7 @@ try {
 	const frontActivity = () => adb("shell", "dumpsys", "activity", "activities").match(/topResumedActivity=\S+ \S+ (\S+)/)?.[1];
 	const front = () => frontActivity()?.split("/")[0];
 	/** The page past the Gate, on the machine's pine. */
-	const connected = (ns) => !ns.some((n) => /Choose a machine|is not reached|Connecting to/.test(label(n))) && ns.some((n) => /main/.test(label(n))) && ns;
+	const connected = (ns) => !ns.some((n) => /Choose a machine|Could not reach|Connecting to/.test(label(n))) && ns.some((n) => /main/.test(label(n))) && ns;
 	const sidebarButton = node(/^(Show the sidebar|Toggle Sidebar)$/);
 	const agentsShown = (ns) => ns.some((n) => n.visible && /^main: /.test(label(n))) && ns.some((n) => n.visible && /^scout: /.test(label(n))) && ns;
 
@@ -573,7 +573,7 @@ try {
 	const asking = "!!document.querySelector('[data-slot=pair-confirm]')";
 	/** The page past the Gate on the paired computer's pine: the agents it has. */
 	const reached = async (seconds = 120) =>
-		until("the paired computer's agents", "(async () => !/Choose a machine|is not reached|Connecting to|Starting pine/.test(document.body.innerText) && window.pine && (r => r.ok && JSON.stringify(r.data))(await window.pine.call('GET', '/agents')))()", seconds);
+		until("the paired computer's agents", "(async () => !/Choose a machine|Could not reach|Connecting to|Starting pine/.test(document.body.innerText) && window.pine && (r => r.ok && JSON.stringify(r.data))(await window.pine.call('GET', '/agents')))()", seconds);
 	/** The page's question before the code is used: what it names of the service, then the owner's answer. */
 	const confirmation = async (how, named, yes = true) => {
 		const said = await until("the confirmation", `${asking} && (document.querySelector('[data-slot=pair-service]')?.textContent ?? 'no service named')`);

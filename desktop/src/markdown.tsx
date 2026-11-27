@@ -251,7 +251,7 @@ function Player({ kind, src, alt, sound }: { kind: "image" | "video" | "audio"; 
 				<Dialog>
 					<DialogTrigger nativeButton={false} render={<img className={MEDIA.image} src={src} alt={alt} draggable={false} />} />
 					<DialogContent showCloseButton={false} className="flex max-h-11/12 w-auto max-w-11/12 flex-col items-center sm:max-w-11/12">
-						<DialogTitle className="sr-only">The picture, larger</DialogTitle>
+						<DialogTitle className="sr-only">Enlarged picture</DialogTitle>
 						<DialogClose nativeButton={false} aria-label="Close the picture" render={<img src={src} alt="" className="min-h-0 max-w-full rounded-md object-contain" />} />
 					</DialogContent>
 				</Dialog>

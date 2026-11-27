@@ -23,9 +23,9 @@ interface Next {
 
 const ALL: Next[] = [
 	{ label: "The mode", description: "How much your agents ask before they act, and whether they work in a sandbox.", line: "The mode: how much my agents ask before they act." },
-	{ label: "A working folder", description: "A folder of yours, such as a project, for a conversation to work in.", line: "A working folder: a folder of mine for a conversation to work in." },
-	{ label: "Telegram", description: "Talk to your agents from your phone, through a bot of your own.", line: "Telegram: so that I can talk to my agents from my phone." },
-	{ label: "A first agent", description: `An agent of your own for one job, for example: ${TRY_EVENTS}`, line: `A first agent of my own, for example: ${TRY_EVENTS}` },
+	{ label: "A working folder", description: "One of your folders, such as a project, for a conversation to work in.", line: "A working folder: a folder of mine for a conversation to work in." },
+	{ label: "Telegram", description: "Talk to your agents from your phone, through your own bot.", line: "Telegram: so that I can talk to my agents from my phone." },
+	{ label: "A first agent", description: `Your own agent for one job, for example: ${TRY_EVENTS}`, line: `A first agent of my own, for example: ${TRY_EVENTS}` },
 	{ label: "The theme", description: "How the app looks: light, dark, or one of pine's other themes.", line: "The theme of the app." },
 	{ label: "Pinecone", description: "Models and tools that run on this Mac, free and private. Your main agent helps you install it.", line: "Pinecone: help me install it on this Mac, for models and tools that run here.", mac: true },
 ];

@@ -9,7 +9,7 @@ export class ApiError extends Error {
 	data: any;
 	constructor(status: number, data: any) {
 		// An address the daemon does not have at all is one a newer pine has: the app attached to an older one.
-		super(status === 404 && (data?.error === "not found" || typeof data?.error !== "string") ? "This pine does not know that yet: it is older than the app. Update pine and restart it." : typeof data?.error === "string" ? data.error : `HTTP ${status}`);
+		super(status === 404 && (data?.error === "not found" || typeof data?.error !== "string") ? "This pine is older than the app and does not support that yet. Update pine and restart it." : typeof data?.error === "string" ? data.error : `HTTP ${status}`);
 		this.status = status;
 		this.data = data;
 	}

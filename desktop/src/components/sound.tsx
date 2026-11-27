@@ -188,7 +188,7 @@ function SoundLine({ src, name, id, bytes, auto, className }: SoundProps) {
 					))}
 				</span>
 			) : null}
-			<span className="flex min-w-0 items-center gap-1.5 text-muted-foreground" title={failed ? "There is no such file, or it is of a kind that is not played here." : undefined}>
+			<span className="flex min-w-0 items-center gap-1.5 text-muted-foreground" title={failed ? "The file is missing, or it is in a format that cannot be played here." : undefined}>
 				<MusicIcon className="size-3.5 shrink-0" aria-hidden />
 				<span className="truncate">{name}</span>
 				{time ? <span data-slot="sound-time" className="shrink-0 text-faint tabular-nums">{time}</span> : null}

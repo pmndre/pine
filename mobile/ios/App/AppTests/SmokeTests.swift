@@ -403,7 +403,7 @@ final class SmokeTests: XCTestCase {
 
 	/** The page past the Gate, on the machine's pine. */
 	private func connected(seconds: Double) async throws {
-		try await until("the page past the Gate", "!/Choose a machine|is not reached|Connecting to|Starting pine/.test(document.body.innerText) && window.pine && (await window.pine.call('GET', '/agents')).ok", body: false, seconds: seconds)
+		try await until("the page past the Gate", "!/Choose a machine|Could not reach|Connecting to|Starting pine/.test(document.body.innerText) && window.pine && (await window.pine.call('GET', '/agents')).ok", body: false, seconds: seconds)
 	}
 
 	private func agentsShown() async throws -> Any {

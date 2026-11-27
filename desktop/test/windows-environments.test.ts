@@ -278,13 +278,13 @@ test("simultaneous local and SSH windows: Open in new window, concurrent chat, p
 	await sendMenuTo(app, 0, "settings:environments");
 	await win1.waitForSelector("[data-environment='you@elsewhere']");
 	await win1.locator("[data-environment='you@elsewhere']").getByRole("button", { name: "Forget" }).click();
-	await win1.locator("[role=alertdialog]").getByRole("button", { name: "Close its window and forget" }).waitFor();
+	await win1.locator("[role=alertdialog]").getByRole("button", { name: "Close the window and forget" }).waitFor();
 	await win1.locator("[role=alertdialog]").getByRole("button", { name: "Cancel" }).click();
 	assert.equal(await windowCount(app), 2);
 	assert.equal(await win1.locator("[data-environment='you@elsewhere']").count(), 1);
 
 	await win1.locator("[data-environment='you@elsewhere']").getByRole("button", { name: "Forget" }).click();
-	await win1.locator("[role=alertdialog]").getByRole("button", { name: "Close its window and forget" }).click();
+	await win1.locator("[role=alertdialog]").getByRole("button", { name: "Close the window and forget" }).click();
 	await waitForWindowCount(app, 1);
 	await win1.locator("[data-environment='you@elsewhere']").waitFor({ state: "detached" });
 	assert.equal(await daemonGone(farPort, far), true);

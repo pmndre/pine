@@ -35,7 +35,7 @@ const meta = {
 		return () => void Object.assign(store, { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled, openHosts, sidebar });
 	},
 	// Opened, so that the snapshot shows the list of machines.
-	play: async ({ canvas, userEvent }) => await userEvent.click(canvas.getByRole("button", { name: /The pine the app uses/ })),
+	play: async ({ canvas, userEvent }) => await userEvent.click(canvas.getByRole("button", { name: /The pine this app uses/ })),
 } satisfies Meta<typeof Foot>;
 export default meta;
 type Story = StoryObj<typeof meta>;

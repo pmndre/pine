@@ -8,7 +8,7 @@ type Story = StoryObj<typeof meta>;
 
 const LINK = "https://pine.example.workers.dev/#pair=x8Qk2vJp1mZl3nRt5yWb7cDf9gHs0aEu4iOq6eTr2wA.Zm9vYmFyYmF6cXV4cXV1eA";
 
-export const QrCode: Story = { args: { value: LINK, label: "QR code of the pairing link", className: "size-56 rounded-lg" } };
+export const QrCode: Story = { args: { value: LINK, label: "QR code for the pairing link", className: "size-56 rounded-lg" } };
 
 /** A short text makes a small code, drawn as large: the modules grow, the quiet zone stays four of them. */
 export const Short: Story = { args: { value: "https://pine.example", label: "QR code of a short address", className: "size-56 rounded-lg" } };

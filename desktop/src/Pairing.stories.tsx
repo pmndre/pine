@@ -15,7 +15,7 @@ export default meta;
 
 /** The field, empty: Pair waits for a link. A text that is not a pairing link is said so, in the field's own error. */
 export const PasteField: StoryObj<{ onLink: (text: string) => string | undefined }> = {
-	args: { onLink: fn((text: string) => (readPairLink(text) ? undefined : "That is not a pairing link. On your computer, choose Pine > Add a device, and copy the link it gives.")) },
+	args: { onLink: fn((text: string) => (readPairLink(text) ? undefined : "That is not a pairing link. On your computer, choose Pine > Add a device, and copy the link shown there.")) },
 	render: (args) => (
 		<div className="w-96">
 			<PairLinkField {...args} />

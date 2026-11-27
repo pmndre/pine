@@ -111,7 +111,7 @@ test("the owner's no drops the question and never calls pair", async () => {
 test("a link of an http meeting service is refused with the page's sentence and never reaches pair", async () => {
 	const store = await started();
 	const why = store.askToPair(`http://pine.example.test/#pair=${ID}.${CODE}`);
-	assert.match(why ?? "", /through pine\.example\.test over http, and this phone pairs only through https: nothing was used/);
+	assert.match(why ?? "", /through pine\.example\.test over http, but this phone pairs only over https, so the link was not used/);
 	assert.equal(store.pairAsk, undefined);
 	// Handed in by the app, the same sentence is said in a toast.
 	linkListener!(`http://pine.example.test/#pair=${ID}.${CODE}`);

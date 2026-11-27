@@ -39,7 +39,7 @@ export function PairLinkField({ onLink }: { onLink: (text: string) => string | u
 					</InputGroupButton>
 				</InputGroupAddon>
 			</InputGroup>
-			{error ? <FieldError>{error}</FieldError> : <FieldDescription>Where the code did not open this app, copy the link the Pine app gives beside it and paste it here.</FieldDescription>}
+			{error ? <FieldError>{error}</FieldError> : <FieldDescription>If scanning the code did not open this app, copy the link shown beside the code in the Pine app and paste it here.</FieldDescription>}
 		</Field>
 	);
 }
@@ -57,11 +57,11 @@ export function PairConfirm({ link, device, onPair, onCancel }: { link: PairLink
 				<AlertDialogHeader>
 					<AlertDialogTitle>Pair with this computer?</AlertDialogTitle>
 					<AlertDialogDescription>
-						This {device} asks the computer of this link to let it in. The computer then shows four digits beside this {device}'s name: press Allow there if they are the ones shown here.
+						This {device} will ask the computer named in the link to let it in. The computer then shows four digits beside this {device}'s name. Press Allow there if they match the digits shown here.
 					</AlertDialogDescription>
 					{other ? (
 						<AlertDialogDescription data-slot="pair-service">
-							It is found through <span className="font-mono wrap-anywhere text-foreground">{other}</span>, which is not Pine's own service. All connections to that computer go through it. Pair only if it is the service the computer's owner set up.
+							The computer is found through <span className="font-mono wrap-anywhere text-foreground">{other}</span>, which is not Pine's own service. All connections to that computer go through it. Pair only if the computer's owner set up that service.
 						</AlertDialogDescription>
 					) : null}
 				</AlertDialogHeader>
@@ -87,7 +87,7 @@ export function NearbyComputers({ found, device, onPick }: { found: NearbyFound;
 			{found.denied ? (
 				<Alert data-slot="pair-nearby-denied">
 					<TriangleAlertIcon />
-					<AlertTitle>Pine cannot look on this network</AlertTitle>
+					<AlertTitle>Pine cannot search this network</AlertTitle>
 					<AlertDescription>To find your computer here, turn on Local Network in Settings &gt; Pine on this {device}. Or pair with the code below.</AlertDescription>
 				</Alert>
 			) : found.computers.length ? (
@@ -106,7 +106,7 @@ export function NearbyComputers({ found, device, onPick }: { found: NearbyFound;
 				<Empty data-slot="pair-nearby-empty" className="border">
 					<EmptyHeader>
 						<EmptyMedia><Spinner /></EmptyMedia>
-						<EmptyDescription>No computer found on this network yet. Pine must be open, with Browser access on.</EmptyDescription>
+						<EmptyDescription>No computer found on this network yet. Pine must be open there, with Browser access turned on.</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
 			)}

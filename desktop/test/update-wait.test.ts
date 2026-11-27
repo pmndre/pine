@@ -85,7 +85,7 @@ test("while an update waits for the work to end, Settings > General and the upda
 		const menu = (command: string) => app.evaluate(({ BrowserWindow }: any, c: string) => BrowserWindow.getAllWindows()[0].webContents.send("pine:menu", c), command);
 		await menu("updates");
 		const dialog = page.locator("[data-slot=dialog-content]");
-		await dialog.getByText("once no conversation is at work").waitFor();
+		await dialog.getByText("once no conversation is working").waitFor();
 		assert.equal(await dialog.getByRole("button", { name: "Restart to update" }).count(), 0);
 		await dialog.getByRole("button", { name: "Close" }).click();
 		await dialog.waitFor({ state: "detached" });
@@ -95,9 +95,9 @@ test("while an update waits for the work to end, Settings > General and the upda
 		await menu("settings");
 		await page.click("[role=navigation] [data-sidebar=menu-button] >> text=General");
 		const field = page.locator("[data-setting=updates]");
-		await field.getByText("once no conversation is at work").waitFor();
+		await field.getByText("once no conversation is working").waitFor();
 		assert.equal(await field.getByRole("button", { name: "Restart to update" }).count(), 0);
-		await field.getByRole("button", { name: "Call off the wait" }).click();
+		await field.getByRole("button", { name: "Cancel the wait" }).click();
 		await page.waitForSelector(PENDING, { state: "detached" });
 		await field.getByRole("button", { name: "Restart to update" }).waitFor();
 		assert.deepEqual(calls(), ["download"]);

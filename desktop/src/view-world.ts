@@ -199,7 +199,7 @@ export function fromText(from: From): string {
 		case "agent":
 			return from.id;
 		case "copy":
-			return `a copy of ${from.id}`;
+			return `a sub-agent of ${from.id}`;
 		case "pine":
 			return "pine";
 	}
@@ -519,7 +519,7 @@ export class World {
 					j.doing = "asking";
 				}
 				this.pulse(`agent:${p.agent}`, "you", "ask", at, p.task);
-				this.say(at, `${p.agent} asks you: ${label(String(p.summary ?? p.tool ?? ""), 70)}`, { agent: p.agent, job: p.task, tone: "ask" });
+				this.say(at, `${p.agent} asked you: ${label(String(p.summary ?? p.tool ?? ""), 70)}`, { agent: p.agent, job: p.task, tone: "ask" });
 				return true;
 			}
 			if (e.topic === "approval/decided") {
@@ -615,13 +615,13 @@ export class World {
 			const to = `agent:${agent}`;
 			const kindOf: Pulse["kind"] = from.k === "agent" ? "hand" : from.k === "copy" ? "copy" : "event";
 			this.pulse(nodeOf(from, agent), to, kindOf, at, job.id);
-			if (from.k === "source" && e.cause !== undefined) this.say(at, `${from.name} woke ${agent}`, { agent, job: job.id });
-			else if (from.k === "agent" && job.kind === "delegate") this.say(at, `${from.id} handed ${agent} a task: ${job.label}`, { agent, job: job.id });
+			if (from.k === "source" && e.cause !== undefined) this.say(at, `${from.name} triggered ${agent}`, { agent, job: job.id });
+			else if (from.k === "agent" && job.kind === "delegate") this.say(at, `${from.id} delegated a task to ${agent}: ${job.label}`, { agent, job: job.id });
 			else if (from.k === "agent") this.say(at, `${from.id}'s answer reached ${agent}`, { agent, job: job.id, tone: "good" });
-			else if (from.k === "copy") this.say(at, `${agent} started a copy: ${job.label}`, { agent, job: job.id });
+			else if (from.k === "copy") this.say(at, `${agent} started a sub-agent: ${job.label}`, { agent, job: job.id });
 			else if (from.k === "you") this.say(at, `you asked ${agent}: ${job.label}`, { agent, job: job.id });
-			else if (from.k === "clock") this.say(at, `${from.name ? `the schedule ${from.name}` : "a schedule"} woke ${agent}`, { agent, job: job.id });
-			else this.say(at, `${fromText(from)} woke ${agent}`, { agent, job: job.id });
+			else if (from.k === "clock") this.say(at, `${from.name ? `the schedule ${from.name}` : "a schedule"} triggered ${agent}`, { agent, job: job.id });
+			else this.say(at, `${fromText(from)} triggered ${agent}`, { agent, job: job.id });
 			return true;
 		}
 

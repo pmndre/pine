@@ -31,4 +31,4 @@ export const AgentSectionSkeleton: Story = { args: { skeleton: true } };
 export const AgentSectionError: Story = { args: { error: "pine did not answer: connection refused" } };
 
 /** Loaded and empty. */
-export const AgentSectionEmpty: Story = { args: { count: 0, children: <div className="px-3.5 py-0.5 text-faint">Nothing wakes it by itself.</div> } };
+export const AgentSectionEmpty: Story = { args: { count: 0, children: <div className="px-3.5 py-0.5 text-faint">Nothing wakes this agent yet.</div> } };

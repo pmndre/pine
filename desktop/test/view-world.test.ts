@@ -23,7 +23,7 @@ test("a source wakes an agent, which hands a task on, waits, is asked about and 
 	assert.deepEqual(job.from, { k: "source", name: "camera" });
 	assert.equal(job.doing, "thinking");
 	assert.deepEqual(w.pulses.map((p) => [p.from, p.to, p.kind]), [["source:camera", "agent:house", "event"]]);
-	assert.equal(w.lines.at(-1)?.text, "camera woke house");
+	assert.equal(w.lines.at(-1)?.text, "camera triggered house");
 
 	w.take([ev("agent/house/tool", { ...ids(1, "house", "_t1"), phase: "start", tool: "delegate", subject: "gonzo" })]);
 	assert.equal(job.doing, "waiting");
@@ -33,7 +33,7 @@ test("a source wakes an agent, which hands a task on, waits, is asked about and 
 	assert.equal(child.label, "Who is it?");
 	assert.deepEqual(job.waitingOn, [2]);
 	assert.equal(w.pulses.at(-1)?.kind, "hand");
-	assert.equal(w.lines.at(-1)?.text, "house handed gonzo a task: Who is it?");
+	assert.equal(w.lines.at(-1)?.text, "house delegated a task to gonzo: Who is it?");
 
 	w.take([ev("approval/requested", { id: "a1", agent: "gonzo", task: 2, root: 1, tool: "bash", summary: "bash: curl ..." }, { source: "approvals" })]);
 	assert.equal(child.doing, "asking");
