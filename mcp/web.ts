@@ -4,7 +4,7 @@
 // It refuses to reach private networks, so a page cannot make an agent probe your LAN or the
 // daemon's own control port.
 //
-// options: { braveApiKey?, allowHosts?, denyHosts?, allowPrivate?, maxBytes?, timeoutMs?, maxUrlLength?, userAgent? }
+// options: { braveApiKey?, keenable?, keenableApiKey?, allowHosts?, denyHosts?, allowPrivate?, maxBytes?, timeoutMs?, maxUrlLength?, userAgent? }
 import net from "node:net";
 import { fetch } from "undici";
 import { isPrivateAddress, publicOnlyAgent } from "../src/net.ts";
@@ -12,7 +12,7 @@ import { options, serve } from "./lib.ts";
 
 export { isPrivateAddress };
 
-const o = options<{ braveApiKey?: string; allowHosts?: string[]; denyHosts?: string[]; allowPrivate?: boolean; maxBytes?: number; timeoutMs?: number; maxUrlLength?: number; userAgent?: string }>();
+const o = options<{ braveApiKey?: string; keenable?: boolean; keenableApiKey?: string; allowHosts?: string[]; denyHosts?: string[]; allowPrivate?: boolean; maxBytes?: number; timeoutMs?: number; maxUrlLength?: number; userAgent?: string }>();
 const MAX_BYTES = o.maxBytes ?? 2 * 1024 * 1024;
 const TIMEOUT = o.timeoutMs ?? 20_000;
 const MAX_URL = o.maxUrlLength ?? 2000;
@@ -91,6 +91,19 @@ async function search(query: string, count: number): Promise<Array<{ title: stri
 		if (!res.ok) throw new Error(`search failed: HTTP ${res.status}`);
 		const json: any = await res.json();
 		return (json.web?.results ?? []).slice(0, count).map((r: any) => ({ title: htmlToText(r.title ?? "").text, url: r.url, snippet: htmlToText(r.description ?? "").text }));
+	}
+	if (o.keenable || o.keenableApiKey) {
+		// Without a key the public endpoint answers; a key only lifts its rate limits. The snippet is
+		// the page's own text, often thousands of characters: its start is the short snippet.
+		const headers: Record<string, string> = { accept: "application/json", "content-type": "application/json", "x-keenable-title": "pine" };
+		if (o.keenableApiKey) headers["x-api-key"] = o.keenableApiKey;
+		const res = await fetch(`https://api.keenable.ai/v1/search${o.keenableApiKey ? "" : "/public"}`, { dispatcher, method: "POST", headers, body: JSON.stringify({ query, max_results: count }), signal: AbortSignal.timeout(TIMEOUT) });
+		if (!res.ok) throw new Error(`search failed: HTTP ${res.status}`);
+		const json: any = await res.json();
+		return (json.results ?? []).slice(0, count).map((r: any) => {
+			const text = String(r.snippet ?? "").replace(/\s+/g, " ").trim();
+			return { title: String(r.title ?? "").trim(), url: r.url, snippet: text.length > 300 ? `${text.slice(0, 300)}...` : text };
+		});
 	}
 	const page = await get(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`);
 	const out: Array<{ title: string; url: string; snippet: string }> = [];

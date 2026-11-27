@@ -109,13 +109,15 @@ through a source").
 
 | Tool | What it does |
 |---|---|
-| `mcp__web__search(query, count?)` | Brave Search with `braveApiKey`, else DuckDuckGo (may rate-limit). |
+| `mcp__web__search(query, count?)` | Brave Search with `braveApiKey`, else Keenable with `keenable` or `keenableApiKey`, else DuckDuckGo (may rate-limit). |
 | `mcp__web__fetch(url, max_chars?, start?)` | A page's text; `start` continues a long one. |
 
 | Option | Default | Meaning |
 |---|---|---|
 | `braveApiKey` | none | Brave Search API key. |
-| `allowHosts`, `denyHosts` | all, none | Only these hosts, or never these (subdomains included). Without `braveApiKey` allow `duckduckgo.com`. |
+| `keenable` | `false` | Search with Keenable (`"keenable": true`), no key needed: 1000 searches an hour per address. |
+| `keenableApiKey` | none | Keenable API key, for higher limits; searches with Keenable without `keenable`. |
+| `allowHosts`, `denyHosts` | all, none | Only these hosts, or never these (subdomains included). Without `braveApiKey` or Keenable allow `duckduckgo.com`. |
 | `allowPrivate` | `false` | Local and private addresses without asking. Leave it off. |
 | `maxBytes`, `maxUrlLength`, `timeoutMs` | 2 MB, 2000, 20000 | Limits per response, URL length (longer is refused), time per request. |
 | `userAgent` | a desktop Safari | What it says it is. |
