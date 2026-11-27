@@ -269,7 +269,7 @@ the first answer counts, except for a request with a field.
 
 ## When the agent asks you something
 
-An agent can ask you something with its `question` tool. The question stands in the conversation:
+An agent can ask you something with its `question` tool. The question stands in the conversation, numbered (`Q1`):
 its text, and the answers it offers, numbered, the recommended one first, each with what it means
 under it. Its turn does not wait for you, and there is no dialog: you answer by a message like any
 other, when you like, and that message starts the agent's next turn.
@@ -282,7 +282,7 @@ other, when you like, and that message starts the agent's next turn.
 To pick several answers, write them in your message (`The mode, Telegram`). A question has no time
 limit and never times out: it is open from the turn that asked it until you write to that
 conversation or the agent starts another turn. When a turn asked several questions, a digit goes as
-typed: answer them in your own words. A reopened conversation shows its questions again, and one that is still open is
+typed: answer them in your own words, by number (`Q1: sqlite`). A reopened conversation shows its questions again, and one that is still open is
 answered the same way. The tool works in every mode, `plan` too, in every run started in your name (a schedule,
 Telegram, a trusted event). Not in an untrusted run, a sub-agent, a task one agent hands another
 (`delegate`) or a one-off conversation (`session: "new"`): there the agent says what it needs in

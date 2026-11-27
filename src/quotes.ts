@@ -1,10 +1,15 @@
 // What the owner quotes from a conversation in the Pine app: each quote's text, and where it was taken
-// from (the task whose message or answer it is, or the welcome letter or card). The agent reads the
+// from (the task whose message, answer or questions it is, or the welcome letter or card). The agent reads the
 // quotes as markdown quotes in front of the message; the daemon keeps them beside it (`TaskMeta.quotes`,
 // `.body`) so that a UI shows them as they were sent and goes back to where each came from. The daemon
 // never reads what a source names: it is a place on the page, not a way to another conversation's text.
 // Pure, with no Node in it: the app's page uses it too.
-export type QuoteSource = { task: number; part: "prompt" | "answer" } | "letter" | "welcome";
+export type QuoteSource = { task: number; part: QuotePart } | "letter" | "welcome";
+
+/** The part of a task a quote is taken from: the owner's message, the agent's answer, or the questions its turn asked. */
+export type QuotePart = "prompt" | "answer" | "questions";
+
+export const isQuotePart = (part: unknown): part is QuotePart => part === "prompt" || part === "answer" || part === "questions";
 
 export interface SentQuote {
 	text: string;
@@ -71,7 +76,7 @@ export function shortQuotes(quotes: SentQuote[] | undefined, max = 2000): SentQu
 
 export function readSource(source: unknown): QuoteSource | undefined {
 	if (source === "letter" || source === "welcome") return source;
-	if (source && typeof source === "object" && Number.isSafeInteger((source as any).task) && (source as any).task > 0 && ((source as any).part === "prompt" || (source as any).part === "answer")) return { task: (source as any).task, part: (source as any).part };
+	if (source && typeof source === "object" && Number.isSafeInteger((source as any).task) && (source as any).task > 0 && isQuotePart((source as any).part)) return { task: (source as any).task, part: (source as any).part };
 	return undefined;
 }
 
@@ -89,7 +94,7 @@ export function readQuotes(value: unknown): SentQuote[] | string {
 		const said = typeof reply === "string" && reply.trim() ? { reply: reply.trim() } : {};
 		const from = readSource(source);
 		if (from) out.push({ text, source: from, ...said });
-		else return 'a quote\'s source is "letter", "welcome" or { task, part: "prompt" | "answer" }';
+		else return 'a quote\'s source is "letter", "welcome" or { task, part: "prompt" | "answer" | "questions" }';
 	}
 	return out;
 }
