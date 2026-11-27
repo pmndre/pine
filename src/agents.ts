@@ -43,6 +43,7 @@ import type { Scheduler } from "./timers.ts";
 import { askedOf, pineTools } from "./tools.ts";
 import { type Program, Programs } from "./programs.ts";
 import { type BrowserState, BrowserViews, keptAddress, VISITED } from "./browser-view.ts";
+import { chromeFile } from "./chrome.ts";
 import { Goals } from "./goals.ts";
 import { Swarms } from "./swarm.ts";
 import { INTRODUCE, introducedKey } from "./hatch.ts";
@@ -69,8 +70,10 @@ export const NO_MODEL = "No model yet: sign in to a provider (Settings > Models 
  * say. Only an owner's conversation has local addresses the owner allowed, and only there may the
  * browser be put on the owner's screen.
  */
-export const browserSession = (owner: boolean, localFile: string, viewFile?: string, hostFile?: string, room?: string): Record<string, unknown> =>
-	owner ? { localFile, window: true, viewFile: viewFile ?? null, hostFile: viewFile && hostFile ? hostFile : null, room: viewFile && hostFile ? (room ?? null) : null } : { localFile: null, window: false, viewFile: null, hostFile: null, room: null };
+export const browserSession = (owner: boolean, localFile: string, viewFile?: string, hostFile?: string, room?: string, chromeFile?: string, chrome?: boolean): Record<string, unknown> =>
+	owner
+		? { localFile, window: true, viewFile: viewFile ?? null, hostFile: viewFile && hostFile ? hostFile : null, room: viewFile && (hostFile || chromeFile) ? (room ?? null) : null, chromeFile: viewFile && chromeFile ? chromeFile : null, chrome: Boolean(viewFile && chromeFile && chrome) }
+		: { localFile: null, window: false, viewFile: null, hostFile: null, room: null, chromeFile: null, chrome: false };
 
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
@@ -551,6 +554,15 @@ export class AgentManager {
 	async browserState(agentId: string, session: string): Promise<BrowserState> {
 		const perm = this.browserOf(agentId, session);
 		return this.withVisited(perm, await this.views.state(perm));
+	}
+
+	/**
+	 * Whether a conversation's browser is the owner's own (Chrome, Brave, Edge with pine's extension) whenever that
+	 * one is there: what its agent last did about it (browser_to_chrome, browser_to_pine: kv `chrome:`), else the owner's setting.
+	 */
+	private inChrome(perm: string): boolean {
+		const kept = this.kv.get<unknown>(`chrome:${perm}`);
+		return typeof kept === "boolean" ? kept : this.cfg.defaults.browser === "chrome";
 	}
 
 	/** The addresses the agent opened in a conversation, newest first (kv `visited:`). */
@@ -1230,6 +1242,7 @@ export class AgentManager {
 			this.kv.set(`note:${agentId}:${key}`, null);
 			this.kv.set(`branch:${agentId}:${key}`, null);
 			this.kv.set(`visited:${agentId}:${key}`, null);
+			this.kv.set(`chrome:${agentId}:${key}`, null);
 			this.kv.set(`bookmarks:${agentId}:${key}`, null);
 			this.slots.forget(`${agentId}:${key}`);
 			this.goals.drop(agentId, key);
@@ -1954,6 +1967,7 @@ export class AgentManager {
 			this.kv.set(`note:${agentId}:${key}`, null);
 			this.kv.set(`branch:${agentId}:${key}`, null);
 			this.kv.set(`visited:${agentId}:${key}`, null);
+			this.kv.set(`chrome:${agentId}:${key}`, null);
 			this.kv.set(`bookmarks:${agentId}:${key}`, null);
 			this.slots.forget(`${agentId}:${key}`);
 			this.kv.set(`folder:${agentId}:${key}`, null);
@@ -2526,6 +2540,8 @@ export class AgentManager {
 					// The agent put its browser on the owner's screen, or took it off: it is told so with the next message.
 					const shown = e.isError ? undefined : this.browserTool(agent, live!, String(e.toolName));
 					if (shown === "browser_show" || shown === "browser_hide") live!.window = shown === "browser_show";
+					// The agent moved its browser into the owner's own, or back: kept for the conversation, over the owner's setting.
+					if ((shown === "browser_to_chrome" || shown === "browser_to_pine") && live!.trust === "owner") this.kv.set(`chrome:${live!.perm}`, shown === "browser_to_chrome");
 					// An address it opened is offered to the owner again where the browser has no page (GET /agents/<id>/browser).
 					if (shown === "browser_navigate" && going.has(String(e.toolCallId))) this.visit(live!.perm, going.get(String(e.toolCallId)));
 					going.delete(String(e.toolCallId));
@@ -3774,7 +3790,7 @@ export class AgentManager {
 				// The browser of an owner's conversation learns which local addresses the owner allowed there,
 				// and may be put on the owner's screen. A run started from outside gets neither, whatever the options say.
 				// App control: the profile holds this server only where the session may have it; here it learns where its helper is kept.
-				const extra = server.pine === "commands" ? { cwd: roots.cwd, sandbox: jail?.("restricted"), env: shellEnv(agent, roots, {}) } : server.pine === "browser" ? browserSession(live.trust === "owner", this.localFile(live.perm), profile.leaf ? undefined : this.views.file(live.perm), this.views.hostFile, live.perm) : server.pine === "computer" ? (this.computerFor(agent, live.trust, server, live.cap) ?? {}) : {};
+				const extra = server.pine === "commands" ? { cwd: roots.cwd, sandbox: jail?.("restricted"), env: shellEnv(agent, roots, {}) } : server.pine === "browser" ? browserSession(live.trust === "owner", this.localFile(live.perm), profile.leaf ? undefined : this.views.file(live.perm), this.views.hostFile, live.perm, chromeFile(this.cfg.dataDir), this.inChrome(live.perm)) : server.pine === "computer" ? (this.computerFor(agent, live.trust, server, live.cap) ?? {}) : {};
 				pi.registerMcpServer(name, toPiMcp(name, server, extra));
 			}
 

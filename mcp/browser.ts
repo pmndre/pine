@@ -22,6 +22,11 @@
 //     owner's own conversations. The browser stays the same one, behind the same guard, without
 //     a window; browser_show then opens none.
 //
+//   - The owner's own browser (Chrome, Brave, Edge) with pine's extension in it: in the owner's own
+//     conversations the agent can move there (browser_to_chrome) and back (browser_to_pine). There the
+//     browser is a tab group of the owner's browser (mcp/chrome.ts), with the owner's logins and
+//     without this guard's proxy: it is the owner's browser, and they said so.
+//
 // Everything a browser returns is outside content; pine marks sessions that use it as tainted.
 //
 // options: {
@@ -74,6 +79,13 @@ interface BrowserOptions {
 	hostFile?: string;
 	/** Set by pine with hostFile: the conversation this browser is for, which names its tabs in the app. */
 	room?: string;
+	/**
+	 * Set by pine, not by the owner: a file in pine's home in which the host of the owner's own browser says
+	 * where it is (mcp/chrome.ts), while that browser runs with pine's extension. Only an owner's conversation has one.
+	 */
+	chromeFile?: string;
+	/** Set by pine with chromeFile: this conversation's browser is the owner's own whenever that one is there. */
+	chrome?: boolean;
 	browser?: string;
 	executablePath?: string;
 	caps?: string;
@@ -109,6 +121,24 @@ export const WINDOW_TOOLS = [
 	},
 ];
 const isWindowTool = (name: string) => WINDOW_TOOLS.some((t) => t.name === name);
+/** pine's own: the browser as a tab group in the owner's own browser, and back. */
+export const CHROME_TOOLS = [
+	{
+		name: "browser_to_chrome",
+		description:
+			"Move your browser into your owner's own browser (Chrome, Brave or Edge): a tab group named pine there, with your owner's logins. Call it first, before you open anything, when your owner says \"my browser\", \"Chrome\" or \"Brave\" or speaks of a tab of theirs, and when a site refuses this browser, shows a captcha or needs a login your owner has. You work only in the tabs of that group; your owner drags a tab into the group to hand it to you. It stays this way for this conversation.",
+		inputSchema: { type: "object", properties: {} },
+	},
+	{
+		name: "browser_to_pine",
+		description: "Move your browser back from your owner's own browser to pine's own. The tabs you opened there are closed; your owner's tabs stay open.",
+		inputSchema: { type: "object", properties: {} },
+	},
+];
+const isChromeTool = (name: string) => CHROME_TOOLS.some((t) => t.name === name);
+/** What the agent is told when the owner's browser is not there. */
+export const NO_CHROME =
+	"Your owner's browser is not connected to pine. Tell them what it takes: pine's extension in Chrome, Brave or Edge (the Pine app sets it up under Settings > General, at Your own browser; in a terminal it is: pine chrome install), and that browser has to be running. Until then you work in pine's own browser.";
 /** Enough to read and operate a page; keeps the tool list short for small models. */
 export const CORE_TOOLS = [
 	"browser_navigate", "browser_navigate_back", "browser_snapshot", "browser_find", "browser_click", "browser_type", "browser_fill_form",
@@ -117,9 +147,10 @@ export const CORE_TOOLS = [
 	"browser_take_screenshot", "browser_console_messages",
 ];
 
-export function toolAllowed(name: string, o: Pick<BrowserOptions, "tools" | "block" | "window" | "caps">): boolean {
+export function toolAllowed(name: string, o: Pick<BrowserOptions, "tools" | "block" | "window" | "caps" | "chromeFile">): boolean {
 	if (ALWAYS_BLOCKED.includes(name) || (o.block ?? []).includes(name)) return false;
 	if (isWindowTool(name)) return o.window === true;
+	if (isChromeTool(name)) return o.window === true && typeof o.chromeFile === "string";
 	if (STORAGE_TOOLS.test(name) && !hasCap(o.caps, "storage")) return false;
 	if (VISION_TOOLS.test(name) && !hasCap(o.caps, "vision")) return false;
 	const tools = o.tools ?? "core";
@@ -265,11 +296,16 @@ export interface Tabs {
 	current: number;
 }
 
-/** Playwright's list of tabs ("- 0: (current) [Title](address)"), read. */
+/**
+ * Playwright's list of tabs ("- 0: (current) [Title](address)"), read. An answer given while a tab came or went
+ * holds the list twice, as it was asked for and as it is by now ("### Open tabs"): the last one counts.
+ */
 export function readTabs(text: string): Tabs {
-	const tabs: Tabs["tabs"] = [];
+	let tabs: Tabs["tabs"] = [];
 	let current = 0;
 	for (const m of text.matchAll(/^- (\d+):( \(current\))? \[(.*)\]\((\S*)\)\s*$/gm)) {
+		// A list begins at 0: what was read before it is the older list.
+		if (m[1] === "0" && tabs.length) (tabs = []), (current = 0);
 		if (m[2]) current = tabs.length;
 		tabs.push({ title: m[3], url: m[4] });
 	}
@@ -482,6 +518,10 @@ export interface BrowserServer {
 	scale?: number;
 	/** Where the Pine app's own browser is now, if it is there (hostFile, and it answers); looked at again and again. */
 	host?(): Promise<string | undefined>;
+	/** Where the owner's own browser is now, if it runs with pine's extension (chromeFile, and its host answers). */
+	chrome?(): Promise<string | undefined>;
+	/** Tells the owner's own browser at `host` that the agent is done there: the tabs pine opened are closed, the owner's stay. */
+	bye?(host: string): Promise<void>;
 }
 
 /**
@@ -503,6 +543,10 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 	let headed = !!o.headed;
 	/** The Pine app's own browser this one is now (io.host), while the app runs: a page in its window, which the owner uses too. */
 	let hosted: string | undefined;
+	/** `hosted` is the owner's own browser (io.chrome), not the app's: a tab group there, with the owner's logins. */
+	let inChrome = false;
+	/** The browser is to be the owner's own whenever that one is there (the owner's setting, browser_to_chrome). */
+	let wantChrome = o.chrome === true;
 	/** The owner's own window shows this browser (the Pine app): browser_show opens no other. */
 	let embedded = false;
 	/** The owner's hand was in the browser since the agent last looked. */
@@ -596,6 +640,7 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 		inFlight = waiting.shift();
 		if (inFlight.job) return void inFlight.job().finally(() => ((inFlight = undefined), next()));
 		if (isWindowTool(String(inFlight.params?.name))) return void turn(inFlight);
+		if (isChromeTool(String(inFlight.params?.name))) return void place(inFlight);
 		if (headed || hosted || shared) return void guarded(inFlight);
 		write(inFlight);
 	};
@@ -620,7 +665,7 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 		return fresh;
 	};
 	/** A call of the agent's that may close a tab or the browser, or start the browser anew. */
-	const ends = (msg: any) => !msg.job && (isWindowTool(String(msg.params?.name)) || ["browser_close", "browser_tabs"].includes(String(msg.params?.name)));
+	const ends = (msg: any) => !msg.job && (isWindowTool(String(msg.params?.name)) || isChromeTool(String(msg.params?.name)) || ["browser_close", "browser_tabs"].includes(String(msg.params?.name)));
 	let framing: Promise<Buffer | undefined> | undefined;
 	/** Something this server does itself (what the owner did, where the browser is): it waits its turn like a call of the agent's. */
 	const between = <T>(job: () => Promise<T>): Promise<T> =>
@@ -655,6 +700,15 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 	const turn = async (msg: any) => {
 		const show = msg.params.name === "browser_show";
 		const say = (text: string, isError = false) => answered({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text }], ...(isError ? { isError: true } : {}) } });
+		// The browser is a tab group in the owner's own browser: that is where they see it.
+		if (inChrome) {
+			if (!show) return say("The browser has no window of pine's. It is a tab group in your owner's own browser; browser_to_pine moves it back to pine's own browser.");
+			const tabs = page === undefined ? undefined : await tabsNow();
+			if (tabs?.tabs.length) await call("browser_tabs", { action: "select", index: tabs.current });
+			seen = tabs ? await tabsNow() : seen;
+			shared = true;
+			return say(`Your owner sees the browser in their own browser, in the tab group named pine, and uses it there too. Tell them to look there. What they ask you to find or do on the web, do on the page they are on; look at it first (browser_snapshot), because they may have changed it. When they have to do something themselves, wait until they say they are done.${page === undefined ? " No page is open yet: open the one they are to see." : ""}`);
+		}
 		// The app shows the browser beside the conversation, or the browser is the app's own.
 		const inApp = embedded || hosted !== undefined;
 		if (headed === show) return say(show ? "The browser is already a window on your owner's screen." : inApp ? "The browser has no separate window. Your owner sees it in the Pine app, at the right of this conversation's window." : "The browser has no window.");
@@ -709,7 +763,7 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 			if (url) page = url === "about:blank" ? undefined : url;
 		}
 		if (mine) return mine(msg);
-		if (listIds.delete(msg.id) && Array.isArray(msg.result?.tools)) msg.result.tools = [...msg.result.tools.filter((t: any) => toolAllowed(t.name, o)), ...WINDOW_TOOLS.filter((t) => toolAllowed(t.name, o))];
+		if (listIds.delete(msg.id) && Array.isArray(msg.result?.tools)) msg.result.tools = [...msg.result.tools.filter((t: any) => toolAllowed(t.name, o)), ...[...WINDOW_TOOLS, ...CHROME_TOOLS].filter((t) => toolAllowed(t.name, o))];
 		const current = inFlight !== undefined && msg.id !== undefined && msg.id === inFlight.id ? inFlight : undefined;
 		// A page that is still loading its fonts makes a screenshot give up after five seconds. Once more does it.
 		if (current?.params?.name === "browser_take_screenshot" && msg.result?.isError && !current.again && /Timeout/.test(textOf(msg))) {
@@ -718,6 +772,7 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 		}
 		const closed = current?.params?.name === "browser_close" && !msg.result?.isError;
 		if (closed) page = undefined;
+		if (closed && inChrome && hosted) void io.bye?.(hosted).catch(() => {});
 		for (const part of msg.result?.content ?? []) if (part.type === "text" && typeof part.text === "string") part.text = inlineFiles(part.text, io.scratch);
 		if (msg.result?.content && io.refused.length && msg.result.isError) msg.result.content.push({ type: "text", text: `pine: the browser was refused ${io.refused.at(-1)}` });
 		// What a page reached for by itself and did not get, the agent would otherwise only meet as an
@@ -734,7 +789,13 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 		// What the tabs are after the agent's own call is what it has seen. (A closed browser is not asked: asking would open it again.)
 		// Without a window the agent has now seen what the owner's hand left: nothing is compared again until it moves.
 		if ((!headed && !hosted) || closed) return (seen = undefined), (shared = false), answered(msg);
-		void tabsNow().then((tabs) => ((seen = tabs), answered(msg)));
+		void tabsNow().then((tabs) => {
+			// A tab that came or changed while the agent only looked was not its doing, and it was not told (the owner's
+			// hand, between this server's look before the call and the call): what it has seen stays, and its next call is told.
+			const unseen = looksOnly(current.params) && !current.notice && seen !== undefined && tabs !== undefined && changedTab(seen, tabs) !== undefined;
+			if (!unseen) seen = tabs;
+			answered(msg);
+		});
 	};
 
 	// ---- the owner's own window ------------------------------------------------------------------
@@ -744,7 +805,7 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 		const tabs = page === undefined ? undefined : await tabsNow();
 		const front = tabs?.tabs[tabs.current];
 		if (front && front.url !== "about:blank") page = front.url;
-		return { open: page !== undefined, tabs: (tabs?.tabs ?? []).map((t) => ({ title: shown(t.title, 200), url: shown(t.url, 2000) })), current: tabs?.current ?? 0, window: headed, scale: headed || hosted ? 1 : (io.scale ?? 1), ...(hosted ? { hosted: true } : {}), ...(error ? { error: shown(error, 300) } : {}) };
+		return { open: page !== undefined, tabs: (tabs?.tabs ?? []).map((t) => ({ title: shown(t.title, 200), url: shown(t.url, 2000) })), current: tabs?.current ?? 0, window: headed, scale: headed || hosted ? 1 : (io.scale ?? 1), ...(hosted && !inChrome ? { hosted: true } : {}), ...(error ? { error: shown(error, 300) } : {}) };
 	};
 	/** Before the owner's hand moves: what the agent last saw is kept, so that its next call notices. */
 	const touch = async () => {
@@ -837,36 +898,75 @@ export function relay(o: BrowserOptions, io: BrowserServer): { line(line: string
 	};
 
 	/**
-	 * The browser becomes the app's own (a host), or the one this server starts when the app is gone. Between two
-	 * calls, like anything this server does itself. The page that was open is opened again there, and the logins go
-	 * along where the browser that is left still answers (an app that quit does not).
+	 * The browser becomes the app's own or the owner's own browser (a host), or the one this server starts when
+	 * that one is gone. The page that was open is opened again there. The logins go along between pine's own
+	 * browsers, where the one that is left still answers (an app that quit does not); the owner's own browser
+	 * keeps its logins to itself and takes none: nothing is carried into it or out of it.
 	 */
-	const move = (host: string | undefined) =>
-		between(async () => {
-			if (host === hosted) return;
-			const at = page;
-			const state = path.join(io.scratch, `state-${process.pid}-${Date.now()}.json`);
-			try {
-				const kept = at !== undefined && !failure(await ask("tools/call", { name: "browser_storage_state", arguments: { filename: state } }, 5000));
-				await restart(false, host);
-				page = undefined;
-				if (kept) await ask("tools/call", { name: "browser_set_storage_state", arguments: { filename: state } }, 10_000);
-				if (at !== undefined && !failure(await ask("tools/call", { name: "browser_navigate", arguments: { url: at } }, 60_000))) page = at;
-				// The app's browser is the owner's too: from now on the agent is told when it was moved there.
-				seen = host && page !== undefined ? await tabsNow() : undefined;
-				shared = false;
-			} finally {
-				fs.rmSync(state, { force: true });
+	const moveNow = async (host: string | undefined, toChrome: boolean) => {
+		if (host === hosted) return;
+		const at = page;
+		const carry = !inChrome && !(toChrome && host !== undefined);
+		const left = inChrome ? hosted : undefined;
+		const state = path.join(io.scratch, `state-${process.pid}-${Date.now()}.json`);
+		try {
+			const kept = carry && at !== undefined && !failure(await ask("tools/call", { name: "browser_storage_state", arguments: { filename: state } }, 5000));
+			await restart(false, host);
+			if (left) await io.bye?.(left).catch(() => {});
+			inChrome = toChrome && host !== undefined;
+			page = undefined;
+			if (kept) await ask("tools/call", { name: "browser_set_storage_state", arguments: { filename: state } }, 10_000);
+			// In the owner's browser the page gets a tab of its own: the tabs that are in the group are theirs.
+			if (at !== undefined && inChrome) await ask("tools/call", { name: "browser_tabs", arguments: { action: "new" } }, 20_000);
+			if (at !== undefined && !failure(await ask("tools/call", { name: "browser_navigate", arguments: { url: at } }, 60_000))) page = at;
+			// A host's browser is the owner's too: from now on the agent is told when it was moved there.
+			seen = host && page !== undefined ? await tabsNow() : undefined;
+			shared = false;
+		} finally {
+			fs.rmSync(state, { force: true });
+		}
+	};
+	/** Between two calls, like anything this server does itself. */
+	const move = (host: string | undefined, toChrome: boolean) => between(() => moveNow(host, toChrome));
+
+	/** browser_to_chrome and browser_to_pine: the agent moves its browser, because the owner asked or a site refused. */
+	const place = async (msg: any) => {
+		const to = msg.params.name === "browser_to_chrome";
+		const say = (text: string, isError = false) => answered({ jsonrpc: "2.0", id: msg.id, result: { content: [{ type: "text", text }], ...(isError ? { isError: true } : {}) } });
+		try {
+			if (!to) {
+				wantChrome = false;
+				if (!inChrome) return say("The browser is pine's own already.");
+				await moveNow(await io.host?.(), false);
+				return say(`The browser is pine's own again. The tabs you opened in your owner's browser are closed; theirs stay open, and you no longer see them.${page === undefined ? "" : ` You are on ${page} again, without your owner's logins.`}`);
 			}
-		});
-	if (io.host) {
+			const at = await io.chrome?.();
+			if (!at) return say(NO_CHROME, true);
+			wantChrome = true;
+			if (!inChrome) await moveNow(at, true);
+			// Without a page there is no tab, and without a tab no group for the owner to drag one into.
+			if (page === undefined && !(await tabsNow().catch(() => undefined))?.tabs.length) await call("browser_navigate", { url: "about:blank" });
+			const tabs = await tabsNow();
+			if (tabs?.tabs.length) await call("browser_tabs", { action: "select", index: tabs.current });
+			seen = tabs;
+			const others = (tabs?.tabs ?? []).filter((t) => t.url && t.url !== "about:blank" && t.url !== page);
+			say(
+				`Your browser is now a tab group named pine in your owner's own browser, with their logins. Tell them it is there. You work only in the tabs of that group: the ones you open, and the ones your owner drags into it to hand them to you. Your owner uses these tabs too, so look at a page (browser_snapshot) before you act on it. browser_to_pine moves back to pine's own browser.${page === undefined ? "" : `\nYou are on: ${page}`}${others.length ? `\nTabs your owner put into the group:\n${others.map((t) => `- ${shown(t.title, 120) || "a page"} (${shown(t.url, 300)})`).join("\n")}\nbrowser_tabs lists and selects them.` : ""}`,
+			);
+		} catch (e) {
+			say(`The browser could not be moved: ${e instanceof Error ? e.message : String(e)}`, true);
+		}
+	};
+
+	if (io.host || io.chrome) {
 		let moving = false;
 		const look = async () => {
 			if (moving) return;
-			const want = await io.host!();
+			const chrome = wantChrome ? await io.chrome?.() : undefined;
+			const want = chrome ?? (await io.host?.());
 			if (want === hosted) return;
 			moving = true;
-			await move(want).catch(() => {});
+			await move(want, chrome !== undefined).catch(() => {});
 			moving = false;
 		};
 		void look();
@@ -976,6 +1076,8 @@ if (import.meta.main) {
 		ended: () => stop(),
 		scale,
 		host: o.hostFile && o.room && o.window && o.viewFile ? () => appBrowser(o.hostFile!) : undefined,
+		chrome: o.chromeFile && o.room && o.window && o.viewFile ? () => appBrowser(o.chromeFile!) : undefined,
+		bye: async (host) => void (await fetch(`${host.replace(/^ws:/, "http:")}/${encodeURIComponent(o.room!)}/bye`, { method: "POST", redirect: "error", signal: AbortSignal.timeout(10_000) })),
 	});
 	process.on("SIGTERM", stop);
 	process.on("SIGINT", stop);

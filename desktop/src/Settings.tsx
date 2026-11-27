@@ -3164,6 +3164,56 @@ const UPDATE_TEXT: Record<UpdatePhase["phase"], (u: UpdatePhase) => string> = {
  * The top of Settings > General: this app (theme, updates, notifications) and the pine it uses (its state,
  * the log, Keep running, the command, the browser build, the home folder).
  */
+/**
+ * The owner's own browser (Chrome, Brave, Edge) as the agents' browser: connect pine to the browsers of its
+ * computer, then add the extension there. pine does both parts' checking; the page only says where it stands.
+ */
+function OwnBrowser() {
+	const s = useModel(store);
+	const state = useLoad(() => api.ownBrowser());
+	const [busy, setBusy] = useState(false);
+	const b = state.data;
+	const waiting = Boolean(b?.set && !b.connected);
+	// The extension answers some seconds after the browser loaded it: look again until it does.
+	useEffect(() => {
+		if (!waiting) return;
+		const timer = setInterval(state.reload, 3000);
+		return () => clearInterval(timer);
+	}, [waiting, state.reload]);
+	// An older pine has no such thing: the row is left out, like any other it does not know.
+	if (state.error) return null;
+	if (!b) return <FieldSkeleton data-setting="own-browser" />;
+	const connect = (on: boolean) => {
+		setBusy(true);
+		void s.attempt(() => api.connectOwnBrowser(on)).finally(() => (setBusy(false), state.reload()));
+	};
+	const here = s.local && !s.remote;
+	const names = b.browsers.filter((x) => x.registered).map((x) => x.name);
+	return (
+		<Field orientation="responsive" data-setting="own-browser" data-state={b.connected ? "connected" : b.set ? "waiting" : "none"}>
+			<FieldContent className="min-w-0">
+				<FieldTitle>
+					Your own browser
+					{b.connected ? <Badge className="h-4">{`connected to ${b.connected.browser}`}</Badge> : b.set ? <Badge variant="outline" className="h-4">waiting for the extension</Badge> : null}
+				</FieldTitle>
+				<FieldDescription>
+					{b.connected
+						? "Agents can work in your browser, in a tab group of their own, with your logins. Ask an agent to use your browser, or choose it for every conversation with the Browser setting below. Drag a tab into an agent's group to hand it over, and out again to take it back."
+						: b.set
+							? `${names.length ? `pine is connected to ${names.join(", ")}.` : "pine found no Chrome, Brave or Edge on this computer yet."} One step is left: add the Pine extension to the browser. ${b.store ? "Get it from the store." : "Open chrome://extensions there, turn on Developer mode, and drag the extension's folder onto that page."} If the browser was running already, restart it once.`
+							: "Agents browse in a browser of pine's own. They can also work in your Chrome, Brave or Edge: in a tab group of their own, with your logins, for sites that refuse pine's browser or need you signed in."}
+				</FieldDescription>
+				{waiting && !b.store ? <FieldDescription><span className="block font-mono wrap-anywhere">{tilde(b.folder)}</span></FieldDescription> : null}
+			</FieldContent>
+			<Control>
+				{waiting && b.store ? <Button variant="outline" data-action="extension" onClick={() => void bridge.open(b.store!)}><ExternalLinkIcon data-icon="inline-start" />Get the extension</Button> : null}
+				{waiting && !b.store && here ? <Button variant="outline" data-action="extension" onClick={() => void bridge.reveal(b.folder)}><FolderIcon data-icon="inline-start" />Show the folder</Button> : null}
+				{b.set ? <Button variant="ghost" data-action="disconnect" disabled={busy} onClick={() => connect(false)}>Disconnect</Button> : <Button variant="outline" data-action="connect" disabled={busy} onClick={() => connect(true)}>Connect</Button>}
+			</Control>
+		</Field>
+	);
+}
+
 function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.overview>> }) {
 	const s = useModel(store);
 	const set = async (change: Record<string, unknown>) => {
@@ -3315,6 +3365,7 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 							)}
 						</Field>
 					) : null}
+					<OwnBrowser />
 					{local ? (
 						<Field orientation="responsive" data-find="home">
 							<FieldContent className="min-w-0">

@@ -476,6 +476,11 @@ export class Store extends Model {
 	/** The question at the start, when it is not: fetch it now, or later. */
 	browserAsk = false;
 	browserFetching = false;
+	/**
+	 * The question at the start, once: let agents work in your own browser, by getting pine's extension from its
+	 * store. Only while the extension has a store page (`api.ownBrowser().store`) and does not answer yet.
+	 */
+	ownBrowserAsk?: { store: string };
 	/** Something a menu asked for that only a part of the page can do (save the file in the editor, focus the input). */
 	signal = new Model();
 	/** The name of what was asked for last. Read with `useSignal`, which several parts can do for the same asking. */
@@ -1052,6 +1057,7 @@ export class Store extends Model {
 		this.settingsAgent = undefined;
 		this.browser = undefined;
 		this.browserAsk = false;
+		this.ownBrowserAsk = undefined;
 		for (const t of this.timers) clearInterval(t);
 		this.timers = [];
 	}
@@ -1151,6 +1157,7 @@ export class Store extends Model {
 		for (const a of this.agents) learnHome(a.workspace);
 		// The browser build is fetched onto this computer: another machine's pine is not asked about it here.
 		if (!this.remote) void this.checkBrowser(true);
+		if (!this.remote && this.local) void this.checkOwnBrowser();
 		else ((this.browserChecked = true), this.touch());
 		for (const t of this.timers) clearInterval(t);
 		// The app shows an agent's browser itself, in its aside: the daemon is told so while the app runs, and the browser opens no window.
@@ -1540,6 +1547,38 @@ export class Store extends Model {
 		if (ask && over.browser === false && later !== over.version) this.browserAsk = true;
 		if (over.browser !== false) this.browserAsk = this.browserFetching;
 		this.touch();
+	}
+
+	/**
+	 * Whether to ask, at the start, about the owner's own browser: once, on this computer's pine, while pine's
+	 * extension can be had from a store, a browser for it is here, and it does not answer already.
+	 */
+	async checkOwnBrowser(): Promise<void> {
+		try {
+			if (localStorage.getItem("pine.ownBrowser.asked")) return;
+		} catch {
+			// No storage to remember the answer in: it is not asked, rather than at every start.
+			return;
+		}
+		const b = await api.ownBrowser().catch(() => undefined);
+		if (!b?.store || b.connected || !b.browsers.length) return;
+		this.ownBrowserAsk = { store: b.store };
+		this.touch();
+	}
+
+	/** The owner answered the question about their own browser: it is not asked again. Settings > General still offers it. */
+	async ownBrowserAnswer(get: boolean): Promise<void> {
+		const asked = this.ownBrowserAsk;
+		this.ownBrowserAsk = undefined;
+		this.touch();
+		try {
+			localStorage.setItem("pine.ownBrowser.asked", "1");
+		} catch {
+			// Then it was the last time for this window all the same.
+		}
+		if (!get || !asked) return;
+		// pine is made known to the browsers here, and the extension's page opens in the owner's browser.
+		if (await this.attempt(() => api.connectOwnBrowser(true))) await bridge.open(asked.store);
 	}
 
 	/** Not now: it is not asked again until pine is another version. Settings > General still offers it. */

@@ -501,6 +501,19 @@ export interface LoginState {
 	chosen?: string;
 }
 
+/** The owner's own browser as the agents' browser (src/chrome.ts): whether pine is connected to the browsers there, and whether its extension answers. */
+export interface OwnBrowser {
+	/** pine was connected to the browsers of its computer. */
+	set: boolean;
+	browsers: Array<{ name: string; registered: boolean }>;
+	/** The extension is running in a browser. */
+	connected?: { browser: string; version: string };
+	/** The extension as a folder, for a browser that loads it from one. */
+	folder: string;
+	/** The extension's page in a store, when it is in one. */
+	store?: string;
+}
+
 export interface Overview {
 	version: string;
 	home: string;
@@ -685,6 +698,8 @@ export const api = {
 
 	// what the settings pages change
 	overview: () => get<Overview>("/overview"),
+	ownBrowser: () => get<OwnBrowser>("/chrome"),
+	connectOwnBrowser: (connect: boolean) => post<OwnBrowser>("/chrome", { connect }),
 	settings: () => get<Setting[]>("/settings"),
 	setSetting: (key: string, value: unknown) => post<{ key: string; now: string; live: boolean }>("/settings", { key, value }),
 	// The themes of pine's home, as colors (theme.ts), and the one in force. A pine older than themes has none: an empty list.

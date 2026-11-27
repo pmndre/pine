@@ -72,6 +72,7 @@ export const PLACES: Static[] = [
 	{ id: "keep-running", section: "general", path: ["pine"], title: "Keep pine running after the app quits", words: "background quit close window daemon", find: at("keep-running"), when: (s) => s.local },
 	{ id: "command", section: "general", path: ["pine"], title: "The pine command in a terminal", words: "cli shell path install command line", find: at("command"), when: (s) => s.local },
 	{ id: "browser", section: "general", path: ["pine"], title: "Browser for the web tools", words: "chromium playwright download fetch web", find: "[data-setting=browser]", when: (s) => s.local },
+	{ id: "own-browser", section: "general", path: ["pine"], title: "Your own browser", about: "Agents work in your Chrome, Brave or Edge, in a tab group of their own.", words: "chrome brave edge extension tab group logins cookies sign in captcha", find: "[data-setting=own-browser]" },
 	{ id: "home", section: "general", path: ["pine"], title: "Home folder", about: "Where pine keeps agents and settings on this computer.", words: "~/.pine data location directory", find: at("home"), when: (s) => s.local },
 
 	{ id: "new-agent", section: "agents", title: "New agent", words: "create add make agent" },

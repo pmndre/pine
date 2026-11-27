@@ -739,7 +739,11 @@ function Letter({ tab }: { tab: Tab }) {
 			main={tab.agent}
 			home={home ? tilde(home) : "~/.pine"}
 			here={Boolean(home) && !store.remote}
-			settings={(section) => store.openSettings(section)}
+			settings={(section, find) => {
+				// (A part of the page to open at, as Settings' own search names one.)
+				if (find) store.settingsFind = { find };
+				store.openSettings(section);
+			}}
 			reveal={() => home && void bridge.reveal(home)}
 			say={(text) => {
 				tab.draft = text;

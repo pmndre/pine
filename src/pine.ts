@@ -14,6 +14,7 @@ import { SourceHost } from "./sources.ts";
 import { Approvals, audit, Redactor } from "./security.ts";
 import { Bus, Kv, openDb, State, TaskStore } from "./store.ts";
 import { Scheduler } from "./timers.ts";
+import { refreshChrome } from "./chrome.ts";
 import { seedThemes, themesDir } from "./themes.ts";
 import { seedViews, viewsDir } from "./views.ts";
 import { createLogger, errText, type Logger } from "./util.ts";
@@ -95,6 +96,12 @@ export async function startPine(opts: { home?: string; config?: PineConfig; log?
 		seedViews(cfg.home);
 	} catch (e) {
 		log.warn(`could not put pine's views into ${viewsDir(cfg.home)}: ${errText(e)}`);
+	}
+	// Where the owner connected pine to their own browser, the browser finds this pine: its Node, its code, its extension.
+	try {
+		refreshChrome(cfg);
+	} catch (e) {
+		log.warn(`could not bring pine's connection to your browser up to date: ${errText(e)}`);
 	}
 	installModelTimeouts(cfg);
 

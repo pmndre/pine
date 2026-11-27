@@ -30,14 +30,15 @@ const pending = new Set();
 /** Messages of the host that came in pieces: id -> the pieces so far. */
 const parts = new Map();
 
-// What outlives this worker while the browser runs: which group is whose, and which tabs pine opened.
+// What outlives this worker while the browser runs: which group is whose (room -> group), and
+// which tabs pine opened itself (tab -> room). Those it closes again; the owner's it never closes.
 let groups = {};
-let mine = new Set();
+let mine = {};
 const ready = chrome.storage.session.get(["groups", "mine"]).then((kept) => {
 	groups = kept.groups && typeof kept.groups === "object" ? kept.groups : {};
-	mine = new Set(Array.isArray(kept.mine) ? kept.mine : []);
+	mine = kept.mine && typeof kept.mine === "object" && !Array.isArray(kept.mine) ? kept.mine : {};
 });
-const save = () => void chrome.storage.session.set({ groups, mine: [...mine] }).catch(() => {});
+const save = () => void chrome.storage.session.set({ groups, mine }).catch(() => {});
 
 const text = (e) => {
 	const said = e instanceof Error ? e.message : String(e);
@@ -143,7 +144,8 @@ async function request(m) {
 	if (m.do === "enter") return { tabs: await enter(String(m.room), String(m.title ?? "pine")) };
 	if (m.do === "open") return open(String(m.room), String(m.title ?? "pine"), typeof m.url === "string" ? m.url : "about:blank");
 	if (m.do === "close") return close(m.tabId);
-	if (m.do === "leave") return leave(String(m.room), m.closeMine === true);
+	if (m.do === "leave") return leave(String(m.room));
+	if (m.do === "clear") return clear(String(m.room));
 	throw new Error(`unknown request ${m.do}`);
 }
 
@@ -175,12 +177,20 @@ async function attach(tabId, room) {
 	try {
 		const { targetInfo } = await chrome.debugger.sendCommand({ tabId }, "Target.getTargetInfo");
 		tabs.set(tabId, room);
+		await awake(tabId);
 		return targetInfo;
 	} catch {
 		await chrome.debugger.detach({ tabId }).catch(() => {});
 		return undefined;
 	}
 }
+
+/**
+ * A tab that is not in front is hidden: its page stops drawing, and a click that waits for the page
+ * to hold still waits for ever. With this the page stays awake behind the owner's own tab, so the
+ * agent works without taking the front.
+ */
+const awake = (tabId) => chrome.debugger.sendCommand({ tabId }, "Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => {});
 
 /** A conversation's browser is here from now on: every tab of its group is its agent's. */
 async function enter(room, title) {
@@ -215,14 +225,14 @@ async function open(room, title, url) {
 			await chrome.tabGroups.update(groupId, { title, color: COLOR });
 			groups[room] = groupId;
 		} else await chrome.tabs.group({ tabIds: [tab.id], groupId });
-		mine.add(tab.id);
+		mine[tab.id] = room;
 		save();
 		const targetInfo = await attach(tab.id, room);
 		if (!targetInfo) throw new Error("the browser did not let pine use the new tab");
 		if (url !== "about:blank" && /^https?:/i.test(url)) await chrome.tabs.update(tab.id, { url });
 		return { tabId: tab.id, targetInfo };
 	} catch (e) {
-		mine.delete(tab.id);
+		delete mine[tab.id];
 		await chrome.tabs.remove(tab.id).catch(() => {});
 		throw e;
 	} finally {
@@ -233,20 +243,31 @@ async function open(room, title, url) {
 async function close(tabId) {
 	if (!tabs.has(tabId)) throw new Error("No tab with given id");
 	tabs.delete(tabId);
-	mine.delete(tabId);
+	delete mine[tabId];
 	save();
 	await chrome.tabs.remove(tabId).catch(() => {});
 	return {};
 }
 
-/** A conversation's browser is here no longer. Its group stays; the tabs pine opened go if asked. */
-async function leave(room, closeMine) {
+/** A conversation's browser is here no longer (it rests, or pine stopped). Its group and every tab stay; nobody is attached. */
+async function leave(room) {
 	rooms.delete(room);
 	for (const [tabId, of] of [...tabs]) {
 		if (of !== room) continue;
 		tabs.delete(tabId);
 		await chrome.debugger.detach({ tabId }).catch(() => {});
-		if (closeMine && mine.delete(tabId)) await chrome.tabs.remove(tabId).catch(() => {});
+	}
+	return {};
+}
+
+/** The agent is done with its browser here: the tabs pine opened for this conversation are closed. The owner's stay. */
+async function clear(room) {
+	for (const [id, of] of Object.entries(mine)) {
+		if (of !== room) continue;
+		const tabId = Number(id);
+		delete mine[id];
+		gone(tabId);
+		await chrome.tabs.remove(tabId).catch(() => {});
 	}
 	save();
 	return {};
@@ -263,13 +284,19 @@ async function releaseAll() {
 
 /** A tab is no longer pine's. */
 function gone(tabId) {
-	if (!tabs.delete(tabId)) return;
-	if (mine.delete(tabId)) save();
-	send({ ev: "gone", tabId });
+	if (mine[tabId] !== undefined) {
+		delete mine[tabId];
+		save();
+	}
+	if (tabs.delete(tabId)) send({ ev: "gone", tabId });
 }
 
 chrome.debugger.onEvent.addListener((source, method, params) => {
 	if (source.tabId === undefined || !tabs.has(source.tabId)) return;
+	// A page from another site is another process: it is kept awake like the one before it.
+	if (!source.sessionId && method === "Page.frameNavigated" && !params?.frame?.parentId) void awake(source.tabId);
+	// The pointer's own world is this worker's business alone: the host hears of what the page has without pine.
+	if (method === "Runtime.executionContextCreated" && params?.context?.name === WORLD) return;
 	send({ ev: "cdp", tabId: source.tabId, ...(source.sessionId ? { sessionId: source.sessionId } : {}), method, params });
 });
 
@@ -280,7 +307,11 @@ chrome.debugger.onDetach.addListener((source, reason) => {
 	if (reason === "canceled_by_user") void chrome.tabs.ungroup(source.tabId).catch(() => {});
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => gone(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => {
+	gone(tabId);
+	worlds.delete(tabId);
+	drawing.delete(tabId);
+});
 
 // The owner drags a tab into a conversation's group, or out of it.
 chrome.tabs.onUpdated.addListener(async (tabId, change) => {
@@ -307,14 +338,45 @@ chrome.tabGroups.onRemoved.addListener(async (group) => {
 
 // ---- the pointer -------------------------------------------------------------------------------
 
-/** Where the agent's pointer is, drawn into the page so that the owner sees what it does. */
+/** The world the pointer is drawn in: apart from the page's own scripts, and from the ones the agent's browser server runs there. */
+const WORLD = "pine-pointer";
+/** tabId -> that world in the page the tab shows now. */
+const worlds = new Map();
+/** tabId -> the drawing under way: one after the other, so that the pointer ends where the last event put it. */
+const drawing = new Map();
+
+/**
+ * Where the agent's pointer is, drawn into the page so that the owner sees what it does. Through the
+ * debugger the tab is attached to already, so the extension needs no access to sites of its own.
+ */
 function pointer(tabId, p) {
 	if (typeof p.x !== "number" || typeof p.y !== "number" || !/^mouse(Moved|Pressed)$/.test(String(p.type))) return;
-	chrome.scripting.executeScript({ target: { tabId }, world: "ISOLATED", func: paint, args: [p.x, p.y, p.type === "mousePressed"] }).catch(() => {});
+	const args = [p.x, p.y, p.type === "mousePressed"].map((value) => ({ value }));
+	drawing.set(
+		tabId,
+		(drawing.get(tabId) ?? Promise.resolve()).then(() => draw(tabId, args)).catch(() => {}),
+	);
+}
+
+async function draw(tabId, args) {
+	if (!tabs.has(tabId)) return;
+	const call = (executionContextId) => chrome.debugger.sendCommand({ tabId }, "Runtime.callFunctionOn", { functionDeclaration: PAINT, executionContextId, arguments: args, silent: true });
+	const known = worlds.get(tabId);
+	if (known !== undefined) {
+		try {
+			return await call(known);
+		} catch {
+			// The tab shows another page now: the world went with the one before.
+		}
+	}
+	const { frameTree } = await chrome.debugger.sendCommand({ tabId }, "Page.getFrameTree");
+	const { executionContextId } = await chrome.debugger.sendCommand({ tabId }, "Page.createIsolatedWorld", { frameId: frameTree.frame.id, worldName: WORLD });
+	worlds.set(tabId, executionContextId);
+	await call(executionContextId);
 }
 
 /**
- * Runs in the page, in a world of the extension's own. The pointer is a picture and nothing else:
+ * Runs in the page, in a world of its own (WORLD). The pointer is a picture and nothing else:
  * it takes no click, is no part of what the agent reads of the page, and fades when nothing moves.
  */
 function paint(x, y, pressed) {
@@ -325,11 +387,14 @@ function paint(x, y, pressed) {
 		host.setAttribute("aria-hidden", "true");
 		host.style.cssText = "all:initial;position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647;pointer-events:none";
 		const root = host.attachShadow({ mode: "closed" });
-		const style = document.createElement("style");
-		style.textContent =
+		// A style sheet made in script: a page's own policy may forbid a style element, and has no say over this.
+		const sheet = new CSSStyleSheet();
+		sheet.replaceSync(
 			".p{position:fixed;left:0;top:0;opacity:0;transition:transform 160ms cubic-bezier(.2,.8,.2,1),opacity 300ms;will-change:transform;pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}" +
-			".n{position:absolute;left:14px;top:16px;padding:1px 6px;border-radius:8px;background:#1c7c54;color:#fff;font:600 11px/16px system-ui,sans-serif;white-space:nowrap}" +
-			".r{position:fixed;left:0;top:0;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;border:2px solid #1c7c54;opacity:0;pointer-events:none}";
+				".n{position:absolute;left:14px;top:16px;padding:1px 6px;border-radius:8px;background:#1c7c54;color:#fff;font:600 11px/16px system-ui,sans-serif;white-space:nowrap}" +
+				".r{position:fixed;left:0;top:0;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;border:2px solid #1c7c54;opacity:0;pointer-events:none}",
+		);
+		root.adoptedStyleSheets = [sheet];
 		const el = document.createElement("div");
 		el.className = "p";
 		const svg = document.createElementNS(SVG, "svg");
@@ -349,7 +414,7 @@ function paint(x, y, pressed) {
 		el.append(svg, name);
 		const ring = document.createElement("div");
 		ring.className = "r";
-		root.append(style, el, ring);
+		root.append(el, ring);
 		document.documentElement.append(host);
 		c = globalThis.pinePointer = { host, el, ring, timer: 0 };
 	}
@@ -362,6 +427,8 @@ function paint(x, y, pressed) {
 	clearTimeout(c.timer);
 	c.timer = setTimeout(() => (c.el.style.opacity = "0"), 5000);
 }
+
+const PAINT = paint.toString();
 
 // ---- what the popup asks -----------------------------------------------------------------------
 

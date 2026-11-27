@@ -563,6 +563,7 @@ default every agent can ask the others for their files.
 | Shell with network | `sandbox.network: true` reaches the internet and your local network, an unauthenticated model server and any port on this machine, and on Linux socket files in temp. Prefer the `web` server or a `commands` tool |
 | App control is outside the sandbox | What an app can open, the agent can: a terminal or the Finder reaches pine's home, a mail app sends as you. Allow such apps only for a watched task |
 | A signed-in browser | With a persistent `profile`, or after you log in in a window the agent opened or the Pine app's browser, the agent acts as you on that site ([mcp.md](mcp.md)) |
+| Your own browser | Where you connected Chrome, Brave or Edge and an agent works there ([mcp.md](mcp.md), "Your own browser"), it is signed in wherever you are, in the tabs of its group, and the guard of pine's own browser does not apply: a page there can reach your local network as in your own browsing. A page that tells the agent what to do does so with your logins. Hand it only the tabs a task needs, and leave `defaults.browser` at `pine` for agents that read the web unwatched |
 | The sandbox is the operating system's | A kernel or sandbox bug is a way out. For more, run the daemon as a separate user with no access to your files |
 | Linux | A new instruction file exists until its command ends, and is looked for only six folders deep ("On Linux") |
 | Local users | An account that can read pine's home has everything. Keep it at mode 700 |

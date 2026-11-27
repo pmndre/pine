@@ -93,6 +93,7 @@ settings").
 | `defaults.judge` | not set | Model of goal mode's judge; not set: the agent's own ([agents.md](agents.md), "Goal mode"). |
 | `defaults.checker` | not set | Model that checks a swarm's answer; not set: the agent's own. `/swarm` is refused while it names a missing model ([boards.md](boards.md), "A swarm"). |
 | `defaults.introduce` | `true` | Each agent introduces itself in its answer to your first message ([agents.md](agents.md), "Meeting an agent"). |
+| `defaults.browser` | `pine` | `chrome`: the agents' browser in your own conversations is your own (Chrome, Brave, Edge) whenever it runs with pine's extension ([mcp.md](mcp.md), "Your own browser"). |
 | `defaults.thinking` | `medium` | Reasoning level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Ignored by a model that cannot reason. |
 | `defaults.mode` | not set | Mode of agents that name none: `auto`, `safe`, `manual`, `bypass`, `plan`. Not set: `auto` for the main agent, `safe` (in the sandbox) for others ([security.md](security.md), "Modes: how much an agent does without asking"). |
 | `defaults.bashTimeoutSec` | `900` | Longest a shell command may run (15 minutes); the model cannot raise it. Longer work goes in the background ([coding.md](coding.md), "Commands in the background"). |

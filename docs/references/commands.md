@@ -17,6 +17,7 @@ Every `pine` command, and which ones need a running daemon. Installing and start
 | `pine version`, `pine --version` | The version and how pine is installed |
 | `pine help`, `pine --help` | The list of commands |
 | `pine browser-install` | Fetches the browser again |
+| `pine chrome [install \| remove]` | Your own browser (Chrome, Brave, Edge) as the agents' browser: whether pine's extension is connected; `install` connects pine to the browsers here, `remove` takes it back. See [mcp.md](mcp.md), "Your own browser" |
 | `pine check` | Validates the configuration and shows each agent's workspace, model, tools, MCP servers, mode and reach, model and security notes, and a missing browser. With a daemon running, also worktrees, including those no conversation holds |
 | `pine start` | Runs the daemon in the foreground until Ctrl-C or SIGTERM |
 | `pine service [--keep]` | Finds or starts this home's daemon for a UI program ("A UI of its own") |

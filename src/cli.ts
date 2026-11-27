@@ -49,6 +49,8 @@ Daemon
   pine update --next | --release  follow previews of the next release, or releases only; the choice is kept
   pine version                    which version this is and how it is installed
   pine browser-install            fetch the browser again (pine init and pine update do this)
+  pine chrome [install | remove]  your own browser (Chrome, Brave, Edge) as the agents' browser: whether pine's
+                                  extension is connected; install connects pine to the browsers here, remove takes it back
 
 Talking to a running daemon
   pine status                     running tasks, live sessions, queue
@@ -389,7 +391,7 @@ async function installBrowser(): Promise<number> {
 	return spawnSync(process.execPath, [cli, "install", "chromium"], { stdio: "inherit" }).status ?? 1;
 }
 
-const COMMANDS = new Set(["agent", "agents", "approvals", "approve", "browser-install", "cancel", "check", "deny", "dev-model", "emit", "events", "extensions", "help", "init", "kill", "killall", "list", "login", "logout", "manual", "mcp", "mode", "model", "reset", "schedules", "send", "service", "skills", "sources", "start", "state", "status", "subscribe", "task", "tasks", "tui", "unsubscribe", "update", "version"]);
+const COMMANDS = new Set(["agent", "agents", "approvals", "approve", "browser-install", "cancel", "check", "chrome", "deny", "dev-model", "emit", "events", "extensions", "help", "init", "kill", "killall", "list", "login", "logout", "manual", "mcp", "mode", "model", "reset", "schedules", "send", "service", "skills", "sources", "start", "state", "status", "subscribe", "task", "tasks", "tui", "unsubscribe", "update", "version"]);
 
 /** Whether a first argument means a folder to open: something written as a path, or the name of a folder here that is not a command. */
 function folderArgument(word: string | undefined, cwd = process.cwd()): string | undefined {
@@ -762,6 +764,22 @@ async function main(): Promise<void> {
 			if (x.description) out(`    ${x.description}`);
 			out(`    ${x.source}`);
 		}
+		return;
+	}
+
+	if (cmd === "chrome") {
+		const { chromeState, connectChrome, disconnectChrome } = await import("./chrome.ts");
+		if (rest[0] !== undefined && rest[0] !== "install" && rest[0] !== "remove") throw new Error("usage: pine chrome [install | remove]");
+		if (rest[0] === "remove") return disconnectChrome(cfg), out("pine is no longer connected to your browsers. The extension itself you remove in the browser (chrome://extensions).");
+		if (rest[0] === "install") connectChrome(cfg);
+		const state = chromeState(cfg);
+		if (!state.set) return out("Your own browser is not connected to pine. Connect it with: pine chrome install\nThen agents can work in Chrome, Brave or Edge, in a tab group of their own, with your logins; see docs/references/mcp.md, \"Your own browser\"");
+		const known = state.browsers.filter((b) => b.registered).map((b) => b.name);
+		out(known.length ? `pine is connected to: ${known.join(", ")}` : "pine found no browser of Chrome's kind on this account (Chrome, Brave, Edge, Chromium, Vivaldi, Arc).");
+		if (state.connected) return out(`The extension is running in ${state.connected.browser}${state.connected.version ? ` ${state.connected.version}` : ""}. Tell an agent to use your browser, or set it for all conversations: Settings > General > Browser in the Pine app (the setting defaults.browser).`);
+		out("The extension does not answer yet. It needs:");
+		out(state.store ? `  1. the extension, from ${state.store}` : `  1. the extension: open chrome://extensions in the browser, switch on "Developer mode", press "Load unpacked" and pick\n     ${state.folder}`);
+		out("  2. the browser restarted once, if it ran before pine was connected");
 		return;
 	}
 

@@ -14,17 +14,17 @@
 // An agent gets here only in the owner's own conversations, when the owner asked for it.
 import crypto from "node:crypto";
 import fs from "node:fs";
-import type { IncomingMessage } from "node:http";
+import http, { type IncomingMessage } from "node:http";
 import path from "node:path";
 import { type WebSocket, WebSocketServer } from "ws";
 
 /** The name the browser knows this host by. */
 export const HOST_NAME = "dev.pmndre.pine";
 /**
- * The extensions that may start this host: pine's own, by the key in extension/manifest.json.
- * The id a store gives the extension is added here when there is one.
+ * The extensions that may start this host: pine's own. The first is the one loaded from pine's folder
+ * (the key in extension/manifest.json), the second the one from the Chrome Web Store.
  */
-export const EXTENSION_IDS = ["ahhpalopnbbkjlchjjbclmbilcgdjgai"];
+export const EXTENSION_IDS = ["ahhpalopnbbkjlchjjbclmbilcgdjgai", "pgfllnbofabjfobfgpejjlombgfpolba"];
 /** What host and extension have to agree on (extension/background.js). */
 export const PROTOCOL = 1;
 /** The browser takes no more than 1 MB from a host in one message: a longer one goes in pieces. */
@@ -60,7 +60,7 @@ interface Room {
 export function groupTitle(room: string): string {
 	const at = room.indexOf(":");
 	const [agent, session] = at < 0 ? [room, "main"] : [room.slice(0, at), room.slice(at + 1)];
-	const name = (session && session !== "main" ? session : agent).replace(/[\u0000-\u001f\u007f-\u009f  ]+/g, " ").slice(0, 28);
+	const name = (session && session !== "main" ? session : agent).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ").slice(0, 28);
 	return name ? `pine · ${name}` : "pine";
 }
 
@@ -77,6 +77,7 @@ export class ChromeHost {
 	private readonly byTab = new Map<number, { room: Room; tab: Tab }>();
 	private readonly asked = new Map<number, { resolve(value: any): void; reject(e: Error): void; timer?: NodeJS.Timeout }>();
 	private server?: WebSocketServer;
+	private web?: http.Server;
 	private port = 0;
 	private n = 0;
 	private ids = 0;
@@ -98,11 +99,34 @@ export class ChromeHost {
 
 	async start(): Promise<void> {
 		if (this.server) return;
-		const server = new WebSocketServer({ host: "127.0.0.1", port: 0, maxPayload: 64 * 1024 * 1024 });
+		// Beside the door for Playwright's server: one thing a browser server says itself (`bye`).
+		const web = http.createServer((req, res) => void this.said(req).then((status) => res.writeHead(status).end()));
+		this.web = web;
+		const server = new WebSocketServer({ server: web, maxPayload: 64 * 1024 * 1024 });
 		this.server = server;
 		server.on("connection", (ws, req) => void this.connect(ws, req));
-		await new Promise<void>((resolve, reject) => (server.once("listening", resolve), server.once("error", reject)));
-		this.port = (server.address() as { port: number }).port;
+		await new Promise<void>((resolve, reject) => (web.once("listening", resolve), web.once("error", reject), web.listen(0, "127.0.0.1")));
+		this.port = (web.address() as { port: number }).port;
+	}
+
+	/** Who says the word, and from no page: the conversation they name, or nothing. */
+	private named(req: IncomingMessage): string[] | undefined {
+		const [word, ...rest] = new URL(req.url ?? "/", "http://host").pathname.slice(1).split("/").map((p) => decodeURIComponent(p));
+		const said = Buffer.from(word ?? "");
+		const ok = said.length === this.token.length && crypto.timingSafeEqual(said, Buffer.from(this.token));
+		// A page in some browser that found the port says where it comes from; the browser server does not.
+		return ok && req.headers.origin === undefined && rest[0] && rest[0].length <= 300 ? rest : undefined;
+	}
+
+	/**
+	 * `POST /<word>/<conversation>/bye`: the agent is done with its browser here (it closed it, or moved back to
+	 * pine's own). The tabs pine opened for that conversation are closed; the owner's stay where they are.
+	 */
+	private async said(req: IncomingMessage): Promise<number> {
+		const at = this.named(req);
+		if (!at || req.method !== "POST" || at.length !== 2 || at[1] !== "bye") return 404;
+		await this.ask({ do: "clear", room: at[0] }, 30_000).catch(() => {});
+		return 204;
 	}
 
 	close(): void {
@@ -112,6 +136,8 @@ export class ChromeHost {
 		this.rooms.clear();
 		this.byTab.clear();
 		this.server?.close();
+		this.web?.closeAllConnections();
+		this.web?.close();
 	}
 
 	// ---- the extension -----------------------------------------------------------------------------
@@ -187,12 +213,9 @@ export class ChromeHost {
 	// ---- one conversation's browser ----------------------------------------------------------------
 
 	private async connect(ws: WebSocket, req: IncomingMessage): Promise<void> {
-		const url = new URL(req.url ?? "/", "http://host");
-		const [word, key] = url.pathname.slice(1).split("/").map((p) => decodeURIComponent(p));
-		const said = Buffer.from(word ?? "");
-		const ok = said.length === this.token.length && crypto.timingSafeEqual(said, Buffer.from(this.token));
-		// A page in some browser that found the port says where it comes from; the browser server does not.
-		if (!ok || req.headers.origin !== undefined || !key || key.length > 300) return void ws.close(1008, "not for you");
+		const at = this.named(req);
+		if (!at || at.length !== 1) return void ws.close(1008, "not for you");
+		const key = at[0];
 		const old = this.rooms.get(key);
 		if (old) {
 			old.ws?.close(1000, "another took its place");
@@ -208,7 +231,7 @@ export class ChromeHost {
 			if (this.rooms.get(key) !== room) return;
 			this.release(room);
 			this.rooms.delete(key);
-			void this.ask({ do: "leave", room: key, closeMine: false }, 30_000).catch(() => {});
+			void this.ask({ do: "leave", room: key }, 30_000).catch(() => {});
 		});
 		try {
 			// The tabs that are in this conversation's group already.
@@ -306,7 +329,8 @@ export class ChromeHost {
 					for (const tab of [...room.tabs]) this.forget(tab.tabId);
 					room.ws = undefined;
 					this.rooms.delete(room.key);
-					await this.ask({ do: "leave", room: room.key, closeMine: true }, 30_000).catch(() => {});
+					await this.ask({ do: "clear", room: room.key }, 30_000).catch(() => {});
+					await this.ask({ do: "leave", room: room.key }, 30_000).catch(() => {});
 					return;
 			}
 			fail(`${m.method} is not available here`);

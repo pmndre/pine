@@ -19,4 +19,5 @@ what owners and agents read; the `manual` tool does not index this folder. The r
 | [mobile.md](mobile.md) | Building, testing and releasing the Android and iOS app |
 | [web.md](web.md) | The web client's parts, deploying it, previews, working on it |
 | [source-types.md](source-types.md) | Where a source type lives, what types share, the `system` helpers, Slack's SDK, mail's Microsoft sign-in |
+| [chrome.md](chrome.md) | The owner's own browser: the extension, the host, their protocol, the id and key, trying and publishing it |
 | [computer.md](computer.md) | App control's helpers on macOS, Windows and Linux |

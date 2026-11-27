@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { checkAgentId } from "./admin.ts";
 import { checkNewAgent, instructionsWith } from "./agent-admin.ts";
+import { chromeState, connectChrome, disconnectChrome } from "./chrome.ts";
 import type { AgentManager } from "./agents.ts";
 import { mainAgentId, type PineConfig, purposeOf } from "./config.ts";
 import { type Approvals, timingSafeEqual } from "./security.ts";
@@ -146,6 +147,8 @@ export class HttpServer {
 				const q = url.searchParams;
 				const num = (k: string) => (q.has(k) ? Number(q.get(k)) : undefined);
 				if (url.pathname === "/status") return send(200, { ...this.manager.status(), agents: Object.keys(this.cfg.agents), approvals: this.approvals.pending().length, questions: this.manager.openQuestions().reduce((n, q) => n + q.asked.length, 0), bypassWhenTainted: this.cfg.security.bypassWhenTainted, version: pineVersion() });
+				// The owner's own browser as the agents' browser: whether pine is connected to the browsers here, and whether one answers.
+				if (url.pathname === "/chrome") return send(200, chromeState(this.cfg));
 				if (url.pathname === "/agents") {
 					// (`modelProblem` only where there is one: why that agent's model cannot answer.)
 					const problems = await this.manager.modelProblems();
@@ -520,6 +523,14 @@ export class HttpServer {
 			// A UI that shows the browser itself says so, again and again while it runs: browser_show then opens no window.
 			// The Pine app on this computer also says where its own browser is (`host`), which the agents' browsers become.
 			if (url.pathname === "/browser/embedded") return this.manager.browserEmbedded(body.host), send(200, { ok: true });
+			// The owner connects pine to the browsers of this computer (so that pine's extension finds it), or takes that back.
+			// Only here and in `pine chrome`: no agent has a tool for it.
+			if (url.pathname === "/chrome") {
+				if (typeof body.connect !== "boolean") throw new HttpError(400, "connect required: true or false");
+				if (body.connect) connectChrome(this.cfg);
+				else disconnectChrome(this.cfg);
+				return send(200, chromeState(this.cfg));
+			}
 			if (parts[0] === "agents" && parts[2] === "programs" && parts[3] === "stop" && parts.length === 4) {
 				if (!this.cfg.agents[parts[1]]) throw new HttpError(404, "no such agent");
 				return send(200, { stopped: this.manager.stopProgram(parts[1], String(body.session ?? "main"), Number(body.id)) });
