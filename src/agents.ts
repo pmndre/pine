@@ -39,7 +39,7 @@ import { sandboxedFileTools, sandboxExec, sniffImage } from "./sandbox-fs.ts";
 import type { SourceHost } from "./sources.ts";
 import { describeOptions } from "./sources.ts";
 import type { Scheduler } from "./timers.ts";
-import { pineTools } from "./tools.ts";
+import { askedOf, pineTools } from "./tools.ts";
 import { type Program, Programs } from "./programs.ts";
 import { type BrowserState, BrowserViews, keptAddress, VISITED } from "./browser-view.ts";
 import { Goals } from "./goals.ts";
@@ -52,7 +52,7 @@ import { branchFile, onBranch, ownerMessage, redoMessage, sessionFile, standingB
 import { maybeSilent, silent } from "./silent.ts";
 import { classify, LOOK_TOOLS, pineOwn, pineOwnRefusal, PLAN_REFUSAL, SETUP_TOOLS, ROUTERS } from "./actions.ts";
 import { Type } from "typebox";
-import type { ContextUse, ImageRef, PineEvent, ReplyTarget, Task, TaskKind, TaskResult, TaskStatus, Todo, TranscriptEntry, Trust } from "./types.ts";
+import type { AskedQuestion, ContextUse, ImageRef, PineEvent, ReplyTarget, Task, TaskKind, TaskResult, TaskStatus, Todo, TranscriptEntry, Trust } from "./types.ts";
 import { callTiming, errText, expandHome, type Logger, onPath, programName, safeName, since, sleep, speedOf, speedText, truncate } from "./util.ts";
 
 const BUILTIN_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
@@ -2509,7 +2509,10 @@ export class AgentManager {
 					stats.tools.push(e.toolName);
 					// Where the agent sends its browser, in the owner's conversation: kept once the page came (below).
 					if (live!.trust === "owner" && this.browserTool(agent, live!, String(e.toolName)) === "browser_navigate") going.set(String(e.toolCallId), e.args?.url);
-					this.bus.publish(`agent/${agent.id}/tool`, { ...ids, call: e.toolCallId, phase: "start", tool: e.toolName, subject: truncate(toolSubject(e.toolName, e.args), 300) }, live_);
+					// A question to the owner is kept with the turn here, where calls start in the order the model made them
+					// (they may then run side by side): the record a UI shows it from, and its place in the turn.
+					const asked = e.toolName === "question" && live!.trust === "owner" && !live!.leaf ? this.noteQuestion(task, e.args) : undefined;
+					this.bus.publish(`agent/${agent.id}/tool`, { ...ids, call: e.toolCallId, phase: "start", tool: e.toolName, subject: truncate(toolSubject(e.toolName, e.args), 300), ...(asked ? { asked } : {}) }, live_);
 				} else if (e.type === "tool_execution_end") {
 					const out = (e.result?.content ?? []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n");
 					// The agent put its browser on the owner's screen, or took it off: it is told so with the next message.
@@ -2629,6 +2632,34 @@ export class AgentManager {
 
 	private resultOf(t: Task): TaskResult {
 		return { id: t.id, agent: t.agent, status: t.status, text: t.result ?? "", error: t.error, tainted: this.taints.get(t.id) ?? (t.meta.trust === "untrusted" ? "an untrusted event" : t.meta.tainted) };
+	}
+
+	/**
+	 * A `question` call started: the question goes into the turn's record (`TaskMeta.asked`) at once,
+	 * so that a conversation opened while the turn still works shows it too, and `question/asked`
+	 * says so. Nothing waits for an answer: the owner's answer is their next message.
+	 */
+	private noteQuestion(task: Task, args: unknown): (AskedQuestion & { at: number }) | undefined {
+		const q = askedOf(args);
+		if (!q) return undefined;
+		const at = (task.meta.asked ??= []).push(q) - 1;
+		this.tasks.update(task.id, { meta: task.meta });
+		// Started from outside: the turn's work began with an event (a schedule, a source, a message on Telegram), not the owner in a UI.
+		const top = task.meta.root !== undefined && task.meta.root !== task.id ? this.tasks.get(task.meta.root) : task;
+		this.bus.publish("question/asked", { agent: task.agent, session: task.session, task: task.id, at, ...q, outside: (top ?? task).kind === "event" }, { source: `agent:${task.agent}` });
+		return { ...q, at };
+	}
+
+	/**
+	 * The open questions: those of a conversation's latest turn, while nothing has come to that
+	 * conversation since that turn began (the owner's next message is a turn of its own). The one rule
+	 * every reader goes by; with `agent` and `session`, of that conversation alone.
+	 */
+	openQuestions(agent?: string, session?: string): Array<{ agent: string; session: string; task: number; asked: AskedQuestion[] }> {
+		return this.tasks
+			.latestTurns(agent, session)
+			.filter((t) => t.meta.asked?.length && !t.session.endsWith("~u") && !t.session.startsWith("_t"))
+			.map((t) => ({ agent: t.agent, session: t.session, task: t.id, asked: t.meta.asked! }));
 	}
 
 	private finish(task: Task, status: TaskStatus, text: string, error: string | undefined, stats: Task["meta"]["stats"]): void {

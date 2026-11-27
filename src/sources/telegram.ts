@@ -452,12 +452,6 @@ export default async function telegram(source: SourceApi): Promise<void> {
 			const ok = id ? source.approvals.decide(id, verdict[1] === "allow", `telegram:${userId}`) : false;
 			return void send(chatId, ok ? "Noted." : "No such open request.").catch(() => {});
 		}
-		// The answer to a question with several answers that was sent here: a message, not a button.
-		const replyTo = m.reply_to_message?.message_id;
-		const last = typed.at(-1);
-		const numbers = (q: (typeof typed)[number]) => /^\d+(\s*,\s*\d+)*$/.test(text) && text.split(",").every((n) => Number(n) >= 1 && Number(n) <= q.count);
-		const waiting = (replyTo !== undefined ? typed.find((q) => q.message === replyTo) : undefined) ?? (last && numbers(last) ? last : undefined);
-		if (waiting && text && source.approvals.answer(waiting.id, text, `telegram:${userId}`)) return;
 		source.emit("message", { text: text || "(a picture)", name, username: m.from?.username, chatId, messageId: m.message_id, images: images.length ? images : undefined }, { reply: { chatId } });
 	};
 

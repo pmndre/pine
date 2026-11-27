@@ -356,8 +356,9 @@ word: `"approve": "always"` on a server asks for every call.
 An approval shows the tool, its arguments and the reason: as a dialog in the terminal UI and the
 Pine app, with buttons in Telegram (an agent's own bot shows only its approvals), or through
 `pine approvals`, `pine approve <id>` and `pine deny <id>`. No answer within
-`security.approvalTimeout` means no. An agent's question (`question`) is no approval: it waits
-without a limit, until you answer it, close it, its run stops or pine restarts.
+`security.approvalTimeout` means no. An agent's question (`question`) is no approval and holds
+nothing: the agent asks and its turn goes on or ends. You answer it with your next message in that
+conversation, when you like, or not at all.
 
 The answers are allow once, deny, and **always in this conversation** ("Always here", "Always:
 ..." in Telegram, `pine approve <id> --always`). "Always" covers the tool's whole MCP server, else

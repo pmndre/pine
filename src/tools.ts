@@ -9,7 +9,7 @@ import { type AgentManager, type Live, type Profile, THINKING_LEVELS } from "./a
 import { finish as finishWorktree, type Worktree, worktreeName } from "./worktrees.ts";
 import { NOT_A_SUBAGENTS, SUBAGENT_CANNOT_ASK, serverTool } from "./catalogue.ts";
 import { type Board, type BoardItem, boardName, type BoardScope, MAX_FAILED_FINALS, MAX_REWORK, verdictOf, type Who, JOB_NOTE_CHARS, TASK_CHARS } from "./boards.ts";
-import type { PineEvent, TaskResult } from "./types.ts";
+import type { AskedQuestion, PineEvent, TaskResult } from "./types.ts";
 import { mcpNamespace } from "@earendil-works/pi-mcp";
 import { addServer, findServer, mcpEnvName, piMcp, removeServer, splitCommand, validateServer } from "./mcp-config.ts";
 import { addDecision, checkDecision, decisionsText, removeDecision, signInTypesafe, signOutTypesafe, TYPESAFE, usersOf, whereIs } from "./decisions.ts";
@@ -91,49 +91,21 @@ export function questionOptions(options: unknown, choices: unknown): QuestionOpt
 }
 
 /**
- * What the owner answered, as the agent is told it. Options picked by their labels or their numbers
- * ("2", or "1,3" for a multiple answer) are given as the labels, joined by ", ", in the order picked.
- * A label is matched before a number: a number picks by its place only where no label is that text,
- * and a multiple answer is read as labels (which may hold commas) before it is read as numbers.
- * Anything else is the owner's own words (`words`): what was typed in the composer while the
- * question was open, which may answer it, or not.
+ * A `question` call's arguments as pine keeps and shows them (`TaskMeta.asked`, the tool event,
+ * `question/asked`): the question on its own, a header of 12 characters at most, the options
+ * `questionOptions` leaves, and `multiSelect` only where there are options. Nothing when there is
+ * no question, which the tool refuses.
  */
-export function picked(answer: string | undefined, options: QuestionOption[], multiSelect: boolean): { text: string; words: boolean } | undefined {
-	if (!answer) return undefined;
-	const words = { text: answer, words: true };
-	if (!options.length) return words;
-	// A label first, so that an option labelled "2" is picked by "2"; a number picks by its place only where no label is that text.
-	const which = (part: string) => options.findIndex((o) => o.label.toLowerCase() === part.toLowerCase()) + 1 || (/^\d+$/.test(part) ? Number(part) : 0);
-	const whole = which(answer);
-	if (whole >= 1 && whole <= options.length) return { text: options[whole - 1].label, words: false };
-	if (!multiSelect) return words;
-	// Labels joined by ", ", where a label may hold a comma itself ("Yes, with tests, No"): at each point the
-	// longest label that stands there, followed by a comma or the end, and a shorter one if the rest then fails.
-	const byLength = options.map((o, i) => ({ label: o.label.toLowerCase(), n: i + 1 })).sort((a, b) => b.label.length - a.label.length);
-	const labels = (rest: string): number[] | undefined => {
-		if (!rest) return [];
-		for (const o of byLength) {
-			if (!rest.startsWith(o.label)) continue;
-			const after = rest.slice(o.label.length);
-			const next = after === "" ? "" : /^\s*,\s*/.exec(after) ? after.replace(/^\s*,\s*/, "") : undefined;
-			if (next === undefined) continue;
-			const more = labels(next);
-			if (more) return [o.n, ...more];
-		}
-		return undefined;
-	};
-	const named = labels(answer.trim().toLowerCase());
-	if (named) return { text: [...new Set(named)].map((n) => options[n - 1].label).join(", "), words: false };
-	const numbers = answer.split(/\s*,\s*/).map(which);
-	if (!numbers.every((n) => n >= 1 && n <= options.length)) return words;
-	return { text: [...new Set(numbers)].map((n) => options[n - 1].label).join(", "), words: false };
+export function askedOf(p: any): AskedQuestion | undefined {
+	const question = truncate(String(p?.question ?? "").trim(), 800);
+	if (!question) return undefined;
+	const options = questionOptions(p?.options, p?.choices);
+	const header = String(p?.header ?? "").replace(/\s+/g, " ").trim().slice(0, 12).trim();
+	return { question, ...(header ? { header } : {}), ...(options.length ? { options } : {}), ...(options.length && p?.multiSelect === true ? { multiSelect: true as const } : {}) };
 }
 
-/** What the agent is told when the owner answered its question. */
-export function answered(answer: { text: string; words: boolean }): string {
-	if (!answer.words) return `Your owner answered: ${answer.text}`;
-	return `Your owner answered in their own words: ${answer.text}\nIf this does not answer your question, respond to what they said. You may ask again.`;
-}
+/** What the agent is told when it has asked: the answer is no tool result, but the owner's next message. */
+export const ASKED = "Asked. Your owner answers in a message, maybe about other things too.";
 
 export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live, profile: Profile, behalf?: { asker: string }): any[] {
 	const { cfg, bus, state } = manager;
@@ -736,7 +708,7 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 				name: "question",
 				label: "Ask the owner",
 				description:
-					"Ask your owner one question when you cannot go on without their decision: which of two ways, which file, yes or no. Give two to six options to pick from when you can, each a short label with a line that says what it means, the one you recommend first; they can also answer in their own words. multiSelect when several may be picked. One question at a time. Not for permission to do something: that is asked by itself when it is needed.",
+					"Ask your owner one question when you cannot go on without their decision: which of two ways, which file, yes or no. Give two to six options to pick from when you can, each a short label with a line that says what it means, the one you recommend first; they can also answer in their own words. multiSelect when several may be picked. One question per call: for several, call it several times in one turn. It returns at once. Then end your turn, unless you can go on with what does not need the answer: do not guess what your owner would say. The answer comes as your owner's next message. Not for permission to do something: that is asked by itself when it is needed.",
 				parameters: Type.Object({
 					question: Type.String({ description: "The question, in one or two sentences" }),
 					header: Type.Optional(Type.String({ description: 'A few words over the question, 12 characters at most, such as "Database"' })),
@@ -746,37 +718,13 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 					multiSelect: Type.Optional(Type.Boolean({ description: "true: several options may be picked" })),
 					choices: Type.Optional(Type.Array(Type.String(), { description: "Answers as plain labels, instead of options" })),
 				}),
-				execute: async (_id, p, signal) => {
-					const r = run();
+				execute: async (_id, p) => {
+					run();
 					// A sub-agent works by itself: nobody waits for an answer on its behalf.
 					if (profile.leaf) return ok("You are a sub-agent: your owner is not asked on your behalf. Go on with the most reasonable assumption and say in your answer which one you made, or say there what you need to know.");
-					const text = String(p.question ?? "").trim();
-					if (!text) throw new Error("give the question");
-					const options = questionOptions(p.options, p.choices);
-					const header = String(p.header ?? "").replace(/\s+/g, " ").trim().slice(0, 12).trim();
-					const multiSelect = options.length > 0 && p.multiSelect === true;
-					const decision = await r.slot.suspend(() =>
-						manager.approvals.request({
-							agent: asker,
-							task: r.task.id,
-							root: r.task.meta.root ?? r.task.id,
-							tool: "question",
-							summary: truncate(text, 800),
-							why: "the agent needs your answer to go on",
-							...(options.length ? { options, choices: options.map((o) => o.label) } : {}),
-							...(multiSelect ? { multiSelect } : {}),
-							...(header ? { header } : {}),
-							inputs: [{ name: "answer", label: "Your answer", secret: false }],
-						},
-						// The owner may take their time: a question waits until it is answered, closed or its run stops.
-						signal,
-						{ wait: "unlimited" }),
-					);
-					const answer = picked(decision.values?.answer?.trim(), options, multiSelect);
-					// (A swarm's check of the answer is told what the owner said: a value they gave is given, not made up.)
-					if (decision.allow && answer) manager.swarms.heard(r.task.agent, r.task.session, text, answer.text);
-					if (decision.allow && answer) return ok(answered(answer));
-					return ok(`Your owner did not answer (${decision.by}). Do not ask again now. Go on with the most reasonable assumption and say which one you made, or say what you need and stop.`);
+					// (The question was recorded with the turn when the call started: `AgentManager`, at `tool_execution_start`, in call order.)
+					if (!askedOf(p)) throw new Error("give the question");
+					return ok(ASKED);
 				},
 			}),
 		);

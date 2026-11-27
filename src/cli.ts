@@ -892,7 +892,7 @@ async function main(): Promise<void> {
 		case "approvals": {
 			const list: any[] = await api.get("/approvals");
 			if (!list.length) return out("nothing waits for approval");
-			for (const a of list) out(`${a.id}  ${a.agent} (task #${a.task}) wants ${a.summary.split("\n")[0]}\n      why: ${a.why}${a.expires ? `\n      expires ${when(a.expires)}` : "\n      waits for your answer"}`);
+			for (const a of list) out(`${a.id}  ${a.agent} (task #${a.task}) wants ${a.summary.split("\n")[0]}\n      why: ${a.why}\n      expires ${when(a.expires)}`);
 			return;
 		}
 		case "approve":

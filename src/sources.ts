@@ -91,11 +91,6 @@ export interface SourceApi {
 		decide(id: string, allow: boolean, by: string, always?: boolean): boolean;
 		/** Answer an agent's question with one of the answers it offered (by its place in `choices`). */
 		choose(id: string, choice: number, by: string): boolean;
-		/**
-		 * Answer an agent's question with the owner's text: their own words, or the numbers of the
-		 * answers it offered ("1,3"), which the agent is told as those answers.
-		 */
-		answer(id: string, text: string, by: string): boolean;
 	};
 	/**
 	 * Look at something again and again, for what cannot report by itself: a web address, a
@@ -625,10 +620,6 @@ export class SourceHost {
 				choose: (id, choice, by) => {
 					const answer = open().find((r) => r.id === id)?.choices?.[choice];
 					return answer !== undefined && (this.approvals?.decide(id, true, by, false, { answer }) ?? false);
-				},
-				answer: (id, text, by) => {
-					const answer = String(text ?? "").trim();
-					return !!answer && open().some((r) => r.id === id && r.tool === "question") && (this.approvals?.decide(id, true, by, false, { answer }) ?? false);
 				},
 			},
 			poll: (every, look) => {

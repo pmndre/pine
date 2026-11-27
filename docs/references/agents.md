@@ -238,9 +238,15 @@ next step for minutes. The Pine app shows "not read yet" or "read 14:03" under i
 stops the step under way. Reading is not answering: stop the work if no answer comes. Other
 programs use `POST /tasks/<id>/now` ([api.md](api.md)).
 
-While the agent waits on its `question` ([setup.md](setup.md)), whatever you type instead of
-picking an option answers it ("Your owner answered in their own words: …"). Typing an option's
-label or number picks it.
+### When the agent asks you something
+
+An agent asks with `question` ([setup.md](setup.md)), one question per call. The call returns at
+once and nothing waits: the agent ends its turn, or goes on with what does not need the answer.
+You answer with your next message in that conversation, like any message, and it may talk about
+other things too. The Pine app can send an option you picked as that message. A question is open
+while it belongs to the conversation's latest turn and you have written nothing since; `GET
+/status` counts those (`questions`). A goal stops as blocked on a turn that asked; a swarm waits for
+your answer.
 
 ## Groups of conversations
 
@@ -378,6 +384,7 @@ reason.
 | What happened | What the goal does |
 |---|---|
 | "met" or "blocked" | Stops. |
+| The agent asked you something (`question`) | Stops as blocked, without the judge. Answer it, then `/goal resume`. |
 | No verdict (timeout, or another word) | Paused. No verdict never counts as "go on". |
 | `limits.goalRounds` (20) rounds | Stops. `/goal resume` gives as many again. |
 | `limits.goalIdleRounds` (3) rounds in a row "not met" without a tool call | Paused: it goes in circles. |

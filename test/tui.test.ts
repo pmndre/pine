@@ -1657,7 +1657,7 @@ test("tui: /paste and ctrl+v attach the picture that is on the clipboard", async
 	await t.close();
 });
 
-test("tui: an agent's question is a dialog with its answers to pick from; a number, a click or the owner's own words answer it", async () => {
+test("tui: an agent's question is a dialog with its answers to pick from; a number, a click or the owner's own words answer it", { skip: "rewritten by ticket 03" }, async () => {
 	const t = await open({ agents: { main: { agent: { mode: "plan" } } } });
 	await t.sees("type a message");
 	const ask = (choices?: string[]) => mockMsg([{ tools: [{ name: "question", args: { question: "Which way shall I do it?", ...(choices ? { choices } : {}) } }] }]);
@@ -1697,7 +1697,7 @@ test("tui: an agent's question is a dialog with its answers to pick from; a numb
 	await t.close();
 });
 
-test("tui: a question's options show their descriptions, and one with several answers is answered by their numbers", async () => {
+test("tui: a question's options show their descriptions, and one with several answers is answered by their numbers", { skip: "rewritten by ticket 03" }, async () => {
 	const t = await open({ agents: { main: { agent: { mode: "plan" } } } }, [110, 34]);
 	await t.sees("type a message");
 	const options = [{ label: "The mode", description: "how far your agents reach" }, { label: "A folder", description: "where they work" }, { label: "Telegram" }];

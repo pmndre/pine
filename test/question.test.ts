@@ -1,140 +1,108 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { harness, mockMsg, until, type Harness } from "./support/harness.ts";
-import { picked } from "../src/tools.ts";
+import { harness, mockMsg, textOf, until, type Harness } from "./support/harness.ts";
 
 const owner = { trust: "owner" as const };
 const call = (name: string, args: any) => ({ name, args });
+const ASKED = "Asked. Your owner answers in a message, maybe about other things too.";
 
-/** Answers each question as `answer` says, and records what was asked. */
-function answering(h: Harness, answer: (req: any) => { allow: boolean; values?: Record<string, string> }) {
-	const asked: any[] = [];
-	h.pine.bus.subscribe("approval/requested", (e: any) => {
-		asked.push(e.payload);
-		const a = answer(e.payload);
-		h.pine.approvals.decide(e.payload.id, a.allow, "test", false, a.values);
-	});
-	return asked;
+/** The control API, as a UI calls it. */
+function api(h: Harness) {
+	const base = `http://127.0.0.1:${h.pine.http!.port}`;
+	return async (method: string, path: string, body?: unknown) => {
+		const res = await fetch(`${base}${path}`, { method, headers: { authorization: `Bearer ${h.pine.token}`, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+		return { status: res.status, body: (await res.json()) as any };
+	};
 }
 
-const ask = (h: Harness, args: any) => h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("question", args)] }]), ...owner });
+/** What was published on a topic, from now on. */
+function heard(h: Harness, topic: string) {
+	const got: any[] = [];
+	h.pine.bus.subscribe(topic, (e: any) => void got.push(e.payload));
+	return got;
+}
 
-test("question: a header, options with descriptions and a multiple answer reach the owner's request", async () => {
-	const h = await harness({ agents: { main: {} } });
-	const asked = answering(h, () => ({ allow: true, values: { answer: "Fast" } }));
-	await ask(h, {
-		question: "How should it run?",
-		header: "A very long header",
-		options: [{ label: "Fast", description: "Done in a minute" }, { label: "Careful" }],
-		multiSelect: false,
+test("question: the tool returns at once and asks for no approval; the run ends, and the owner's next message starts a turn whose prompt is that message", async () => {
+	const h = await harness({ pine: { http: { port: 0 } }, agents: { main: {} } });
+	const approvals = heard(h, "approval/requested");
+	const first = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("question", { question: "Which database?", options: [{ label: "sqlite" }, { label: "postgres" }] })] }, { text: "I asked which database." }]), ...owner });
+	assert.equal(first.status, "done");
+	assert.equal(h.toolResults().at(-1), ASKED);
+	assert.equal(approvals.length, 0, "a question is no approval");
+	assert.deepEqual(h.pine.approvals.pending(), []);
+	await h.pine.agents.run({ agent: "main", prompt: "sqlite", ...owner });
+	const last = h.mock.state.requests.at(-1).body.messages.at(-1);
+	assert.equal(last.role, "user");
+	assert.equal(textOf(last.content), "sqlite");
+	await h.close();
+});
+
+test("question: the turn keeps what it asked, in call order, in its record and in the conversation's history; the tool event and question/asked carry the same", async () => {
+	const h = await harness({ pine: { http: { port: 0 } }, agents: { main: {} } });
+	const tools = heard(h, "agent/main/tool");
+	const asked = heard(h, "question/asked");
+	const run = await h.pine.agents.run({
+		agent: "main",
+		prompt: mockMsg([
+			{
+				tools: [
+					call("question", { question: "Which database?", header: "A very long header", options: [{ label: "sqlite", description: "one file" }, { label: "postgres" }] }),
+					call("question", { question: "Which colors?", choices: ["green", "red", "blue"], multiSelect: true }),
+				],
+			},
+			{ text: "asked" },
+		]),
+		...owner,
 	});
-	assert.equal(asked.length, 1);
-	assert.equal(asked[0].tool, "question");
-	assert.equal(asked[0].header, "A very long");
-	assert.deepEqual(asked[0].options, [{ label: "Fast", description: "Done in a minute" }, { label: "Careful" }]);
-	assert.equal(asked[0].multiSelect, undefined);
-	assert.match(h.toolResults().at(-1)!, /^Your owner answered: Fast$/);
+	const want = [
+		{ question: "Which database?", header: "A very long", options: [{ label: "sqlite", description: "one file" }, { label: "postgres" }] },
+		{ question: "Which colors?", options: [{ label: "green" }, { label: "red" }, { label: "blue" }], multiSelect: true },
+	];
+	assert.deepEqual(h.pine.tasks.get(run.id)!.meta.asked, want);
+	const history = (await api(h)("GET", "/tasks?agent=main&session=main")).body;
+	assert.deepEqual(history.find((t: any) => t.id === run.id).meta.asked, want);
+	const starts = tools.filter((e) => e.phase === "start" && e.tool === "question");
+	assert.deepEqual(starts.map((e) => e.asked), [{ ...want[0], at: 0 }, { ...want[1], at: 1 }]);
+	assert.deepEqual(
+		asked.map((e) => [e.agent, e.session, e.task, e.at, e.question, e.outside]),
+		[
+			["main", "main", run.id, 0, "Which database?", false],
+			["main", "main", run.id, 1, "Which colors?", false],
+		],
+	);
+	assert.deepEqual(asked[1].options, want[1].options);
 	await h.close();
 });
 
-test("question: the old choices become options without descriptions", async () => {
-	const h = await harness({ agents: { main: {} } });
-	const asked = answering(h, () => ({ allow: true, values: { answer: "blue" } }));
-	await ask(h, { question: "Which color?", choices: ["green", "blue"] });
-	assert.deepEqual(asked[0].options, [{ label: "green" }, { label: "blue" }]);
-	// What other UIs read of a question (Telegram's buttons, a source's choose) is still there.
-	assert.deepEqual(asked[0].choices, ["green", "blue"]);
-	assert.match(h.toolResults().at(-1)!, /Your owner answered: blue/);
+test("question: a question asked by a run that came from an event is said to come from outside", async () => {
+	const h = await harness({ agents: { main: {} }, pine: { routes: [{ name: "tick", on: "tick/now", agent: "main", trust: "owner", prompt: "{{payload.text}}" }] } });
+	const asked = heard(h, "question/asked");
+	h.pine.bus.publish("tick/now", { text: mockMsg([{ tools: [call("question", { question: "Shall I go on?" })] }, { text: "asked" }]) }, { source: "test", trust: "owner" });
+	await until(() => asked.length === 1, 5000, "the question");
+	assert.equal(asked[0].outside, true);
 	await h.close();
 });
 
-test("question: a multiple answer given by the options' numbers reaches the agent as their labels joined by commas", async () => {
-	const h = await harness({ agents: { main: {} } });
-	const asked = answering(h, () => ({ allow: true, values: { answer: "3, 1" } }));
-	await ask(h, { question: "What do you want set up?", multiSelect: true, options: [{ label: "The mode" }, { label: "A folder" }, { label: "Telegram" }] });
-	assert.equal(asked[0].multiSelect, true);
-	assert.match(h.toolResults().at(-1)!, /^Your owner answered: Telegram, The mode$/);
-	await h.close();
-});
-
-test("question: a single answer given by its number is that option's label; words are passed on as they are", async () => {
-	const h = await harness({ agents: { main: {} } });
-	let reply = "2";
-	answering(h, () => ({ allow: true, values: { answer: reply } }));
-	await ask(h, { question: "Which way?", options: [{ label: "Left" }, { label: "Right" }] });
-	assert.match(h.toolResults().at(-1)!, /^Your owner answered: Right$/);
-	reply = "only for the first file";
-	await ask(h, { question: "Which way?", options: [{ label: "Left" }, { label: "Right" }] });
-	assert.match(h.toolResults().at(-1)!, /^Your owner answered in their own words: only for the first file\n/);
-	await h.close();
-});
-
-test("question: a sub-agent is told to assume and go on, whatever the shape", async () => {
-	const h = await harness({ agents: { main: {} } });
-	const asked = answering(h, () => ({ allow: true, values: { answer: "x" } }));
-	h.mock.state.scripts.sub = [{ tools: [call("question", { question: "Which one?", options: [{ label: "A", description: "the first" }, { label: "B" }], multiSelect: true })] }];
+test("question: a sub-agent is still told to assume and go on, and asks nothing", async () => {
+	const h = await harness({ pine: { http: { port: 0 } }, agents: { main: {} } });
+	const asked = heard(h, "question/asked");
+	h.mock.state.scripts.sub = [{ tools: [call("question", { question: "Which one?", options: [{ label: "A" }, { label: "B" }] })] }];
 	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("subagent", { tasks: ["@@REF:sub@@"] })] }]), ...owner });
 	const told = h.mock.state.requests.filter((q: any) => JSON.stringify(q.body.messages).includes("Which one?")).at(-1);
 	assert.match(h.toolResults(told)[0], /You are a sub-agent: your owner is not asked on your behalf\. Go on with the most reasonable assumption/);
 	assert.equal(asked.length, 0);
+	assert.ok(h.pine.tasks.list({ limit: 20 }).every((t) => !t.meta.asked), "nothing is recorded for a sub-agent");
 	await h.close();
 });
 
-test("question: words that pick no option are told as the owner's own words, with what to do if they ask something back", async () => {
-	const h = await harness({ agents: { main: {} } });
-	let reply = "what is the difference?";
-	answering(h, () => ({ allow: true, values: { answer: reply } }));
-	await ask(h, { question: "Which way?", options: [{ label: "Left" }, { label: "Right" }] });
-	const told = h.toolResults().at(-1)!;
-	assert.match(told, /^Your owner answered in their own words: what is the difference\?\n/);
-	assert.match(told, /If this does not answer your question, respond to what they said\. You may ask again\./);
-	// A question with nothing to pick is always answered in the owner's own words.
-	reply = "the blue one";
-	await ask(h, { question: "Which file?" });
-	assert.match(h.toolResults().at(-1)!, /^Your owner answered in their own words: the blue one\n/);
-	// An option's label, typed as it is or picked, is a plain answer.
-	reply = "right";
-	await ask(h, { question: "Which way?", options: [{ label: "Left" }, { label: "Right" }] });
-	assert.match(h.toolResults().at(-1)!, /^Your owner answered: Right$/);
-	await h.close();
-});
-
-test("question: an answer that is an option's label is that option, also when the labels are numbers", () => {
-	// "2" is the label of the first option here, not the number of the second.
-	assert.deepEqual(picked("2", [{ label: "2" }, { label: "4" }, { label: "8" }], false), { text: "2", words: false });
-	// Where no label matches, a number still picks by its place, also an option whose label has a comma.
-	assert.deepEqual(picked("1", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "Yes, with tests", words: false });
-	assert.deepEqual(picked("2,1", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "No, Yes, with tests", words: false });
-	// Labels joined by ", " as the page sends them, a comma inside a label included.
-	assert.deepEqual(picked("Yes, with tests, No", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "Yes, with tests, No", words: false });
-	assert.deepEqual(picked("Yes, with tests", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "Yes, with tests", words: false });
-	assert.deepEqual(picked("no, yes, with tests", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "No, Yes, with tests", words: false });
-});
-
-test("question: an agent's question waits past the approval timeout, which still ends an ordinary approval, and ends with its run", async () => {
-	const h = await harness({ pine: { security: { approvalTimeout: "150ms" } }, agents: { main: { agent: { approve: ["bash"] } } } });
-	const asked: any[] = [];
-	h.pine.bus.subscribe("approval/requested", (e: any) => void asked.push(e.payload));
-
-	const running = ask(h, { question: "Which way?", options: [{ label: "Left" }, { label: "Right" }] });
-	await until(() => asked.length === 1, 5000, "the question");
-	assert.equal(asked[0].expires, undefined, "a question shows no deadline");
-	await new Promise((r) => setTimeout(r, 400));
-	assert.deepEqual(h.pine.approvals.pending().map((a) => a.id), [asked[0].id], "the question is still open after the timeout");
-	assert.equal(h.pine.approvals.decide(asked[0].id, true, "test", false, { answer: "Right" }), true);
-	await running;
-	assert.match(h.toolResults().at(-1)!, /^Your owner answered: Right$/);
-
-	// An approval of an action counts as no after the same timeout.
-	const denied = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("bash", { command: "echo hi" })] }]), ...owner });
-	assert.equal(typeof asked[1].expires, "number");
-	assert.match(denied.text, /not approved \(timeout\)/);
-
-	// A stopped run takes its question with it.
-	const stopped = ask(h, { question: "Which one?" });
-	await until(() => asked.length === 3, 5000, "the second question");
-	assert.equal(h.pine.agents.cancel(asked[2].task), true);
-	await stopped;
-	await until(() => h.pine.approvals.pending().length === 0, 5000, "the question closed by the stop");
+test("question: /status counts the open questions: those of a conversation's latest turn, until the owner writes again", async () => {
+	const h = await harness({ pine: { http: { port: 0 } }, agents: { main: {} } });
+	const status = async () => (await api(h)("GET", "/status")).body;
+	assert.equal((await status()).questions, 0);
+	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("question", { question: "One?" }), call("question", { question: "Two?" })] }, { text: "asked" }]), ...owner });
+	assert.equal((await status()).questions, 2);
+	assert.equal((await status()).approvals, 0, "questions are not approvals");
+	await h.pine.agents.run({ agent: "main", prompt: "both yes", ...owner });
+	assert.equal((await status()).questions, 0);
 	await h.close();
 });

@@ -95,13 +95,14 @@ exactly one level (`cam/+/motion` matches `cam/front/motion`), and `#` matches t
 | `board/<name>/task`, `/note`, `/done`, `/failed`, `/blocked` | A named board changed ([boards.md](boards.md), "Events of a board") | owner if posted by your own conversation before outside content, else untrusted |
 | `state/<key>` | Shared state changed (payload `value`, `previous`) | untrusted |
 | `agent/<id>/started`, `agent/<id>/done`, `agent/<id>/failed` | A task started or ended | untrusted |
-| `agent/<id>/tool` | A tool call started or ended (live only, not stored) | untrusted |
+| `agent/<id>/tool` | A tool call started or ended (live only, not stored). A `question` call's start carries `asked`: the question's fields and `at` | untrusted |
 | `agent/<id>/goal`, `agent/<id>/swarm` | A goal or swarm changed ([agents.md](agents.md), "Goal mode"; [boards.md](boards.md), "A swarm") | untrusted |
 | `approval/requested`, `approval/decided` | pine asked you something, or you answered | untrusted |
+| `question/asked` | An agent asked you with `question` (`agent`, `session`, `task`, `at` its place in the turn, `question`, `header`, `options`, `multiSelect`, `outside`: the turn began with an event, not in a UI). Your answer is your next message | untrusted |
 | `pine/started`, `pine/route-failed` | The daemon started, or a route failed | untrusted |
 | `out/source/<name>` | An answer going out. A running source that can send sends it | as published |
 
-Agents cannot publish on `agent/`, `approval/`, `board/`, `pine/`, `state/` or `timer/`, and
+Agents cannot publish on `agent/`, `approval/`, `board/`, `pine/`, `question/`, `state/` or `timer/`, and
 `add_route` refuses a route that would. Watch events with `pine events -f`, or
 `pine events --topic "source/#" --limit 50`.
 

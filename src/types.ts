@@ -52,6 +52,16 @@ export interface ImageRef {
 	mimeType: string;
 }
 
+/** A question an agent asked its owner (`question`), as pine cleaned it: at most six options, a header of 12 characters. */
+export interface AskedQuestion {
+	question: string;
+	header?: string;
+	/** Two to six answers to pick from, or none: then the owner answers in words. */
+	options?: Array<{ label: string; description?: string }>;
+	/** Several options may be picked. Only with options. */
+	multiSelect?: true;
+}
+
 export interface TaskMeta {
 	quotes?: SentQuote[];
 	/**
@@ -110,6 +120,13 @@ export interface TaskMeta {
 	boardTask?: number;
 	/** The newest post on that board that such a run was shown with its task, so that it is not told of it again as news. */
 	boardShown?: number;
+	/**
+	 * The questions this turn asked its owner with the `question` tool, in call order; a question is
+	 * known by this task's id and its place here. The one record of what was asked: a UI shows the
+	 * open ones from it (those of a conversation's latest turn, until the owner writes again), and
+	 * the owner's answer is their next message.
+	 */
+	asked?: AskedQuestion[];
 	/** `input` is what the model server had to read anew; `cached` is what it took from its prompt cache. */
 	stats?: { input: number; output: number; cached?: number; turns: number; tools: string[]; ms: number; context?: ContextUse; timing?: CallTiming };
 }

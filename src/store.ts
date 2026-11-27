@@ -236,6 +236,16 @@ export class TaskStore {
 		return this.db.prepare(sql).all(...args, Math.min(q.limit ?? 50, 1000)).map((r) => this.fromRow(r));
 	}
 
+	/** The latest top-level task of each conversation (a steered message is one too), or of one conversation. */
+	latestTurns(agent?: string, session?: string): Task[] {
+		const where = ["parent IS NULL", ...(agent ? ["agent = ?"] : []), ...(session ? ["session = ?"] : [])];
+		const args = [...(agent ? [agent] : []), ...(session ? [session] : [])];
+		return this.db
+			.prepare(`SELECT * FROM tasks WHERE id IN (SELECT MAX(id) FROM tasks WHERE ${where.join(" AND ")} GROUP BY agent, session)`)
+			.all(...args)
+			.map((r) => this.fromRow(r));
+	}
+
 	/** Named sessions of an agent that have had tasks, most recently used first. */
 	sessions(agent: string): Array<{ session: string; tasks: number; last: number }> {
 		return (this.db.prepare("SELECT session, COUNT(*) AS tasks, MAX(created) AS last FROM tasks WHERE agent = ? AND session NOT LIKE '\\_t%' ESCAPE '\\' GROUP BY session ORDER BY last DESC").all(agent) as any[]).map((r) => ({ session: r.session, tasks: r.tasks, last: r.last }));
