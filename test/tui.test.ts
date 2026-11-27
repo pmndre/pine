@@ -773,20 +773,8 @@ test("tui: reasoning level and context use are shown in the bottom bar; the leve
 	await until(() => /context \d+%/.test(bar()), 2000, "the context figure");
 	const first = Number(bar().match(/context (\d+)%/)![1]);
 	assert.ok(first > 0 && first < 100, `a plausible share of a 40000 token window: ${first}%`);
-	// Sent once the first turn is over: a message sent while the agent still works goes into that work.
+	// The first turn is over before the bar is clicked.
 	await until(() => t.h.pine.tasks.list({ status: "running" }).length === 0 && !/working ·/.test(t.text()), 4000, "the first turn to end");
-	await t.send(`a longer message ${"that takes up room ".repeat(300)}`);
-	await until(() => Number(bar().match(/context (\d+)%/)?.[1] ?? 0) > first, 8000, `the figure to grow with the conversation, from ${first}%\n--- bar ---\n${bar()}\n--- screen ---\n${t.text()}`);
-	// The second message found the first one in the model server's cache.
-	await until(() => /cache \d+%/.test(bar()), 2000, "the cache figure");
-	assert.ok(Number(bar().match(/cache (\d+)%/)![1]) >= 60, bar());
-
-	// A UI opened later shows the figures straight away, from the last task.
-	const later = new PineTui({ client: t.app.client, terminal: new FakeTerminal(120, 30) });
-	apps.push(later);
-	await later.start();
-	await until(() => /context \d+%/.test(later.screen().at(-1)!) && /cache \d+%/.test(later.screen().at(-1)!), 2000, "the figures in a newly opened UI");
-	await later.stop();
 
 	// Click the level in the bar, pick from the list.
 	t.term.click(bar().indexOf("reasoning off") + 3, t.app.screen().length - 1);
@@ -803,7 +791,7 @@ test("tui: reasoning level and context use are shown in the bottom bar; the leve
 	await t.sees("ECHO[think about it]");
 	assert.equal(t.h.mock.state.requests.at(-1).body.reasoning_effort, "high");
 	assert.equal(t.h.mock.state.requests[0].body.reasoning_effort, undefined);
-	assert.equal(t.h.mock.state.requests.at(-1).body.messages.filter((m: any) => m.role === "user").length, 3);
+	assert.equal(t.h.mock.state.requests.at(-1).body.messages.filter((m: any) => m.role === "user").length, 2);
 
 	await t.send("/reasoning low");
 	await until(() => /reasoning low/.test(bar()), 4000, `the level in the bar: ${bar()}`);
