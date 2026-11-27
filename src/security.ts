@@ -710,7 +710,8 @@ export interface ApprovalRequest {
 	tool: string;
 	summary: string;
 	why: string;
-	expires: number;
+	/** When an unanswered request counts as no. Absent: it waits until it is answered, its run stops or pine restarts (an agent's question). */
+	expires?: number;
 	/** What "always" would cover for the rest of the conversation, e.g. "all home-link tools". Absent: the question is asked every time. */
 	remember?: string;
 	/** What a plain yes already covers, when that is more than this one call ("this conversation"): the dialog then says so, and not "once". */
@@ -756,7 +757,7 @@ export class Approvals {
 	private bus: Bus;
 	private log: Logger;
 	private timeoutMs: number;
-	private open = new Map<string, { req: ApprovalRequest; resolve: (r: ApprovalDecision) => void; timer: NodeJS.Timeout }>();
+	private open = new Map<string, { req: ApprovalRequest; resolve: (r: ApprovalDecision) => void; timer?: NodeJS.Timeout }>();
 
 	constructor(bus: Bus, log: Logger, timeoutMs: number) {
 		this.bus = bus;
@@ -764,8 +765,14 @@ export class Approvals {
 		this.timeoutMs = timeoutMs;
 	}
 
-	request(r: Omit<ApprovalRequest, "id" | "expires">, signal?: AbortSignal): Promise<ApprovalDecision> {
-		const req: ApprovalRequest = { ...r, summary: truncate(r.summary, 1500), id: crypto.randomBytes(4).toString("hex"), expires: Date.now() + this.timeoutMs };
+	/**
+	 * Puts a request to the owner. It counts as no after the approval timeout, which protects an
+	 * action nobody looked at. `wait: "unlimited"` is for an agent's question, which the owner may
+	 * think over for as long as they like: no timer, and no `expires`.
+	 */
+	request(r: Omit<ApprovalRequest, "id" | "expires">, signal?: AbortSignal, opts: { wait?: "unlimited" } = {}): Promise<ApprovalDecision> {
+		const unlimited = opts.wait === "unlimited";
+		const req: ApprovalRequest = { ...r, summary: truncate(r.summary, 1500), id: crypto.randomBytes(4).toString("hex"), ...(unlimited ? {} : { expires: Date.now() + this.timeoutMs }) };
 		return new Promise((resolve) => {
 			const finish = (allow: boolean, by: string, always = false, values?: Record<string, string>) => {
 				const entry = this.open.get(req.id);
@@ -777,8 +784,8 @@ export class Approvals {
 				this.bus.publish("approval/decided", { id: req.id, allow, by, agent: req.agent, tool: req.tool, always: remembered || undefined, remember: remembered ? req.remember : undefined }, { source: "approvals" });
 				resolve({ allow, by, always: remembered, values: allow ? values : undefined });
 			};
-			const timer = setTimeout(() => finish(false, "timeout"), this.timeoutMs);
-			timer.unref?.();
+			const timer = unlimited ? undefined : setTimeout(() => finish(false, "timeout"), this.timeoutMs);
+			timer?.unref?.();
 			this.open.set(req.id, { req, resolve: ({ allow, by, always, values }) => finish(allow, by, always, values), timer });
 			signal?.addEventListener("abort", () => finish(false, "aborted"), { once: true });
 			this.log.info(`approval ${req.id} requested: ${req.agent} wants ${req.tool} (${req.why})`);

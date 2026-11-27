@@ -28,8 +28,11 @@ const shot = async (name: string) => {
 };
 const card = "[data-slot=composer-question] [data-slot=questionnaire]";
 const question = (text: string) => sees(`${card} [data-slot=questionnaire-title] >> text=${text}`);
-/** Picks the option whose label is exactly `label` ("mock/m" is in "mock/m2" too). */
-const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`).filter({ has: page.locator("[data-slot=question-card-label]").getByText(label, { exact: true }) }).click();
+/** Picks the option whose label is exactly `label` ("mock/m" is in "mock/m2" too), then sends it: a pick alone only selects. */
+const pick = async (label: string) => {
+	await page.locator(`${card} [data-slot=questionnaire-choice]`).filter({ has: page.locator("[data-slot=question-card-label]").getByText(label, { exact: true }) }).click();
+	await page.locator(card).getByRole("button", { name: "Send" }).click();
+};
 const options = () => page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
 const activeTab = () => page.$$eval("[data-slot=tab][aria-selected=true]", (els: Element[]) => els[0]?.textContent ?? "");
 const visit = () =>

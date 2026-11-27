@@ -117,7 +117,7 @@ settings").
 | `limits.goalIdleRounds` | `3` | Goal mode: rounds in a row "not met" without a tool call before the goal pauses. `0`: never. |
 | `limits.goalJudgeTimeout` | `90s` | Goal mode: how long the judge may take; longer pauses the goal. |
 | `limits.swarmRounds` | `8` | Turns a swarm's lead gets before it waits for `/swarm resume` ([boards.md](boards.md), "A swarm"). |
-| `security.approvalTimeout` | `5m` | An unanswered approval counts as "no" after this. |
+| `security.approvalTimeout` | `5m` | An unanswered approval counts as "no" after this. An agent's question (`question`) has no time limit. |
 | `security.taint` | `session` | How long a conversation counts as having read outside content: until reset (`session`), until the task ends (`run`), or never (`off`) ([security.md](security.md)). |
 | `security.taintTools` | `[]` | Tool name globs whose results count as outside content, besides MCP servers marked `taints`. |
 | `security.bypassWhenTainted` | `false` | Keep `bypass` mode after outside content; off, such a conversation works as in `auto`. |

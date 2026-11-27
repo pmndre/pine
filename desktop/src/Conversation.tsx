@@ -438,12 +438,14 @@ function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
 
 /**
  * The question that is open in a conversation, as a card inline above its composer: never a dialog
- * that opens by itself. One the owner put off ("Later") is not shown; the line under the
+ * that opens by itself. One the owner hid ("Hide") is not shown; the line under the
  * conversation brings it back. It takes the keyboard as it comes only when the composer is empty,
  * so that it never takes what the owner is typing.
  */
 function ComposerQuestion({ tab }: { tab: Tab }) {
 	const item = store.openQuestion(tab);
+	// Asked every time, so that a batch ends once nothing waits, a folded question included.
+	const place = store.questionPlace(tab, item?.req.id ?? "");
 	if (!item) return null;
 	const { req } = item;
 	const options = req.options ?? (req.choices ?? []).map((label) => ({ label }));
@@ -463,11 +465,11 @@ function ComposerQuestion({ tab }: { tab: Tab }) {
 				multiple={req.multiSelect}
 				recommended={words}
 				type={words ? (text) => (void store.answerInWords(tab, item, text), true) : undefined}
+				place={place}
 				placeholder={words ? `Answer ${req.agent}'s question in your own words…` : undefined}
 				autoFocus={free && options.length > 0}
 				onAnswer={(picked) => void store.answer(req, picked)}
 				onNoAnswer={() => void store.decide(req.id, false)}
-				onLater={() => store.putOff(req.id)}
 			/>
 		</ScrollArea>
 	);
@@ -831,6 +833,8 @@ function StatusLine({ tab }: { tab: Tab }) {
 	// What this conversation was asked. A question of another conversation this tab holds (that one has no
 	// tab of its own) is said as waiting there, and never answered from here.
 	const waiting = [...tab.approvals.values()].filter((a) => !isPick(a.req) || store.ownAsk(tab, a.req));
+	// Open brings back an approval whose dialog was closed; a question has the button on the composer's edge instead.
+	const approval = waiting.find((a) => !isPick(a.req));
 	const held = [...tab.approvals.values()].find((a) => isPick(a.req) && !store.ownAsk(tab, a.req));
 	const elsewhere = store.tabs.find((t) => t !== tab && t.approvals.size > 0);
 	const goal = tab.goal?.status === "active" ? tab.goal : undefined;
@@ -844,11 +848,8 @@ function StatusLine({ tab }: { tab: Tab }) {
 			{action}
 		</Marker>
 	);
-	// A question put off ("Later"), with no other card above the composer: this line brings it back, while the agent waits too.
-	const putOff = waiting.find((a) => isPick(a.req) && store.later.has(a.req.id));
-	if (putOff && !store.openQuestion(tab)) return line(<TriangleAlertIcon />, "A question waits for your answer.", <Button variant="outline" size="xs" onClick={() => store.ask(putOff.req.id)}>Open</Button>, true);
 	if (!tab.busy) {
-		if (waiting.length) return line(<TriangleAlertIcon />, isPick(waiting[0].req) ? "A question waits for your answer." : "A request waits for your approval.", <Button variant="outline" size="xs" onClick={() => store.ask(waiting[0].req.id)}>Open</Button>, true);
+		if (waiting.length) return line(<TriangleAlertIcon />, isPick(waiting[0].req) ? "A question waits for your answer." : "A request waits for your approval.", approval ? <Button variant="outline" size="xs" onClick={() => store.ask(approval.req.id)}>Open</Button> : null, true);
 		if (swarm) return line(<UsersIcon />, `swarm · round ${swarm.round} of ${swarm.until} · ${swarm.checking ? "checking the answer" : "looking at the board"}`, <Button variant="outline" size="xs" onClick={() => void store.setSwarm(tab, "pause")}>Pause</Button>);
 		if (goal) return line(<TargetIcon />, `goal · round ${goal.round} of ${goal.until} · checking whether it is met`, <Button variant="outline" size="xs" onClick={() => void store.setGoal(tab, "pause")}>Pause</Button>);
 		if (held) return line(<TriangleAlertIcon />, `A question of ${held.req.agent}'s in another conversation waits for you.`, <Button variant="outline" size="xs" onClick={() => void store.goToAsk(held.req)}>Go there</Button>, true);
@@ -872,7 +873,7 @@ function StatusLine({ tab }: { tab: Tab }) {
 		tab.tokens.output ? `${count(total)}↑${tab.tokens.cached ? ` (${Math.round((100 * tab.tokens.cached) / Math.max(1, total))}% cached)` : ""} ${count(tab.tokens.output)}↓` : "",
 		speedText(tab.speed),
 	].filter(Boolean);
-	return line(<Pulse />, parts.join(" · "), waiting.length ? <Button variant="outline" size="xs" onClick={() => store.ask(waiting[0].req.id)}>Open</Button> : null, waiting.length > 0);
+	return line(<Pulse />, parts.join(" · "), approval ? <Button variant="outline" size="xs" onClick={() => store.ask(approval.req.id)}>Open</Button> : null, waiting.length > 0);
 }
 
 /** How full the conversation's context window is (Context): the share in the head, the rest on hover. */

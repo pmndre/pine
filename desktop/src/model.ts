@@ -450,8 +450,10 @@ export class Store extends Model {
 	publishing = false;
 	/** The approval whose dialog is open. (A question has no dialog: its card is above the composer.) */
 	asking?: string;
-	/** The questions the owner put off ("Later"): their card is not shown until they are opened again. */
+	/** The questions the owner hid ("Hide"): their card is not shown until they are opened again. */
 	later = new Set<string>();
+	/** The questions of a conversation that came together, in the order they came (`questionPlace`). */
+	private batches = new WeakMap<Tab, Set<string>>();
 	/** The tabs of last time are open (there may be none): until then the window shows that pine is starting. */
 	opened = false;
 	/** What was typed into a conversation's input and not sent when its tab closed, given back when it opens again. */
@@ -2663,6 +2665,10 @@ export class Store extends Model {
 			const mentions = [...typed.matchAll(/(?:^|\s)@([^\s@]+)/g)].map((m) => m[1]).filter((m) => tab.files.has(m.split("#")[0]));
 			const { task, steered } = await api.prompt(tab.agent, typed, tab.session, files.length ? files.map((f) => ({ name: f.name, data: f.data })) : undefined, whenBusy, mentions.length ? mentions : undefined, sent, !this.remote);
 			tab.roots.add(task);
+			// A question the owner hid is set aside by what they wrote: it is closed without an answer, so that the agent goes
+			// on and reads the message, which was given to its work first (a message after it would wait for the question).
+			const aside = this.openQuestion(tab) ? undefined : this.hiddenQuestion(tab);
+			if (aside) void this.decide(aside.req.id, false, false, undefined, true);
 			if (steered === undefined) (mine.task = task), mine.v++;
 			if (steered !== undefined) {
 				mine.steer ??= { task, into: steered };
@@ -3024,6 +3030,31 @@ export class Store extends Model {
 	/** The question of a conversation whose card is shown above its composer: the first of its own that is open and not put off. */
 	openQuestion(tab: Tab): Of<"approval"> | undefined {
 		return [...tab.approvals.values()].find((a) => isPick(a.req) && !this.later.has(a.req.id) && this.ownAsk(tab, a.req));
+	}
+
+	/** A question of this conversation's own that the owner hid: its card comes back by the button on the composer's edge (`QuestionToggle`). */
+	hiddenQuestion(tab: Tab): Of<"approval"> | undefined {
+		return [...tab.approvals.values()].find((a) => isPick(a.req) && this.later.has(a.req.id) && this.ownAsk(tab, a.req));
+	}
+
+	/**
+	 * Where a question stands among those of its conversation that came together ("Question 2 of 3"): the
+	 * questions asked while another still waited count as one batch, answered ones included, which ends
+	 * once none of them waits. Nothing for a question alone.
+	 */
+	questionPlace(tab: Tab, id: string): { at: number; of: number } | undefined {
+		const waiting = [...tab.approvals.values()].filter((a) => isPick(a.req) && this.ownAsk(tab, a.req)).map((a) => a.req);
+		if (!waiting.length) {
+			this.batches.delete(tab);
+			return undefined;
+		}
+		// A batch goes on while one of its questions still waits; questions that come after it ended start another.
+		let batch = this.batches.get(tab);
+		if (!batch || !waiting.some((w) => batch!.has(w.id))) batch = new Set();
+		for (const w of waiting) batch.add(w.id);
+		this.batches.set(tab, batch);
+		const at = [...batch].indexOf(id) + 1;
+		return batch.size > 1 && at > 0 ? { at, of: batch.size } : undefined;
 	}
 
 	/** "Onboarding": the main agent's conversation `setup`. */

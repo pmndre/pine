@@ -13,7 +13,6 @@ const meta = {
 		options: [{ label: "the old one" }, { label: "the new one" }],
 		onAnswer: () => {},
 		onNoAnswer: () => {},
-		onLater: () => {},
 	},
 	parameters: { layout: "padded" },
 } satisfies Meta<typeof QuestionCard>;
@@ -37,6 +36,11 @@ export const WithDescriptions: Story = {
 	},
 };
 
+/** One of several questions an agent asked together: where it stands among them. */
+export const OneOfSeveral: Story = {
+	args: { place: { at: 1, of: 2 } },
+};
+
 /** One of pine's own steps: a way back at the start of the actions row, before Later and No answer. */
 export const WithBack: Story = {
 	args: {
@@ -55,7 +59,6 @@ export const DefaultModel: Story = {
 		from: "pine asks",
 		recommended: true,
 		onNoAnswer: undefined,
-		onLater: undefined,
 		question: "Which default model should your agents run on?",
 		options: [
 			{ label: "anthropic/claude-sonnet-4-5", description: "pine's choice. Keep it and go on." },

@@ -11,6 +11,7 @@ import {
 	QuestionnaireChoices,
 	QuestionnaireDescription,
 	QuestionnaireItem,
+	QuestionnaireProgress,
 	QuestionnaireSkip,
 	QuestionnaireSubmit,
 	QuestionnaireTitle,
@@ -145,17 +146,16 @@ export class ComposerCardSlot implements QuestionCardHostValue {
  * `Questionnaire` with one item, laid out flat as shadcn's examples lay one out, with no frame of its
  * own: the question as its title, who asks (with the few words the asker put to it, such as "Model")
  * as its description, the options as its rows, and its actions row at the bottom: the asker's own
- * ways out ("Back", "Cancel") at the start, where Previous stands, then Later, No answer (the
- * questionnaire's Skip: skipping its one item submits it with nothing picked) and, for several
- * answers, Send. The questionnaire brings the radios or checkboxes, each option's number and its
- * key, the arrows and Enter. What is pine's: a single answer is given as soon as an option is picked
- * by a click, its number or Space (the arrows only move, and Enter answers with the option they
- * reached), so there is no Submit; several are ticked and sent with Send; "recommended" on the first
+ * ways out ("Back", "Cancel") at the start, where Previous stands, then No answer (the
+ * questionnaire's Skip: skipping its one item submits it with nothing picked) and Send (its Submit).
+ * The questionnaire brings the radios or checkboxes, each option's number and its key, the arrows,
+ * and Enter, which sends what is picked. As stock, a pick is only a pick until Send, so that the owner
+ * can change their mind ("2" then Enter is the quick way). What is pine's: "recommended" on the first
  * option of a single answer where the asker orders its options so (`recommended`). There is no field
  * for the owner's own words: the composer below is that (`type`, through the host). The same card
  * for an agent's `question` and for what pine asks itself.
  */
-export function QuestionCard({ question, header, from, options, multiple, recommended, autoFocus, actions, type, placeholder, onAnswer, onNoAnswer, onLater }: {
+export function QuestionCard({ question, header, from, options, multiple, recommended, autoFocus, actions, type, placeholder, place, onAnswer, onNoAnswer }: {
 	question: string;
 	/** A few words about the question, such as "Database", said with who asks. */
 	header?: string;
@@ -177,16 +177,15 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 	type?: (text: string) => boolean;
 	/** What the composer says while `type` takes what is typed. */
 	placeholder?: string;
+	/** Where this question stands among several asked together: stock `QuestionnaireProgress`, told the count, since the card holds one of them. */
+	place?: { at: number; of: number };
 	/** The answer: the numbers of the options picked, counted from 1, in the order shown. */
 	onAnswer: (picked: number[]) => void;
 	onNoAnswer?: () => void;
-	onLater?: () => void;
 }) {
 	const title = useId();
 	const item = useRef<HTMLFieldSetElement>(null);
 	const [ticked, setTicked] = useState(false);
-	// The arrows check a radio as they move to it: only a pick by another hand answers at once.
-	const moving = useRef(false);
 	useHostedCard({ options, multiple, answer: onAnswer, type, placeholder });
 	useEffect(() => {
 		// The questionnaire's own place for the keyboard: its item, from which the arrows reach the options.
@@ -205,18 +204,17 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 		<Questionnaire
 			defaultItem="answer"
 			shortcuts="numbers"
-			onKeyDownCapture={(e) => {
-				moving.current = e.key.startsWith("Arrow");
-			}}
-			onPointerDownCapture={() => {
-				moving.current = false;
-			}}
 			onSubmit={(e) => {
 				e.preventDefault();
 				// Submitted with nothing picked is the questionnaire's Skip: Send and Enter submit only an answer.
 				settle(e.currentTarget, new FormData(e.currentTarget).getAll("answer").map(Number).sort((a, b) => a - b));
 			}}
 		>
+			{place ? (
+				<QuestionnaireProgress aria-valuenow={place.at} aria-valuemax={place.of} aria-valuetext={`Question ${place.at} of ${place.of}`}>
+					Question {place.at} of {place.of}
+				</QuestionnaireProgress>
+			) : null}
 			<QuestionnaireItem ref={item} name="answer" multiple={multiple} aria-labelledby={title} onStatusChange={(status) => setTicked(status === "answered")}>
 				<QuestionnaireTitle id={title} className="whitespace-pre-wrap select-text">
 					{question}
@@ -225,13 +223,7 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 				{options.length ? (
 					<QuestionnaireChoices>
 						{options.map((o, i) => (
-							<QuestionnaireChoice
-								key={i}
-								value={String(i + 1)}
-								onChange={(e) => {
-									if (!multiple && e.currentTarget.checked && !moving.current) settle(e.currentTarget.form, [i + 1]);
-								}}
-							>
+							<QuestionnaireChoice key={i} value={String(i + 1)}>
 								<span className="flex flex-wrap items-center gap-2">
 									<span className="font-medium" data-slot="question-card-label">{o.label}</span>
 									{/* What the agent would pick: one option, so not on a question with several answers. */}
@@ -243,11 +235,10 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 					</QuestionnaireChoices>
 				) : null}
 			</QuestionnaireItem>
-			{actions || onLater || onNoAnswer || multiple ? (
+			{actions || onNoAnswer || options.length ? (
 				<CardActions start={actions}>
-					{onLater ? <Button size="sm" variant="ghost" onClick={onLater}>Later</Button> : null}
 					{onNoAnswer ? <QuestionnaireSkip size="sm">No answer</QuestionnaireSkip> : null}
-					{multiple ? <QuestionnaireSubmit size="sm" disabled={!ticked}>Send</QuestionnaireSubmit> : null}
+					{options.length ? <QuestionnaireSubmit size="sm" disabled={!ticked}>Send</QuestionnaireSubmit> : null}
 				</CardActions>
 			) : null}
 		</Questionnaire>

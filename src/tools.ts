@@ -746,7 +746,7 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 					multiSelect: Type.Optional(Type.Boolean({ description: "true: several options may be picked" })),
 					choices: Type.Optional(Type.Array(Type.String(), { description: "Answers as plain labels, instead of options" })),
 				}),
-				execute: async (_id, p) => {
+				execute: async (_id, p, signal) => {
 					const r = run();
 					// A sub-agent works by itself: nobody waits for an answer on its behalf.
 					if (profile.leaf) return ok("You are a sub-agent: your owner is not asked on your behalf. Go on with the most reasonable assumption and say in your answer which one you made, or say there what you need to know.");
@@ -767,7 +767,10 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 							...(multiSelect ? { multiSelect } : {}),
 							...(header ? { header } : {}),
 							inputs: [{ name: "answer", label: "Your answer", secret: false }],
-						}),
+						},
+						// The owner may take their time: a question waits until it is answered, closed or its run stops.
+						signal,
+						{ wait: "unlimited" }),
 					);
 					const answer = picked(decision.values?.answer?.trim(), options, multiSelect);
 					// (A swarm's check of the answer is told what the owner said: a value they gave is given, not made up.)

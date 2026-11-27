@@ -164,7 +164,7 @@ The keys `set_setting` takes (`settings` lists them with current values):
 | `limits.maxPoolTasks` | Largest batch of sub-agent tasks in one pool; 100 |
 | `limits.maxDownloadMb` | Largest download, in megabytes |
 | `security.askAccess` | Whether pine asks you when a sandboxed agent needs a path outside or the network |
-| `security.approvalTimeout` | How long a question waits before it counts as no (from the next start) |
+| `security.approvalTimeout` | How long an approval waits before it counts as no (from the next start). An agent's question waits without a limit |
 | `security.taint` | How long pine asks before sending out after outside content: `session`, `run`, `off` |
 | `security.bypassWhenTainted` | Whether bypass mode stays after outside content |
 | `ui.theme` | The Pine app's theme, by name (`dracula`) |

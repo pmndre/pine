@@ -22,7 +22,11 @@ const sees = (selector: string, timeout = patient(20_000)) => page.waitForSelect
 const api = (method: string, url: string, body?: unknown) => page.evaluate(([m, u, b]: [string, string, unknown]) => (window as any).pine.call(m, u, b).then((r: any) => r.data), [method, url, body]);
 const card = "[data-slot=composer-question] [data-slot=questionnaire]";
 const question = (text: string) => sees(`${card} [data-slot=questionnaire-title] >> text=${text}`);
-const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
+/** Picks the option that says `label`, then sends it: a pick alone only selects. */
+const pick = async (label: string) => {
+	await page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
+	await page.locator(card).getByRole("button", { name: "Send" }).click();
+};
 /** Every file under a folder whose bytes hold the text. */
 const holding = (dir: string, text: string): string[] => {
 	if (!fs.existsSync(dir)) return [];

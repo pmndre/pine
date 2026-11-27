@@ -258,7 +258,7 @@ agent, the tool, its arguments and the reason.
 | `a` or `y` | Allow once. Where the yes holds for the whole conversation (a folder, the network, a local address, an app), the button says so |
 | `s` | Always here: no more questions in this conversation for this tool or MCP server, or for this kind of critical action. Not offered where asking every time is configured |
 | `d` or `n` | Deny |
-| `esc` | Later. It stays open until `security.approvalTimeout` (5 minutes), then counts as denied. `enter` on an empty line reopens it |
+| `esc` | Later. An approval stays open until `security.approvalTimeout` (5 minutes), then counts as denied; an agent's question stays open until you answer it. `enter` on an empty line reopens it |
 
 A request in a tab behind yours marks it `!`, and the status line names the tab. When the action
 needs a value only you have (a bot's token, a device's password), the dialog has a field for it. A
@@ -273,7 +273,8 @@ Before it goes on, an agent can ask you to choose between options with its `ques
 dialog lists the options, the recommended one first. Pick one with a digit, `enter` or a click, or type your own answer. Where
 several may be picked, tick the boxes (`[ ]`) by number (`1,3`) or click, then press `enter`. `esc`
 puts it off: `/approve` reopens it, and `/deny` tells the agent there is no answer, so it goes on
-with an assumption it names. With Telegram set up, the question arrives there too. The tool works in
+with an assumption it names. A question has no time limit: it waits until you answer it, its run
+stops or pine restarts. With Telegram set up, the question arrives there too. The tool works in
 every mode, `plan` too, but not in a run an outside event started.
 
 ## The agent's list of steps

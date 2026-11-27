@@ -31,7 +31,11 @@ const shot = async (name: string) => {
 const opened = () => app.evaluate(() => (globalThis as any).quiet.opened as string[]);
 const card = "[data-slot=composer-question] [data-slot=questionnaire]";
 const question = (text: string) => sees(`${card} [data-slot=questionnaire-title] >> text=${text}`);
-const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
+/** Picks the option that says `label`, then sends it: a pick alone only selects. */
+const pick = async (label: string) => {
+	await page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
+	await page.locator(card).getByRole("button", { name: "Send" }).click();
+};
 const activeTab = () => page.$$eval("[data-slot=tab][aria-selected=true]", (els: Element[]) => els[0]?.textContent ?? "");
 
 before(async () => {

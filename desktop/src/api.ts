@@ -194,7 +194,8 @@ export interface Approval {
 	tool: string;
 	summary: string;
 	why: string;
-	expires: number;
+	/** When an unanswered request counts as no; absent for an agent's question, which waits until it is answered. */
+	expires?: number;
 	remember?: string;
 	holds?: string;
 	inputs?: Array<{ name: string; label: string; secret?: boolean }>;

@@ -42,6 +42,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["where can I read the documentation myself in the app", /^desktop#the-manual$/],
 		["my owner typed a message instead of picking one of the answers I offered", /^(agents#a-message-while-the-agent-works|desktop#when-the-agent-asks-you-something|setup)/],
 		["install the mac app with brew", /^desktop#getting-it/],
+		["does a question time out", /^(tui#when-the-agent-asks-you-something|configuration#|security#4-taint-and-approvals)/],
 		["only wake the agent for mail that is probably urgent, as a number I can filter on", /^events#typed-questions/],
 		["a decision model service that answers with a probability instead of text", /^(events#typed-questions|configuration#decision-models)/],
 		["set up jev with my typesafe key", /^configuration#decision-models/],

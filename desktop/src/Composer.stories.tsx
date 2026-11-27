@@ -4,7 +4,7 @@ import { store, Tab } from "./model.ts";
 
 // The message box as a conversation shows it, without a daemon: what the agent runs on reads
 // "model" and "auto" here, as for an agent the app does not know yet.
-function Box({ draft = "", files = false, quotes = false, replying = false, outside = false, paused = false, swarm = false }: { draft?: string; files?: boolean; quotes?: boolean; replying?: boolean; outside?: boolean; paused?: boolean; swarm?: boolean }) {
+function Box({ draft = "", files = false, quotes = false, replying = false, outside = false, paused = false, swarm = false, hidden = false }: { draft?: string; files?: boolean; quotes?: boolean; replying?: boolean; outside?: boolean; paused?: boolean; swarm?: boolean; hidden?: boolean }) {
 	const tab = new Tab("chat", "main", "main");
 	tab.draft = draft;
 	if (paused) tab.goal = { agent: "main", session: "main", objective: "File every invoice of March", status: "paused", round: 3, until: 10, note: "paused by you after round 3" };
@@ -18,6 +18,12 @@ function Box({ draft = "", files = false, quotes = false, replying = false, outs
 	if (quotes && replying) {
 		tab.quotes[0].reply = "Ask Northwind for the number today.\nCopy accounts in.";
 		tab.replying = 1;
+	}
+	store.later.delete("story-question");
+	if (hidden) {
+		const req = { id: "story-question", agent: "main", task: 1, tool: "question", summary: "Which shade?", why: "", expires: 0, options: [{ label: "green" }, { label: "blue" }] };
+		tab.approvals.set(req.id, tab.add({ t: "approval", req, state: "open" }));
+		store.later.add(req.id);
 	}
 	if (outside) store.taints.set("main:main", "a web page");
 	else store.taints.delete("main:main");
@@ -47,3 +53,6 @@ export const GoalPaused: Story = { args: { paused: true } };
 
 /** A swarm that stopped with work left: its banner above the input, with Resume and Clear. */
 export const SwarmStopped: Story = { args: { swarm: true } };
+
+/** A question the owner folded away: the button on the input's top edge (chevron up) brings its card back. */
+export const QuestionHidden: Story = { args: { hidden: true } };

@@ -311,13 +311,14 @@ Everything is also in the menus with its key. `⌘F` finds text in the conversat
 
 An agent's `question` tool ([setup.md](setup.md)) shows a card above the input, never a dialog that
 opens by itself. It lists the answers with their numbers and meanings; the agent's pick is marked
-`recommended`. A click, a digit or Space answers (arrows and `↩` work too); for `multiSelect`, tick
-and **Send**. The card takes the keyboard only while the input is empty.
+`recommended`. A click, a digit, Space or the arrows pick an answer, which you can still change;
+**Send** or `↩` sends it. For `multiSelect`, tick and **Send**. The card takes the keyboard only while the input is empty.
 
 | | |
 |---|---|
 | **No answer** | The agent goes on with an assumption it names |
-| **Later** | Hides the card; **Open** (or `/approve`) above the input brings it back |
+| Several at once | When the agent asks several questions together, they come one after another, each saying where it stands ("Question 1 of 2") |
+| Fold | A small button on the input's top edge folds the card away (chevron down) and brings it back (chevron up, or `/approve`). It is there only while this conversation has a question, and with several it is about the first. Folded, a message you type goes as an ordinary message, and the question is closed without an answer, so the agent goes on |
 | Typing instead | A message typed instead of picking an answer answers in your own words, also to ask back ("what is the difference?"). A `/command` stays a command. If someone answered elsewhere meanwhile, it goes as an ordinary message |
 | Another conversation's question | Never answered from here; the line above the input offers **Go there** |
 

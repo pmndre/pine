@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { harness, mockMsg, type Harness } from "./support/harness.ts";
+import { harness, mockMsg, until, type Harness } from "./support/harness.ts";
 import { picked } from "../src/tools.ts";
 
 const owner = { trust: "owner" as const };
@@ -109,4 +109,32 @@ test("question: an answer that is an option's label is that option, also when th
 	assert.deepEqual(picked("Yes, with tests, No", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "Yes, with tests, No", words: false });
 	assert.deepEqual(picked("Yes, with tests", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "Yes, with tests", words: false });
 	assert.deepEqual(picked("no, yes, with tests", [{ label: "Yes, with tests" }, { label: "No" }], true), { text: "No, Yes, with tests", words: false });
+});
+
+test("question: an agent's question waits past the approval timeout, which still ends an ordinary approval, and ends with its run", async () => {
+	const h = await harness({ pine: { security: { approvalTimeout: "150ms" } }, agents: { main: { agent: { approve: ["bash"] } } } });
+	const asked: any[] = [];
+	h.pine.bus.subscribe("approval/requested", (e: any) => void asked.push(e.payload));
+
+	const running = ask(h, { question: "Which way?", options: [{ label: "Left" }, { label: "Right" }] });
+	await until(() => asked.length === 1, 5000, "the question");
+	assert.equal(asked[0].expires, undefined, "a question shows no deadline");
+	await new Promise((r) => setTimeout(r, 400));
+	assert.deepEqual(h.pine.approvals.pending().map((a) => a.id), [asked[0].id], "the question is still open after the timeout");
+	assert.equal(h.pine.approvals.decide(asked[0].id, true, "test", false, { answer: "Right" }), true);
+	await running;
+	assert.match(h.toolResults().at(-1)!, /^Your owner answered: Right$/);
+
+	// An approval of an action counts as no after the same timeout.
+	const denied = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("bash", { command: "echo hi" })] }]), ...owner });
+	assert.equal(typeof asked[1].expires, "number");
+	assert.match(denied.text, /not approved \(timeout\)/);
+
+	// A stopped run takes its question with it.
+	const stopped = ask(h, { question: "Which one?" });
+	await until(() => asked.length === 3, 5000, "the second question");
+	assert.equal(h.pine.agents.cancel(asked[2].task), true);
+	await stopped;
+	await until(() => h.pine.approvals.pending().length === 0, 5000, "the question closed by the stop");
+	await h.close();
 });

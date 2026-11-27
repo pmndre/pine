@@ -1,7 +1,7 @@
 // Where the owner writes: the message, the files that go with it, and under it what the
 // conversation runs on (folder, model, reasoning, mode), each a click away.
 import { Combobox as ComboboxPrimitive } from "@base-ui/react";
-import { ArrowUpIcon, ChevronDownIcon, ClockIcon, CpuIcon, EyeIcon, FileIcon, FolderIcon, MicIcon, PlusIcon, ShieldIcon, SparkleIcon, SquareIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, ChevronDownIcon, ChevronUpIcon, ClockIcon, CpuIcon, EyeIcon, FileIcon, FolderIcon, MicIcon, PlusIcon, ShieldIcon, SparkleIcon, SquareIcon, XIcon } from "lucide-react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Attachment as Chip, AttachmentAction, AttachmentActions, AttachmentGroup, AttachmentContent, AttachmentDescription, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +66,30 @@ interface Suggestion {
 
 /** A key event that went through Base UI: `preventBaseUIHandler` keeps the combobox's own handling out of it. */
 type ListKeyEvent = React.KeyboardEvent<HTMLTextAreaElement> & { preventBaseUIHandler: () => void };
+
+/**
+ * While this conversation has a question of its own, a small button on the composer's top edge folds its card away
+ * and brings it back: a disclosure, its chevron down while the card shows, up once it is folded. Folded, nothing says
+ * the question, which the owner set aside: what they type meanwhile goes as an ordinary message, and the question is
+ * closed without an answer (`submit`), so the agent goes on. With several, it is about the first; the others follow
+ * as each is answered. The status line says nothing of it.
+ */
+function QuestionToggle({ tab }: { tab: Tab }) {
+	const open = store.openQuestion(tab);
+	const hidden = open ? undefined : store.hiddenQuestion(tab);
+	const question = open ?? hidden;
+	if (!question) return null;
+	const label = `${open ? "Hide" : "Show"} ${question.req.agent}'s question`;
+	return (
+		<HoverTooltip>
+			{/* Outline as stock, but its dark tint mixed into the page color: it sits on the composer's border, which a see-through fill would show. */}
+			<TooltipTrigger render={<Button variant="outline" size="icon-xs" className="absolute end-3 -top-3 dark:bg-[color-mix(in_oklch,var(--input)_30%,var(--background))] dark:hover:bg-[color-mix(in_oklch,var(--input)_50%,var(--background))]" aria-expanded={Boolean(open)} aria-label={label} onClick={() => (open ? store.putOff(open.req.id) : store.ask(question.req.id))} />}>
+				{open ? <ChevronDownIcon /> : <ChevronUpIcon />}
+			</TooltipTrigger>
+			<TooltipContent>{label}</TooltipContent>
+		</HoverTooltip>
+	);
+}
 
 /** `host`: what the card above the composer says (`HostedCard`): whether it takes what is typed, and how. */
 export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
@@ -361,6 +385,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 			    AGENTS.md rule 10), so the Send button sends by its click and Enter by `onKey`. */}
 			<div
 				data-slot="composer"
+				className="relative"
 				onDragOver={(e) => {
 					if (![...e.dataTransfer.types].includes("Files")) return;
 					e.preventDefault();
@@ -583,6 +608,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 						)}
 					</InputGroupAddon>
 				</InputGroup>
+				<QuestionToggle tab={tab} />
 			</div>
 			<input ref={picker} type="file" multiple hidden onChange={(e) => (void attach(tab, [...(e.target.files ?? [])]), (e.target.value = ""))} />
 			{tab.folder && !tab.items.length ? <div className="px-1 text-faint text-xs">{tab.agent}'s tools start in {tilde(tab.folder)} and may read and change what is in it.</div> : null}
