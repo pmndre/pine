@@ -105,8 +105,12 @@ export function askedOf(p: any): AskedQuestion | undefined {
 	return { question, ...(header ? { header } : {}), ...(options.length ? { options } : {}), ...(options.length && p?.multiSelect === true ? { multiSelect: true as const } : {}) };
 }
 
-/** What the agent is told when it has asked: the answer is no tool result, but the owner's next message. */
-export const ASKED = "Asked. Your owner answers in a message, maybe about other things too.";
+/**
+ * What the agent is told when it has asked: the answer is no tool result, but the owner's next message.
+ * `n` is the question's number in its turn, counted from 1 in call order, as the owner's UI shows it
+ * ("Q2 · ...") and as an answer to several names it ("Q2: ...").
+ */
+export const askedAs = (n: number) => `Asked as Q${n}. Your owner answers in a message, maybe about other things too. An answer to several questions names each by its number, like "Q${n}: ...".`;
 
 /** What a run that nobody answers is told when it asks: go on, and say in its answer what it needs. */
 const NOT_ASKED = "Go on with the most reasonable assumption and say in your answer which one you made, or say there what you need to know: your answer goes back to whoever handed you the task.";
@@ -730,8 +734,10 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 					if (!askedOf(p)) throw new Error("give the question");
 					// Recorded with the turn now that the call runs. Nothing is recorded for a run that another
 					// run handed its task (its answer goes back there) or outside a conversation the owner writes in.
-					if (!manager.noteQuestion(r.task, p, id)) return ok(`Your owner is not asked from this run: nobody waits for an answer on your behalf. ${NOT_ASKED}`);
-					return ok(ASKED);
+					const noted = manager.noteQuestion(r.task, p, id);
+					if (!noted) return ok(`Your owner is not asked from this run: nobody waits for an answer on your behalf. ${NOT_ASKED}`);
+					// Its place in the turn's record, which is how every UI numbers it.
+					return ok(askedAs(noted.at + 1));
 				},
 			}),
 		);

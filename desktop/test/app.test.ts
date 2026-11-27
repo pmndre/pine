@@ -15,7 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { before, test } from "node:test";
 import { mockMsg } from "../../baseline/tests/mock.mjs";
 import { httpMcp } from "../../test/support/http-mcp.ts";
-import { account, activeOption, announced, api, app, browsers, CODE_EDGE, CODE_TOGGLE, confirm, folder, home, menu, mock, named, page, putAwayToasts, releases, root, sees, shot, shots, stillInside, write } from "./support/window.ts";
+import { account, activeOption, mark, announced, api, app, browsers, CODE_EDGE, CODE_TOGGLE, confirm, folder, home, menu, mock, named, page, putAwayToasts, releases, root, sees, shot, shots, stillInside, write } from "./support/window.ts";
 
 // What these tests look for is what the page commits to (TESTS.md): a part by its `data-slot`, a state by
 // its `data-state`, a button by its `data-action`, a field by its id, and words only where the test wrote them.
@@ -302,38 +302,63 @@ test("the agent's browser is a part of the side panel, shown as a picture, and w
 test("a message is answered, with the turn's work folded into a line", async () => {
 	const steps = [{ tools: [{ name: "read", args: { path: "notes.md" } }], text: "Let me look at the notes first." }, { text: "The notes say **first line**.\n\n```ts\nconst a = 1;\n```\n\n<details><summary>Full file</summary>\n\nfirst line\n\n</details>\n\n[the docs](https://example.com/docs)" }];
 	await page.fill("[data-slot=composer] textarea", mockMsg(steps, "What do the notes say? "));
+	mark("step 1");
 	await page.keyboard.press("Enter");
+	mark("step 2");
 	await sees("[data-slot=markdown] strong");
+	mark("step 3");
 	assert.match(await page.textContent("[data-slot=markdown]"), /first line/);
+	mark("step 4");
 	// The work of the turn (what it said on the way, and the tool call) is one line, folded, which names the
 	// tool that was called; a click opens it.
 	const work = "[data-item=work][data-tools='1']";
 	await sees(`${work} [data-slot=trace-collapsible-trigger]:has-text("read")`);
+	mark("step 5");
 	assert.equal(await page.$(`${work} [data-tool]`), null);
+	mark("step 6");
 	await page.click(`${work} [data-slot=trace-collapsible-trigger]`);
+	mark("step 7");
 	await sees(`${work} [data-tool]`);
+	mark("step 8");
 	assert.equal(await page.textContent(`${work} [data-tool]`), "read");
+	mark("step 9");
 	// A link says where it leads, and is not an address the page itself would follow.
 	assert.equal(await page.textContent("[data-slot=markdown] [data-href]"), "the docs");
+	mark("step 10");
 	assert.equal(await page.getAttribute("[data-slot=markdown] [data-href]", "data-href"), "https://example.com/docs");
+	mark("step 11");
 	assert.match(await page.textContent("[data-slot=markdown] [data-target]"), /example\.com\/docs/, "a link's address is written out beside it");
+	mark("step 12");
 	assert.equal(await page.$$eval("[data-slot=markdown] a[href]", (els: Element[]) => els.length), 0);
+	mark("step 13");
 	// It is a link from the keyboard too: it takes the focus, and Enter opens it in the browser.
 	await page.focus("[data-slot=markdown] [data-href]");
+	mark("step 14");
 	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-href")), "https://example.com/docs");
+	mark("step 15");
 	assert.equal(await page.getAttribute("[data-slot=markdown] [data-href]", "role"), "link");
+	mark("step 16");
 	await page.keyboard.press("Enter");
+	mark("step 17");
 	await until("Enter on the link opened it in the owner's browser", async () => (await app.evaluate(() => ((globalThis as any).opened ?? []) as string[])).includes("https://example.com/docs"));
+	mark("step 18");
 	// A folded part is there and closed.
 	assert.equal(await page.getAttribute("[data-slot=markdown] [data-details] [data-slot=collapsible-trigger]", "aria-expanded"), "false");
+	mark("step 19");
 	// Code is pine's own Code Block, with its lines, its language and a copy button, and nothing to download:
 	// nothing of Streamdown's own block, which has a download button, is drawn.
 	await sees("[data-slot=markdown] [data-slot=code-block] [data-slot=code-block-line]:has-text('const a = 1;')");
+	mark("step 20");
 	assert.match(await page.textContent("[data-slot=markdown] [data-slot=code-block-title]"), /ts/);
+	mark("step 21");
 	assert.ok(await page.$("[data-slot=markdown] [data-slot=code-block] [data-slot=code-block-copy-button]"));
+	mark("step 22");
 	assert.equal(await page.$$eval("[data-slot=markdown] [data-slot=code-block] [data-streamdown]", (els: Element[]) => els.length), 0);
+	mark("step 23");
 	assert.equal(await page.$$eval('[data-slot=markdown] [data-slot=code-block] button[title*="ownload"], [data-slot=markdown] [data-slot=code-block] button[aria-label*="ownload"]', (els: Element[]) => els.length), 0);
+	mark("step 24");
 	await shot("02-answer");
+	mark("step 25");
 });
 
 test("a conversation that is loading shows its shape, and the shape goes once what was said is there", async () => {
@@ -961,7 +986,7 @@ test("an approval is asked in a dialog and answered from it; a question is a car
 	await sees('[data-item="user"] >> text=the new one');
 	// The question returned at once, and the turn ended without the answer; the answer is the next turn's message.
 	await sees("[data-slot=markdown] >> text=done");
-	assert.ok(mock.state.requests.some((q: any) => q.body.messages.some((m: any) => m.role === "tool" && String(m.content).startsWith("Asked."))), "the question returned at once");
+	assert.ok(mock.state.requests.some((q: any) => q.body.messages.some((m: any) => m.role === "tool" && String(m.content).startsWith("Asked as Q1."))), "the question returned at once, with its number");
 	for (let i = 0; i < 100 && !mock.state.requests.some((q: any) => q.body.messages.at(-1)?.role === "user" && JSON.stringify(q.body.messages.at(-1)).includes("the new one")); i++) await new Promise((r) => setTimeout(r, 100));
 	assert.ok(mock.state.requests.some((q: any) => q.body.messages.at(-1)?.role === "user" && JSON.stringify(q.body.messages.at(-1)).includes("the new one")), "the answer starts a turn of its own");
 	await page.waitForFunction(() => !document.querySelector("[aria-busy=true]"), null, { timeout: 10_000 });
@@ -1046,6 +1071,8 @@ test("the questions of a turn are one card: Next, Previous and Skip, and where i
 	assert.equal(await progress.getAttribute("aria-valuemax"), "3");
 	// The thread says each in one line while the card shows them.
 	assert.equal(await page.locator(`${asked("open")} [data-slot=trace-line]`).count(), 3);
+	// Numbered in the order the turn asked them, so that the owner can name one.
+	assert.deepEqual(await page.$$eval(`${asked("open")} [data-slot=trace-line]`, (els: Element[]) => els.map((e) => e.getAttribute("data-question-number"))), ["1", "2", "3"]);
 	await shot("03-questions");
 	await page.locator(QUESTIONS).getByRole("radio", { name: /yes/ }).click();
 	await button("next").click();
@@ -1062,8 +1089,9 @@ test("the questions of a turn are one card: Next, Previous and Skip, and where i
 	assert.equal(await page.locator(`${QUESTIONS} [data-slot=questionnaire-item]:not([hidden]) [data-slot=questionnaire-choice]`).count(), 0);
 	await button("skip").click();
 	await page.waitForSelector(QUESTIONS, { state: "detached" });
-	assert.equal(await lastOwner(), "Which side? yes\nWhich end? bottom");
-	await hears("Which side? yes\nWhich end? bottom");
+	// Each line names its question by its number in the turn, as the agent was told it.
+	assert.equal(await lastOwner(), "Q1: yes\nQ2: bottom");
+	await hears("Q1: yes\nQ2: bottom");
 	// Answered, the questions are one line each, followed by the owner's message.
 	await sees(asked("closed"));
 	const order = await page.$$eval('[data-item="questions"], [data-item="user"]', (els: Element[]) => els.slice(-2).map((e) => e.getAttribute("data-item")));
@@ -1079,6 +1107,35 @@ test("the questions of a turn are one card: Next, Previous and Skip, and where i
 	await page.waitForSelector(QUESTIONS, { state: "detached" });
 	assert.equal(await lastOwner(), "not this");
 	await hears("not this");
+});
+
+test("text selected in a question's line in the thread is quoted as an answer's is: Quote, Reply, no Bookmark, and the quote goes to the agent", async () => {
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [asks("QUOTE-Q-ONE?"), asks("QUOTE-Q-TWO?", ["top", "bottom"])] }, { text: "asked to quote" }], "ask to quote "));
+	await page.keyboard.press("Enter");
+	await sees("[data-slot=markdown] >> text=asked to quote");
+	await sees(QUESTIONS);
+	await settled();
+	// The words of the second question's line, as the owner drags over them.
+	const line = `${asked("open")} [data-slot=trace-line][data-question-number="2"]`;
+	await sees(line);
+	await page.$eval(line, (el: Element) => {
+		const range = document.createRange();
+		range.selectNodeContents(el.querySelector("[data-slot=trace-title]")!);
+		window.getSelection()!.removeAllRanges();
+		window.getSelection()!.addRange(range);
+	});
+	await sees("[data-slot=selection-toolbar] [data-action=quote]");
+	assert.equal(await page.locator("[data-slot=selection-toolbar] [data-action=reply]").count(), 1);
+	assert.equal(await page.locator("[data-slot=selection-toolbar] [data-action=bookmark]").count(), 0, "the lines change as they are answered: no bookmark");
+	await page.click("[data-slot=selection-toolbar] [data-action=quote]");
+	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=QUOTE-Q-TWO?");
+	// Sent, the quote reaches the agent before the owner's words, and names the question by its number.
+	await page.fill("[data-slot=composer] textarea", "the top one");
+	await page.press("[data-slot=composer] textarea", "Enter");
+	await hears("the top one");
+	const said = JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "user").at(-1) ?? "");
+	assert.match(said, /> Q2 · QUOTE-Q-TWO\?\\n\\nthe top one/);
+	assert.equal(await page.$("[data-slot=composer] [data-slot=quote-chip]"), null);
 });
 
 test("a question is answered by a pick, a digit or the arrows, sent with Send or Enter; ticks go as one message", async () => {
@@ -1114,7 +1171,7 @@ test("a question is answered by a pick, a digit or the arrows, sent with Send or
 	await hears("green, red");
 });
 
-test("the questions' card goes on a typed message and on the agent's next turn, comes back when the conversation is opened again, and folds away by the button on the composer's edge", async () => {
+test("the questions' card goes on a typed message and on the agent's next turn, comes back when the conversation is opened again, and folds away by the card's own button and back by the line in its place", async () => {
 	const field = "[data-slot=composer] textarea";
 	await page.fill(field, mockMsg([{ tools: [asks("Which bin?", ["blue", "green"])] }, { text: "bin asked" }], "ask a bin "));
 	await page.keyboard.press("Enter");
@@ -1122,16 +1179,22 @@ test("the questions' card goes on a typed message and on the agent's next turn, 
 	await sees("[data-slot=markdown] >> text=bin asked");
 	// The tab says that it waits for the owner.
 	await sees("[data-slot=tab][data-active] [data-slot=badge][data-variant=destructive]");
-	// The button on the composer's edge folds the card away, and the thread then shows the question in full, read only.
+	// The card's own button folds it away, and the thread then shows the question in full, read only; a line in
+	// the card's place brings it back. Neither is on the composer, where it would lie over the card's actions.
 	const toggle = page.locator("[data-question-toggle]");
 	assert.equal(await toggle.getAttribute("aria-expanded"), "true");
+	assert.equal(await page.locator(`${QUESTIONS} [data-question-toggle]`).count(), 1, "in the card");
+	assert.equal(await page.locator("[data-slot=composer] [data-question-toggle]").count(), 0);
 	assert.equal(await page.locator(asked("open")).count(), 1);
 	await toggle.click();
 	await page.waitForSelector(QUESTIONS, { state: "detached" });
 	await sees(asked("folded"));
 	assert.match(await page.textContent(asked("folded")), /Which bin\?[\s\S]*blue[\s\S]*green/);
 	assert.equal(await page.locator(`${asked("folded")} input`).count(), 0, "read only");
+	// The option the agent would pick is marked, as on the card.
+	assert.match(await page.textContent(`${asked("folded")} [data-recommended]`), /blue/);
 	assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+	assert.equal(await page.locator("[data-slot=composer] [data-question-toggle]").count(), 0);
 	await toggle.click();
 	await sees(QUESTIONS);
 	await sees(asked("open"));

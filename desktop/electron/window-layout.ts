@@ -1,6 +1,6 @@
 // Shared per-window layout, persistence snapshot, and cascading geometry helpers.
 // Pure TypeScript with no Electron or DOM runtime dependency so main, preload, renderer, and tests can share it.
-import type { SentQuote } from "../../src/quotes.ts";
+import { isQuotePart, type SentQuote } from "../../src/quotes.ts";
 import { cleanSaved, type Saved } from "../src/dock.ts";
 
 /** An attachment carried in an unsent draft when moving a tab to a new window. */
@@ -275,7 +275,7 @@ function cleanQuote(raw: unknown): WindowQuote | undefined {
 		source = src;
 	} else if (src && typeof src === "object") {
 		const s = src as Record<string, unknown>;
-		if (Number.isSafeInteger(s.task) && (s.task as number) > 0 && (s.part === "prompt" || s.part === "answer")) {
+		if (Number.isSafeInteger(s.task) && (s.task as number) > 0 && isQuotePart(s.part)) {
 			source = { task: s.task as number, part: s.part };
 		}
 	}

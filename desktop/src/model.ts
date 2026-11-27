@@ -199,7 +199,7 @@ export class Tab extends Model {
 	children = new Map<number, { agent: string; kind: string; label: string; running: boolean }>();
 	approvals = new Map<string, Of<"approval">>();
 	steps?: Of<"steps">;
-	/** The turn whose questions' card the owner folded away (the button on the composer's edge). The page's alone, not kept. */
+	/** The turn whose questions' card the owner folded away (the chevron in the card's corner, `FoldButton`). The page's alone, not kept. */
 	folded?: number;
 
 	unread = false;
@@ -3090,8 +3090,8 @@ export class Store extends Model {
 	 * (`openQuestions` in src/agents.ts): those its latest turn asked after the last message of the
 	 * owner's that was steered into it, while no other message of the owner's has come after them (a
 	 * turn of its own, or one on its way), and the agent's next turn has not begun. What comes back is
-	 * the turn's questions with only the open ones in `asked`. The card, the button on the composer's
-	 * edge, the thread, the tab's mark and the app's icon all ask this, so that they always agree.
+	 * the turn's questions with only the open ones in `asked`. The card, the line that brings a folded
+	 * card back, the thread, the tab's mark and the app's icon all ask this, so that they always agree.
 	 */
 	openQuestions(tab: Tab): Of<"questions"> | undefined {
 		if (tab.kind !== "chat" || !tab.roots.size) return undefined;
@@ -3124,7 +3124,7 @@ export class Store extends Model {
 		return open && tab.folded !== open.task ? open : undefined;
 	}
 
-	/** Fold the open questions' card away, or bring it back (the button on the composer's edge). */
+	/** Fold the open questions' card away, or bring it back (`FoldButton` in the card's corner, `FoldedCard` in its place). */
 	foldQuestions(tab: Tab, fold: boolean): void {
 		const open = this.openQuestions(tab);
 		if (!open) return;
@@ -3162,7 +3162,7 @@ export class Store extends Model {
 		return [...tab.approvals.values()].find((a) => isPick(a.req) && !this.later.has(a.req.id) && this.ownAsk(tab, a.req));
 	}
 
-	/** A sign-in choice of this conversation's own that the owner folded: its card comes back by the button on the composer's edge (`QuestionToggle`). */
+	/** A sign-in choice of this conversation's own that the owner folded: its card comes back by the line in its place (`FoldedCard`). */
 	hiddenChoice(tab: Tab): Of<"approval"> | undefined {
 		return [...tab.approvals.values()].find((a) => isPick(a.req) && this.later.has(a.req.id) && this.ownAsk(tab, a.req));
 	}
@@ -3192,7 +3192,7 @@ export class Store extends Model {
 		if (task?.session) await this.openTab(req.agent, task.session);
 	}
 
-	/** Fold a sign-in's choice away: its card goes, and the button on the composer's edge brings it back. */
+	/** Fold a sign-in's choice away: its card goes, and the line in its place (`FoldedCard`) brings it back. */
 	putOff(id: string): void {
 		this.later.add(id);
 		this.tabs.find((t) => t.approvals.has(id))?.touch();
