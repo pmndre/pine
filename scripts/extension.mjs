@@ -10,7 +10,10 @@ const root = path.resolve(import.meta.dirname, "..");
 const from = path.join(root, "extension");
 const out = path.join(root, "build-extension");
 const stage = path.join(out, "extension");
-fs.rmSync(out, { recursive: true, force: true });
+// Only what this script makes is cleared: the folder may hold other things for the listing (a picture, notes).
+fs.rmSync(stage, { recursive: true, force: true });
+fs.mkdirSync(out, { recursive: true });
+for (const name of fs.readdirSync(out)) if (/^pine-extension-.*\.zip$/.test(name)) fs.rmSync(path.join(out, name));
 fs.cpSync(from, stage, { recursive: true, filter: (file) => !/(^|[\\/])(PRIVACY\.md|\.DS_Store)$/.test(file) });
 const manifest = JSON.parse(fs.readFileSync(path.join(stage, "manifest.json"), "utf8"));
 delete manifest.key;
