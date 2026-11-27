@@ -21,10 +21,10 @@ import { type WebSocket, WebSocketServer } from "ws";
 /** The name the browser knows this host by. */
 export const HOST_NAME = "dev.pmndre.pine";
 /**
- * The extensions that may start this host: pine's own, by the key in extension/manifest.json.
- * The id a store gives the extension is added here when there is one.
+ * The extensions that may start this host: pine's own. The first is the one loaded from pine's folder
+ * (the key in extension/manifest.json), the second the one from the Chrome Web Store.
  */
-export const EXTENSION_IDS = ["ahhpalopnbbkjlchjjbclmbilcgdjgai"];
+export const EXTENSION_IDS = ["ahhpalopnbbkjlchjjbclmbilcgdjgai", "pgfllnbofabjfobfgpejjlombgfpolba"];
 /** What host and extension have to agree on (extension/background.js). */
 export const PROTOCOL = 1;
 /** The browser takes no more than 1 MB from a host in one message: a longer one goes in pieces. */

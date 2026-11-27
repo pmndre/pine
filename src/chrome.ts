@@ -18,7 +18,11 @@ import path from "node:path";
 import { EXTENSION_IDS, HOST_NAME } from "../mcp/chrome.ts";
 import { EXT } from "./config.ts";
 
-/** The extension's page in a store, once it is in one. Until then it is loaded from pine's folder. */
+/**
+ * The extension's page in a store, once it is published there. Until then it is loaded from pine's folder.
+ * It is in the Chrome Web Store as a draft: when its review has passed, this becomes
+ * "https://chromewebstore.google.com/detail/pgfllnbofabjfobfgpejjlombgfpolba".
+ */
 export const STORE: string | undefined = undefined;
 
 interface Kind {

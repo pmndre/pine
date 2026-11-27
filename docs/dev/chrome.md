@@ -42,7 +42,8 @@ keeps the page awake without bringing it to the front.
 
 `extension/manifest.json` has a `key`, so an extension loaded from a folder has the id in
 `EXTENSION_IDS` (`mcp/chrome.ts`). The private half is not in the repository. A store gives the
-extension an id of its own, at the moment the item is made and before any review.
+extension an id of its own, at the moment the item is made and before any review: the Chrome Web
+Store's is `pgfllnbofabjfobfgpejjlombgfpolba`, the second entry of `EXTENSION_IDS`.
 
 ## Publishing
 
