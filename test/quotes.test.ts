@@ -16,10 +16,12 @@ test("quotes: what comes in is checked piece by piece", () => {
 	const ok = readQuotes([
 		{ text: "an answer's words", source: { task: 3, part: "answer" }, extra: "dropped" },
 		{ text: "the letter's", source: "letter" },
+		{ text: "Q2 · Which end?", source: { task: 3, part: "questions" } },
 	]);
 	assert.deepEqual(ok, [
 		{ text: "an answer's words", source: { task: 3, part: "answer" } },
 		{ text: "the letter's", source: "letter" },
+		{ text: "Q2 · Which end?", source: { task: 3, part: "questions" } },
 	]);
 	assert.equal(typeof readQuotes("nope"), "string");
 	assert.equal(typeof readQuotes([{ text: "", source: "letter" }]), "string");
@@ -155,4 +157,10 @@ test("quotes: a reply goes with its quote, after it, is left out when empty, is 
 	assert.deepEqual(back.quotes, quotes);
 	assert.ok(back.body!.startsWith("and how do we prevent it"), String(back.body));
 	await h.close();
+});
+
+test("bookmarks: a turn's questions are quoted but never bookmarked, since their lines change form", async () => {
+	const { readBookmark } = await import("../src/bookmarks.ts");
+	assert.equal(typeof readBookmark({ text: "words", source: { task: 3, part: "answer" }, start: 0, end: 5 }), "object");
+	assert.equal(typeof readBookmark({ text: "Q2 · Which end?", source: { task: 3, part: "questions" }, start: 0, end: 5 }), "string");
 });

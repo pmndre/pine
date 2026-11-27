@@ -19,7 +19,8 @@ export function readBookmark(value: unknown): NewBookmark | string {
 	if (typeof text !== "string" || !text.trim()) return "a bookmark's text is a string that is not empty";
 	if (text.length > MAX_QUOTE_CHARS) return `a bookmark's text has at most ${MAX_QUOTE_CHARS} characters`;
 	const from = readSource(source);
-	if (!from) return 'a bookmark\'s source is "letter", "welcome" or { task, part: "prompt" | "answer" }';
+	// A turn's questions change form as they are folded and answered: a place in them would not be found again.
+	if (!from || (typeof from === "object" && from.part === "questions")) return 'a bookmark\'s source is "letter", "welcome" or { task, part: "prompt" | "answer" }';
 	if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || (start as number) < 0 || (end as number) <= (start as number)) return "a bookmark's start and end are whole numbers, 0 <= start < end";
 	return { text, source: from, start: start as number, end: end as number };
 }

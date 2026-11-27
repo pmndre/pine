@@ -3,7 +3,7 @@
 // The parts are shadcn's chat components, composed the way its AI Elements pages show: the thread
 // is Message Scroller, a turn is Message (and Bubble for the owner's), the work of a turn is Trace
 // (Task, Tool, Reasoning, Subagent and Plan), a request is an Item (Confirmation), a note is a Marker.
-import { ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
 import { Fragment, memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { Sound } from "@/components/sound";
 import { contextMenu } from "@/components/page-menu";
@@ -23,7 +23,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { Item as Card, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { AskedInFull, AskedLines, COMPOSER_QUESTION, ComposerCardSlot, QuestionCard, QuestionCardHost, QuestionsCard, QuestionTrace } from "@/components/question-card";
+import { AskedInFull, AskedLines, COMPOSER_QUESTION, ComposerCardSlot, QuestionCard, QuestionCardHost, questionNumbers, QuestionsCard, QuestionTrace } from "@/components/question-card";
 import { Kbd } from "@/components/ui/kbd";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
@@ -39,7 +39,7 @@ import { SelectionToolbar, SelectionToolbarButton, useTextSelection } from "@/co
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
 import { cn } from "@/lib/utils";
-import { type AgentDetail, api, media, type TranscriptEntry } from "./api.ts";
+import { type AgentDetail, api, type AskedQuestion, media, type TranscriptEntry } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
@@ -49,7 +49,7 @@ import { type Bookmark, isPick, type Item, type Part, type QuoteSource, quoteId,
 import { SetupCard, SetupScript } from "./setup/engine.tsx";
 import { childKind, clock, count, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
-import { sameSource } from "../../src/quotes.ts";
+import { isQuotePart, sameSource } from "../../src/quotes.ts";
 
 /** A note's tone is information (a warning, a failure), so it colors the note's icon. */
 const NOTE_TONE: Record<string, string | undefined> = { warn: "text-warn", bad: "text-destructive", good: "text-primary", accent: "text-primary" };
@@ -441,7 +441,8 @@ function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
  * A turn's questions in the conversation, by the rule of open questions (`openQuestions`): one line
  * each while their card above the composer shows them; in full, read only, while the owner folded the
  * card away or turned it off (Settings > General); one line each again once the owner's next message (which follows) or the agent's next
- * turn closed them.
+ * turn closed them. Each is numbered in its turn ("Q2"), whichever of those it is in, and the text
+ * is quoted as an answer's is (`data-quote-part="questions"`).
  */
 function Questions({ item, tab }: { item: Extract<Item, { t: "questions" }>; tab: Tab }) {
 	useModel(tab);
@@ -453,11 +454,13 @@ function Questions({ item, tab }: { item: Extract<Item, { t: "questions" }>; tab
 	const asking = open?.task === item.task ? open.asked : [];
 	const answered = all.filter((q) => !asking.includes(q));
 	const state = !asking.length ? "closed" : store.shownQuestions(tab)?.task === item.task ? "open" : "folded";
-	if (state === "closed") return <AskedLines data-item="questions" data-state={state} questions={all} />;
+	const quote = { "data-quote-task": item.task, "data-quote-part": "questions" };
+	const lines = (questions: AskedQuestion[], state: string) => <AskedLines data-item="questions" data-state={state} {...quote} questions={questions} numbers={questionNumbers(item.asked, questions)} />;
+	if (state === "closed") return lines(all, state);
 	return (
 		<>
-			{answered.length > 0 && <AskedLines data-item="questions" data-state="closed" questions={answered} />}
-			{state === "folded" ? <AskedInFull data-item="questions" data-state={state} questions={asking} from={`${item.agent} asks`} /> : <AskedLines data-item="questions" data-state={state} questions={asking} />}
+			{answered.length > 0 && lines(answered, "closed")}
+			{state === "folded" ? <AskedInFull data-item="questions" data-state={state} {...quote} questions={asking} numbers={questionNumbers(item.asked, asking)} from={`${item.agent} asks`} /> : lines(asking, state)}
 		</>
 	);
 }
@@ -479,17 +482,59 @@ function ComposerQuestions({ tab }: { tab: Tab }) {
 	const item = store.shownQuestions(tab);
 	if (!item) return null;
 	const questions = item.asked.filter(Boolean);
+	// Numbered by the turn's whole record, as the thread numbers them: some may be answered already.
+	const turn = tab.items.findLast((it) => it.t === "questions" && it.task === item.task);
 	return (
 		<ScrollArea data-slot="composer-question" className={COMPOSER_QUESTION}>
 			<QuestionsCard
 				key={item.task}
 				questions={questions}
+				numbers={questionNumbers(turn?.t === "questions" ? turn.asked : item.asked, questions)}
 				from={`${item.agent} asks`}
 				outside={store.taints.has(`${tab.agent}:${tab.session}`)}
 				autoFocus={keyboardFree() && Boolean(questions[0]?.options?.length)}
+				fold={<FoldButton label={`Hide ${item.agent}'s ${questions.length > 1 ? "questions" : "question"}`} onClick={() => store.foldQuestions(tab, true)} />}
 				onSend={(text) => void store.answerQuestions(tab, text)}
 			/>
 		</ScrollArea>
+	);
+}
+
+/**
+ * The button in the top right corner of the card above the composer that folds it away: the card's
+ * own control, in the corner where shadcn's Card example puts its progress. `FoldedCard` then stands
+ * in the card's place and brings it back. Folded, the thread shows the questions in full, and what
+ * the owner types goes as an ordinary message, as it always does. (A folded sign-in's choice is
+ * closed without an answer by that message, `submit`, so that its flow goes on.)
+ */
+function FoldButton({ label, onClick }: { label: string; onClick: () => void }) {
+	return (
+		<HoverTooltip>
+			<TooltipTrigger render={<Button data-question-toggle variant="ghost" size="icon-xs" aria-expanded aria-label={label} onClick={onClick} />}>
+				<ChevronDownIcon />
+			</TooltipTrigger>
+			<TooltipContent>{label}</TooltipContent>
+		</HoverTooltip>
+	);
+}
+
+/**
+ * In the place of a card the owner folded away (a sign-in's choice, or the agent's open questions):
+ * one line that says who asks and how much, and brings the card back. The status line says nothing of it.
+ */
+function FoldedCard({ tab }: { tab: Tab }) {
+	const choice = store.hiddenChoice(tab);
+	// With the card turned off (Settings > General) there is nothing to bring back: the thread shows the questions in full.
+	const questions = choice || !store.questionCards || store.shownQuestions(tab) ? undefined : store.openQuestions(tab);
+	if (!choice && !questions) return null;
+	const count = choice ? 1 : questions!.asked.filter(Boolean).length;
+	const agent = choice?.req.agent ?? questions!.agent;
+	return (
+		<Button data-question-toggle variant="ghost" size="sm" className="self-start" aria-expanded={false} onClick={() => (choice ? store.ask(choice.req.id) : store.foldQuestions(tab, false))}>
+			<MessageCircleQuestionIcon data-icon="inline-start" />
+			{agent} asks you {count === 1 ? "a question" : `${count} questions`}
+			<ChevronUpIcon data-icon="inline-end" />
+		</Button>
 	);
 }
 
@@ -510,6 +555,7 @@ function ComposerChoice({ tab }: { tab: Tab }) {
 				from={`${req.agent} asks`}
 				options={options}
 				autoFocus={keyboardFree() && options.length > 0}
+				fold={<FoldButton label={`Hide ${req.agent}'s question`} onClick={() => store.putOff(req.id)} />}
 				onAnswer={(picked) => void store.answer(req, picked)}
 				onNoAnswer={() => void store.decide(req.id, false)}
 			/>
@@ -876,7 +922,7 @@ function StatusLine({ tab }: { tab: Tab }) {
 	// What this conversation was asked. A question of another conversation this tab holds (that one has no
 	// tab of its own) is said as waiting there, and never answered from here.
 	const waiting = [...tab.approvals.values()].filter((a) => !isPick(a.req) || store.ownAsk(tab, a.req));
-	// Open brings back an approval whose dialog was closed; a question has the button on the composer's edge instead.
+	// Open brings back an approval whose dialog was closed; a question has the line that brings its folded card back instead.
 	const approval = waiting.find((a) => !isPick(a.req));
 	const held = [...tab.approvals.values()].find((a) => isPick(a.req) && !store.ownAsk(tab, a.req));
 	const elsewhere = store.tabs.find((t) => t !== tab && t.approvals.size > 0);
@@ -1067,7 +1113,7 @@ function selectionSource(root: HTMLElement | null): QuoteSource | undefined {
 	if (msg) {
 		const task = Number(msg.dataset.quoteTask);
 		const part = msg.dataset.quotePart;
-		return Number.isSafeInteger(task) && (part === "prompt" || part === "answer") ? { task, part } : undefined;
+		return Number.isSafeInteger(task) && isQuotePart(part) ? { task, part } : undefined;
 	}
 	const place = el.closest<HTMLElement>("[data-quote-source]")?.dataset.quoteSource;
 	return place === "letter" || place === "welcome" ? place : undefined;
@@ -1242,8 +1288,11 @@ export function Conversation({ tab }: { tab: Tab }) {
 		store.ask_(reply ? "focus-reply" : "focus-input");
 	};
 	const streaming = Boolean(source && typeof source !== "string" && source.part === "answer" && tab.items.some((it) => it.t === "answer" && it.task === source.task && it.live));
+	// A turn's questions change form (one line each, in full, split by a steered message) as they are folded
+	// and answered: a bookmark's place in them would not be found again. They are quoted, not bookmarked.
+	const bookmarkable = !(source && typeof source !== "string" && source.part === "questions");
 	const bookmark = () => {
-		if (!selected || !source || streaming) return;
+		if (!selected || !source || streaming || !bookmarkable) return;
 		const el = quoteTarget(scroller.current, source);
 		const mark = el ? selectionMark(el) : undefined;
 		if (!mark) return;
@@ -1295,7 +1344,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 				<SelectionToolbar rect={selected.rect}>
 					<SelectionToolbarButton icon={QuoteIcon} label="Quote" data-action="quote" onClick={() => quote(false)} />
 					<SelectionToolbarButton icon={ReplyIcon} label="Reply" data-action="reply" hint="Quote the selected text and reply to it" onClick={() => quote(true)} />
-					<SelectionToolbarButton icon={BookmarkIcon} label="Bookmark" hint={streaming ? "Bookmark it once the answer is done" : undefined} disabled={streaming} onClick={bookmark} />
+					{bookmarkable ? <SelectionToolbarButton icon={BookmarkIcon} label="Bookmark" data-action="bookmark" hint={streaming ? "Bookmark it once the answer is done" : undefined} disabled={streaming} onClick={bookmark} /> : null}
 				</SelectionToolbar>
 			) : null}
 			{finding && loaded ? <FindBar key={looked ?? ""} initial={looked} root={() => scroller.current} close={() => (setFinding(false), setLooked(undefined))} /> : null}
@@ -1363,6 +1412,8 @@ export function Conversation({ tab }: { tab: Tab }) {
 				<div className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-col gap-2">
 					{/* What is asked comes first (a sign-in's choice, then the agent's questions); pine's own step in "Onboarding" is there when nothing is. */}
 					<QuestionCardHost.Provider value={slot}>
+						{/* A folded card's line is there whatever card is shown: a folded sign-in's choice waits behind the agent's questions too. */}
+						<FoldedCard tab={tab} />
 						{above === "choice" ? <ComposerChoice tab={tab} /> : above === "questions" ? <ComposerQuestions tab={tab} /> : above === "setup" ? <SetupCard tab={tab} /> : null}
 					</QuestionCardHost.Provider>
 					<StatusLine tab={tab} />

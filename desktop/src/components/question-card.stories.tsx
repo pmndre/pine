@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { ChevronDownIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AskedQuestion } from "../api.ts";
 import { AskedInFull, AskedLines, QuestionCard, QuestionsCard, QuestionTrace } from "./question-card.tsx";
@@ -47,9 +48,9 @@ export const AgentAsks: Story = {
 	render: () => <QuestionsCard questions={[database]} from="main asks" onSend={() => {}} />,
 };
 
-/** Several questions of one turn: one at a time, "1 / 3" at the top right, Previous, Skip and Next, Send on the last. A question without options says to answer by typing. */
+/** Several questions of one turn: one at a time, "1 / 3" at the top right beside the chevron that folds the card away, Previous, Skip and Next, Send on the last. A question without options says to answer by typing. Send posts one line per question answered, by its number ("Q1: the old one"). */
 export const AgentAsksSeveral: Story = {
-	render: () => <QuestionsCard questions={[database, colors, name]} from="main asks" onSend={() => {}} />,
+	render: () => <QuestionsCard questions={[database, colors, name]} from="main asks" fold={<Button variant="ghost" size="icon-xs" aria-expanded aria-label="Hide main's questions"><ChevronDownIcon /></Button>} onSend={() => {}} />,
 };
 
 /** In a conversation that has read outside content: a quiet line says so. */
@@ -57,12 +58,12 @@ export const AgentAsksAfterOutsideContent: Story = {
 	render: () => <QuestionsCard questions={[database]} from="main asks" outside onSend={() => {}} />,
 };
 
-/** An agent's questions in the thread: one line each while the card shows them or once answered, and in full while the card is folded away. */
+/** An agent's questions in the thread, numbered in their turn ("Q1 · ..."): one line each while the card shows them or once answered, and in full while the card is folded away. Here a message steered into the turn answered the first, and the two asked after it keep their numbers. */
 export const AgentAskedInThread: Story = {
 	render: () => (
 		<div className="flex flex-col gap-4">
-			<AskedLines questions={[database, colors]} />
-			<AskedInFull questions={[database, colors, name]} from="main asks" />
+			<AskedLines questions={[database]} />
+			<AskedInFull questions={[colors, name]} numbers={[2, 3]} from="main asks" />
 		</div>
 	),
 };
