@@ -265,7 +265,8 @@ async function lookInto(store: string, scope: "global" | "agent", agent?: string
 		const at = kind === "local" ? path.resolve(store, source) : (manager.getInstalledPath(source, "user") ?? "");
 		const there = at && fs.existsSync(at);
 		const about = there ? describe(at) : {};
-		const rel = (p: string) => (there && fs.statSync(at).isDirectory() ? path.relative(at, p) : path.basename(p));
+		// With "/" on every system: the list is read by the owner and by UIs, not opened.
+		const rel = (p: string) => (there && fs.statSync(at).isDirectory() ? path.relative(at, p).split(path.sep).join("/") : path.basename(p));
 		const exts = of(resolved.extensions as any, source);
 		// A skill is its folder; pi names the SKILL.md in it.
 		const skills = [...new Set(of(resolved.skills as any, source).map((p) => (path.basename(p) === "SKILL.md" ? path.dirname(p) : p)))];

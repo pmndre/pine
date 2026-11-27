@@ -67,7 +67,15 @@ const standIn = [process.execPath, path.join(dir, "stand-in.mjs"), dir];
 /** What the stand-in answers, by the path of the address. Written in one piece: a look may read it at any moment. */
 function answers(state: Record<string, any>): void {
 	fs.writeFileSync(path.join(dir, "state.tmp"), JSON.stringify(state));
-	fs.renameSync(path.join(dir, "state.tmp"), path.join(dir, "state.json"));
+	// Windows refuses to replace a file while a stand-in has it open to read: that moment passes.
+	for (let tries = 0; ; tries++) {
+		try {
+			return fs.renameSync(path.join(dir, "state.tmp"), path.join(dir, "state.json"));
+		} catch (err: any) {
+			if (!["EPERM", "EBUSY", "EACCES"].includes(err.code) || tries > 200) throw err;
+			Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+		}
+	}
 }
 const notes = (file: string): any[] => (fs.existsSync(path.join(dir, file)) ? fs.readFileSync(path.join(dir, file), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);
 const jobs = (name: string) => notes("jobs.log").filter((j) => j.name === name);
