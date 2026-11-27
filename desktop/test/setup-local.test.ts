@@ -127,7 +127,7 @@ test("what answered on this computer is offered; a server that wants a key asks 
 	await sees(`${local} [data-slot=field-error]`);
 	// A wrong key asks for the key again, with what the server said: not for the server's address.
 	await sees(`${local} input[type=password][data-setup=key]`);
-	assert.equal(await page.$(`${local} [data-setup=address]`), null, "no address card");
+	assert.equal(await page.locator(`${local} [data-setup=address]`).count(), 0, "no address card");
 	await shot("setup-local-02-key");
 	await fill("key", KEY);
 	await model('[data-model="lmstudio/gemma"]');
@@ -160,7 +160,7 @@ test("with nothing found, the owner types the address of a server, and it reache
 	// No list to choose from: the card asks for the address, and its field takes the keyboard as it comes.
 	await sees(`${local} [data-setup=address]`);
 	await page.waitForFunction(() => document.activeElement?.getAttribute("data-setup") === "address", undefined, { timeout: patient(5_000) });
-	assert.equal(await page.$(`${card} [data-slot=questionnaire-choice]`), null, "nothing was found, so nothing is offered");
+	assert.equal(await page.locator(`${card} [data-slot=questionnaire-choice]`).count(), 0, "nothing was found, so nothing is offered");
 	await shot("setup-local-03-nothing");
 	// The address card has no options: the composer says something else than where typing names one.
 	await sees(`${composer}[data-above=typed]`);

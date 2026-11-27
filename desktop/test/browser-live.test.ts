@@ -67,7 +67,7 @@ test("live: the agent's real browser is shown in the panel, and the owner's hand
 		assert.match(toolSaid(), /Your owner sees the browser in the Pine app/);
 		// The page itself is there, the app's own browser laid over the panel: not pictures.
 		await page.waitForSelector("[data-slot=browser] [data-slot=browser-page]", { timeout: 20_000 });
-		assert.equal(await page.$("[data-slot=browser] canvas"), null, "no pictures where the page itself is shown");
+		assert.equal(await page.locator("[data-slot=browser] canvas").count(), 0, "no pictures where the page itself is shown");
 		await address("/one");
 		const view = async (end: string) => {
 			for (let i = 0; i < 100; i++) {

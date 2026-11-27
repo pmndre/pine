@@ -88,7 +88,7 @@ test("attaches to a pine that runs, and leaves it running", async () => {
 	});
 	await origin(page, "attached");
 	// The pine that runs is the app's own version: nothing is said about it.
-	assert.equal(await page.$("[data-notice=older-pine]"), null);
+	assert.equal(await page.locator("[data-notice=older-pine]").count(), 0);
 	// It talks to that very daemon: a message is answered (the scripted model echoes).
 	await page.fill("[data-slot=composer] textarea", "hello there");
 	await page.keyboard.press("Enter");
@@ -143,7 +143,7 @@ test("with \"keep pine running\" a daemon the app started goes on after it", asy
 		const page = await second.firstWindow();
 		await page.waitForSelector("[data-slot=tab][data-active]", { timeout: patient(60_000) });
 		await origin(page, "started", 10_000);
-		assert.equal(await page.$("[data-notice=older-pine]"), null);
+		assert.equal(await page.locator("[data-notice=older-pine]").count(), 0);
 		await second.close();
 		await new Promise((r) => setTimeout(r, 800));
 		assert.ok(await up(), "the daemon stopped with the app although it was to be kept");

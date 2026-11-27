@@ -206,7 +206,7 @@ test("the window shows before the tabs are filled, with skeletons in the side ba
 		await page.reload();
 		await sees(FRONT, 20_000);
 		await sees("[data-slot=sidebar] [data-slot=skeleton]");
-		assert.equal(await page.$("[data-slot=empty]"), null, "no empty state shows before the data is there");
+		assert.equal(await page.locator("[data-slot=empty]").count(), 0, "no empty state shows before the data is there");
 	} finally {
 		await app.evaluate(({ ipcMain }: any) => {
 			const g = globalThis as any;
@@ -585,7 +585,7 @@ test("a message is branched from: a new conversation with what was said up to it
 	await page.click(`${head(branch)} [data-slot=breadcrumb-link]`);
 	await sees(`${FRONT}[data-session="${from}"]`);
 	await sees(head(from));
-	assert.equal(await page.$(`${head(from)} [data-slot=breadcrumb-link]`), null, "the original has nothing before it");
+	assert.equal(await page.locator(`${head(from)} [data-slot=breadcrumb-link]`).count(), 0, "the original has nothing before it");
 	await page.click(`${TAB}[data-session="${branch}"]`);
 	await sees(`${FRONT}[data-session="${branch}"]`);
 	await shot("15-branch");

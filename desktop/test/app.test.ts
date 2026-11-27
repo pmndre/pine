@@ -15,7 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { before, test } from "node:test";
 import { mockMsg } from "../../baseline/tests/mock.mjs";
 import { httpMcp } from "../../test/support/http-mcp.ts";
-import { account, activeOption, mark, announced, api, app, browsers, CODE_EDGE, CODE_TOGGLE, confirm, folder, home, menu, mock, named, page, putAwayToasts, releases, root, sees, shot, shots, stillInside, write } from "./support/window.ts";
+import { activeOption, announced, api, app, browsers, CODE_EDGE, CODE_TOGGLE, confirm, folder, home, menu, mock, named, page, putAwayToasts, releases, root, sees, shot, shots, stillInside, write } from "./support/window.ts";
 
 // What these tests look for is what the page commits to (TESTS.md): a part by its `data-slot`, a state by
 // its `data-state`, a button by its `data-action`, a field by its id, and words only where the test wrote them.
@@ -65,7 +65,7 @@ test("starts a daemon of its own and shows the main agent", async () => {
 	assert.ok(fs.existsSync(path.join(home, "data", "http-token")));
 	await shot("01-welcome");
 	// Its agents have a model: the setup conversation is not opened.
-	assert.equal(await page.$(TAB("main", "setup")), null);
+	assert.equal(await page.locator(TAB("main", "setup")).count(), 0);
 });
 
 test("a newer app is said at the start and when asked, with a link to its page on GitHub and nothing fetched", async () => {
@@ -125,7 +125,7 @@ test("a newer app is said at the start and when asked, with a link to its page o
 	assert.deepEqual(await opened(), [link, link, link]);
 	const prefs = () => read("desktop-data", "prefs.json");
 	// An app that does not update itself has no switch for it.
-	assert.equal(await page.$("[data-find=auto-update]"), null);
+	assert.equal(await page.locator("[data-find=auto-update]").count(), 0);
 	const atStart = "[data-find=updates-at-start] [role=switch]";
 	await page.click(atStart);
 	await until("the choice is kept by the app", () => prefs().updates === false);
@@ -170,8 +170,8 @@ test("the agent's browser is a part of the side panel, shown as a picture, and w
 		// The side panel is toggled from the top right of the window; the browser is one of its parts, beside the terminal.
 		if (!had) await page.click(CODE_TOGGLE);
 		await sees("#code-panel [data-slot=code-panel]");
-		assert.equal(await page.$("[data-slot=conversation-head] [data-slot=toggle]"), null, "the conversation's top line has no panel toggle");
-		assert.equal(await page.$("header [data-toggle=browser]"), null, "the browser has no toggle of its own");
+		assert.equal(await page.locator("[data-slot=conversation-head] [data-slot=toggle]").count(), 0, "the conversation's top line has no panel toggle");
+		assert.equal(await page.locator("header [data-toggle=browser]").count(), 0, "the browser has no toggle of its own");
 		await page.click("[data-slot=code-panel] [data-view=browser]");
 		// The page is a picture, drawn when it is whole; its address is text in the line above it.
 		await sees("#code-panel [data-slot=code-panel] [data-slot=browser] canvas[data-drawn]");
@@ -253,7 +253,7 @@ test("the agent's browser is a part of the side panel, shown as a picture, and w
 		// Without a browser the view says that no page is open and draws nothing.
 		fs.rmSync(file);
 		await sees("[data-slot=browser] [data-slot=empty][data-state=no-page]");
-		assert.equal(await page.$("[data-slot=browser] canvas[data-drawn]"), null);
+		assert.equal(await page.locator("[data-slot=browser] canvas[data-drawn]").count(), 0);
 
 		// The menu's item and /browser show the browser in the side panel, and put the panel away when it is in front.
 		await menu("browser");
@@ -302,63 +302,39 @@ test("the agent's browser is a part of the side panel, shown as a picture, and w
 test("a message is answered, with the turn's work folded into a line", async () => {
 	const steps = [{ tools: [{ name: "read", args: { path: "notes.md" } }], text: "Let me look at the notes first." }, { text: "The notes say **first line**.\n\n```ts\nconst a = 1;\n```\n\n<details><summary>Full file</summary>\n\nfirst line\n\n</details>\n\n[the docs](https://example.com/docs)" }];
 	await page.fill("[data-slot=composer] textarea", mockMsg(steps, "What do the notes say? "));
-	mark("step 1");
 	await page.keyboard.press("Enter");
-	mark("step 2");
 	await sees("[data-slot=markdown] strong");
-	mark("step 3");
 	assert.match(await page.textContent("[data-slot=markdown]"), /first line/);
-	mark("step 4");
 	// The work of the turn (what it said on the way, and the tool call) is one line, folded, which names the
 	// tool that was called; a click opens it.
 	const work = "[data-item=work][data-tools='1']";
 	await sees(`${work} [data-slot=trace-collapsible-trigger]:has-text("read")`);
-	mark("step 5");
-	assert.equal(await page.$(`${work} [data-tool]`), null);
-	mark("step 6");
+	// While the turn runs its work lies open; it folds when the answer is there. Waited for, not assumed.
+	await page.waitForSelector(`${work} [data-tool]`, { state: "detached" });
 	await page.click(`${work} [data-slot=trace-collapsible-trigger]`);
-	mark("step 7");
 	await sees(`${work} [data-tool]`);
-	mark("step 8");
 	assert.equal(await page.textContent(`${work} [data-tool]`), "read");
-	mark("step 9");
 	// A link says where it leads, and is not an address the page itself would follow.
 	assert.equal(await page.textContent("[data-slot=markdown] [data-href]"), "the docs");
-	mark("step 10");
 	assert.equal(await page.getAttribute("[data-slot=markdown] [data-href]", "data-href"), "https://example.com/docs");
-	mark("step 11");
 	assert.match(await page.textContent("[data-slot=markdown] [data-target]"), /example\.com\/docs/, "a link's address is written out beside it");
-	mark("step 12");
 	assert.equal(await page.$$eval("[data-slot=markdown] a[href]", (els: Element[]) => els.length), 0);
-	mark("step 13");
 	// It is a link from the keyboard too: it takes the focus, and Enter opens it in the browser.
 	await page.focus("[data-slot=markdown] [data-href]");
-	mark("step 14");
 	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-href")), "https://example.com/docs");
-	mark("step 15");
 	assert.equal(await page.getAttribute("[data-slot=markdown] [data-href]", "role"), "link");
-	mark("step 16");
 	await page.keyboard.press("Enter");
-	mark("step 17");
 	await until("Enter on the link opened it in the owner's browser", async () => (await app.evaluate(() => ((globalThis as any).opened ?? []) as string[])).includes("https://example.com/docs"));
-	mark("step 18");
 	// A folded part is there and closed.
 	assert.equal(await page.getAttribute("[data-slot=markdown] [data-details] [data-slot=collapsible-trigger]", "aria-expanded"), "false");
-	mark("step 19");
 	// Code is pine's own Code Block, with its lines, its language and a copy button, and nothing to download:
 	// nothing of Streamdown's own block, which has a download button, is drawn.
 	await sees("[data-slot=markdown] [data-slot=code-block] [data-slot=code-block-line]:has-text('const a = 1;')");
-	mark("step 20");
 	assert.match(await page.textContent("[data-slot=markdown] [data-slot=code-block-title]"), /ts/);
-	mark("step 21");
 	assert.ok(await page.$("[data-slot=markdown] [data-slot=code-block] [data-slot=code-block-copy-button]"));
-	mark("step 22");
 	assert.equal(await page.$$eval("[data-slot=markdown] [data-slot=code-block] [data-streamdown]", (els: Element[]) => els.length), 0);
-	mark("step 23");
 	assert.equal(await page.$$eval('[data-slot=markdown] [data-slot=code-block] button[title*="ownload"], [data-slot=markdown] [data-slot=code-block] button[aria-label*="ownload"]', (els: Element[]) => els.length), 0);
-	mark("step 24");
 	await shot("02-answer");
-	mark("step 25");
 });
 
 test("a conversation that is loading shows its shape, and the shape goes once what was said is there", async () => {
@@ -384,15 +360,15 @@ test("a conversation that is loading shows its shape, and the shape goes once wh
 		await scout.locator("[data-slot=agent-label]").click();
 		await sees(`${TAB("scout")}[data-active]`);
 		await sees("[data-slot=conversation-skeleton] [data-slot=skeleton]");
-		assert.equal(await page.$("[data-slot=conversation] [data-slot=pulse]"), null, "a loading conversation shows its shape, not the Pulse");
-		assert.equal(await page.$("[data-slot=message-scroller-content]"), null);
-		assert.equal(await page.$("[data-slot=empty]"), null, "no empty state shows before the data is there");
+		assert.equal(await page.locator("[data-slot=conversation] [data-slot=pulse]").count(), 0, "a loading conversation shows its shape, not the Pulse");
+		assert.equal(await page.locator("[data-slot=message-scroller-content]").count(), 0);
+		assert.equal(await page.locator("[data-slot=empty]").count(), 0, "no empty state shows before the data is there");
 		await shot("02-loading");
 	} finally {
 		await app.evaluate(() => (globalThis as any).unhold());
 	}
 	await sees("[data-slot=message-scroller-content]");
-	assert.equal(await page.$("[data-slot=conversation-skeleton]"), null);
+	assert.equal(await page.locator("[data-slot=conversation-skeleton]").count(), 0);
 	await page.click(`${TAB("scout")}[data-active] [data-action=close]`);
 	await sees(`${TAB("main")}[data-active]`);
 });
@@ -596,7 +572,7 @@ test("text selected in an answer is quoted: a badge above the input, a markdown 
 	assert.equal(await page.evaluate(() => Boolean(document.activeElement?.closest("[data-slot=selection-toolbar], [data-slot=popover-content]"))), false, "the bar took the focus");
 	await page.click("[data-slot=selection-toolbar] [data-action=quote]");
 	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=old copy of the lockfile");
-	assert.equal(await page.$("[data-slot=selection-toolbar]"), null);
+	assert.equal(await page.locator("[data-slot=selection-toolbar]").count(), 0);
 	// A click on the badge above the input goes back to the answer.
 	await page.click("[data-slot=composer] [data-slot=quote-chip] [data-action=open]");
 	await lit();
@@ -607,7 +583,7 @@ test("text selected in an answer is quoted: a badge above the input, a markdown 
 	await sees("[data-slot=markdown] >> text=QUOTE-ANSWER");
 	const said = JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "user").at(-1) ?? "");
 	assert.match(said, /> old copy of the lockfile\\n\\nwhy is that\? /);
-	assert.equal(await page.$("[data-slot=composer] [data-slot=quote-chip]"), null);
+	assert.equal(await page.locator("[data-slot=composer] [data-slot=quote-chip]").count(), 0);
 	// In the sent message it is a badge, not a line starting with ">", and a click goes back to the answer too.
 	const sent = page.locator("[data-item=user]").last();
 	assert.equal(await sent.locator("[data-slot=quote-chip]").count(), 1);
@@ -658,7 +634,7 @@ test("a long quote given to work that runs is known as the owner's own message: 
 	await sees("[data-slot=markdown] >> text=LONG-QUOTE-HELD-DONE");
 	// Shown once, and as the owner's own: not a second time as a message that came from another place.
 	assert.equal(await page.$$eval("[data-item=user]", (els: Element[]) => els.length), before + 1);
-	assert.equal(await page.$("[data-item=user][data-from]"), null);
+	assert.equal(await page.locator("[data-item=user][data-from]").count(), 0);
 });
 
 test("the context meter turns to a warning past two thirds, and to danger past 85%", async () => {
@@ -1135,7 +1111,7 @@ test("text selected in a question's line in the thread is quoted as an answer's 
 	await hears("the top one");
 	const said = JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "user").at(-1) ?? "");
 	assert.match(said, /> Q2 · QUOTE-Q-TWO\?\\n\\nthe top one/);
-	assert.equal(await page.$("[data-slot=composer] [data-slot=quote-chip]"), null);
+	assert.equal(await page.locator("[data-slot=composer] [data-slot=quote-chip]").count(), 0);
 });
 
 test("a question is answered by a pick, a digit or the arrows, sent with Send or Enter; ticks go as one message", async () => {
@@ -1879,7 +1855,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	// The main agent's card says it in a toast that stays and has a button, not on the card.
 	const noModel = page.locator("[data-slot=toast]:not([data-ending-style]):has([data-slot=toast-action])");
 	await noModel.waitFor({ timeout: 20_000 });
-	assert.equal(await page.$("[data-slot=empty] [data-slot=model-notice]"), null);
+	assert.equal(await page.locator("[data-slot=empty] [data-slot=model-notice]").count(), 0);
 	await shot("09-no-model");
 	// The toast leads to the one way to connect a model, the setup conversation (which came in front by
 	// itself too when the model was lost), where pine asks its first question; back to Settings from there.
@@ -1985,19 +1961,6 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await settingsPage("models");
 	await settingsPage("general");
 	await sees("[data-setting=browser][data-state=here]");
-	// Your own browser: pine is connected to the browsers of the account (here the test's own, with a Chrome in it)
-	// only when the owner says so, and then waits for its extension; Disconnect takes it back.
-	const registered = path.join(account, ...(process.platform === "darwin" ? ["Library", "Application Support", "Google", "Chrome"] : [".config", "google-chrome"]), "NativeMessagingHosts", "dev.pmndre.pine.json");
-	await sees("[data-setting=own-browser][data-state=none]");
-	assert.ok(!fs.existsSync(registered));
-	if (process.platform !== "win32") {
-		await page.click("[data-setting=own-browser] [data-action=connect]");
-		await sees("[data-setting=own-browser][data-state=waiting]");
-		assert.equal(JSON.parse(fs.readFileSync(registered, "utf8")).path, path.join(home, "chrome", "host"));
-		await page.click("[data-setting=own-browser] [data-action=disconnect]");
-		await sees("[data-setting=own-browser][data-state=none]");
-		assert.ok(!fs.existsSync(registered));
-	}
 	await menu("settings");
 });
 

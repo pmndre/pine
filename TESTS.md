@@ -92,5 +92,15 @@ Before pushing a test, read it once as each of the three systems would.
   *not* leak, that an error reached the page at all), say so in the assertion message and match
   the smallest token that proves it.
 
+- Never hand an object of the browser driver to an assertion: `assert.equal(await page.$(sel), null)`
+  freezes the test process when the element is there, because the failure message prints the whole
+  handle, and the run then ends without a word. Count instead
+  (`assert.equal(await page.locator(sel).count(), 0)`), or wait for the state
+  (`waitForSelector(sel, { state: "detached" })`).
+- A state that comes a moment after another (a turn's work folds once the answer is there) is waited
+  for by itself. That the answer is on screen does not say the rest has settled, and a slower
+  computer shows the difference.
+- Commit a test by its file's name. A checkout may hold somebody else's work in progress.
+
 A test that fails on CI for a harmless wording or layout change is a bug in the test. Remove it or
 rewrite it to the rules above; do not re-pin it to the new copy.

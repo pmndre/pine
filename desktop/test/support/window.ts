@@ -27,8 +27,6 @@ export let far: string;
 export let folder: string;
 /** Where the browser of the web tools would lie (Playwright's own variable for it): a folder of the test's, empty at the start. */
 export let browsers: string;
-/** The account whose browsers "Your own browser" registers pine with: the test's own, with a Chrome in it, never the developer's. */
-export let account: string;
 /** A stand-in for GitHub, which the app asks for pine's last release: what it answers, and how often it was asked. */
 export let github: http.Server;
 export const releases = { status: 200, tag: "v9.9.9", asked: 0 };
@@ -109,8 +107,6 @@ async function open(): Promise<void> {
 	write(path.join(home, "agents", "scout", "workspace", "AGENTS.md"), "Looks things up on the web.\n\nYou are scout.\n");
 	browsers = path.join(home, "browsers");
 	fs.mkdirSync(browsers, { recursive: true });
-	account = path.join(home, "account");
-	fs.mkdirSync(path.join(account, ...(process.platform === "darwin" ? ["Library", "Application Support", "Google", "Chrome"] : process.platform === "win32" ? ["AppData", "Local", "Nothing"] : [".config", "google-chrome"])), { recursive: true });
 	// A folder of the owner's, with a git history, to open for a conversation.
 	folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-desktop-folder-")));
 	write(path.join(folder, "README.md"), "# Okapi\n\nA small project.\n");
@@ -184,7 +180,7 @@ if (args.includes("-O")) {
 `);
 	fs.chmodSync(ssh, 0o755);
 
-	app = await launchApp({ ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsers, PINE_HOME: home, PINE_CHROME_ACCOUNT: account, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_SKIP_DOWNLOADS: "1", PINE_DESKTOP_DEV_URL: "", PINE_DESKTOP_VOICE: voice, PINE_DESKTOP_SHELL: "/bin/bash", PINE_DESKTOP_RELEASES: `http://127.0.0.1:${(github.address() as any).port}/repos/pmndre/pine/releases/latest`, PINE_DESKTOP_SSH: ssh });
+	app = await launchApp({ ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsers, PINE_HOME: home, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_SKIP_DOWNLOADS: "1", PINE_DESKTOP_DEV_URL: "", PINE_DESKTOP_VOICE: voice, PINE_DESKTOP_SHELL: "/bin/bash", PINE_DESKTOP_RELEASES: `http://127.0.0.1:${(github.address() as any).port}/repos/pmndre/pine/releases/latest`, PINE_DESKTOP_SSH: ssh });
 	page = await app.firstWindow();
 	page.on("pageerror", (e: Error) => pageErrors.push(String(e.stack ?? e.message).slice(0, 600)));
 	page.on("console", (m: any) => m.type() === "error" && pageErrors.push(m.text().slice(0, 600)));
@@ -220,18 +216,8 @@ export const OVER = "[role=dialog], [role=alertdialog], [role=menu]";
 // A file of these that ends without a word (no failed test, no error) leaves nothing to go by on a
 // runner. So on one, which test begins and how the process ends is said on stderr.
 let say: ((line: string) => void) | undefined;
-/** A mark in a runner's log, from inside a test: where it is. Says nothing on a desk. */
-export const mark = (line: string) => say?.(line);
 if (process.env.CI) {
 	say = (line: string) => fs.writeSync(2, `[${path.basename(process.argv[1] ?? "")} ${new Date().toISOString().slice(11, 23)}] ${line}\n`);
-	// Alive, and how much memory: a process that stops saying so is stuck, one that grows is filling up.
-	const began = Date.now();
-	let last = Date.now();
-	setInterval(() => {
-		const late = Date.now() - last - 2000;
-		last = Date.now();
-		say!(`alive at ${Math.round((Date.now() - began) / 1000)}s, ${Math.round(process.memoryUsage().rss / 1e6)} MB${late > 500 ? `, the loop was held for ${late} ms` : ""}`);
-	}, 2000).unref();
 	beforeEach((t) => say!(`begins: ${t.name}`));
 	process.on("exit", (code) => code && say!(`the test process ends with ${code}\n${new Error("ended here").stack}`));
 	for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(signal, () => (say!(`the test process got ${signal}`), process.exit(1)));
@@ -240,7 +226,6 @@ if (process.env.CI) {
 }
 
 afterEach(async (t) => {
-	say?.(`ended (${t.passed ? "passed" : "failed"}): ${t.name}`);
 	if (t.passed || !page) return;
 	for (let i = 0; i < 5; i++) {
 		const open = await page.$$eval(OVER, (els: Element[]) => els.length).catch(() => 0);

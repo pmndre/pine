@@ -97,7 +97,7 @@ test("a newer release is downloaded without a word, and Restart to update stops 
 	await page.waitForSelector(RESTART, { timeout: 20_000 });
 	// Downloaded from the feed of this kind of Mac on GitHub, made by the app and not taken from the answer; no dialog was opened for it.
 	assert.deepEqual(t.calls(), [{ call: "download", feed: FEED }]);
-	assert.equal(await page.$("[data-slot=dialog-content]"), null);
+	assert.equal(await page.locator("[data-slot=dialog-content]").count(), 0);
 	const exit = t.closed(app);
 	await page.click(RESTART);
 	await exit;
@@ -122,7 +122,7 @@ test("a pine the app only attached to is left alone by an update, and quitting w
 		await second.page.waitForSelector(RESTART, { timeout: 20_000 });
 		const exit = t.closed(second.app);
 		// (A dialog in front would take the click: said here, not as a click that times out.)
-		assert.equal(await second.page.$("[data-slot=dialog-content]"), null, "no dialog in front");
+		assert.equal(await second.page.locator("[data-slot=dialog-content]").count(), 0, "no dialog in front");
 		await second.page.click(RESTART);
 		await exit;
 		assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download", "install-on-quit", "download", "install"]);
@@ -150,7 +150,7 @@ test("with Update automatically off the release page is offered and nothing is d
 	// It failed: Settings is back at the link to the release, with the way to its page, and so is the side bar.
 	await page.waitForSelector('[data-setting=updates][data-update=link][data-version="9.9.9"] [data-action=release-page]', { timeout: 20_000 });
 	await page.waitForSelector(LINK);
-	assert.equal(await page.$(RESTART), null);
+	assert.equal(await page.locator(RESTART).count(), 0);
 	// Nothing was ready, so a quit installs nothing.
 	await app.close();
 	assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download"]);
@@ -221,7 +221,7 @@ test("an install that fails after Restart to update starts the app's pine again 
 	await page.click(RESTART);
 	// The pine was stopped for the install; the install failed, so the app goes on with its pine started again.
 	await page.waitForSelector(LINK, { timeout: 20_000 });
-	assert.equal(await page.$(RESTART), null);
+	assert.equal(await page.locator(RESTART).count(), 0);
 	await waitForDaemon(t.port, t.home, 30_000);
 	await page.waitForSelector("[data-slot=service-status][data-origin=started]", { timeout: 20_000 });
 	assert.deepEqual(t.calls().map((c: { call: string }) => c.call), ["download", "install"]);
@@ -237,8 +237,8 @@ test("with an update downloaded, turning Update automatically off offers the rel
 	await page.click(`${sw}[aria-checked=true]`);
 	await page.waitForSelector(`${sw}[aria-checked=false]`);
 	await page.waitForSelector(LINK, { timeout: 20_000 });
-	assert.equal(await page.$(RESTART), null);
+	assert.equal(await page.locator(RESTART).count(), 0);
 	await page.waitForSelector("[data-setting=updates][data-update=link] [data-action=release-page]");
-	assert.equal(await page.$("[data-setting=updates] [data-action=restart]"), null);
+	assert.equal(await page.locator("[data-setting=updates] [data-action=restart]").count(), 0);
 	await app.close();
 });

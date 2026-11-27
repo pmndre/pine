@@ -109,7 +109,7 @@ test("a subscription: which one, the sign-in card (page opened once, its code wi
 	await sees("[data-card=sign-in-card] [data-action=copy][data-copied]");
 	await page.click("[data-card=sign-in-card] [data-action=cancel]");
 	await question("model");
-	assert.equal(await page.$("[data-card=sign-in-card]"), null);
+	assert.equal(await page.locator("[data-card=sign-in-card]").count(), 0);
 });
 
 test("a subscription reaches a model: pine names the one its agents run on now, and offers to change it", async () => {
@@ -168,7 +168,7 @@ test("a model that is gone opens Onboarding again, and the no-model notice leads
 	await page.click("[data-slot=tab] >> nth=0");
 	const toast = page.locator("[data-slot=toast][data-type=warning]:has([data-slot=toast-action])");
 	await toast.waitFor({ timeout: patient(20_000) });
-	assert.equal(await page.$("[data-slot=empty] [data-slot=model-notice]"), null);
+	assert.equal(await page.locator("[data-slot=empty] [data-slot=model-notice]").count(), 0);
 	await toast.locator("[data-slot=toast-action]").click();
 	await question("model");
 	assert.equal(await activeTab(), "main:setup");

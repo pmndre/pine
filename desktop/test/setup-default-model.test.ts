@@ -142,7 +142,7 @@ test("keeping pine's choice changes no setting, posts the owner's message in set
 	await page.click(SETUP_ROW);
 	// The message that was posted is in the conversation, by its own first words as the daemon has them.
 	await page.locator("[data-slot=message-scroller-content] [data-item=user]", { hasText: String(task.prompt).trim().split("\n")[0].slice(0, 40) }).first().waitFor({ timeout: patient(20_000) });
-	assert.equal(await page.$(card), null, "no card once the setup went on");
+	assert.equal(await page.locator(card).count(), 0, "no card once the setup went on");
 	// The answer stays as a trace: it names the model that was kept.
 	await sees(`[data-slot=message-scroller-content] [data-item=setup-answer] >> text=${pines}`);
 });
