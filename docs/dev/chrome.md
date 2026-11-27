@@ -53,10 +53,11 @@ is used by hand.
 
 | Step | How |
 |---|---|
+| Account | Developer console > Account: the publisher name is `pmndre`. Names are not reserved there: a publisher is told apart by a verified site, so verify `pmnd.re` (it asks for the site in Google Search Console) for the mark beside the name |
 | Pack | `node scripts/extension.mjs` writes `build-extension/pine-extension-<version>.zip`: the folder without the manifest's `key` and without `PRIVACY.md` |
 | First upload | Developer console > New item > the zip. The item's id is in its address |
 | Tell pine | Add that id to `EXTENSION_IDS` (`mcp/chrome.ts`) and set `STORE` (`src/chrome.ts`) to `https://chromewebstore.google.com/detail/<id>`. Release pine: an installed pine registers the new id with the browsers at its next start |
-| Listing | The texts below. The privacy policy is `extension/PRIVACY.md`, by its address on GitHub |
+| Listing | The texts below, and at least one picture of 1280×800 without transparency (a page an agent works in, with its pointer). The privacy policy is `extension/PRIVACY.md`, by its address on GitHub |
 | Review | Submit. `debugger` and access to all sites get a closer look: days, sometimes weeks |
 | An update | Raise `version` in the manifest (and `PROTOCOL` in both files when a message changes meaning), pack, upload, submit |
 
