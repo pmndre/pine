@@ -1134,6 +1134,8 @@ test("the questions' card goes on a typed message and on the agent's next turn, 
 	await sees(asked("folded"));
 	assert.match(await page.textContent(asked("folded")), /Which bin\?[\s\S]*blue[\s\S]*green/);
 	assert.equal(await page.locator(`${asked("folded")} input`).count(), 0, "read only");
+	// The option the agent would pick is marked, as on the card.
+	assert.match(await page.textContent(`${asked("folded")} [data-recommended]`), /blue/);
 	assert.equal(await toggle.getAttribute("aria-expanded"), "false");
 	assert.equal(await page.locator("[data-slot=composer] [data-question-toggle]").count(), 0);
 	await toggle.click();

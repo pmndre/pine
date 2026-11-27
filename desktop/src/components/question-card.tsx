@@ -405,8 +405,10 @@ export function AskedInFull({ questions, from, ...props }: React.ComponentProps<
 						{q.options?.length ? (
 							<ol className="flex flex-col gap-1 select-text">
 								{q.options.map((o, n) => (
-									<li key={n}>
+									<li key={n} data-recommended={n === 0 && !q.multiSelect ? "" : undefined}>
 										<span className="font-medium">{n + 1}. {o.label}</span>
+										{/* As on the card: the option the agent would pick comes first, for a question with one answer. */}
+										{n === 0 && !q.multiSelect ? <> <Badge variant="secondary">recommended</Badge></> : null}
 										{o.description ? <span className="text-muted-foreground"> · {o.description}</span> : null}
 									</li>
 								))}
