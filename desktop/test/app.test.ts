@@ -1114,7 +1114,7 @@ test("a question is answered by a pick, a digit or the arrows, sent with Send or
 	await hears("green, red");
 });
 
-test("the questions' card goes on a typed message and on the agent's next turn, comes back when the conversation is opened again, and folds away by the button on the composer's edge", async () => {
+test("the questions' card goes on a typed message and on the agent's next turn, comes back when the conversation is opened again, and folds away by the card's own button and back by the line in its place", async () => {
 	const field = "[data-slot=composer] textarea";
 	await page.fill(field, mockMsg([{ tools: [asks("Which bin?", ["blue", "green"])] }, { text: "bin asked" }], "ask a bin "));
 	await page.keyboard.press("Enter");
@@ -1122,9 +1122,12 @@ test("the questions' card goes on a typed message and on the agent's next turn, 
 	await sees("[data-slot=markdown] >> text=bin asked");
 	// The tab says that it waits for the owner.
 	await sees("[data-slot=tab][data-active] [data-slot=badge][data-variant=destructive]");
-	// The button on the composer's edge folds the card away, and the thread then shows the question in full, read only.
+	// The card's own button folds it away, and the thread then shows the question in full, read only; a line in
+	// the card's place brings it back. Neither is on the composer, where it would lie over the card's actions.
 	const toggle = page.locator("[data-question-toggle]");
 	assert.equal(await toggle.getAttribute("aria-expanded"), "true");
+	assert.equal(await page.locator(`${QUESTIONS} [data-question-toggle]`).count(), 1, "in the card");
+	assert.equal(await page.locator("[data-slot=composer] [data-question-toggle]").count(), 0);
 	assert.equal(await page.locator(asked("open")).count(), 1);
 	await toggle.click();
 	await page.waitForSelector(QUESTIONS, { state: "detached" });
@@ -1132,6 +1135,7 @@ test("the questions' card goes on a typed message and on the agent's next turn, 
 	assert.match(await page.textContent(asked("folded")), /Which bin\?[\s\S]*blue[\s\S]*green/);
 	assert.equal(await page.locator(`${asked("folded")} input`).count(), 0, "read only");
 	assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+	assert.equal(await page.locator("[data-slot=composer] [data-question-toggle]").count(), 0);
 	await toggle.click();
 	await sees(QUESTIONS);
 	await sees(asked("open"));

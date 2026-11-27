@@ -3,7 +3,7 @@
 // The parts are shadcn's chat components, composed the way its AI Elements pages show: the thread
 // is Message Scroller, a turn is Message (and Bubble for the owner's), the work of a turn is Trace
 // (Task, Tool, Reasoning, Subagent and Plan), a request is an Item (Confirmation), a note is a Marker.
-import { ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
 import { Fragment, memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { Sound } from "@/components/sound";
 import { contextMenu } from "@/components/page-menu";
@@ -487,9 +487,48 @@ function ComposerQuestions({ tab }: { tab: Tab }) {
 				from={`${item.agent} asks`}
 				outside={store.taints.has(`${tab.agent}:${tab.session}`)}
 				autoFocus={keyboardFree() && Boolean(questions[0]?.options?.length)}
+				fold={<FoldButton label={`Hide ${item.agent}'s ${questions.length > 1 ? "questions" : "question"}`} onClick={() => store.foldQuestions(tab, true)} />}
 				onSend={(text) => void store.answerQuestions(tab, text)}
 			/>
 		</ScrollArea>
+	);
+}
+
+/**
+ * The button in the top right corner of the card above the composer that folds it away: the card's
+ * own control, in the corner where shadcn's Card example puts its progress. `FoldedCard` then stands
+ * in the card's place and brings it back. Folded, the thread shows the questions in full, and what
+ * the owner types goes as an ordinary message, as it always does. (A folded sign-in's choice is
+ * closed without an answer by that message, `submit`, so that its flow goes on.)
+ */
+function FoldButton({ label, onClick }: { label: string; onClick: () => void }) {
+	return (
+		<HoverTooltip>
+			<TooltipTrigger render={<Button data-question-toggle variant="ghost" size="icon-xs" aria-expanded aria-label={label} onClick={onClick} />}>
+				<ChevronDownIcon />
+			</TooltipTrigger>
+			<TooltipContent>{label}</TooltipContent>
+		</HoverTooltip>
+	);
+}
+
+/**
+ * In the place of a card the owner folded away (a sign-in's choice, or the agent's open questions):
+ * one line that says who asks and how much, and brings the card back. The status line says nothing of it.
+ */
+function FoldedCard({ tab }: { tab: Tab }) {
+	const choice = store.hiddenChoice(tab);
+	// With the card turned off (Settings > General) there is nothing to bring back: the thread shows the questions in full.
+	const questions = choice || !store.questionCards || store.shownQuestions(tab) ? undefined : store.openQuestions(tab);
+	if (!choice && !questions) return null;
+	const count = choice ? 1 : questions!.asked.filter(Boolean).length;
+	const agent = choice?.req.agent ?? questions!.agent;
+	return (
+		<Button data-question-toggle variant="ghost" size="sm" className="self-start" aria-expanded={false} onClick={() => (choice ? store.ask(choice.req.id) : store.foldQuestions(tab, false))}>
+			<MessageCircleQuestionIcon data-icon="inline-start" />
+			{agent} asks you {count === 1 ? "a question" : `${count} questions`}
+			<ChevronUpIcon data-icon="inline-end" />
+		</Button>
 	);
 }
 
@@ -510,6 +549,7 @@ function ComposerChoice({ tab }: { tab: Tab }) {
 				from={`${req.agent} asks`}
 				options={options}
 				autoFocus={keyboardFree() && options.length > 0}
+				fold={<FoldButton label={`Hide ${req.agent}'s question`} onClick={() => store.putOff(req.id)} />}
 				onAnswer={(picked) => void store.answer(req, picked)}
 				onNoAnswer={() => void store.decide(req.id, false)}
 			/>
@@ -876,7 +916,7 @@ function StatusLine({ tab }: { tab: Tab }) {
 	// What this conversation was asked. A question of another conversation this tab holds (that one has no
 	// tab of its own) is said as waiting there, and never answered from here.
 	const waiting = [...tab.approvals.values()].filter((a) => !isPick(a.req) || store.ownAsk(tab, a.req));
-	// Open brings back an approval whose dialog was closed; a question has the button on the composer's edge instead.
+	// Open brings back an approval whose dialog was closed; a question has the line that brings its folded card back instead.
 	const approval = waiting.find((a) => !isPick(a.req));
 	const held = [...tab.approvals.values()].find((a) => isPick(a.req) && !store.ownAsk(tab, a.req));
 	const elsewhere = store.tabs.find((t) => t !== tab && t.approvals.size > 0);
@@ -1363,7 +1403,16 @@ export function Conversation({ tab }: { tab: Tab }) {
 				<div className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-col gap-2">
 					{/* What is asked comes first (a sign-in's choice, then the agent's questions); pine's own step in "Onboarding" is there when nothing is. */}
 					<QuestionCardHost.Provider value={slot}>
-						{above === "choice" ? <ComposerChoice tab={tab} /> : above === "questions" ? <ComposerQuestions tab={tab} /> : above === "setup" ? <SetupCard tab={tab} /> : null}
+						{above === "choice" ? (
+							<ComposerChoice tab={tab} />
+						) : above === "questions" ? (
+							<ComposerQuestions tab={tab} />
+						) : (
+							<>
+								<FoldedCard tab={tab} />
+								{above === "setup" ? <SetupCard tab={tab} /> : null}
+							</>
+						)}
 					</QuestionCardHost.Provider>
 					<StatusLine tab={tab} />
 					{chat ? (

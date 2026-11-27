@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { ChevronDownIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AskedQuestion } from "../api.ts";
 import { AskedInFull, AskedLines, QuestionCard, QuestionsCard, QuestionTrace } from "./question-card.tsx";
@@ -47,9 +48,9 @@ export const AgentAsks: Story = {
 	render: () => <QuestionsCard questions={[database]} from="main asks" onSend={() => {}} />,
 };
 
-/** Several questions of one turn: one at a time, "1 / 3" at the top right, Previous, Skip and Next, Send on the last. A question without options says to answer by typing. */
+/** Several questions of one turn: one at a time, "1 / 3" at the top right beside the chevron that folds the card away, Previous, Skip and Next, Send on the last. A question without options says to answer by typing. */
 export const AgentAsksSeveral: Story = {
-	render: () => <QuestionsCard questions={[database, colors, name]} from="main asks" onSend={() => {}} />,
+	render: () => <QuestionsCard questions={[database, colors, name]} from="main asks" fold={<Button variant="ghost" size="icon-xs" aria-expanded aria-label="Hide main's questions"><ChevronDownIcon /></Button>} onSend={() => {}} />,
 };
 
 /** In a conversation that has read outside content: a quiet line says so. */

@@ -162,7 +162,7 @@ export class ComposerCardSlot implements QuestionCardHostValue {
  * text does it through `HostedCard.type`. The card for what pine asks itself (its setup steps, a
  * sign-in's choice); an agent's questions are `QuestionsCard`.
  */
-export function QuestionCard({ id, question, header, from, options, multiple, recommended, autoFocus, actions, onAnswer, onNoAnswer }: {
+export function QuestionCard({ id, question, header, from, options, multiple, recommended, autoFocus, actions, fold, onAnswer, onNoAnswer }: {
 	/** What is asked, in a word that stays when the question is reworded (`data-question`), where the asker has one. */
 	id?: string;
 	question: string;
@@ -182,6 +182,8 @@ export function QuestionCard({ id, question, header, from, options, multiple, re
 	autoFocus?: boolean;
 	/** Ways out other than an answer, before Later and No answer: "Back" in pine's own steps, "Cancel" in a sign-in. */
 	actions?: React.ReactNode;
+	/** The button that folds the card away, at the top right: a sign-in's choice. */
+	fold?: React.ReactNode;
 	/** The answer: the numbers of the options picked, counted from 1, in the order shown. */
 	onAnswer: (picked: number[]) => void;
 	onNoAnswer?: () => void;
@@ -206,6 +208,7 @@ export function QuestionCard({ id, question, header, from, options, multiple, re
 	return (
 		<Questionnaire
 			data-question={id}
+			className={cn(fold && "relative")}
 			defaultItem="answer"
 			shortcuts="numbers"
 			onSubmit={(e) => {
@@ -214,8 +217,9 @@ export function QuestionCard({ id, question, header, from, options, multiple, re
 				settle(e.currentTarget, new FormData(e.currentTarget).getAll("answer").map(Number).sort((a, b) => a - b));
 			}}
 		>
+			{fold ? <div className="absolute end-0 top-0">{fold}</div> : null}
 			<QuestionnaireItem ref={item} name="answer" multiple={multiple} aria-labelledby={title} onStatusChange={(status) => setTicked(status === "answered")}>
-				<QuestionnaireTitle id={title} className="whitespace-pre-wrap select-text">
+				<QuestionnaireTitle id={title} className={cn("whitespace-pre-wrap select-text", fold && "pe-8")}>
 					{question}
 				</QuestionnaireTitle>
 				{about ? <QuestionnaireDescription>{about}</QuestionnaireDescription> : null}
@@ -274,7 +278,7 @@ export function answerText(questions: AskedQuestion[], picked: number[][]): stri
  * question without options says to answer by typing. With `outside`, a quiet line says that the
  * conversation has read outside content, which the questions may come from.
  */
-export function QuestionsCard({ questions, from, outside, autoFocus, onSend }: {
+export function QuestionsCard({ questions, from, outside, autoFocus, fold, onSend }: {
 	questions: AskedQuestion[];
 	/** Who asks, such as "main asks". */
 	from: string;
@@ -282,6 +286,8 @@ export function QuestionsCard({ questions, from, outside, autoFocus, onSend }: {
 	outside?: boolean;
 	/** Takes the keyboard as it is shown: the arrows then reach the options, and a digit picks. */
 	autoFocus?: boolean;
+	/** The button that folds the card away, at the top right beside the progress. */
+	fold?: React.ReactNode;
 	onSend: (text: string) => void;
 }) {
 	const several = questions.length > 1;
@@ -300,7 +306,7 @@ export function QuestionsCard({ questions, from, outside, autoFocus, onSend }: {
 		<Questionnaire
 			defaultItem="q0"
 			shortcuts="numbers"
-			className={cn(several && "relative")}
+			className={cn((several || fold) && "relative")}
 			onItemChange={(name) => setCurrent(Number(name.slice(1)) || 0)}
 			onSubmit={(e) => {
 				e.preventDefault();
@@ -309,14 +315,19 @@ export function QuestionsCard({ questions, from, outside, autoFocus, onSend }: {
 				if (text) onSend(text);
 			}}
 		>
-			{several ? (
-				<QuestionnaireProgress className="absolute end-0 top-0.5 min-w-0">
-					{current + 1} / {questions.length}
-				</QuestionnaireProgress>
+			{several || fold ? (
+				<div className="absolute end-0 top-0 flex items-center gap-2">
+					{several ? (
+						<QuestionnaireProgress className="min-w-0">
+							{current + 1} / {questions.length}
+						</QuestionnaireProgress>
+					) : null}
+					{fold}
+				</div>
 			) : null}
 			{questions.map((q, i) => (
 				<QuestionnaireItem key={i} ref={i === 0 ? first : undefined} name={`q${i}`} multiple={q.multiSelect} aria-labelledby={`${id}-${i}`} onStatusChange={(status) => setAnswered((a) => Object.assign([...a], { [i]: status === "answered" }))}>
-					<QuestionnaireTitle id={`${id}-${i}`} className={cn("whitespace-pre-wrap select-text", several && "pe-12")}>
+					<QuestionnaireTitle id={`${id}-${i}`} className={cn("whitespace-pre-wrap select-text", several && "pe-12", fold && (several ? "pe-20" : "pe-8"))}>
 						{q.question}
 					</QuestionnaireTitle>
 					<QuestionnaireDescription>{aboutOf(q, from)}</QuestionnaireDescription>

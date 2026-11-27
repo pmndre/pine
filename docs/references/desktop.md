@@ -322,7 +322,7 @@ The card takes the keyboard only while the input is empty.
 | Several at once | The questions of one turn are one card: **Next**, **Previous**, **Skip**, and where you are ("1 / 2"). **Send** sends one message, a line per question answered ("Which database? sqlite") |
 | Typed instead of picking | A message typed instead of picking an answer is an ordinary message: your answer in your own words, a question back, or something else |
 | When it goes | At your next message, and when the agent's next turn begins; until then it comes back when you open the conversation again |
-| Fold | A small button on the input's top edge folds the card away (chevron down) and brings it back (chevron up); the conversation then shows the questions in full |
+| Fold | The chevron in the card's top right corner folds it away; a line in its place ("main asks you 3 questions") brings it back. The conversation then shows the questions in full |
 | No card at all | Settings > General > **Answer questions with a card**, off: no card and no button; the conversation shows each open question in full, read only, until your next message answers it. On again, an open question has its card back |
 | Outside content | When the conversation has read outside content, the card says so |
 
