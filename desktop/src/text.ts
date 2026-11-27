@@ -7,11 +7,14 @@ export const errText = (e: unknown) => (e instanceof Error ? e.message : String(
 /**
  * A line a program printed, added to the lines kept of it. A download's progress comes as a line for every
  * tenth, each with a bar eighty characters wide (Playwright's installer, where there is no terminal): the
- * bar is left out and each such line takes the place of the one before, so a download is one line that counts up.
+ * bar is drawn twenty wide, so that the line fits a narrow window, and each such line takes the place of the
+ * one before, so a download is one line that counts up.
  */
 export function addPrinted(lines: string[], line: string, keep = 200): void {
-	const progress = /^\|[■ ]*\|\s*(\d+% of .+)$/.exec(line)?.[1];
-	if (progress && /^\d+% of /.test(lines.at(-1) ?? "")) lines[lines.length - 1] = progress;
+	const m = /^\|[■ ]*\|\s*(\d+)% of (.+)$/.exec(line);
+	const filled = m ? Math.min(20, Math.round(Number(m[1]) / 5)) : 0;
+	const progress = m && `|${"■".repeat(filled)}${" ".repeat(20 - filled)}| ${m[1].padStart(3)}% of ${m[2]}`;
+	if (progress && /^\|[■ ]{20}\| +\d+% of /.test(lines.at(-1) ?? "")) lines[lines.length - 1] = progress;
 	else lines.push(progress ?? line);
 	if (lines.length > keep) lines.shift();
 }
