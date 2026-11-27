@@ -51,7 +51,7 @@ const meta = {
 	play: async ({ canvasElement }) => {
 		await expect(canvasElement.querySelector('[data-slot="gate-machines"]')).not.toBeNull();
 		await expect(canvasElement.querySelector('[data-environment="local"]')).toBeNull();
-		await expect(within(canvasElement).queryAllByText(/This (Mac|computer)|Use this (Mac|computer)|Set up pine/)).toHaveLength(0);
+		await expect(within(canvasElement).queryAllByText(/This (Mac|computer)|Use this (Mac|computer)|Setting up pine/)).toHaveLength(0);
 	},
 } satisfies Meta<typeof Before>;
 export default meta;

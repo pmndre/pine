@@ -9,7 +9,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
 import { type AgentInfo, api, type Approval, type Conversation, type GoalInfo, type SwarmInfo, type GroupList, media, type WorktreeMade, type BoardBrief, type PineEvent, type Program, type Stats, type Task, type Todo, type TranscriptEntry } from "./api.ts";
 import { bridge, type ChromeLayout, type Prefs, type ServiceState, type Update, type WindowDraft, type WindowLayout, type WindowTabRef, type WindowWidths } from "./bridge.ts";
-import { baseName, childKind, errText, eventBody, isGoalRound, learnHome, localAddress, MODES, oneLine, plural, short, shortcut, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
+import { addPrinted, baseName, childKind, errText, eventBody, isGoalRound, learnHome, localAddress, MODES, oneLine, plural, short, shortcut, type Speed, speedOf, speedText, taskSummary, tilde, took, undoLines } from "./text.ts";
 import { runnable } from "./runnable.ts";
 import { type QuoteSource, type SentQuote, withQuotes } from "../../src/quotes.ts";
 import { silent } from "../../src/silent.ts";
@@ -459,6 +459,8 @@ export class Store extends Model {
 	asked = new Set<string>();
 	initLines: string[] = [];
 	initRunning = false;
+	/** pine init ended badly and the app asked for its pine all the same: the answer to that asking starts no second pine init. */
+	private initFailed = false;
 	/** Whether the browser build this pine drives is on this computer; nothing while it is not known. */
 	browser?: boolean;
 	/** Whether `checkBrowser` has answered once, read or not (at once for another machine's pine, which has nothing to check here). */
@@ -539,8 +541,7 @@ export class Store extends Model {
 			this.touch();
 		});
 		bridge.onInitLine((line: string) => {
-			this.initLines.push(line);
-			if (this.initLines.length > 200) this.initLines.shift();
+			addPrinted(this.initLines, line);
 			this.touch();
 		});
 		bridge.onOpenHosts?.((hosts: string[]) => {
@@ -811,6 +812,27 @@ export class Store extends Model {
 		this.touch();
 	}
 
+	/**
+	 * This computer has no pine home: `pine init` makes one, without a question, and the app asks for its pine again.
+	 * What it prints is shown as it comes (the Gate in App.tsx).
+	 */
+	private async setUp(): Promise<void> {
+		if (this.initRunning) return;
+		this.initRunning = true;
+		this.initLines = [];
+		this.touch();
+		const code = await bridge.init().catch(() => 1);
+		this.initRunning = false;
+		this.touch();
+		// What needs an administrator (Linux) is printed on the screen, for a terminal: it stays in view until Try again.
+		if (code === "administrator") this.flash("Part of it needs an administrator: run what is shown above in a terminal, then Try again.", "warn", 15000);
+		else {
+			// Ended badly: the home may be there all the same, so the app asks for its pine and says what came of it (onService).
+			this.initFailed = code !== 0;
+			await bridge.retry();
+		}
+	}
+
 	private async onService(s: ServiceState): Promise<void> {
 		const was = this.service.status;
 		// Another pine than before (another machine was picked): nothing of the last one is kept, not even what an agent of the same name was doing.
@@ -827,6 +849,16 @@ export class Store extends Model {
 		else if (s.host || (s.status === "starting" && s.pairing)) this.pairFailed = false;
 		this.service = s;
 		if (ended === "paired") void this.paired();
+		if (moved && s.status !== "starting") {
+			const failed = this.initFailed;
+			this.initFailed = false;
+			const noHome = s.status === "error" && s.kind === "no-home" && !s.host && this.local;
+			// Each time this computer's pine is asked for and has no home, pine init makes one: but not again by itself after one that failed, only by Try again.
+			if (noHome && !failed) void this.setUp();
+			else if (noHome) this.flash("pine init did not finish. What it said is shown above.", "bad");
+			// A home was made and something else was not (the browser, when offline): the app goes on, and asks about the browser as at any start.
+			else if (failed && s.status === "ready") this.flash("pine is set up, but pine init did not finish all of it. The browser of the web tools may be missing: see Settings > General.", "warn", 10000);
+		}
 		const envKey = s.host ?? "";
 		const again = s.status === "ready" && (was !== "ready" || (!this.agents.length && this.loadingHost !== envKey));
 		// A reason the agents did not load is wiped only by a new attempt or another pine: never left in place of one, never wiped without one.

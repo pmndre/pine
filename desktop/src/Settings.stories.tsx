@@ -144,7 +144,7 @@ const meta = {
 /** Nothing of a local machine on the page: no row for it, no "This Mac" or "This computer", nothing to use or set up there. */
 async function noLocalMachine(root: HTMLElement) {
 	await expect(root.querySelector('[data-environment="local"]')).toBeNull();
-	await expect(within(root).queryAllByText(/This (Mac|computer)|Use this (Mac|computer)|Set up pine/)).toHaveLength(0);
+	await expect(within(root).queryAllByText(/This (Mac|computer)|Use this (Mac|computer)|Setting up pine/)).toHaveLength(0);
 }
 export default meta;
 type Story = StoryObj<typeof meta>;

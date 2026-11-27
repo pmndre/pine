@@ -39,7 +39,8 @@ function PrintedText({ text, failed = false, sm = false, capped = sm, className,
 	const lines = useHighlightedCode(text, "ansi");
 	const content = (
 		// Inside the scroller, the scroller is what takes the focus and scrolls.
-		<CodeBlockContent wrap tabIndex={capped ? -1 : undefined} className={contentClassName}>
+		// A line is an item of the stock block's grid, which is as wide as its longest word unless told otherwise: an address would push every line out of the block.
+		<CodeBlockContent wrap tabIndex={capped ? -1 : undefined} className={cn("[&_[data-slot=code-block-line]]:min-w-0", contentClassName)}>
 			{lines.map((line, i) => <CodeBlockLine key={i}>{line}</CodeBlockLine>)}
 		</CodeBlockContent>
 	);

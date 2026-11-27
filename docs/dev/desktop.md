@@ -248,7 +248,7 @@ desktop/
   daemon, `scripts/preview.ts` routes it under `/__pine/`.
 - The page is also the mobile app's (`mobile/src/mobile-bridge.ts`) and the web client's
   (`web/src/frame-bridge.ts`), on the same `Bridge` type. Only those two give `local: false` (no
-  machine of its own: the page hides This Mac, Use this Mac, Set up pine and the local parts of
+  machine of its own: the page hides This Mac, Use this Mac and the local parts of
   Settings), `mediaBase`, `deviceKey` and `trustHostKey`; only the web client `disconnect`,
   `renameHost` and `openApp`; only the mobile app `pair`, `stopPairing`, `onPairLink`, `nearby` and
   `pairNearby`; only the desktop app browser access, its own update and its browser. `contextMenu`

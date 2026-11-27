@@ -137,18 +137,6 @@ export function Gate() {
 	const s = useModel(store);
 	if (!s.stateRead) return <GateSkeleton />;
 	const state = s.service;
-	const init = async () => {
-		s.initRunning = true;
-		s.initLines = [];
-		s.touch();
-		const code = await bridge.init().catch(() => 1);
-		s.initRunning = false;
-		s.touch();
-		// What needs an administrator (Linux) is printed above, for a terminal: it stays in view until Try again.
-		if (code === "administrator") s.flash("Part of it needs an administrator: run what is shown above in a terminal, then Try again.", "warn", 15000);
-		else if (code === 0) await bridge.retry();
-		else s.flash("pine init did not finish. What it said is shown above.", "bad");
-	};
 	const host = state.host;
 	const key = s.keyToTrust;
 	// With no local machine the machines are the only way to a pine: added, chosen or forgotten here,
@@ -205,14 +193,14 @@ export function Gate() {
 				: ["Starting pine", "Looking for a running pine, or starting one…", <Pulse label="Loading" key="s" />]
 			: state.status === "error" && state.kind === "no-home"
 				? [
-						"Welcome to pine",
-						`pine keeps your agents, their workspaces and pine's settings in a home folder (${s.prefs.home ?? s.home ?? "~/.pine"}). There is none yet. Setting it up copies the example home and fetches the browser that the web tools use (about 600 MB, once).`,
+						// No home yet: this computer's is made without a question (setUp in model.ts), and what pine init says is shown as it comes.
+						s.initRunning ? "Setting up pine" : "pine is not ready yet",
+						s.local
+							? `pine keeps your agents, their workspaces and pine's settings in a home folder (${s.prefs.home ?? s.home ?? "~/.pine"}). Making it copies the example home and fetches the browser that the web tools use (about 600 MB, once).`
+							: "There is no pine home on that machine yet. Run pine init there, then try again.",
 						<>
-							{s.initLines.length ? <Printed sm className="w-full text-start" text={s.initLines.slice(-40).join("\n")} /> : null}
-							<div className="flex items-center gap-2">
-								{s.local ? <Button disabled={s.initRunning} onClick={() => void init()}>{s.initRunning ? <><Pulse label="Loading" data-icon="inline-start" />Setting up…</> : "Set up pine"}</Button> : null}
-								<Button variant="outline" disabled={s.initRunning} onClick={() => void bridge.retry()}>Try again</Button>
-							</div>
+							{s.initLines.length ? <Printed sm className="w-full text-start text-wrap" text={s.initLines.slice(-40).join("\n")} /> : null}
+							{s.initRunning ? <Pulse label="Loading" /> : <Button variant="outline" onClick={() => void bridge.retry()}>Try again</Button>}
 						</>,
 					]
 				: state.status === "error"

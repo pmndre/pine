@@ -4,6 +4,17 @@ import type { Stats, UndoResult } from "./api.ts";
 export const short = (text: string, n: number) => (text.length > n ? `${text.slice(0, n - 1)}…` : text);
 export const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
 export const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/**
+ * A line a program printed, added to the lines kept of it. A download's progress comes as a line for every
+ * tenth, each with a bar eighty characters wide (Playwright's installer, where there is no terminal): the
+ * bar is left out and each such line takes the place of the one before, so a download is one line that counts up.
+ */
+export function addPrinted(lines: string[], line: string, keep = 200): void {
+	const progress = /^\|[■ ]*\|\s*(\d+% of .+)$/.exec(line)?.[1];
+	if (progress && /^\d+% of /.test(lines.at(-1) ?? "")) lines[lines.length - 1] = progress;
+	else lines.push(progress ?? line);
+	if (lines.length > keep) lines.shift();
+}
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /**
