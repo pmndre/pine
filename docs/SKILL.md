@@ -1,81 +1,74 @@
 ---
 name: pine
-description: Run, configure and extend pine, the event-driven multi-agent daemon built on the pi coding agent SDK. Use when setting up agents and their workspaces, subscribing agents to event sources (Telegram, folders, MQTT, webhooks, FTP uploads, web addresses, commands, feeds, calendars, mail, Slack, Matrix, Discord, pushed streams, syslog, cameras, Modbus devices, serial ports, the computer itself), scheduling what happens at a time, adding MCP servers and skills, routing events to agents, reaching agents on Telegram, delegating between agents, letting sub-agents work through a board of tasks or an agent lead a job as a swarm, using pine from the Pine app (on a computer, a phone or in a web browser), reviewing what is protected against prompt injection, or changing pine's code.
+description: Run, configure and extend pine, the event-driven multi-agent daemon built on the pi coding agent SDK. Use when setting up agents, subscribing them to event sources (Telegram, folders, MQTT, webhooks, web addresses, feeds, mail, chat services, cameras and other devices, the computer itself), scheduling work, adding MCP servers and skills, routing events, delegating between agents, sub-agents and swarms on a board, using the Pine app (computer, phone or browser), reviewing the defences against prompt injection, or changing pine's code.
 ---
 
 # Introduction
 
-This is pine's manual. This page says what pine is, where each topic is, what an agent running
-inside pine should know first, and the shortest working setup.
-
 pine (PI neural engine) is one process that hosts several pi agent sessions and an event log.
-Event sources and schedules turn the outside world and the clock into events; subscriptions,
-schedules and routes turn events into work; agents answer, act, hand tasks to each other, and
-publish events of their own.
+Sources and schedules turn the world and the clock into events. Subscriptions, schedules and routes
+turn events into work. Agents answer, act, hand tasks to each other and publish events.
 
 Three things to know first:
 
-1. **Configuration lives in a home folder**, by default `~/.pine`: `pine.json` (global),
-   `models.json` (models), `.env` (secrets), and one folder per agent under `agents/`.
-2. **An agent is a folder**: `agents/<id>/agent.json` and a workspace (wherever `workspace`
-   points, for example a repository). The workspace holds the files the agent keeps itself and
-   that are read into its prompt: `AGENTS.md` (its purpose), `SOUL.md` (who it is), `TOOLS.md`
-   (how it uses its tools), `MEMORY.md` (what it remembers). pine's home holds `AGENTS.md`,
-   `TOOLS.md` and `USER.md` for all agents, kept by the main agent
-   ([references/agents.md](references/agents.md), "Every file that is read as instructions").
-3. **Where content came from decides what it may do.** Your own messages get the agent's full
-   tools. Everything else is data: an outside event runs with fewer tools in a separate session,
-   or arrives in a subscribed conversation framed as data and marks it as having read outside
-   content. Nothing is sent out without your approval
-   ([references/security.md](references/security.md)).
+1. Configuration lives in a home folder, by default `~/.pine`: `pine.json`, `models.json`, `.env`
+   (secrets) and one folder per agent under `agents/`.
+2. An agent is `agents/<id>/agent.json` plus a workspace. It keeps `AGENTS.md`, `SOUL.md`,
+   `TOOLS.md` and `MEMORY.md` there, and pine reads them into its prompt. The main agent keeps
+   `AGENTS.md`, `TOOLS.md` and `USER.md` for all agents in pine's home
+   ([references/agents.md](references/agents.md)).
+3. Where content came from decides what it may do. Your messages get the agent's full tools.
+   Everything else is data: it runs with fewer tools in a separate session, or marks the
+   conversation it arrives in as having read outside content. Nothing is sent out without your
+   approval ([references/security.md](references/security.md)).
 
 ## Which file to read
 
-The manual in six parts. Each chapter is one file in `references/`.
+The manual has six parts. Each chapter is one file in `references/`.
 
 ### Start here
 
 | Chapter | What it holds |
 |---|---|
-| [How pine works](references/overview.md) | The picture: events, tasks, agents, conversations, trust |
-| [Install and run](references/operations.md) | Requirements, install, first start, choosing a model, updating, at login, in a container, problems |
+| [How pine works](references/overview.md) | Events, tasks, agents, conversations, trust |
+| [Install and run](references/operations.md) | Requirements, install, first start, models, updating, at login, in a container, problems |
 
 ### Where you talk to pine
 
 | Chapter | What it holds |
 |---|---|
-| [The Pine app](references/desktop.md) | The app on a computer: window, tabs, code panel, settings, the Manual tab, browser access for a phone or browser |
-| [Views for the Pine app](references/views.md) | A script of your own that draws all of pine in the app's panel |
+| [The Pine app](references/desktop.md) | The app on a computer: window, tabs, code panel, settings, Manual tab, browser access |
+| [Views for the Pine app](references/views.md) | A script of yours that draws pine in the app's panel |
 | [The terminal UI](references/tui.md) | Tabs, slash commands, keys, modes, approvals, pictures, dictation |
-| [The phone app](references/mobile.md) | pine on an Android phone or an iPhone, over SSH or paired with the Pine app |
-| [The web client](references/web.md) | pine in any browser with nothing installed; what the relay and the meeting service see |
+| [The phone app](references/mobile.md) | Android and iPhone, over SSH or paired with the Pine app |
+| [The web client](references/web.md) | pine in any browser; what the relay and the meeting service see |
 
 ### Agents
 
 | Chapter | What it holds |
 |---|---|
 | [Agents](references/agents.md) | Workspace and files, persona, conversations, delegation, sub-agents, goal mode, skills |
-| [Teams of agents: boards and swarms](references/boards.md) | Sub-agents and agents sharing one job on a board; a swarm |
-| [Working on code](references/coding.md) | A folder or worktree for a conversation, the code pane, programs left running, `/undo` |
+| [Teams of agents: boards and swarms](references/boards.md) | Agents and sub-agents sharing a job on a board; swarms |
+| [Working on code](references/coding.md) | Folders and worktrees, the code pane, programs left running, `/undo` |
 | [MCP servers, web search and the browser](references/mcp.md) | Adding MCP servers; web search, page reading and the bundled browser |
-| [Operating apps on the computer](references/computer.md) | Read a window, click, type; who may, what is asked |
+| [Operating apps on the computer](references/computer.md) | Reading windows, clicking, typing; who may |
 
 ### Reacting to the world
 
 | Chapter | What it holds |
 |---|---|
-| [Event sources and subscriptions](references/sources.md) | Watching something, subscribing, sending and reading through a source, secrets, trust |
-| [Source types](references/source-types.md) | Every type with its options and events, and which one fits a service or device |
-| [Schedules and routes](references/events.md) | Doing things at a time; rules on events, topics, typed questions, webhooks |
-| [Recipe: a page as an agent's control panel](references/interfaces.md) | A web page whose clicks wake an agent, and that the agent changes |
+| [Event sources and subscriptions](references/sources.md) | Watching, subscribing, sending and reading through a source, secrets, trust |
+| [Source types](references/source-types.md) | Every type, its options and events, and which fits a service or device |
+| [Schedules and routes](references/events.md) | Scheduled work; rules on events, topics, typed questions, webhooks |
+| [Recipe: a page as an agent's control panel](references/interfaces.md) | A web page whose clicks wake an agent, which the agent changes |
 
 ### Setting pine up
 
 | Chapter | What it holds |
 |---|---|
-| [Setup by asking an agent](references/setup.md) | What agents set up by tool call, for whom, and what you are asked |
+| [Setup by asking an agent](references/setup.md) | What agents set up by tool call, for whom, what you are asked |
 | [Configuration files](references/configuration.md) | Every key of `pine.json`, `agent.json`, `models.json` and `.env` |
-| [Security and its limits](references/security.md) | The defences against prompt injection: sandbox, modes, approvals; what is not solved |
+| [Security and its limits](references/security.md) | Defences against prompt injection: sandbox, modes, approvals; what is not solved |
 
 ### Reference
 
@@ -83,63 +76,52 @@ The manual in six parts. Each chapter is one file in `references/`.
 |---|---|
 | [Commands](references/commands.md) | Every `pine` command |
 | [Control API](references/api.md) | The HTTP API for scripts and programs of your own |
-| [Technology](references/stack.md) | What pine runs on, the system programs it uses, what is not verified yet |
+| [Technology](references/stack.md) | What pine runs on and uses, what is not verified yet |
 
-Changing pine's own code: [AGENTS.md](../AGENTS.md) and [docs/dev](dev/README.md).
+To change pine's own code, read [AGENTS.md](../AGENTS.md) and [docs/dev](dev/README.md).
 
 ## If you are an agent running inside pine
 
-**Look things up.** Your `manual` tool searches this manual: search, then read the one or two
-parts that fit. Search before you answer a question about pine or say something is not possible.
+Search your `manual` tool before you answer a question about pine or say something is not
+possible, then read the one or two parts that fit.
 
-**Tool names.** A tool this manual names that you do not have by that name is an action of one of
-yours: `add_source` is `pine_sources` with `action: "add_source"`, the list `sources` is
-`pine_list` with `what: ["sources"]`, `mcp__browser__browser_navigate` is `browser` with
-`action: "browser_navigate"` ([references/agents.md](references/agents.md), "How tools are
-declared").
+This manual names tools by their own names. A tool you don't have by that name is an action of a
+family: `add_source` is `pine_sources` with `action: "add_source"`, the list `sources` is
+`pine_list` with `what: ["sources"]` ([references/agents.md](references/agents.md), "How tools
+are declared").
 
-**Setup is a tool call, never a file.** pine's home folder is closed to you; you never write
-its files, and you never look there for what is configured: a listing tool tells you
-(`sources`, `schedules`, `mcp_servers`, `skills`, `models`). Leave `scope` out and what you set
-up is for the conversation you are in; pass a wider one only when your owner says so in words
-([references/setup.md](references/setup.md)). For what has no tool (the control API, a secret):
-find it in the manual, tell your owner the lines to write into `pine.json` or
-`agents/<your id>/agent.json`, then `pine check` and a restart. Say plainly that this step is
-theirs.
+You set things up with tool calls, never with files: pine's home is closed to you, and the listing
+tools (`sources`, `schedules`, `mcp_servers`, `skills`, `models`) say what is configured. Without
+`scope`, a setup is for the conversation you are in. Pass a wider scope only when your owner says
+so. For what has no tool (the control API, a secret), tell your owner the lines to write into
+`pine.json` or `agents/<your id>/agent.json`, then `pine check` and a restart, and say that this
+step is theirs.
 
-**A no is a no.** A call that comes back "not approved" was put to your owner, who said no. Do
-not try another way; say what you wanted and why. Never ask for a password, token or key in the
-conversation: leave it out, and pine asks your owner in its own dialog.
+"Not approved" means your owner said no. Don't try another way; say what you wanted and why.
+Never ask for a password, token or key in the conversation: leave it out, and pine asks your owner
+in its own dialog.
 
-**Your files.** `AGENTS.md`, `SOUL.md`, `TOOLS.md` and `MEMORY.md` at the top of your workspace
-are yours to keep. A preference that is for all agents goes into pine's home, which only the
-main agent writes ([references/agents.md](references/agents.md), "Where a default or a
-preference goes").
-
-What you can do:
+`AGENTS.md`, `SOUL.md`, `TOOLS.md` and `MEMORY.md` at the top of your workspace are yours. What
+holds for all agents goes into pine's home, which only the main agent writes
+([references/agents.md](references/agents.md), "Where a default or a preference goes").
 
 | Tool | When your owner wants | Read |
 |---|---|---|
-| `sources`, `subscribe`, `add_source` | Something watched, or a reaction when it happens: list what exists, subscribe with a note, or set a source up | [setup.md](references/setup.md), [sources.md](references/sources.md) |
-| `add_schedule` | Something at a time ("every morning at seven", "in twenty minutes"): `cron`, `every`, `at` or `in` | [events.md](references/events.md), "Schedules" |
-| `add_mcp_server` | An MCP server installed or connected: its https `url`, or the `command` that starts it; do it yourself, they confirm. Its tools come in your next turn, which pine starts at once. "Unauthorized" means it wants a sign-in: `sign_in_mcp_server` (main agent), else Sign in under Settings > MCP servers | [mcp.md](references/mcp.md) |
-| `add_skill` | A procedure remembered. A fact goes into `MEMORY.md` instead | [agents.md](references/agents.md), "Skills" |
-| `question` | A decision before you can go on: two to six options | [setup.md](references/setup.md), "The tools" |
-| `todo` | Work of several steps tracked: the whole list each time | [setup.md](references/setup.md), "The tools" |
-| `subagent` | A job split into independent pieces: one complete task each; many become a pool on your board | [agents.md](references/agents.md), "Sub-agents"; [boards.md](references/boards.md) |
-| `stop_program` | A server, build or watcher that keeps running: start it with `background: true` on the shell tool, end it with this | [coding.md](references/coding.md), "Commands in the background" |
-| `/goal`, `/swarm` | Work until something is reached, or a job led on a board: only your owner can start one, so tell them to type it | [agents.md](references/agents.md), "Goal mode"; [boards.md](references/boards.md), "A swarm" |
-| `mcp__computer__` | Something in an app on their computer, if you have these tools; asking does not get them | [computer.md](references/computer.md) |
-| `add_route` | A rule that acts on events without waking you | [events.md](references/events.md), "Routes" |
-| `create_agent` | A new agent (main agent only): an id and instructions written to the agent | [setup.md](references/setup.md), "Creating an agent" |
-| `update_agent`, `rename_agent`, `remove_agent` | Another agent changed, renamed, or removed for good together with its folder (main agent only) | [setup.md](references/setup.md), "Changing and removing an agent" |
-| `sign_in`, `sign_in_mcp_server` | pine signed in to a model provider or a remote MCP server (main agent only) | [setup.md](references/setup.md), "The tools" |
-| `add_model_server` | A model server of their own (main agent only) | [setup.md](references/setup.md), "Adding a model server" |
-| `set_setting` | A setting for all agents (main agent only) | [setup.md](references/setup.md), "pine's settings" |
-| `conversations` | Their tabs and conversations listed, read, pinned, opened or removed (main agent only) | [setup.md](references/setup.md), "Conversations and tabs" |
-| `add_source_type` | A device no source type can watch (main agent only), after trying the existing types | [sources.md](references/sources.md) |
+| `sources`, `subscribe`, `add_source` | Something watched, or a reaction when it happens | [sources.md](references/sources.md) |
+| `add_schedule` | Something at a set time: `cron`, `every`, `at` or `in` | [events.md](references/events.md) |
+| `add_mcp_server` | An MCP server, by `url` or `command`; they confirm, and its tools arrive next turn. "Unauthorized" needs a sign-in: `sign_in_mcp_server` (main agent), or Settings > MCP servers | [mcp.md](references/mcp.md) |
+| `add_skill` | A procedure remembered (a fact goes into `MEMORY.md`) | [agents.md](references/agents.md) |
+| `question`, `todo` | A decision with two to six options; a list of steps, sent whole each time | [setup.md](references/setup.md) |
+| `subagent` | A job split into independent tasks; many become a pool on your board | [boards.md](references/boards.md) |
+| `stop_program` | Ends a server left running, started with `background: true` on the shell tool | [coding.md](references/coding.md) |
+| `/goal`, `/swarm` | Work until something is reached, or a job led on a board. Only your owner types these | [agents.md](references/agents.md) |
+| `mcp__computer__` | Something in an app on their computer, if you have these tools | [computer.md](references/computer.md) |
+| `add_route` | A rule that acts on events without waking you | [events.md](references/events.md) |
 
-If something is the main agent's job and you are not the main agent, send your owner to it.
+Main agent only: `create_agent`; `update_agent`, `rename_agent`, `remove_agent` (removed for good,
+with its folder); `sign_in` to a model provider; `add_model_server`; `set_setting`;
+`conversations`; `add_source_type` for a device no type can watch
+([references/setup.md](references/setup.md)). Any other agent sends your owner to the main agent.
 
 ## The shortest working setup
 
@@ -155,56 +137,32 @@ pine init
 pine
 ```
 
-One agent, `main` (the main agent), with web search and a browser, and the terminal UI to talk
-to it (or the Pine app: [references/desktop.md](references/desktop.md)). A new home has no model:
-sign in to a provider (`pine login <provider>`) or add a server of your own (`pine model add`); the
-first one becomes the default ([references/operations.md](references/operations.md), "Choosing a
-model").
+You get the main agent, `main`, with web search and a browser, in the terminal UI (or the Pine app:
+[references/desktop.md](references/desktop.md)). Then connect a model: `pine login <provider>` or
+`pine model add` ([references/operations.md](references/operations.md), "Choosing a model").
 
-Telegram as a second way in: ask the main agent to "watch Telegram". The dialog asks for the
-bot's token; then you write to the bot and type the six-digit code it sends you into pine
-([references/source-types.md](references/source-types.md), "telegram").
-
-A second agent, a specialist the main agent can hand work to: ask the main agent to create one
-(`create_agent`, no restart). By hand: `~/.pine/agents/gonzo/agent.json` with
-
-```json
-{ "workspace": "~/dev/gonzo" }
-```
-
-and an `AGENTS.md` in that workspace whose first paragraph says what the agent is for (without
-`workspace`, pine makes `agents/gonzo/workspace`). Then:
-
-```bash
-pine check
-```
-
-```bash
-pine start
-```
-
-`main` sees `gonzo` in its list of agents and can `delegate` to it. `pine events -f` shows
-everything as it happens.
+For Telegram, ask the main agent to "watch Telegram", give the bot's token, write to the bot and
+type the six-digit code it sends into pine ([references/source-types.md](references/source-types.md),
+"telegram"). For a second agent, ask the main agent to create one
+([references/agents.md](references/agents.md), "Creating an agent").
 
 ## Vocabulary
 
 | Term | Meaning |
 |---|---|
-| event | One record in the log: topic, payload, source, trust, cause |
-| topic | Slash-separated name, matched with `+` (one level) and `#` (the rest) |
+| event | A record in the log: topic, payload, source, trust, cause |
+| topic | A slash-separated name, matched with `+` (one level) and `#` (the rest) |
+| source | Reports events from outside; runs while something is subscribed, or always with `"start": "always"` |
+| subscription | A conversation listening to a source |
 | route | A rule in `pine.json` that reacts to topics |
-| source | A named thing that reports events from outside (a folder, an MQTT broker, a web address, a Telegram bot). It runs while something is subscribed to it, or always with `"start": "always"` |
-| subscription | A conversation of an agent listens to a source: each event wakes it there |
-| schedule | Something done at a time: at set times, every so often, or once |
-| task | One piece of work for one agent, with a status and a result |
-| session | A conversation of one agent with its history; also "conversation". `new` is one-off |
-| sub-agent | A copy of an agent that does one task in an empty conversation and returns its answer |
-| board | The shared tasks and notes of one job; a pool is a `subagent` call that works through them |
-| goal | An objective set with `/goal`: the agent is called again until a judge says it is met |
-| swarm | A job set with `/swarm`: the agent leads sub-agents on its board until it is done and checked |
-| owner | You. Content is "owner" only when it came through a channel that authenticated you |
-| untrusted | Everything else: data that may contain instructions it has no right to give |
-| tainted | A session that has read outside content (a web page, an MCP result, an untrusted task) |
+| schedule | Something done at set times, every so often, or once |
+| task | One piece of work for one agent |
+| session | A conversation with its history; `new` is one-off |
+| sub-agent | A copy of an agent that does one task in an empty conversation |
+| board | The shared tasks and notes of one job |
+| goal, swarm | `/goal`: called again until a judge says it is met. `/swarm`: the agent leads sub-agents on a board |
+| owner | You, through a channel that authenticated you. Everything else is untrusted |
+| tainted | A session that has read outside content |
 | approval | Your yes or no to one tool call |
-| mode | How much an agent does without asking and how far it reaches: `safe`, `auto`, `manual`, `bypass`, with `plan` on top ([references/security.md](references/security.md), "Modes: how much an agent does without asking") |
-| extension | A pi extension: pi's plug-in format, usable in pine sessions |
+| mode | How much an agent does without asking: `safe`, `auto`, `manual`, `bypass`, with `plan` on top |
+| extension | A pi plug-in, usable in pine sessions |

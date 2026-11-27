@@ -1,68 +1,57 @@
 # Recipe: a page as an agent's control panel
 
-How an agent makes a web page for its owner to use (a board to play on, switches for the lights,
-a form, a dashboard), and how each click reaches the agent. The owner clicks in the page in the
-agent's browser; what was clicked arrives as an event in the conversation where the page was
-made, and the agent answers by changing the page.
+An agent can make a web page for you: a game board, light switches, a form, a dashboard. You click
+in it in the agent's browser. Each click arrives as an event in the conversation that made the
+page, and the agent answers by changing the page.
 
 > Make tic tac toe in your browser. You are X, I am O. Tell me when I have won.
 
-It is three things pine has anyway, put together:
+The recipe combines three things pine has: a page and a small server that keeps running
+("Commands in the background" in [coding.md](coding.md)), a `stream` event source that listens to
+the server and wakes the agent ([source-types.md](source-types.md)), and the agent's browser
+([mcp.md](mcp.md), [desktop.md](desktop.md)).
 
-| Piece | What it is | Where it is described |
-|---|---|---|
-| The page and its server | Files in the agent's workspace, and a small program that serves them and keeps running | "Commands in the background" in [coding.md](coding.md) |
-| The way back | The server offers what the page reports as an event stream. A `stream` event source listens to it and wakes the agent | `stream` in [source-types.md](source-types.md) |
-| The window | The agent's browser. In the Pine app it is beside the conversation, at the right of the window; elsewhere `browser_show` puts it on the screen | [mcp.md](mcp.md), [desktop.md](desktop.md) |
-
-A click that only needs a fixed reaction (a decision shown, a value written) does not need the
-agent at all: a route with `run` on the stream source's events runs a script that writes
-`state.json`, in a fraction of a second, and the agent is not woken ([events.md](events.md),
-"Running a script"). Leave the conversation unsubscribed then.
+A click that needs only a fixed reaction doesn't need the agent: a route with `run` on the stream
+source's events runs a script that writes `state.json` ([events.md](events.md), "Running a
+script"). Then leave the conversation unsubscribed.
 
 ## The steps
 
-For the agent that is asked for such a page. Each step is a tool call it has.
+These steps are for the agent. Each is a tool call.
 
-1. **Write three files** into a folder of the workspace, for example `ui/`: `index.html` (the
-   page), `state.json` (what the page shows), `server.mjs` (below).
-2. **Network.** In `safe` and `manual` mode the shell has no network, and a server cannot
-   listen: it ends with `listen EPERM`. Ask for it once with `request_access` (`network: true`,
-   and say why). In `auto` and `bypass` mode nothing has to be asked.
-3. **Start the server in the background**: the `bash` tool with `background: true` and
-   `node ui/server.mjs`. It keeps running after the turn. Read its output file if the page does
-   not answer.
-4. **Listen to it**: `add_source` with `type: "stream"`, `options: { "url":
-   "http://127.0.0.1:4173/events" }`, a `description`, a `note` that says what to do when
-   something is pressed, and `throttle: "0s"`. The owner is asked once. With the note the
-   conversation is subscribed at once. Without `throttle: "0s"` a subscription ignores the
-   source for ten seconds after each event that woke the agent, and a click in that time is
-   lost: the owner presses a cell and nothing happens.
-5. **Show the page**: `browser_navigate` to `http://127.0.0.1:4173/` (the owner is asked once,
-   because the address is on this computer), then `browser_show`.
-6. **Play.** Each thing the owner presses arrives as an event `message` whose `value` is what
-   the page reported, for example `{ "cell": 4 }`. Answer by writing `state.json` anew: the
-   page looks at it every second and draws what it says.
+1. **Write three files** into a folder of the workspace, such as `ui/`: `index.html` (the page),
+   `state.json` (what the page shows) and `server.mjs` (below). The server listens on this
+   computer only. It serves the page and `state.json` at `/state`, takes what the page reports at
+   `POST /event`, and passes it on at `/events` as Server-Sent Events, one line of JSON per press.
+2. **Ask for the network.** In `safe` and `manual` mode the shell has no network, and the server
+   ends with `listen EPERM`. Ask once with `request_access` (`network: true`, and say why). In
+   `auto` and `bypass` mode, skip this.
+3. **Start the server in the background** with the `bash` tool, `background: true` and
+   `node ui/server.mjs`. It keeps running after the turn. If the page does not answer, read the
+   server's output file.
+4. **Listen to it** with `add_source`: `type: "stream"`, `options: { "url":
+   "http://127.0.0.1:4173/events" }`, a `description`, a `note` that says what to do on a press,
+   and `throttle: "0s"`. pine asks your owner once, and the `note` subscribes the conversation.
+   Without `throttle: "0s"`, the subscription ignores the source for ten seconds after each event
+   that woke the agent, and a click then is lost.
+5. **Show the page** with `browser_navigate` to `http://127.0.0.1:4173/`, then `browser_show`.
+   pine asks your owner once, because the address is on this computer.
+6. **Play.** Each press arrives as an event `message` whose `value` is what the page reported,
+   such as `{ "cell": 4 }`. Answer by writing `state.json` with your file tools. The page reads it
+   every second.
 
-**One port for everything.** Your owner's yes for the page is for one host and one port, so the
-page, its state and its event stream come from one server on one port, as below. A page that
-reaches for another port on this computer (a WebSocket server of its own, an API) is refused by
-the browser's guard: the request fails, and a WebSocket fails with `Establishing a tunnel via
-proxy server failed`. On the allowed port a WebSocket works. Use one port, or open the second
-address once with `browser_navigate` so that your owner is asked.
-
-| Name | What it is |
-|---|---|
-| `server.mjs` | The page's server: serves `index.html`, hands out `state.json` at `/state`, takes what the page reports at `POST /event` and passes it on at `/events` as Server-Sent Events. Listens on this computer only |
-| `state.json` | What the page shows. The agent changes the page by writing this file with its ordinary file tools; no browser tool and no network is needed for that |
-| `/events` | The address the `stream` source is given: one line of JSON for each thing that was pressed |
+**One port for everything.** Your owner's yes covers one host and one port, so serve the page,
+its state and its event stream from one server. The browser's guard refuses any other port on
+this computer, such as a WebSocket server of its own: the request fails, and a WebSocket fails
+with `Establishing a tunnel via proxy server failed`. A WebSocket on the allowed port works. For a
+second port, open its address once with `browser_navigate` so that pine asks your owner.
 
 ## The server
 
-The example is for Node. Where the shell has no `node` (the Pine app's pine brings its own, which
-a shell does not see), write the same in Python or whatever is there: `/events` answers with
-`content-type: text/event-stream` and writes `data: <one line of JSON>` and an empty line for
-each report.
+The example is for Node. If the shell has no `node` (the Pine app's pine brings its own, which a
+shell does not see), write the same in Python: `/events` answers with
+`content-type: text/event-stream` and writes `data: <one line of JSON>` and an empty line per
+report.
 
 ```js
 // server.mjs: serves the page, and passes on what the page reports as an event stream.
@@ -106,7 +95,7 @@ setInterval(() => {
 ## The page
 
 It draws what `state.json` says and reports what is pressed. This one is a board of nine
-cells; `state.json` for it is `{ "cells": ["", "", "", "", "", "", "", "", ""], "says": "Your move." }`.
+cells, and `state.json` for it is `{ "cells": ["", "", "", "", "", "", "", "", ""], "says": "Your move." }`.
 
 ```html
 <!doctype html>
@@ -145,19 +134,19 @@ cells; `state.json` for it is `{ "cells": ["", "", "", "", "", "", "", "", ""], 
 </script>
 ```
 
-Text from `state.json` is put on the page with `textContent`, never as HTML: what the agent
-writes there may repeat something it read elsewhere.
+The page sets text with `textContent`, never as HTML, because `state.json` may repeat something
+the agent read elsewhere.
 
 ## What to know
 
 | | |
 |---|---|
-| Where the events arrive | In the conversation that set the source up, as a message of pine's own that says it is an event, not the owner's words |
-| Outside content | What the page reports is outside content: the conversation is marked, and from then on pine asks before the agent sends something out ([security.md](security.md)). Anything on this computer that reaches the port can report, so a report is no proof that the owner pressed something |
-| A click that is not answered | Nearly always the subscription's throttle (ten seconds unless given), during which events are ignored and not kept. Subscribe again with `throttle: "0s"`. In the event log the click is there, and no turn followed it |
-| How many | A `stream` source passes on at most 30 reports a minute and drops the rest. For a page that is pressed more often, give `perMinute` in its options (up to 600) |
-| The agent's own clicks | What the agent does in the page with its browser tools is reported like the owner's clicks. Change the page through `state.json`; a page the agent clicks in itself has to tell the two apart |
-| The server keeps running | Listed under Running in the code pane, with its port; stopped there or with `stop_program`. Resetting or removing the conversation stops it, and removing the conversation removes its own source. A `stream` source whose server is gone says so where sources are listed, and reconnects when the server is back |
-| On Linux | A conversation that has read outside content cannot start a command in the background. Start the server before the first event arrives |
-| Other browsers | The page is an ordinary web page. It works in the agent's browser in the Pine app, in the window `browser_show` opens, and in your own browser on this computer |
-| A state that changes by itself | The same way round: an event from another source (a Zigbee hub over `mqtt`, a sensor) wakes the agent, the agent writes `state.json`, and the page shows the room as it is now |
+| Where the events arrive | In the conversation that set up the source, as pine's message saying it is an event, not your words |
+| Outside content | Reports are outside content: they mark the conversation, and pine then asks before the agent sends something out ([security.md](security.md)). Anything on this computer can report to the port, so a report does not prove that you pressed |
+| A click that is not answered | Nearly always the throttle (ten seconds unless set), which drops events. The event log shows the click with no turn after it. Subscribe again with `throttle: "0s"` |
+| How many | A `stream` source passes on at most 30 reports a minute. Raise `perMinute` in its options, up to 600 |
+| The agent's own clicks | They are reported like yours, so the agent changes the page through `state.json`, not by clicking |
+| The server keeps running | The code pane lists it under Running, with its port. Stop it there or with `stop_program`. Resetting or removing the conversation stops it, and removing also removes its source. While the server is gone, the source says so in its status, and it reconnects when the server is back |
+| On Linux | A conversation that has read outside content cannot start a background command, so start the server before the first event |
+| Other browsers | It is an ordinary page, which also works in your own browser on this computer |
+| A state that changes by itself | Another source's event (a Zigbee hub over `mqtt`, a sensor) can wake the agent, which writes `state.json`, and the page shows the room as it is |

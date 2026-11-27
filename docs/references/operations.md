@@ -1,21 +1,18 @@
 # Install and run
 
-How to install pine, start it, connect a model, keep it running and up to date, and what to do when
-something goes wrong. Every command in full: [commands.md](commands.md); the HTTP API for your own
-programs: [api.md](api.md).
+Every command is in [commands.md](commands.md), the HTTP API in [api.md](api.md).
 
 ## Requirements
 
 - macOS, Linux or Windows, with Node 24 or newer.
-- A model that supports tool calls: a hosted provider (sign in with `pine login`), or a model
-  server of your own with an OpenAI-compatible chat API (`pine model add`).
+- A model with tool calls: a hosted provider (`pine login`) or your own server with an
+  OpenAI-compatible chat API (`pine model add`).
 - For `safe` and `manual` mode, a sandbox: `sandbox-exec` on macOS, bubblewrap on Linux (`pine init`
-  installs it). Without one pine still runs: agents whose mode you did not choose work in `auto`,
-  an agent you set to `safe` has no shell, and `pine check` says so. Windows has no sandbox of
-  pine's (see "On Windows"). Modes: [security.md](security.md), "Modes: how much an agent does
-  without asking".
-- Optional, for the terminal UI: on Linux `xclip`, or `wl-copy` and `wl-paste` on Wayland, for copy
-  and paste; `ffmpeg` and a sound player for video and sound ([stack.md](stack.md)).
+  installs it), none on Windows. Without one, agents whose mode you did not choose work in `auto`,
+  an agent set to `safe` has no shell, and `pine check` says so ([security.md](security.md), "Modes:
+  how much an agent does without asking").
+- Optional for the terminal UI: `xclip` (or `wl-copy` and `wl-paste` on Wayland) for copy and paste
+  on Linux, `ffmpeg` and a sound player for video and sound ([stack.md](stack.md)).
 
 ## Install
 
@@ -23,26 +20,21 @@ programs: [api.md](api.md).
 npm install -g @pmndre/pine
 ```
 
-That puts `pine` on your PATH. Or install the Pine app for macOS, Linux or Windows: it carries
-pine and its Node, needs no npm, and can give your shell the `pine` command ([desktop.md](desktop.md),
-"Getting it").
-
-To work on pine itself, use a checkout: see [docs/dev/operations.md](../dev/operations.md).
+Or install the Pine app for macOS, Linux or Windows, which carries pine and its Node and can add
+`pine` to your shell ([desktop.md](desktop.md), "Getting it"). To work on pine itself:
+[docs/dev/operations.md](../dev/operations.md).
 
 ### On Windows
 
-Two ways; the Pine app ([desktop.md](desktop.md)) does either:
+The Pine app ([desktop.md](desktop.md)) sets up either way:
 
-- **pine in WSL**, the way to `safe` mode: a Linux on the same computer, with the Linux sandbox.
-  Install WSL once (`wsl --install` in a terminal as administrator, then restart). In the Pine
-  app, Settings > Environments lists the distributions; add one, and the app brings its pine
-  there and makes a home. For the sandbox run once, in a terminal:
-  `wsl --distribution Ubuntu --exec ~/.local/share/pine-app/bin/pine init` (it asks for your
-  password there). Windows folders are under `/mnt/c`.
-- **pine on Windows itself**, with npm or the Pine app. It needs
-  [Git for Windows](https://git-scm.com/download/win), whose bash is the agents' shell. There is
-  no sandbox: agents work in `auto` or `bypass` mode with your rights, and the code pane,
-  worktrees and undo are not there. A serial port cannot be read.
+- pine in WSL, for `safe` mode with the Linux sandbox. Install WSL once (`wsl --install` as
+  administrator, then restart) and add a distribution under Settings > Environments. For the
+  sandbox, run once: `wsl --distribution Ubuntu --exec ~/.local/share/pine-app/bin/pine init`.
+  Windows folders are under `/mnt/c`.
+- pine on Windows itself needs [Git for Windows](https://git-scm.com/download/win), whose bash is
+  the agents' shell. There is no sandbox: agents work in `auto` or `bypass` mode with your rights,
+  without the code pane, worktrees, undo or serial ports.
 
 ## First start
 
@@ -50,38 +42,25 @@ Two ways; the Pine app ([desktop.md](desktop.md)) does either:
 pine init
 ```
 
-- Copies the example home to `~/.pine` (or the folder you name): the main agent `main` with web
-  search, the browser and app control ([computer.md](computer.md)), an empty `models.json` and
-  `.env`. It overwrites nothing, so run it again after an update to get new example files.
-- On Linux it sets up the sandbox: installs bubblewrap (apt, dnf, yum, pacman, zypper or apk),
-  loads the AppArmor rule Ubuntu 24.04 and later need, and installs the browser's system
-  libraries (apt only). It shows the commands and asks once; they run with `sudo`. `--yes` skips
-  the question. Where it cannot (no `sudo`, a container without the rights) it says what would.
-- Downloads the Chromium build the browser tools drive (about 600 MB, once). If that fails,
-  everything else is set up; run `pine init` again.
+This copies the example home to `~/.pine` (or the folder you name): the main agent `main` with web
+search, the browser and app control, an empty `models.json` and `.env`. It overwrites nothing, so
+run it again after an update for new example files. On Linux it installs bubblewrap (apt, dnf, yum,
+pacman, zypper or apk), the AppArmor rule Ubuntu 24.04 and later need, and the browser's libraries
+(apt only), with `sudo` after one question (`--yes` skips it); where it cannot, it says what would.
+It also downloads Chromium for the browser tools (about 600 MB, once); if that fails, run it again.
 
 ```bash
 pine
 ```
 
-opens the terminal UI ([tui.md](tui.md)) and starts a daemon inside it, which stops when you quit.
-For a daemon that keeps running without a terminal:
-
-```bash
-pine check
-```
-
-```bash
-pine start
-```
-
-Then `pine` in another terminal attaches to it, or `pine send main "Say hello."` gives it a task.
-Ctrl-C stops `pine start`; `pine list` shows every daemon on this computer and `pine killall` stops
-them.
+This opens the terminal UI ([tui.md](tui.md)) with a daemon that stops when you quit. For a daemon
+that keeps running, run `pine check`, then `pine start` (Ctrl-C stops it). `pine` in another
+terminal attaches to it, `pine send main "Say hello."` gives it a task, `pine list` shows every
+daemon on this computer and `pine killall` stops them.
 
 ## Choosing a model
 
-A new home has no model: until you connect one, every agent says so. Sign in to a provider:
+A new home has no model. Sign in to a provider:
 
 ```bash
 pine login opencode-go
@@ -95,38 +74,31 @@ pine login anthropic
 pine login openai-codex
 ```
 
-The first asks for an API key (typed without echo); the other two open a browser sign-in for a
-Claude or ChatGPT subscription. Credentials go to `~/.pine/auth.json` (mode 600).
-`pine login <unknown>` lists every provider. Gemini is `google`, with an API key from Google AI
-Studio; there is no sign-in with a Gemini subscription (Gemini CLI, Antigravity).
+The first asks for an API key; the other two open a browser sign-in for a Claude or ChatGPT
+subscription. Credentials go to `~/.pine/auth.json` (mode 600). `pine login <unknown>` lists every
+provider. Gemini is `google` with an API key from Google AI Studio; there is no sign-in with a
+Gemini subscription (Gemini CLI, Antigravity).
 
-The first model you connect becomes the default. Where the model in force cannot answer, pine
-takes the provider's usual one: at once when the daemon runs (`pine login` says which), else at
-the next start. To choose: `defaults.model` in `pine.json` (`"opencode-go/deepseek-v4.1-flash"`),
-or `/model` in the UI.
+After you sign in to a subscription or add a server, agents use the first model you connect as the
+default. If the model in force cannot
+answer, pine takes the provider's usual one, at once when the daemon runs (`pine login` says which). To choose, set `defaults.model` in `pine.json` (`"opencode-go/deepseek-v4.1-flash"`) or use
+`/model`.
 
 ### With a model server of your own
 
-llama.cpp, vLLM, LM Studio, Ollama and anything else with OpenAI's chat API, on this machine or
-another:
+For llama.cpp, vLLM, LM Studio, Ollama or anything with OpenAI's chat API:
 
 ```bash
 pine model add studio http://127.0.0.1:8080
 ```
 
-pine asks the server for its models, their context and whether they read pictures, and writes
-them into `models.json` ([configuration.md](configuration.md), "models.json"). A server that wants
-a key: pine asks for it without echo and keeps it in `.env`. A running pine has the models at
-once: `/model studio/<model>`.
-
-| Option | |
-|---|---|
-| `--context <tokens>` | The context, where the server does not say it (llama.cpp does) |
-| `--reasoning`, `--no-reasoning` | Overrides what the server says about a thinking model. On llama.cpp pine also maps each thinking level to one the model knows ([configuration.md](configuration.md), "Thinking levels") |
-
-`pine model list` shows the servers; `pine model remove <name>` takes one out with its key, unless
-an agent uses it. The main agent does the same when asked ([setup.md](setup.md), "Adding a model
-server").
+pine asks the server for its models, their context and whether they read pictures, and writes them
+into `models.json`. A key the server wants goes into `.env`. `--context <tokens>` sets the context
+where the server does not report it (llama.cpp does). `--reasoning` and `--no-reasoning` override
+what it says about thinking; on llama.cpp pine also maps thinking levels
+([configuration.md](configuration.md), "Thinking levels"). `pine model list` shows the servers, and
+`pine model remove <name>` removes one with its key unless an agent uses it. The main agent does
+both when asked ([setup.md](setup.md), "Adding a model server").
 
 For llama.cpp, start the server with tool calls on:
 
@@ -134,22 +106,19 @@ For llama.cpp, start the server with tool calls on:
 llama-server -m /path/to/model.gguf --jinja -c 65536 -np 2 --port 8080
 ```
 
-- `-np` (slots) should equal how many runs pine sends that model at once: its number in
-  `limits.models` (Settings > Models), else `limits.maxConcurrentRuns` (8). With `-np 2`, set 2.
-- The context is shared between slots: each run gets `c / np` tokens, which is what pine writes
-  down.
-- `--alias <name>` gives the model a plain name instead of the file's path.
+- `-np` (slots) should equal the runs pine sends that model at once: its `limits.models` entry
+  (Settings > Models), else `limits.maxConcurrentRuns` (8). Each slot gets `c / np` tokens.
+- `--alias <name>` gives the model a plain name.
 - `--slot-save-path <folder>` lets pine keep conversations that leave their slot
   ([agents.md](agents.md), "What the model server keeps").
 
 ## Running at login
 
-- macOS: [examples/launchd/com.pine.daemon.plist](../../examples/launchd/com.pine.daemon.plist), a
-  LaunchAgent; follow the steps at its top. Logs go to `~/.pine/data/pine.log`.
-- Linux: [examples/systemd/pine.service](../../examples/systemd/pine.service), a systemd user
-  service; follow the steps at its top. Logs: `journalctl --user -u pine`.
-
-Both run as you. To keep agents further from your files, run pine as a user of its own.
+macOS: the LaunchAgent [examples/launchd/com.pine.daemon.plist](../../examples/launchd/com.pine.daemon.plist),
+logs in `~/.pine/data/pine.log`. Linux: the systemd user service
+[examples/systemd/pine.service](../../examples/systemd/pine.service), logs with
+`journalctl --user -u pine`. The steps are at the top of each file. Both run as you; a user of its
+own keeps agents further from your files.
 
 ## In a container
 
@@ -157,127 +126,101 @@ Both run as you. To keep agents further from your files, run pine as a user of i
 docker run -it -v pine:/root/.pine node:24 bash
 ```
 
-Inside, `npm install -g @pmndre/pine` and `pine init`. The volume keeps pine's home when the
-container is replaced. Such a container cannot make a sandbox, so the container is the wall:
+Inside, run `npm install -g @pmndre/pine` and `pine init`; the volume keeps pine's home. Without the
+rights for a sandbox, the container is the wall:
 
 | In a container | Without the rights for a sandbox | With them |
 |---|---|---|
-| An agent whose mode you did not choose | `auto`: no sandbox, the container's files and network | The main agent `auto`, the others `safe` |
-| An agent you set to `safe` | No shell; its file tools work | Works in its sandbox |
-| A run an event from outside started | No shell | Works in the sandbox |
-| A `command` source | Not run | Runs in the sandbox |
+| An agent whose mode you did not choose | `auto`, with the container's files and network | Main agent `auto`, the others `safe` |
+| An agent set to `safe` | File tools, no shell | Works in its sandbox |
+| A run an outside event started | No shell | Sandboxed |
+| A `command` source | Not run | Sandboxed |
 
-For `safe` mode, start the container with the rights for a sandbox (they take away most of what
-Docker itself protects):
+The rights for a sandbox remove most of Docker's own protection:
 
 ```bash
 docker run -it --cap-add SYS_ADMIN --cap-add NET_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined -v pine:/root/.pine node:24 bash
 ```
 
-`pine init` then installs bubblewrap and the browser's libraries, and names any flag that is
-missing. What each flag is for: [security.md](security.md), "On Linux".
+`pine init` then names any missing flag ([security.md](security.md), "On Linux").
 
 ## Updating
 
-```bash
-pine update
-```
-
-brings pine up to date and fetches what the new version needs (the browser only when its version
-changed), then lists what changed, version by version. `pine update --check` only says whether
-there is something newer. How it updates depends on how pine was installed, which `pine version`
-says:
+`pine update` brings pine up to date, fetches what the new version needs (the browser only when its
+version changed), and lists what changed.
+`pine update --check` only looks. It depends on how pine was installed (`pine version` says):
 
 | Installed | `pine update` |
 |---|---|
-| with `npm install -g` | Installs the newest version with npm |
-| as a checkout | `git pull --ff-only`, then `npm install`. Changes nothing if commits or changes of yours are in the way |
-| as a dependency in a project | Says what to run there; the project decides the version |
-| with the Pine app | Says whether there is a newer version. The app updates itself, and its pine with it ([desktop.md](desktop.md), "A newer version") |
+| with `npm install -g` | Installs the newest version |
+| as a checkout | `git pull --ff-only` and `npm install`, unless your commits or changes are in the way |
+| as a project dependency | Says what to run there |
+| with the Pine app | Says whether there is a newer version; the app updates itself ([desktop.md](desktop.md), "A newer version") |
 
-A running pine keeps the old version until it is restarted: quit and reopen the terminal UI, or
-restart the daemon (as a LaunchAgent: `launchctl kickstart -k gui/$(id -u)/com.pine.daemon`). Your
-home is not touched; run `pine init` to get example files that are new.
+A running pine keeps the old version until you restart it (as a LaunchAgent:
+`launchctl kickstart -k gui/$(id -u)/com.pine.daemon`). Your home is not touched.
 
 ### Trying a version before it is released
 
-Previews of the next release are published to npm under the tag `next`, as versions like
-`0.40.0-next.3` (the third preview of 0.40.0).
+Previews are on npm under the tag `next` (`0.40.0-next.3`).
 
 | | |
 |---|---|
 | `npm install -g @pmndre/pine@next` | Install the newest preview |
 | `npm install -g @pmndre/pine` | Back to the last release |
-| `pine update --next` | Follow previews from now on: installs the newest preview, or the release when that is newer |
-| `pine update --release` | Follow releases again. An installed preview stays until the next release |
+| `pine update --next` | Follow previews (or a newer release) |
+| `pine update --release` | Follow releases again; a preview stays until the next release |
 
-A pine installed from `@next` follows previews by itself, and `pine version` then says "follows
-previews". A checkout follows its branch instead, and the Pine app has releases only.
+A pine installed from `@next` follows previews by itself (`pine version` says "follows previews"). A checkout follows its branch; the Pine
+app has releases only.
 
 ## Day to day
 
-- **What is happening:** `pine events -f`; `--topic "agent/#"` for agents only. Tool calls show
-  live on `agent/<id>/tool`.
-- **Why did it answer that?** `pine task <id>`: the prompt as received, the tool calls, the
-  result. The full transcript is the newest `.jsonl` in `~/.pine/agents/<id>/sessions/<session>/`.
-- **Stuck:** `pine status`, then `pine cancel <id>`.
-- **Changing things:** sources, MCP servers, schedules, subscriptions, agents and instructions
-  need no file edit: ask an agent ([setup.md](setup.md)). After editing `pine.json` or an
-  `agent.json` by hand, run `pine check` and restart; queued tasks survive.
-- **Back up** the home: `data/pine.db` holds events and tasks, `agents/*/sessions` the
-  conversations. Workspaces are wherever you put them.
+- `pine events -f` (or `--topic "agent/#"`) shows what happens; tool calls are on `agent/<id>/tool`.
+- `pine task <id>` shows a task's prompt, tool calls and result. The full transcript is the newest
+  `.jsonl` in `~/.pine/agents/<id>/sessions/<session>/`.
+- `pine status`, then `pine cancel <id>`, for a stuck task.
+- Ask an agent to change sources, MCP servers, schedules, agents or instructions
+  ([setup.md](setup.md)). After editing `pine.json` or `agent.json` by hand, run `pine check` and
+  restart; queued tasks survive.
+- Back up the home: `data/pine.db` (events, tasks) and `agents/*/sessions` (conversations).
 
 ## Coming from OpenClaw
 
 | OpenClaw | pine |
 |---|---|
-| Agents in `openclaw.json` with `workspace-*` folders | A folder per agent under `agents/`; `workspace` points at the repository |
-| Telegram `bindings` | A `telegram` source the agent sets up when asked, and subscribes to |
-| `SOUL.md`, `AGENTS.md`, `TOOLS.md`, `MEMORY.md` | The same names in the agent's workspace |
-| `USER.md`; a `TOOLS.md` or `AGENTS.md` copied into every workspace | One `USER.md`, `TOOLS.md` and `AGENTS.md` in pine's home for all agents, kept by the main agent |
-| `IDENTITY.md`, `HEARTBEAT.md`, daily memory files | Not read. Fold what matters into `SOUL.md`, `AGENTS.md` or `MEMORY.md` |
-| Cron jobs | A schedule: ask the agent ("every morning at seven ..."), or write it under `schedules` with a `task` |
-| Heartbeat | An event source that wakes the agent when something happens; polling (`http`, `command`) costs no model turn. Otherwise a schedule with `every` whose task ends in "reply NO_REPLY if nothing needs attention" |
-| `/hooks/*` mappings | A `webhook` source the agent subscribes to, or `http.hooks` plus a route |
-| Extensions that watch something and message Telegram | An event source the agent subscribes to, and the `send` tool |
-| Skills | Skills, same format |
+| Agents in `openclaw.json` with `workspace-*` folders | A folder per agent under `agents/`, `workspace` pointing at the repository |
+| Telegram `bindings` | A `telegram` source the agent sets up and subscribes to |
+| `SOUL.md`, `AGENTS.md`, `TOOLS.md`, `MEMORY.md` | The same, in the agent's workspace; `USER.md` and shared `AGENTS.md`, `TOOLS.md` in pine's home |
+| `IDENTITY.md`, `HEARTBEAT.md`, daily memory files | Not read; fold them into `SOUL.md`, `AGENTS.md` or `MEMORY.md` |
+| Cron jobs, heartbeat | A schedule, or an event source that wakes the agent when something happens (polling with `http` or `command` costs no model turn) |
+| `/hooks/*` mappings | A `webhook` source, or `http.hooks` plus a route |
+| Extensions that message Telegram, skills | An event source plus the `send` tool; skills in the same format |
 
 ## Problems
 
-For routes and schedules see [events.md](events.md), "When nothing happens"; for sources,
-[sources.md](sources.md), "When nothing happens".
-
-| Symptom | Cause and fix |
+| Symptom | Fix |
 |---|---|
-| `pine.json not found` | Wrong home. Pass `--home` or set `PINE_HOME`. |
-| `no daemon answers on http://127.0.0.1:7463` | The daemon is not running, or `http.port` in this home differs. |
-| The UI says "reconnecting…" | The daemon stopped. Start it again; the UI picks it up. |
-| `No model yet` on the first message | Connect a model: `pine login <provider>`, Settings > Models in the Pine app, or `pine model add`. The first becomes the default. |
-| `model "x/y" is not defined in models.json` | `defaults.model` or an agent's `model` is not a known `provider/id`. `/model` lists what there is. |
-| A task fails with 401 or "API key" | The credential is missing or expired: `pine login <provider>` again. |
-| An agent's model "cannot answer" because the `claude` command is missing | Its model is `dev/…`, which runs through `claude -p`. Install Claude Code or choose another model. |
-| A model of your own server is missing from `/model` | The server loaded it after it was added to pine: have the main agent add it (`add_model`, [setup.md](setup.md), "Setting up a model"). Or `models.json` names a key that is not in `.env`: `pine check` lists it under "Model notes". |
-| `pine model add` says "no model server answers" | Nothing listens there, or it is not reachable (firewall, VPN). `curl <address>/v1/models` shows what the server says. |
-| A task fails with a connection error | The model server is down or `baseUrl` is wrong: `curl <baseUrl>/models`. |
-| A task fails after minutes with a timeout | The model stopped streaming (`limits.modelStreamIdleMs`) or was slow to start (`limits.modelHeadersTimeoutMs`); raise them for a slow model. |
-| An answer starts late: the model reads the whole conversation again after you switched tab or conversation, or after a restart | The model server kept nothing of it. On llama.cpp give the server enough slots (`-np`) and `--slot-save-path` (`limits.slotPages`); a scheduler that stops the model must save the slots. See [agents.md](agents.md), "What the model server keeps". |
-| The first answer in a new conversation takes long; the tools take many tokens of the prompt | The model reads every tool's declaration first. On llama.cpp `limits.warmSlots` has an idle slot read it ahead of time. See [agents.md](agents.md), "How tools are declared". |
-| The first answer after a pause is slow | The session was closed after `idleMs` and is resumed; MCP servers start again. |
-| The browser tools fail with "Executable doesn't exist", or the app says the browser is not there | Run `pine browser-install` (or `pine init`). `pine check` says so; the Pine app fetches it from Settings > General. |
-| The browser cannot open `localhost`, or a page says "not reachable from the browser" | A local address needs your yes: the agent opens it with `browser_navigate` and you are asked ([mcp.md](mcp.md), "Local addresses"). A server the agent started also needs network access for its shell. |
-| A page in the agent's browser cannot open a WebSocket or load from this computer: `Establishing a tunnel via proxy server failed` | A yes is for one host and port: `localhost:8100` does not open `localhost:8101`. Serve everything from one port, or have the agent open the other address once with `browser_navigate` ([mcp.md](mcp.md), [interfaces.md](interfaces.md)). |
-| The agent says macOS does not let pine operate apps or take pictures of the screen | System Settings > Privacy & Security > Accessibility (and Screen & System Audio Recording): switch on the app pine runs in. See [computer.md](computer.md). |
-| The agent has no tools to click or type in apps | App control needs `auto` or `bypass` mode, your own conversation, and macOS, Windows or Linux with X11. `pine check` says why under `apps`. See [computer.md](computer.md). |
-| The agent keeps asking for approval | It is in `manual` mode (`pine mode <agent> auto`, or the mode in the UI's bottom bar), or the tool is on its `approve` list, or the conversation read outside content and wants to send something out: "Always here" covers that tool for the conversation; `pine reset` starts a clean one. See [security.md](security.md), "What asks you". |
-| Why am I asked before `sudo` or a force push? | Those are critical actions, asked in every mode but `bypass`. See [security.md](security.md), "What asks you". |
-| An approval `request_access` comes up although the agent never requested access | pine requested it for the agent: a file tool or a shell command needed a file or folder outside the agent's sandbox, or the network. The `for:` line names the call. A yes holds for the conversation, and so does a no. See [security.md](security.md), "When a call needs something outside: pine asks you". |
-| The agent says a file is "not permitted" | It is outside what the agent reaches. Agents in `safe` mode have their workspace; `pine mode <agent> auto` gives your account. pine's home is closed in every mode. To open a folder for good: `sandbox.read`, `sandbox.write`. |
-| "No such file" for a folder in your home that exists (`~/Documents/scans`) | In the sandbox `~` is the agent's own home (`sandbox/<id>/`). pine asks for the folder when the path is written out; otherwise give the agent the full path. |
-| `kill: Operation not permitted` for a program the agent started | In the sandbox each command has its own and cannot signal another's programs. The agent's `stop_program`, or `■ stop` under Running in the code pane, works in every mode. |
-| `git` complains about identity | In the sandbox the shell has its own empty home: `git config --global user.name ...` once through the agent, or per repository. |
-| A command needs the network | `sandbox.network: true` for that agent, or an MCP `commands` tool for that one command. |
-| A source reported and the agent was not woken, now and then | The subscription's throttle: after an event that woke the agent, its source is ignored for ten seconds (not for one that talks to the agent, such as Telegram). Subscribe with `throttle: "0s"` (`pine subscribe ... --throttle 0s`) where every event counts. |
-| The Telegram bot does not react | `pine sources`: is it running and is a conversation subscribed? A new bot waits to be paired: write to it and type the code it sends into pine's question. Otherwise another program reads the same bot token. |
-| An event arrives but no task starts | See [events.md](events.md), "When nothing happens" (routes), and [sources.md](sources.md), "When nothing happens" (subscriptions). |
-| The agent stops after every step and asks whether to go on | That is how a turn ends. Give the conversation a goal: type `/goal <what should be reached>` in the terminal UI or the Pine app ([agents.md](agents.md), "Goal mode"). |
-| A goal is paused with "gave no verdict" | The judge did not answer in time (`limits.goalJudgeTimeout`) or not with MET, CONTINUE or BLOCKED. `/goal resume`; if it recurs, give the judge a model that keeps to a format (`defaults.judge`). |
+| `pine.json not found` | Wrong home: pass `--home` or set `PINE_HOME`. |
+| `no daemon answers on http://127.0.0.1:7463` | The daemon is not running, or `http.port` differs. A UI saying "reconnecting…" reconnects once it runs. |
+| `No model yet`, or `model "x/y" is not defined in models.json` | Connect a model (`pine login`, `pine model add`, Settings > Models), or fix `defaults.model` or the agent's `model`. |
+| A task fails with 401, "API key" or a connection error | Run `pine login <provider>` again, or check the server with `curl <baseUrl>/models`. |
+| An agent's model "cannot answer" because the `claude` command is missing | Its model is `dev/…`, which runs `claude -p`. Install Claude Code or pick another model. |
+| A model of your own server is missing from `/model` | Have the main agent add it (`add_model`, [setup.md](setup.md), "Setting up a model"), or check "Model notes" in `pine check` for a missing key. |
+| `pine model add` says "no model server answers" | Nothing listens there, or a firewall or VPN is in the way. |
+| A task fails after minutes with a timeout | Raise `limits.modelStreamIdleMs` or `limits.modelHeadersTimeoutMs` for a slow model. |
+| An answer starts late: the model reads the whole conversation again after you switch tab, or the first answer in a new conversation takes long | On llama.cpp, give the server enough slots (`-np`), `--slot-save-path` and `limits.warmSlots` ([agents.md](agents.md), "What the model server keeps"). After `idleMs` a session closes, and its MCP servers start again. |
+| The browser tools fail with "Executable doesn't exist", or the app says the browser for the web tools is not on this computer | Run `pine browser-install` (`pine check` says so), or fetch it in the Pine app under Settings > General. |
+| The browser cannot open `localhost`, or a page cannot open a WebSocket: `Establishing a tunnel via proxy server failed` | A local address needs your yes, for one host and port: serve from one port, or have the agent open the other with `browser_navigate` ([mcp.md](mcp.md), "Local addresses"). A server the agent started also needs network access for its shell. |
+| The agent has no tools to click or type in apps, or says macOS does not let it | App control needs `auto` or `bypass` mode, your own conversation, and macOS, Windows or Linux with X11 (`pine check` says why under `apps`). On macOS, switch on the app pine runs in under Privacy & Security > Accessibility and Screen & System Audio Recording ([computer.md](computer.md)). |
+| The agent keeps asking for approval, or asks before `sudo` or a force push | `manual` mode (`pine mode <agent> auto`), the `approve` list, or a send after outside content asks ("Always here" covers that tool for the conversation; `pine reset` starts a clean one). Critical actions ask in every mode except `bypass` ([security.md](security.md), "What asks you"). |
+| An approval `request_access` comes up although the agent never requested access | pine asks you for the agent when a call needs to read or write a folder outside its sandbox, or the network; the `for:` line names the call. Your yes or no holds for the conversation ([security.md](security.md), "When a call needs something outside: pine asks you"). |
+| The agent says a file is "not permitted", or "No such file" for a folder in your home | In `safe` mode an agent reaches its workspace, and `~` is its own home (`sandbox/<id>/`): give full paths, use `pine mode <agent> auto` for your account, or open folders with `sandbox.read` and `sandbox.write`. pine's home is closed in every mode. |
+| `kill: Operation not permitted` for a program the agent started | Use the agent's `stop_program`, or `■ stop` in the code pane. |
+| `git` complains about identity | The sandboxed shell has an empty home: set `git config` once through the agent. |
+| A command needs the network | `sandbox.network: true`, or an MCP `commands` tool. |
+| A source reported now and then without waking the agent | The subscription ignores a source for ten seconds after it woke the agent (not Telegram). Subscribe with `throttle: "0s"` (`pine subscribe ... --throttle 0s`). |
+| The Telegram bot does not react | Check `pine sources`, pair a new bot with the code it sends, and make sure no other program reads the same token. |
+| An event arrives but no task starts | See "When nothing happens" in [events.md](events.md) and [sources.md](sources.md). |
+| The agent stops after every step and asks whether to go on | Give it a goal: `/goal <what should be reached>` ([agents.md](agents.md), "Goal mode"). |
+| A goal is paused with "gave no verdict" | The judge missed `limits.goalJudgeTimeout` or its format: `/goal resume`, or set `defaults.judge`. |
