@@ -58,7 +58,7 @@ is used by hand.
 | Pack | `node scripts/extension.mjs` writes `build-extension/pine-extension-<version>.zip`: the folder without the manifest's `key` and without `PRIVACY.md` |
 | First upload | Developer console > New item > the zip. The item's id is in its address |
 | Tell pine | Add that id to `EXTENSION_IDS` (`mcp/chrome.ts`) and set `STORE` (`src/chrome.ts`) to `https://chromewebstore.google.com/detail/<id>`. Release pine: an installed pine registers the new id with the browsers at its next start |
-| Listing | The texts below, and at least one picture of 1280×800 without transparency (a page an agent works in, with its pointer). The privacy policy is `extension/PRIVACY.md`, by its address on GitHub |
+| Listing | The texts below, and at least one picture of 1280×800 without transparency (a page an agent works in, with its pointer). The privacy policy is `https://pine.pmnd.re/privacy/`: the text of `extension/PRIVACY.md` as a page of pine's website (`site/privacy/index.html` in pmndre/pine-website), since the store's check does not reach a file on GitHub. Change both together |
 | Review | Submit. `debugger` gets a closer look: days, sometimes weeks. The extension asks for no site (no host permission, no `scripting`, no `tabs`): what it does in a page, the pointer included, goes through the debugger, and the store's notice about broad host permissions stays away. Keep it so |
 | An update | Raise `version` in the manifest (and `PROTOCOL` in both files when a message changes meaning), pack, upload, submit |
 
