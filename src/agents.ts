@@ -2662,6 +2662,37 @@ export class AgentManager {
 			.map((t) => ({ agent: t.agent, session: t.session, task: t.id, asked: t.meta.asked! }));
 	}
 
+	/**
+	 * The owner's reply to a question that a source relayed (Telegram's reply to that message): the
+	 * owner's message in the conversation that asked, found by the question's task, whether the
+	 * question is still open or not. A bare number 1..n is that option's label; anything else goes as
+	 * written. `of` is the agent whose own source it came through: it answers that agent's questions
+	 * alone. False when there is no such question there.
+	 */
+	answerQuestion(question: { task: number; at: number }, text: string, o: { of?: string; via: string; reply: ReplyTarget; tainted?: string }): boolean {
+		const t = Number.isInteger(question.task) ? this.tasks.get(question.task) : undefined;
+		const asked = t?.meta.asked?.[question.at];
+		// Only a conversation the owner writes in: never a run from outside's own (~u), a one-off (_t) or one held to another level (~safe).
+		if (!t || !asked || /[~]|^_/.test(t.session) || (o.of !== undefined && t.agent !== o.of)) return false;
+		const said = text.trim();
+		if (!said) return false;
+		const n = /^\d+$/.test(said) ? Number(said) : 0;
+		const answer = asked.options && n >= 1 && n <= asked.options.length ? asked.options[n - 1].label : said;
+		this.submit({
+			agent: t.agent,
+			session: t.session,
+			prompt: `[Your owner answers your question "${truncate(asked.question, 200)}" through ${o.via}. Your answer is sent back there, so write it for that reader.]\n\n${answer}`,
+			shown: answer,
+			kind: "event",
+			trust: "owner",
+			tainted: o.tainted,
+			reply: o.reply,
+			label: `answer: ${truncate(asked.question, 60)}`,
+			whenBusy: "steer",
+		});
+		return true;
+	}
+
 	private finish(task: Task, status: TaskStatus, text: string, error: string | undefined, stats: Task["meta"]["stats"]): void {
 		const meta = { ...task.meta, stats };
 		this.tasks.update(task.id, { status, finished: Date.now(), result: text, error, meta });

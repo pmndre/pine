@@ -135,7 +135,7 @@ export async function startPine(opts: { home?: string; config?: PineConfig; log?
 	// eslint-disable-next-line prefer-const
 	let sources: SourceHost;
 	const router = new Router({ cfg, bus, state, manager: agents, complete, log: log.child("router"), mediaRoots: () => sources.mediaRoots });
-	sources = new SourceHost({ cfg, bus, kv, redactor, router, log: log.child("sources"), http: Boolean(cfg.http && opts.http !== false), approvals });
+	sources = new SourceHost({ cfg, bus, kv, redactor, router, log: log.child("sources"), http: Boolean(cfg.http && opts.http !== false), approvals, questions: agents });
 	agents.sources = sources;
 	agents.router = router;
 	router.start();

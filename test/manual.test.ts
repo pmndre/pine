@@ -55,6 +55,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["the agent asks me to pick several things, how do I tick more than one in the terminal", /^tui#when-the-agent-asks-you-something$/],
 		["the agent asked me a question in the terminal, can I answer with the number of an answer", /^tui#when-the-agent-asks-you-something$/],
 		["answer a question with several choices from telegram", /^source-types#telegram/],
+		["my schedule asked me something while I was away, how do I reply from my phone", /^source-types#telegram/],
 		["how do sub-agents know which of them looks at which file", /^boards(#a-pool-of-sub-agents)?$/],
 		["ten agents on one project: how do they share what they found", /^boards/],
 		["more than four sub-agents at once", /^boards#a-pool-of-sub-agents$/],
