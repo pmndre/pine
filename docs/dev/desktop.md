@@ -214,7 +214,7 @@ desktop/
     api.ts         the control API, typed
     App.tsx        the window: side bar, tab groups, dialogs for keys, updates and the browser
     dock.ts        a window's arrangement of tabs: a tree of splits and groups (no DOM)
-    ApprovalDialog.tsx, components/question-card.tsx  an approval; an agent's question
+    ApprovalDialog.tsx, components/question-card.tsx  an approval; the cards above the input (an agent's questions, from its turn; pine's own steps; a sign-in's choice)
     Palette.tsx, PickDialog.tsx  everything by name; a choice from a list
     Conversation.tsx, Composer.tsx, markdown.tsx  a conversation, the input, an answer drawn
     CodePanel.tsx  the side panel; Board.tsx its Board tab; Browser.tsx its browser

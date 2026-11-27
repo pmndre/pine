@@ -395,7 +395,7 @@ function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth
 			onDragEnd={() => (dragging = undefined)}
 		>
 			<SidebarMenuButton isActive={on} onClick={() => setOpenMobile(false)} className={cn(INDENT[Math.min(depth + inset, INDENT.length - 1)], c.tasks && "pr-16 group-has-data-[sidebar=menu-action]/menu-item:pr-16")} render={<ListboxItem value={c.session} label={s.titleOf(agent, c.session)} title={`${agent} · ${c.session} · ${kept}${c.branch ? ` · a branch of ${c.branch.from}` : ""}${c.worktree ? ` · in the worktree ${c.worktree.branch} of ${c.worktree.repo}` : c.folder ? ` · works in ${c.folder}` : ""}`} />}>
-				<span className="grid h-4 w-6 flex-none place-items-center">{tab?.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Pulse /> : tab?.unread ? <Badge className="size-2 p-0" /> : main || c.pinned ? <StarIcon className="text-faint" /> : depth || c.worktree ? <GitBranchIcon className="text-faint" /> : c.folder ? <FolderIcon className="text-faint" /> : <MessageSquareIcon className="text-faint" />}</span>
+				<span className="grid h-4 w-6 flex-none place-items-center">{tab && s.waits(tab) ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Pulse /> : tab?.unread ? <Badge className="size-2 p-0" /> : main || c.pinned ? <StarIcon className="text-faint" /> : depth || c.worktree ? <GitBranchIcon className="text-faint" /> : c.folder ? <FolderIcon className="text-faint" /> : <MessageSquareIcon className="text-faint" />}</span>
 				<span className="min-w-0 flex-1"><Title agent={agent} session={c.session} /></span>
 			</SidebarMenuButton>
 			{/* The badge is drawn over the button, so the button keeps the room for the time (stock pr-8 fits an action alone; the same selector as stock, so it takes the place of its pr-8). */}
@@ -451,7 +451,7 @@ function ConversationGroup({ agent, name, rows }: { agent: string; name: string;
 	const folded = s.folded.has(`${agent}:group:${name}`);
 	const drop = useDrop(agent, name);
 	const tabs = s.tabs.filter((t) => t.kind === "chat" && t.agent === agent && rows.some((c) => c.session === t.session));
-	const waits = tabs.some((t) => t.approvals.size > 0);
+	const waits = tabs.some((t) => s.waits(t));
 	const working = rows.some((c) => s.isBusy(agent, c.session)) || tabs.some((t) => t.busy);
 	const unread = tabs.some((t) => t.unread);
 	const count = rows.filter((c) => c.session !== "main" || c.tasks).length;
@@ -531,7 +531,7 @@ function Group({ a }: { a: AgentInfo }) {
 	const lineDrop = useDrop(a.id, null);
 	const looseDrop = useDrop(a.id, null);
 	const tabs = s.tabs.filter((t) => t.agent === a.id && t.kind === "chat");
-	const waits = tabs.some((t) => t.approvals.size > 0);
+	const waits = tabs.some((t) => s.waits(t));
 	const working = s.isBusy(a.id) || tabs.some((t) => t.busy);
 	const unread = tabs.some((t) => t.unread);
 	const pickFolder = async () => {
@@ -907,7 +907,7 @@ function TabFace({ item }: { item: string }) {
 	return (
 		<>
 			<span className="grid size-5 flex-none place-items-center">
-				{!tab ? (pane === "code" ? <PanelRightIcon /> : <RadarIcon />) : tab.approvals.size ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : tab.busy ? <Pulse /> : tab.unread ? <Badge className="size-2 p-0" /> : tab.kind === "events" ? <AudioLinesIcon /> : tab.kind === "settings" ? <SettingsIcon /> : tab.kind === "manual" ? <BookOpenIcon /> : tab.kind === "task" ? <ListIcon /> : <AgentAvatar agent={{ id: tab.agent, color: s.agent(tab.agent)?.color, main: s.agent(tab.agent)?.main }} size="sm" className="data-[size=sm]:size-5" />}
+				{!tab ? (pane === "code" ? <PanelRightIcon /> : <RadarIcon />) : s.waits(tab) ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : tab.busy ? <Pulse /> : tab.unread ? <Badge className="size-2 p-0" /> : tab.kind === "events" ? <AudioLinesIcon /> : tab.kind === "settings" ? <SettingsIcon /> : tab.kind === "manual" ? <BookOpenIcon /> : tab.kind === "task" ? <ListIcon /> : <AgentAvatar agent={{ id: tab.agent, color: s.agent(tab.agent)?.color, main: s.agent(tab.agent)?.main }} size="sm" className="data-[size=sm]:size-5" />}
 			</span>
 			<span data-slot="tab-name" className="flex-1 truncate">
 				{pane ? <PaneLabel which={pane} /> : tab!.kind === "events" ? "Events" : tab!.kind === "settings" ? "Settings" : tab!.kind === "manual" ? "Manual" : tab!.kind === "task" ? <>{tab!.agent} #{tab!.task}</> : tab!.session === "main" ? tab!.agent : <>{tab!.agent} · <Title agent={tab!.agent} session={tab!.session} /></>}
@@ -1504,7 +1504,7 @@ function Asking() {
 	if (!s.asking) return null;
 	const req = s.tabs.map((t) => t.approvals.get(s.asking!)).find(Boolean)?.req;
 	if (!req) return null;
-	// A question, and a sign-in's choice, has no dialog: its card is above the composer of its conversation.
+	// A sign-in's choice has no dialog: its card is above the composer of its conversation.
 	return isPick(req) ? null : <ApprovalDialog key={req.id} req={req} />;
 }
 

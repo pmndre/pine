@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Button } from "@/components/ui/button";
-import { QuestionCard, QuestionTrace } from "./question-card.tsx";
+import type { AskedQuestion } from "../api.ts";
+import { AskedInFull, AskedLines, QuestionCard, QuestionsCard, QuestionTrace } from "./question-card.tsx";
 
-// A question put to the owner, as it stands above the composer, and the line it folds into once answered.
+// A question put to the owner, as it stands above the composer, and the line it folds into once answered:
+// pine's own (QuestionCard: its setup steps, a sign-in's choice) and an agent's (QuestionsCard, from its turn).
 const meta = {
 	title: "Components/QuestionCard",
 	component: QuestionCard,
@@ -36,9 +38,33 @@ export const WithDescriptions: Story = {
 	},
 };
 
-/** One of several questions an agent asked together: where it stands among them. */
-export const OneOfSeveral: Story = {
-	args: { place: { at: 1, of: 2 } },
+const database: AskedQuestion = { question: "Which database?", header: "Database", options: [{ label: "the old one", description: "Nothing to move" }, { label: "the new one", description: "Faster, after a migration" }] };
+const colors: AskedQuestion = { question: "Which colors should the theme use?", header: "Theme", multiSelect: true, options: [{ label: "green" }, { label: "blue" }, { label: "red" }] };
+const name: AskedQuestion = { question: "What should the new project be called?" };
+
+/** An agent's question, as its turn asked it: the options, the first the one it would pick, and Send. Send posts the label as the owner's message. */
+export const AgentAsks: Story = {
+	render: () => <QuestionsCard questions={[database]} from="main asks" onSend={() => {}} />,
+};
+
+/** Several questions of one turn: one at a time, "1 / 3" at the top right, Previous, Skip and Next, Send on the last. A question without options says to answer by typing. */
+export const AgentAsksSeveral: Story = {
+	render: () => <QuestionsCard questions={[database, colors, name]} from="main asks" onSend={() => {}} />,
+};
+
+/** In a conversation that has read outside content: a quiet line says so. */
+export const AgentAsksAfterOutsideContent: Story = {
+	render: () => <QuestionsCard questions={[database]} from="main asks" outside onSend={() => {}} />,
+};
+
+/** An agent's questions in the thread: one line each while the card shows them or once answered, and in full while the card is folded away. */
+export const AgentAskedInThread: Story = {
+	render: () => (
+		<div className="flex flex-col gap-4">
+			<AskedLines questions={[database, colors]} />
+			<AskedInFull questions={[database, colors, name]} from="main asks" />
+		</div>
+	),
 };
 
 /** One of pine's own steps: a way back at the start of the actions row, before Later and No answer. */

@@ -22,7 +22,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { Item as Card, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { COMPOSER_QUESTION, ComposerCardSlot, QuestionCard, QuestionCardHost, QuestionTrace } from "@/components/question-card";
+import { AskedInFull, AskedLines, COMPOSER_QUESTION, ComposerCardSlot, QuestionCard, QuestionCardHost, QuestionsCard, QuestionTrace } from "@/components/question-card";
 import { Kbd } from "@/components/ui/kbd";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
@@ -379,8 +379,8 @@ export function Entry({ entry, agent }: { entry: TranscriptEntry; agent: string 
 /**
  * A request of the agent's, in the conversation (Confirmation): while it is open, an Item with
  * what it wants and why and its buttons; once answered, a line again. What needs typing (a secret)
- * opens the dialog. A question (or a sign-in's choice, `isPick`) is not drawn here while it is open: its card is above the composer
- * (`ComposerQuestion`), and it folds into a line here once answered.
+ * opens the dialog. A sign-in's choice (`isPick`) is not drawn here while it is open: its card is above the composer
+ * (`ComposerChoice`), and it folds into a line here once answered.
  */
 function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
 	const { req, state } = item;
@@ -437,37 +437,68 @@ function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
 }
 
 /**
- * The question that is open in a conversation, as a card inline above its composer: never a dialog
- * that opens by itself. One the owner hid ("Hide") is not shown; the line under the
- * conversation brings it back. It takes the keyboard as it comes only when the composer is empty,
- * so that it never takes what the owner is typing.
+ * A turn's questions in the conversation, by the rule of open questions (`openQuestions`): one line
+ * each while their card above the composer shows them; in full, read only, while the owner folded the
+ * card away; one line each again once the owner's next message (which follows) or the agent's next
+ * turn closed them.
  */
-function ComposerQuestion({ tab }: { tab: Tab }) {
-	const item = store.openQuestion(tab);
-	// Asked every time, so that a batch ends once nothing waits, a folded question included.
-	const place = store.questionPlace(tab, item?.req.id ?? "");
+function Questions({ item, tab }: { item: Extract<Item, { t: "questions" }>; tab: Tab }) {
+	useModel(tab);
+	const open = store.openQuestions(tab) === item;
+	const state = !open ? "closed" : store.shownQuestions(tab) === item ? "open" : "folded";
+	const questions = item.asked.filter(Boolean);
+	if (state === "folded") return <AskedInFull data-item="questions" data-state={state} questions={questions} from={`${item.agent} asks`} />;
+	return <AskedLines data-item="questions" data-state={state} questions={questions} />;
+}
+
+/**
+ * Whether the keyboard is free for a card that comes: nothing has it, or the composer has it with
+ * nothing typed. A card takes it only then, so that it never takes what the owner is typing.
+ */
+function keyboardFree(): boolean {
+	const field = document.activeElement;
+	return !field || field === document.body || (field instanceof HTMLTextAreaElement && Boolean(field.closest("[data-slot=composer]")) && !field.value.trim());
+}
+
+/**
+ * The open questions of a conversation's latest turn, as a card inline above its composer: never a
+ * dialog that opens by itself. What the card sends is the owner's message, as typed.
+ */
+function ComposerQuestions({ tab }: { tab: Tab }) {
+	const item = store.shownQuestions(tab);
+	if (!item) return null;
+	const questions = item.asked.filter(Boolean);
+	return (
+		<ScrollArea data-slot="composer-question" className={COMPOSER_QUESTION}>
+			<QuestionsCard
+				key={item.task}
+				questions={questions}
+				from={`${item.agent} asks`}
+				outside={store.taints.has(`${tab.agent}:${tab.session}`)}
+				autoFocus={keyboardFree() && Boolean(questions[0]?.options?.length)}
+				onSend={(text) => void store.answerQuestions(tab, text)}
+			/>
+		</ScrollArea>
+	);
+}
+
+/**
+ * A sign-in's choice that is open in a conversation, as a card inline above its composer. What is
+ * typed below goes as an ordinary message: words of the owner's would mean nothing to its flow.
+ */
+function ComposerChoice({ tab }: { tab: Tab }) {
+	const item = store.openChoice(tab);
 	if (!item) return null;
 	const { req } = item;
-	const options = req.options ?? (req.choices ?? []).map((label) => ({ label }));
-	const field = document.activeElement;
-	const free = !field || field === document.body || (field instanceof HTMLTextAreaElement && Boolean(field.closest("[data-slot=composer]")) && !field.value.trim());
-	// An agent's question takes what is typed below as the owner's own words; a sign-in's choice does
-	// not: words of the owner's would mean nothing to its flow, and go as an ordinary message.
-	const words = req.tool === "question";
+	const options = (req.choices ?? []).map((label) => ({ label }));
 	return (
 		<ScrollArea data-slot="composer-question" className={COMPOSER_QUESTION}>
 			<QuestionCard
 				key={req.id}
 				question={req.summary}
-				header={req.header}
 				from={`${req.agent} asks`}
 				options={options}
-				multiple={req.multiSelect}
-				recommended={words}
-				type={words ? (text) => (void store.answerInWords(tab, item, text), true) : undefined}
-				place={place}
-				placeholder={words ? `Answer ${req.agent}'s question in your own words…` : undefined}
-				autoFocus={free && options.length > 0}
+				autoFocus={keyboardFree() && options.length > 0}
 				onAnswer={(picked) => void store.answer(req, picked)}
 				onNoAnswer={() => void store.decide(req.id, false)}
 			/>
@@ -562,6 +593,8 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 			);
 		case "approval":
 			return <ApprovalCard item={item} />;
+		case "questions":
+			return <Questions item={item} tab={tab} />;
 		case "steps":
 			return <Steps items={item.items} />;
 		case "media":
@@ -1318,9 +1351,9 @@ export function Conversation({ tab }: { tab: Tab }) {
 			)}
 			<div className="flex min-h-0 flex-col px-4 pb-4">
 				<div className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-col gap-2">
-					{/* An agent's question comes first; pine's own step in "Onboarding" is there when none is open. */}
+					{/* What is asked comes first (a sign-in's choice, then the agent's questions); pine's own step in "Onboarding" is there when nothing is. */}
 					<QuestionCardHost.Provider value={slot}>
-						{above === "question" ? <ComposerQuestion tab={tab} /> : above === "setup" ? <SetupCard tab={tab} /> : null}
+						{above === "choice" ? <ComposerChoice tab={tab} /> : above === "questions" ? <ComposerQuestions tab={tab} /> : above === "setup" ? <SetupCard tab={tab} /> : null}
 					</QuestionCardHost.Provider>
 					<StatusLine tab={tab} />
 					{chat ? (

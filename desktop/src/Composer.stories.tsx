@@ -19,11 +19,11 @@ function Box({ draft = "", files = false, quotes = false, replying = false, outs
 		tab.quotes[0].reply = "Ask Northwind for the number today.\nCopy accounts in.";
 		tab.replying = 1;
 	}
-	store.later.delete("story-question");
 	if (hidden) {
-		const req = { id: "story-question", agent: "main", task: 1, tool: "question", summary: "Which shade?", why: "", expires: 0, options: [{ label: "green" }, { label: "blue" }] };
-		tab.approvals.set(req.id, tab.add({ t: "approval", req, state: "open" }));
-		store.later.add(req.id);
+		// The latest turn asked, and the owner folded the card away.
+		tab.roots.add(1);
+		tab.add({ t: "questions", task: 1, agent: "main", asked: [{ question: "Which shade?", options: [{ label: "green" }, { label: "blue" }] }] });
+		tab.folded = 1;
 	}
 	if (outside) store.taints.set("main:main", "a web page");
 	else store.taints.delete("main:main");

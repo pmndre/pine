@@ -573,7 +573,9 @@ export function ViewFrameSkeleton({ className }: { className?: string }) {
 function NeedsYou({ pick }: { pick: (s: Sel) => void }) {
 	const w = useWorld();
 	const asks = w.asks();
-	if (!asks.length) return null;
+	// A turn's questions are answered in its conversation: Answer opens it, where their card is.
+	const questions = w.questionsOpen();
+	if (!asks.length && !questions.length) return null;
 	return (
 		<div data-slot="needs-you" className="flex flex-none flex-col gap-1 border-b border-line-soft bg-warn-soft px-2 py-1.5">
 			{asks.slice(0, 3).map((j) => (
@@ -591,7 +593,22 @@ function NeedsYou({ pick }: { pick: (s: Sel) => void }) {
 					</ItemActions>
 				</Item>
 			))}
-			{asks.length > 3 ? <span className="px-3 text-xs text-muted-foreground">and {asks.length - 3} more</span> : null}
+			{questions.slice(0, Math.max(0, 3 - asks.length)).map((j) => (
+				<Item key={j.id} size="xs" className="py-1">
+					<ItemContent className="min-w-0">
+						<ItemTitle className="w-full min-w-0">
+							<AgentAvatar agent={{ id: j.agent, color: colorOf(j.agent), main: store.agent(j.agent)?.main }} size="sm" className="size-4" />
+							<button type="button" className="truncate text-start" onClick={() => pick({ k: "job", id: j.id })}>
+								<b>{j.agent}</b> asks you {j.questions === 1 ? "a question" : `${j.questions} questions`}
+							</button>
+						</ItemTitle>
+					</ItemContent>
+					<ItemActions>
+						<Button size="xs" onClick={() => void store.openTab(j.agent, j.session)}>Answer</Button>
+					</ItemActions>
+				</Item>
+			))}
+			{asks.length + questions.length > 3 ? <span className="px-3 text-xs text-muted-foreground">and {asks.length + questions.length - 3} more</span> : null}
 		</div>
 	);
 }

@@ -188,3 +188,24 @@ test("what a view asks the panel to show or open is checked against what the pan
 	assert.deepEqual(knownTarget(w, { board: 3, task: 99 }), { board: 3 }, "a task it does not have is left out");
 	assert.equal(knownTarget(w, { board: 9 }), undefined);
 });
+
+test("a turn's questions are asking until the conversation is written to again, after the turn ended too, and say none of their words", () => {
+	const w = new World();
+	w.setPlaces([{ id: "main", main: true, mode: "safe", description: "" }]);
+	const talk = { agent: "main", session: "main", root: 1, depth: 0 };
+	const batch = [
+		ev("agent/main/started", { ...talk, task: 1, kind: "prompt", prompt: "set it up" }),
+		ev("agent/main/tool", { ...talk, task: 1, phase: "start", tool: "question", subject: "", asked: { at: 0, question: `Which ${SECRET}?`, options: [{ label: "a" }, { label: "b" }] } }),
+		ev("question/asked", { agent: "main", session: "main", task: 1, at: 0, question: `Which ${SECRET}?`, outside: false }),
+		ev("agent/main/done", { ...talk, task: 1, status: "done" }),
+	];
+	w.take(batch);
+	const state = () => viewStateOf(w, { colorOf: () => "#336699", holdings: new Map(), dark: false });
+	assert.equal(state().work.find((x) => x.id === 1)?.asking, true, "the turn ended, and its question waits");
+	const happened = happeningsOf(batch, w, new Map());
+	assert.ok(happened.some((h) => h.k === "asked" && h.work === 1));
+	assert.ok(!JSON.stringify({ happened, state: state() }).includes(SECRET), "nothing of what was asked");
+	// The owner's next message is a turn of its own: the question is answered.
+	w.take([ev("agent/main/started", { agent: "main", session: "main", root: 2, depth: 0, task: 2, kind: "prompt", prompt: "a" })]);
+	assert.equal(state().work.find((x) => x.id === 1)?.asking, false);
+});

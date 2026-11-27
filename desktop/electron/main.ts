@@ -596,7 +596,7 @@ async function syncDaemonTabs(host: string | undefined, preferred: ManagedWindow
 	await callDaemon(s, "POST", "/ui/tabs", { tabs: union, active, code: preferred.layout?.code === true }).catch(() => {});
 }
 
-/** Recomputes OS Dock/taskbar badges from distinct open approvals across all connected environments. */
+/** Recomputes OS Dock/taskbar badges from what waits for the owner (approvals, open questions) across all connected environments. */
 function refreshBadges(): void {
 	const envCounts = new Map<string, number>();
 	for (const w of windows.values()) {
@@ -604,7 +604,8 @@ function refreshBadges(): void {
 		const envKey = w.host ?? "";
 		const streamCount = streams.get(envKey)?.approvals.size ?? 0;
 		const prev = envCounts.get(envKey) ?? 0;
-		envCounts.set(envKey, Math.max(prev, streamCount, streamCount > 0 ? 0 : w.badgeCount));
+		// A window counts its conversations that wait (approvals and open questions); the stream, the approvals of windows not told yet.
+		envCounts.set(envKey, Math.max(prev, streamCount, w.badgeCount));
 	}
 	let total = 0;
 	for (const n of envCounts.values()) total += n;

@@ -1,8 +1,8 @@
-import { CheckIcon, XIcon } from "lucide-react";
+import { CheckIcon, EyeIcon, MessageCircleQuestionIcon, XIcon } from "lucide-react";
 import { Trace, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
 import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import {
 	Questionnaire,
 	QuestionnaireActions,
@@ -11,11 +11,15 @@ import {
 	QuestionnaireChoices,
 	QuestionnaireDescription,
 	QuestionnaireItem,
+	QuestionnaireNext,
+	QuestionnairePrevious,
 	QuestionnaireProgress,
 	QuestionnaireSkip,
 	QuestionnaireSubmit,
 	QuestionnaireTitle,
 } from "@/components/ui/questionnaire";
+import { cn } from "@/lib/utils";
+import type { AskedQuestion } from "../api.ts";
 
 /**
  * A question once it is settled, folded into one line of the conversation: what was asked, and what
@@ -152,10 +156,10 @@ export class ComposerCardSlot implements QuestionCardHostValue {
  * and Enter, which sends what is picked. As stock, a pick is only a pick until Send, so that the owner
  * can change their mind ("2" then Enter is the quick way). What is pine's: "recommended" on the first
  * option of a single answer where the asker orders its options so (`recommended`). There is no field
- * for the owner's own words: the composer below is that (`type`, through the host). The same card
- * for an agent's `question` and for what pine asks itself.
+ * for the owner's own words: the composer below is that (`type`, through the host). The card for what
+ * pine asks itself (its setup steps, a sign-in's choice); an agent's questions are `QuestionsCard`.
  */
-export function QuestionCard({ question, header, from, options, multiple, recommended, autoFocus, actions, type, placeholder, place, onAnswer, onNoAnswer }: {
+export function QuestionCard({ question, header, from, options, multiple, recommended, autoFocus, actions, type, placeholder, onAnswer, onNoAnswer }: {
 	question: string;
 	/** A few words about the question, such as "Database", said with who asks. */
 	header?: string;
@@ -165,8 +169,8 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 	/** Several may be picked, and are sent together. */
 	multiple?: boolean;
 	/**
-	 * The first option is the one the asker would pick, and is marked so: an agent's `question` (the
-	 * recommended one first) and pine's own first card. Off for lists of what was found or offered.
+	 * The first option is the one the asker would pick, and is marked so: pine's own first card. Off
+	 * for lists of what was found or offered.
 	 */
 	recommended?: boolean;
 	/** Takes the keyboard as it is shown: the arrows then reach the options, and a digit answers. */
@@ -177,8 +181,6 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 	type?: (text: string) => boolean;
 	/** What the composer says while `type` takes what is typed. */
 	placeholder?: string;
-	/** Where this question stands among several asked together: stock `QuestionnaireProgress`, told the count, since the card holds one of them. */
-	place?: { at: number; of: number };
 	/** The answer: the numbers of the options picked, counted from 1, in the order shown. */
 	onAnswer: (picked: number[]) => void;
 	onNoAnswer?: () => void;
@@ -210,11 +212,6 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 				settle(e.currentTarget, new FormData(e.currentTarget).getAll("answer").map(Number).sort((a, b) => a - b));
 			}}
 		>
-			{place ? (
-				<QuestionnaireProgress aria-valuenow={place.at} aria-valuemax={place.of} aria-valuetext={`Question ${place.at} of ${place.of}`}>
-					Question {place.at} of {place.of}
-				</QuestionnaireProgress>
-			) : null}
 			<QuestionnaireItem ref={item} name="answer" multiple={multiple} aria-labelledby={title} onStatusChange={(status) => setTicked(status === "answered")}>
 				<QuestionnaireTitle id={title} className="whitespace-pre-wrap select-text">
 					{question}
@@ -242,6 +239,170 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 				</CardActions>
 			) : null}
 		</Questionnaire>
+	);
+}
+
+const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
+
+/** A question's few words and who asks, as its description says them. */
+const aboutOf = (q: AskedQuestion, from: string) => [q.header, from].filter(Boolean).join(" · ");
+
+/**
+ * What the questions' card sends, as the owner's message: for a question alone, the label picked (the
+ * ticks joined by ", "); for several, one line per question answered, "<question> <answer>". A
+ * question skipped, or one without options, adds nothing. `picked` holds the numbers of the options
+ * picked for each question, counted from 1.
+ */
+export function answerText(questions: AskedQuestion[], picked: number[][]): string {
+	const answers = questions.map((q, i) => (picked[i] ?? []).map((n) => q.options?.[n - 1]?.label).filter(Boolean).join(", "));
+	if (questions.length === 1) return answers[0] ?? "";
+	return questions.flatMap((q, i) => (answers[i] ? [`${oneLine(q.question)} ${answers[i]}`] : [])).join("\n");
+}
+
+/**
+ * The questions an agent's latest turn asked, inline above the composer of its conversation: shadcn's
+ * `Questionnaire` with one item per question, in the order they were asked, laid out flat as
+ * `QuestionCard` is. Each item: the question as its title, its few words and who asks as its
+ * description, its options as rows. Several go one by one with Previous, Skip and Next, and stock
+ * `QuestionnaireProgress` says where the owner is ("1 / 2"; its value text still "Question 1 of 2")
+ * at the top right of the item, on the title's line, where shadcn's Card example puts it in the
+ * header's corner; Send is on the last. A question alone has its options and Send. Send hands
+ * `onSend` one message (`answerText`), which goes as the owner's own: there is no "No answer" and no
+ * field for words, since what is typed in the composer below is always a message of its own. A
+ * question without options says to answer by typing. With `outside`, a quiet line says that the
+ * conversation has read outside content, which the questions may come from.
+ */
+export function QuestionsCard({ questions, from, outside, autoFocus, onSend }: {
+	questions: AskedQuestion[];
+	/** Who asks, such as "main asks". */
+	from: string;
+	/** The conversation carries the outside-content mark. */
+	outside?: boolean;
+	/** Takes the keyboard as it is shown: the arrows then reach the options, and a digit picks. */
+	autoFocus?: boolean;
+	onSend: (text: string) => void;
+}) {
+	const several = questions.length > 1;
+	const [current, setCurrent] = useState(0);
+	const [answered, setAnswered] = useState<boolean[]>([]);
+	const first = useRef<HTMLFieldSetElement>(null);
+	const id = useId();
+	// Only as it is shown: the turn goes on after it asked, and the card is drawn again while the owner types below.
+	const [focusFirst] = useState(autoFocus);
+	useEffect(() => {
+		// Without scrolling: in a short pane the card's slot would otherwise start scrolled, its top cut and faded.
+		if (focusFirst) first.current?.focus({ preventScroll: true });
+	}, [focusFirst]);
+	const lone = !several && !questions[0]?.options?.length;
+	return (
+		<Questionnaire
+			defaultItem="q0"
+			shortcuts="numbers"
+			className={cn(several && "relative")}
+			onItemChange={(name) => setCurrent(Number(name.slice(1)) || 0)}
+			onSubmit={(e) => {
+				e.preventDefault();
+				const form = new FormData(e.currentTarget);
+				const text = answerText(questions, questions.map((_, i) => form.getAll(`q${i}`).map(Number).sort((a, b) => a - b)));
+				if (text) onSend(text);
+			}}
+		>
+			{several ? (
+				<QuestionnaireProgress className="absolute end-0 top-0.5 min-w-0">
+					{current + 1} / {questions.length}
+				</QuestionnaireProgress>
+			) : null}
+			{questions.map((q, i) => (
+				<QuestionnaireItem key={i} ref={i === 0 ? first : undefined} name={`q${i}`} multiple={q.multiSelect} aria-labelledby={`${id}-${i}`} onStatusChange={(status) => setAnswered((a) => Object.assign([...a], { [i]: status === "answered" }))}>
+					<QuestionnaireTitle id={`${id}-${i}`} className={cn("whitespace-pre-wrap select-text", several && "pe-12")}>
+						{q.question}
+					</QuestionnaireTitle>
+					<QuestionnaireDescription>{aboutOf(q, from)}</QuestionnaireDescription>
+					{q.options?.length ? (
+						<QuestionnaireChoices>
+							{q.options.map((o, n) => (
+								<QuestionnaireChoice key={n} value={String(n + 1)}>
+									<span className="flex flex-wrap items-center gap-2">
+										<span className="font-medium" data-slot="question-card-label">{o.label}</span>
+										{/* The agent puts the option it would pick first: one option, so not on a question with several answers. */}
+										{n === 0 && !q.multiSelect ? <Badge variant="secondary">recommended</Badge> : null}
+									</span>
+									{o.description ? <QuestionnaireChoiceDescription>{o.description}</QuestionnaireChoiceDescription> : null}
+								</QuestionnaireChoice>
+							))}
+						</QuestionnaireChoices>
+					) : (
+						<QuestionnaireDescription>Answer it by typing in the box below.</QuestionnaireDescription>
+					)}
+				</QuestionnaireItem>
+			))}
+			{outside ? (
+				<p data-slot="questions-outside" className="flex items-center gap-1.5 text-muted-foreground">
+					<EyeIcon className="size-4 shrink-0" />
+					This conversation has read outside content: these questions may come from it.
+				</p>
+			) : null}
+			{lone ? null : (
+				<QuestionnaireActions>
+					{several ? (
+						<>
+							<QuestionnairePrevious size="sm" />
+							<QuestionnaireSkip size="sm" />
+							<QuestionnaireNext size="sm" />
+						</>
+					) : null}
+					<QuestionnaireSubmit size="sm" disabled={!answered[current]}>Send</QuestionnaireSubmit>
+				</QuestionnaireActions>
+			)}
+		</Questionnaire>
+	);
+}
+
+/**
+ * A turn's questions in the conversation, one line each, "Asked · <question>": while their card is
+ * open above the composer (which shows them in full), and once the owner's next message answered
+ * them or the agent's next turn left them behind (that message follows in the thread).
+ */
+export function AskedLines({ questions, ...props }: React.ComponentProps<typeof Trace> & { questions: AskedQuestion[] }) {
+	return (
+		<Trace {...props}>
+			{questions.map((q, i) => (
+				<TraceLine key={i}>
+					<TraceIcon><MessageCircleQuestionIcon /></TraceIcon>
+					<TraceTitle className="select-text" title={q.question}>Asked · {oneLine(q.question)}</TraceTitle>
+				</TraceLine>
+			))}
+		</Trace>
+	);
+}
+
+/**
+ * A turn's questions in full, read only, in the conversation while their card is folded away: each
+ * an Item with the question, its few words and who asks, and its options with what each means.
+ */
+export function AskedInFull({ questions, from, ...props }: React.ComponentProps<typeof ItemGroup> & { questions: AskedQuestion[]; from: string }) {
+	return (
+		<ItemGroup {...props}>
+			{questions.map((q, i) => (
+				<Item key={i} variant="outline" size="sm">
+					<ItemMedia variant="icon"><MessageCircleQuestionIcon /></ItemMedia>
+					<ItemContent>
+						<ItemTitle className="whitespace-pre-wrap select-text">{q.question}</ItemTitle>
+						<ItemDescription>{aboutOf(q, from)}</ItemDescription>
+						{q.options?.length ? (
+							<ol className="flex flex-col gap-1 select-text">
+								{q.options.map((o, n) => (
+									<li key={n}>
+										<span className="font-medium">{n + 1}. {o.label}</span>
+										{o.description ? <span className="text-muted-foreground"> · {o.description}</span> : null}
+									</li>
+								))}
+							</ol>
+						) : null}
+					</ItemContent>
+				</Item>
+			))}
+		</ItemGroup>
 	);
 }
 

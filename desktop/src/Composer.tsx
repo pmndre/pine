@@ -68,22 +68,24 @@ interface Suggestion {
 type ListKeyEvent = React.KeyboardEvent<HTMLTextAreaElement> & { preventBaseUIHandler: () => void };
 
 /**
- * While this conversation has a question of its own, a small button on the composer's top edge folds its card away
- * and brings it back: a disclosure, its chevron down while the card shows, up once it is folded. Folded, nothing says
- * the question, which the owner set aside: what they type meanwhile goes as an ordinary message, and the question is
- * closed without an answer (`submit`), so the agent goes on. With several, it is about the first; the others follow
- * as each is answered. The status line says nothing of it.
+ * While this conversation has open questions of its own (or a sign-in's choice, which comes first), a small button on
+ * the composer's top edge folds their card away and brings it back: a disclosure, its chevron down while the card
+ * shows, up once it is folded. Folded, the thread shows the questions in full, and what the owner types goes as an
+ * ordinary message, as it always does. (A folded sign-in's choice is closed without an answer by that message,
+ * `submit`, so that its flow goes on.) The status line says nothing of it.
  */
 function QuestionToggle({ tab }: { tab: Tab }) {
-	const open = store.openQuestion(tab);
-	const hidden = open ? undefined : store.hiddenQuestion(tab);
-	const question = open ?? hidden;
-	if (!question) return null;
-	const label = `${open ? "Hide" : "Show"} ${question.req.agent}'s question`;
+	const choice = store.openChoice(tab) ?? store.hiddenChoice(tab);
+	const questions = choice ? undefined : store.openQuestions(tab);
+	if (!choice && !questions) return null;
+	const open = choice ? choice === store.openChoice(tab) : Boolean(store.shownQuestions(tab));
+	const what = choice || questions!.asked.filter(Boolean).length < 2 ? "question" : "questions";
+	const label = `${open ? "Hide" : "Show"} ${choice?.req.agent ?? questions!.agent}'s ${what}`;
+	const toggle = () => (choice ? (open ? store.putOff(choice.req.id) : store.ask(choice.req.id)) : store.foldQuestions(tab, open));
 	return (
 		<HoverTooltip>
 			{/* Outline as stock, but its dark tint mixed into the page color: it sits on the composer's border, which a see-through fill would show. */}
-			<TooltipTrigger render={<Button variant="outline" size="icon-xs" className="absolute end-3 -top-3 dark:bg-[color-mix(in_oklch,var(--input)_30%,var(--background))] dark:hover:bg-[color-mix(in_oklch,var(--input)_50%,var(--background))]" aria-expanded={Boolean(open)} aria-label={label} onClick={() => (open ? store.putOff(open.req.id) : store.ask(question.req.id))} />}>
+			<TooltipTrigger render={<Button variant="outline" size="icon-xs" className="absolute end-3 -top-3 dark:bg-[color-mix(in_oklch,var(--input)_30%,var(--background))] dark:hover:bg-[color-mix(in_oklch,var(--input)_50%,var(--background))]" aria-expanded={open} aria-label={label} onClick={toggle} />}>
 				{open ? <ChevronDownIcon /> : <ChevronUpIcon />}
 			</TooltipTrigger>
 			<TooltipContent>{label}</TooltipContent>
@@ -256,8 +258,8 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 			set("");
 			return runSlash(value.slice(1), tab);
 		}
-		// The card above takes what is typed (an agent's question, in the owner's own words; pine's own
-		// step in "Onboarding" before a model answers): it does not wait behind the work, and is the card's.
+		// The card above takes what is typed (pine's own step in "Onboarding" before a model answers): it does
+		// not wait behind the work, and is the card's. An agent's questions take nothing: what is typed is a message.
 		if (value && above?.type?.(value)) return set("");
 		await store.submit(tab, value, whenBusy);
 	};

@@ -69,7 +69,7 @@ export interface Task {
 	error?: string;
 	parent?: number;
 	depth: number;
-	meta: { images?: unknown[]; label?: string; steered?: number; read?: number; compact?: boolean; chain?: string[]; stats?: Stats; trust?: string; quotes?: SentQuote[]; body?: string };
+	meta: { images?: unknown[]; label?: string; steered?: number; read?: number; compact?: boolean; chain?: string[]; stats?: Stats; trust?: string; quotes?: SentQuote[]; body?: string; /** The questions the turn asked its owner (`question`), in call order. */ asked?: AskedQuestion[] };
 }
 
 export interface TranscriptEntry {
@@ -186,6 +186,16 @@ export interface GoalInfo {
 	event?: string;
 }
 
+/** A question an agent asked its owner, as pine cleaned it (src/types.ts): a header of a few words, two to six options or none. */
+export interface AskedQuestion {
+	question: string;
+	header?: string;
+	/** The answers it offers, the recommended one first; none: the owner answers by typing. */
+	options?: Array<{ label: string; description?: string }>;
+	/** Several of `options` may be picked. */
+	multiSelect?: true;
+}
+
 export interface Approval {
 	id: string;
 	agent: string;
@@ -194,18 +204,12 @@ export interface Approval {
 	tool: string;
 	summary: string;
 	why: string;
-	/** When an unanswered request counts as no; absent for an agent's question, which waits until it is answered. */
+	/** When an unanswered request counts as no. */
 	expires?: number;
 	remember?: string;
 	holds?: string;
 	inputs?: Array<{ name: string; label: string; secret?: boolean }>;
 	choices?: string[];
-	/** An agent's question: the answers it offers, each with what it means, the recommended one first. */
-	options?: Array<{ label: string; description?: string }>;
-	/** Several of `options` may be picked. */
-	multiSelect?: boolean;
-	/** A few words over a question. */
-	header?: string;
 }
 
 export interface Todo {
@@ -473,6 +477,8 @@ export interface Status {
 	modes: Record<string, Mode>;
 	agents: string[];
 	approvals: number;
+	/** The questions of conversations whose latest turn asked and that nobody wrote to since. */
+	questions: number;
 	bypassWhenTainted: boolean;
 }
 

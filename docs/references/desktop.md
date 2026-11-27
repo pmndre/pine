@@ -309,23 +309,25 @@ Everything is also in the menus with its key. `⌘F` finds text in the conversat
 
 ### When the agent asks you something
 
-An agent's `question` tool ([setup.md](setup.md)) shows a card above the input, never a dialog that
-opens by itself. It lists the answers with their numbers and meanings; the agent's pick is marked
-`recommended`. A click, a digit, Space or the arrows pick an answer, which you can still change;
-**Send** or `↩` sends it. For `multiSelect`, tick and **Send**. The card takes the keyboard only while the input is empty.
+An agent's `question` tool ([setup.md](setup.md)) holds nothing up: you answer the agent's question
+with your next message. While its latest turn holds questions you have not answered, a card above
+the input shows them, never a dialog. It lists the answers with their numbers and meanings; the
+agent's pick is marked `recommended`. A click, a digit, Space or the arrows pick an answer, which you
+can still change; **Send** or `↩` sends it as your message. For `multiSelect`, tick and **Send**.
+The card takes the keyboard only while the input is empty.
 
 | | |
 |---|---|
-| **No answer** | The agent goes on with an assumption it names |
-| Several at once | When the agent asks several questions together, they come one after another, each saying where it stands ("Question 1 of 2") |
-| Fold | A small button on the input's top edge folds the card away (chevron down) and brings it back (chevron up, or `/approve`). It is there only while this conversation has a question, and with several it is about the first. Folded, a message you type goes as an ordinary message, and the question is closed without an answer, so the agent goes on |
-| Typing instead | A message typed instead of picking an answer answers in your own words, also to ask back ("what is the difference?"). A `/command` stays a command. If someone answered elsewhere meanwhile, it goes as an ordinary message |
-| Another conversation's question | Never answered from here; the line above the input offers **Go there** |
+| Several at once | The questions of one turn are one card: **Next**, **Previous**, **Skip**, and where you are ("1 / 2"). **Send** sends one message, a line per question answered ("Which database? sqlite") |
+| Typed instead of picking | A message typed instead of picking an answer is an ordinary message: your answer in your own words, a question back, or something else |
+| When it goes | At your next message, and when the agent's next turn begins; until then it comes back when you open the conversation again |
+| Fold | A small button on the input's top edge folds the card away (chevron down) and brings it back (chevron up); the conversation then shows the questions in full |
+| Outside content | When the conversation has read outside content, the card says so |
 
-An answered card folds into one line. An approval (a permission) opens a dialog. A sign-in that
-asks you to choose (the main agent's `sign_in`, such as Amazon Bedrock's "Bearer token" or "AWS
-profile") uses the same card, without `recommended` or own words; **No answer** stops it, and a key
-it needs is typed in the approval dialog.
+In the conversation each question is one line ("Asked · Which database?"). An approval (a
+permission) opens a dialog. A sign-in that asks you to choose (the main agent's `sign_in`, such as
+Amazon Bedrock's "Bearer token" or "AWS profile") uses the same card, without `recommended`; **No
+answer** stops it, and a key it needs is entered in the approval dialog.
 
 ### Dictating a message
 
@@ -484,7 +486,7 @@ client have no view.
 
 | | |
 |---|---|
-| On top | Each question an agent asks you now, with **Answer** |
+| On top | Each approval an agent waits for, and each conversation whose questions are open, with **Answer** |
 | The view | A click shows an agent or a piece of work below; a double click opens it |
 | What happened | Newest first, in plain words: what woke whom, what was handed on, who answered, what you were asked and said. Drag its top edge to resize |
 | Looking closer | The chosen agent (mode, work, conversations, recent work), piece of work (origin, mode, outside content, hand-offs, questions, steps with tokens; **Open**), board or task (text, state, result, notes) |

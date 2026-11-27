@@ -49,6 +49,10 @@ export interface Job {
 	calls: Array<{ tool: string; at: number; ms?: number; ok?: boolean }>;
 	/** What the owner is asked on its behalf, while it waits for the answer. */
 	ask?: { id: string; tool: string; summary: string };
+	/** How many questions this turn asked the owner (its `question` calls): open until the conversation is written to again (`asksOpen`). */
+	questions?: number;
+	/** The owner wrote to this work while it ran: what it asked is answered. */
+	told?: boolean;
 	error?: string;
 }
 
@@ -425,7 +429,7 @@ export class World {
 	 * Recent tasks, as `/tasks` lists them, newest first: the work that was there before the view
 	 * opened. What the live events already said about a task is kept.
 	 */
-	seed(tasks: Array<{ id: number; agent: string; session: string; kind: string; prompt: string; status: string; created: number; started?: number; finished?: number; parent?: number; depth: number; error?: string; event?: number; meta: { label?: string; chain?: string[]; root?: number; stats?: { tools: string[] } } }>): void {
+	seed(tasks: Array<{ id: number; agent: string; session: string; kind: string; prompt: string; status: string; created: number; started?: number; finished?: number; parent?: number; depth: number; error?: string; event?: number; meta: { label?: string; chain?: string[]; root?: number; stats?: { tools: string[] }; asked?: unknown[] } }>): void {
 		for (const t of [...tasks].sort((a, b) => a.id - b.id)) {
 			if (this.jobs.has(t.id) || t.status === "pending") continue;
 			const parent = t.parent !== undefined ? this.jobs.get(t.parent) : undefined;
@@ -447,6 +451,7 @@ export class World {
 				heard: Date.now() + this.skew,
 				finished: doing === "thinking" ? undefined : (t.finished ?? t.started ?? t.created),
 				tools: t.meta.stats?.tools.length ?? 0,
+				...(t.depth === 0 && t.meta.asked?.length ? { questions: t.meta.asked.length } : {}),
 				error: t.error,
 			});
 			this.now = Math.max(this.now, t.finished ?? t.started ?? t.created);
@@ -629,6 +634,7 @@ export class World {
 		if (!job) return false;
 		job.heard = at;
 		if (kind === "steered") {
+			job.told = true;
 			this.pulse("you", `agent:${agent}`, "said", at, job.id);
 			return true;
 		}
@@ -654,6 +660,13 @@ export class World {
 				job.subject = p.subject ? label(String(p.subject), 80) : undefined;
 				job.skill = job.tool === "read" ? /\/([a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md$/.exec(String(p.subject ?? ""))?.[1] : undefined;
 				if (job.doing !== "asking") job.doing = /(^|_)(delegate|subagent)$/.test(job.tool) ? "waiting" : "tool";
+				if (p.asked && job.depth === 0) {
+					job.questions = (job.questions ?? 0) + 1;
+					if (job.questions === 1) {
+						this.pulse(`agent:${agent}`, "you", "ask", at, job.id);
+						this.say(at, `${agent} asks you something`, { agent, job: job.id, tone: "ask" });
+					}
+				}
 			} else {
 				const call = [...job.calls].reverse().find((c) => c.ms === undefined && c.tool === String(p.tool ?? c.tool));
 				if (call) Object.assign(call, { ms: Math.max(0, job.heard - call.at), ok: p.ok !== false });
@@ -747,6 +760,21 @@ export class World {
 	/** Everything the owner is asked right now. */
 	asks(): Job[] {
 		return this.working().filter((j) => j.ask);
+	}
+
+	/**
+	 * Whether the questions a turn asked are open, by the rule the daemon and the conversation go by: it
+	 * is the latest turn of its conversation, and the owner has not written to it since it began.
+	 */
+	asksOpen(job: Job): boolean {
+		if (!job.questions || job.depth !== 0 || job.told) return false;
+		for (const j of this.jobs.values()) if (j.depth === 0 && j.id > job.id && j.agent === job.agent && j.session === job.session) return false;
+		return true;
+	}
+
+	/** The turns whose questions are open, oldest first. */
+	questionsOpen(): Job[] {
+		return [...this.jobs.values()].filter((j) => this.asksOpen(j)).sort((a, b) => a.started - b.started);
 	}
 
 	/** The stations work came in from, the owner first, then the clock, then the sources. */
