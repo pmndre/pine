@@ -1140,6 +1140,43 @@ test("a message steered into the work before the agent asks leaves the card open
 	assert.equal(await page.locator(QUESTIONS).count(), 0, "a message that came after the question answered it");
 });
 
+test("with the questions' card turned off in Settings > General, a question shows in full in the thread, with no card and no button; turned on again, its card is back", async () => {
+	const field = "[data-slot=composer] textarea";
+	const toggle = "[data-question-toggle]";
+	const cards = "[data-slot=settings-page] [data-find=question-cards] [role=switch]";
+	const prefs = () => JSON.parse(fs.readFileSync(path.join(home, "desktop-data", "prefs.json"), "utf8"));
+	await page.fill(field, mockMsg([{ tools: [asks("Which mug?", ["red", "white"])] }, { text: "mug asked" }], "ask a mug "));
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which mug?"), QUESTIONS, { timeout: 10_000 });
+	await sees(toggle);
+	await menu("settings");
+	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=General");
+	await sees(`${cards}[aria-checked=true]`);
+	await page.click(cards);
+	await sees(`${cards}[aria-checked=false]`);
+	for (let i = 0; i < 50 && prefs().questionCards !== false; i++) await new Promise((r) => setTimeout(r, 40));
+	assert.equal(prefs().questionCards, false);
+	await menu("settings");
+	await sees(asked("folded"));
+	assert.match(await page.textContent(asked("folded")), /Which mug\?[\s\S]*red[\s\S]*white/);
+	assert.equal(await page.locator(QUESTIONS).count(), 0);
+	assert.equal(await page.locator(toggle).count(), 0);
+	// Still open: the tab waits for the owner, and a typed message answers it.
+	await sees("[data-slot=tab][data-active] [data-slot=badge][data-variant=destructive]");
+	// On again, the open question has its card back.
+	await menu("settings");
+	await page.click(cards);
+	await sees(`${cards}[aria-checked=true]`);
+	await menu("settings");
+	await sees(QUESTIONS);
+	await sees(toggle);
+	await page.click(field);
+	await page.keyboard.type("the white one");
+	await page.keyboard.press("Enter");
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	await hears("the white one");
+});
+
 test("the questions' card says quietly that the conversation has read outside content, and only then", async () => {
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [asks("Which tray?")] }, { text: "tray asked" }], "ask a tray "));
 	await page.keyboard.press("Enter");

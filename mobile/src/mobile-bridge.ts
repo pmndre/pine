@@ -11,7 +11,7 @@ import { ORIGINS, type PagePrefs, type PinePlugin, type Platform } from "./plugi
 /** The nonce of a computer's announcement: 16 random bytes, base64url. */
 const NONCE = /^[A-Za-z0-9_-]{22}$/;
 
-const DEFAULTS: PagePrefs = { notify: false, updates: false, keepRunning: false };
+const DEFAULTS: PagePrefs = { notify: false, updates: false, keepRunning: false, questionCards: true };
 
 /** pmndre's page color (index.css), which the page draws with no theme: the system bars' until one is known. */
 const PMNDRE_BG = "#1b1e28";
@@ -102,11 +102,12 @@ export function mobileBridge(plugin: PinePlugin, platform: Platform): PageBridge
 			}),
 		// Checked as main.ts checks the owner's change; the machines are changed by their own methods only.
 		prefs: async (change: Record<string, unknown>) => {
-			const flag = (key: "notify" | "updates" | "keepRunning") => (typeof change[key] === "boolean" ? change[key] : prefs[key]);
+			const flag = (key: "notify" | "updates" | "keepRunning" | "questionCards") => (typeof change[key] === "boolean" ? change[key] : (prefs[key] ?? DEFAULTS[key]));
 			const next: PagePrefs = {
 				notify: flag("notify"),
 				updates: flag("updates"),
 				keepRunning: flag("keepRunning"),
+				questionCards: flag("questionCards"),
 			};
 			// The theme the page draws now, made safe as main.ts makes it; none: pmndre, nothing stored.
 			const look = "look" in change ? cleanLook(change.look) : prefs.look;

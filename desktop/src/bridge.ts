@@ -60,6 +60,8 @@ export interface Prefs {
 	names?: Record<string, string>;
 	notify: boolean;
 	updates: boolean;
+	/** Whether an agent's open questions get their card above the composer; off: the thread shows them in full, and the owner answers by typing. Absent: on. */
+	questionCards?: boolean;
 	/** Whether the app downloads a newer release and installs it on a restart or a quit (the desktop app's own; the others leave it out). */
 	autoUpdate?: boolean;
 	/** The theme the window was last drawn in (theme.ts), so that it opens in it; none: pmndre. */
