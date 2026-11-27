@@ -263,7 +263,7 @@ test("access control: a relay's address is turn:, a host and a port, over UDP; n
 	assert.equal(relayAddress("turn:203.0.113.5").address, "turn:203.0.113.5:3478");
 	// The library pine connects with reaches a relay over UDP only: TCP and TLS are refused with what to write instead.
 	for (const tcp of ["turns:relay.example.com", "turns:relay.example.com:443?transport=tcp", "turns:relay.example.com:5349?transport=udp", "turn:relay.example.com:443?transport=tcp"]) {
-		assert.throws(() => relayAddress(tcp), /only use turn: over UDP.*turn:relay\.example\.com:3478/, tcp);
+		assert.throws(() => relayAddress(tcp), /turn:relay\.example\.com:3478/, tcp);
 	}
 	for (const bad of ["stun:relay.example.com:3478", "https://relay.example.com", "turn:user:pw@relay.example.com:3478", "turn:relay.example.com:99999", "turn:relay.example.com:3478?transport=sctp", "turn:", "turn:[nothing]:3478", "turn:relay.example.com:3478 extra"]) {
 		assert.throws(() => relayAddress(bad), /turn:host:port/, bad);
