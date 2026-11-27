@@ -80,7 +80,7 @@ test("a source is npm, git or a file, and nothing git or npm could take for an o
 	assert.equal(kindOf("npm:pi-tools@1.2.3"), "npm");
 	assert.equal(kindOf("git:github.com/owner/repo@v1"), "git");
 	assert.equal(kindOf("/somewhere/ext.ts"), "local");
-	for (const bad of ["", "pi-tools", "npm:pi tools", "npm:x\nnpm:y", "--upload-pack=touch /tmp/x", "ext::sh -c id", "ssh://host/repo"]) assert.throws(() => kindOf(bad), undefined, `${JSON.stringify(bad)} was taken for a source`);
+	for (const bad of ["", "pi-tools", "npm:pi tools", "npm:x\nnpm:y", "--upload-pack=touch /tmp/x", "ext::sh -c id", "ssh://host/repo"]) assert.throws(() => kindOf(bad), Error, `${JSON.stringify(bad)} was taken for a source`);
 });
 
 test("the owner installs, updates and removes extensions through the control API", async (t) => {
