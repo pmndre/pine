@@ -321,61 +321,59 @@ test("telegram: what an agent writes in Markdown arrives formatted; pine's own q
 	await h.close();
 });
 
-test("telegram: a question with one answer has a button for each option; one with several answers is answered by a message", { skip: "rewritten by ticket 02" }, async (t) => {
+test("telegram: a question of a run started from outside is sent with its options numbered, and the owner's reply to it is their message in the conversation that asked", async (t) => {
 	const tg = await fakeTelegram();
 	t.after(() => tg.close());
-	const phone = { type: "telegram", token: TOKEN, allow: [1001], apiBase: tg.apiBase, trust: "owner" };
+	const phone = { type: "telegram", token: TOKEN, allow: [1001], apiBase: tg.apiBase, trust: "owner", description: "my Telegram" };
 	const h = await harness({ pine: { sources: { phone }, subscribe: ["phone"] }, agents: { main: {} } });
 	await until(() => h.pine.sources.list().find((s) => s.name === "phone")?.running, 4000, "the source to run");
-	const options = [{ label: "The mode", description: "how far your agents reach" }, { label: "A folder", description: "where they work" }, { label: "Telegram" }];
-	const ask = (multiSelect: boolean) => h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("question", { question: "What shall we set up?", header: "Next", options, multiSelect })] }]), ...owner });
+	const options = [{ label: "sqlite", description: "one file" }, { label: "postgres" }];
+	const asking = mockMsg([{ tools: [call("question", { question: "Which database?", header: "Storage", options })] }, { text: "I asked." }]);
+	const questions = () => tg.calls.filter((c) => c.method === "sendMessage" && /Which database\?/.test(c.body.text));
 
-	// One answer: a button for each option, and what each means in the message.
-	let run = ask(false);
-	await until(() => tg.sent().some((m) => /What shall we set up\?/.test(m.text)), 5000, "the question");
-	let asking = tg.sent().filter((m) => /What shall we set up\?/.test(m.text)).at(-1);
-	assert.deepEqual(asking.reply_markup.inline_keyboard.map((row: any) => row[0].text), ["The mode", "A folder", "Telegram", "No answer"]);
-	assert.match(asking.text, /Next/);
-	assert.match(asking.text, /A folder: where they work/);
-	tg.callback(1001, asking.reply_markup.inline_keyboard[1][0].callback_data);
-	await run;
-	assert.equal(h.toolResults().at(-1), "Your owner answered: A folder");
-
-	// Several answers: no button for an option; the options are numbered and a message answers.
-	const before = tg.sent().length;
-	run = ask(true);
-	await until(() => tg.sent().slice(before).some((m) => /What shall we set up\?/.test(m.text)), 5000, "the second question");
-	asking = tg.sent().slice(before).find((m) => /What shall we set up\?/.test(m.text));
-	assert.deepEqual(asking.reply_markup.inline_keyboard.map((row: any) => row[0].text), ["No answer"]);
-	assert.match(asking.text, /1\. The mode: how far your agents reach\n2\. A folder: where they work\n3\. Telegram/);
-	assert.match(asking.text, /1,3/);
-	// Somebody else's message answers nothing.
-	tg.message(2002, "1,2,3");
+	// The owner's own conversation in a UI: the question stays there.
+	await h.pine.agents.run({ agent: "main", prompt: asking, ...owner });
 	await sleep(150);
-	assert.equal(h.pine.approvals.pending().length, 1, "a stranger cannot answer");
-	tg.message(1001, "1,3");
-	await run;
-	assert.equal(h.toolResults().at(-1), "Your owner answered: The mode, Telegram");
-	assert.ok(tg.calls.some((c) => c.method === "editMessageReplyMarkup" && /Answered \(telegram:1001\)/.test(JSON.stringify(c.body))));
+	assert.equal(questions().length, 0, "a question of the owner's own UI conversation is not sent to Telegram");
 
-	// While one waits, a message that is not a reply to it and not its numbers is a message, not the answer.
-	const third = tg.sent().length;
-	run = ask(true);
-	await until(() => tg.sent().slice(third).some((m) => /What shall we set up\?/.test(m.text)), 5000, "the third question");
-	const question = tg.calls.filter((c) => c.method === "sendMessage").slice(third).find((c) => /What shall we set up\?/.test(c.body.text))!;
-	assert.match(question.body.text, /reply to this message with their numbers, such as 1,3, or your own words/);
-	const events = () => h.pine.tasks.list({}).filter((x) => x.kind === "event" && /is it raining\?/.test(x.prompt)).length;
+	// A run started from outside (a schedule, an event): the question is sent, without buttons, and says how to answer.
+	const run = await h.pine.agents.run({ agent: "main", prompt: asking, kind: "event", ...owner });
+	await until(() => questions().length === 1, 5000, "the question on Telegram");
+	const question = questions()[0];
+	assert.deepEqual(question.body, { chat_id: 1001, text: "main asks (Storage):\nWhich database?\n\n1. sqlite: one file\n2. postgres\n\nReply to this message to answer: with a number for an option, or in your own words." });
+
+	const replies = () => h.pine.tasks.list({ limit: 100 }).filter((x) => x.kind === "event" && x.id > run.id).sort((a, b) => a.id - b.id);
+	// Nobody else answers it: a stranger's reply reaches nothing.
+	tg.message(2002, "2", { reply_to_message: { message_id: question.id } });
+	await sleep(150);
+	assert.equal(replies().length, 0, "a stranger's reply does nothing");
+
+	// The owner's reply "2" is option 2, as the owner's message in the conversation that asked, and the answer comes back to the chat.
+	const sentBefore = tg.sent().length;
+	tg.message(1001, "2", { reply_to_message: { message_id: question.id } });
+	await until(() => replies().length === 1 && replies()[0].status === "done", 5000, "the reply's turn");
+	const reply = replies()[0];
+	assert.deepEqual([reply.agent, reply.session, reply.meta.trust, reply.meta.tainted, reply.meta.body], ["main", "main", "owner", undefined, "postgres"]);
+	assert.match(reply.prompt, /^\[Your owner answers your question "Which database\?" through "phone" \(telegram: my Telegram\)\. Your answer is sent back there, so write it for that reader\.\]\n\npostgres$/);
+	await until(() => tg.sent().length > sentBefore, 5000, "the answer in Telegram");
+	assert.ok(tg.sent().slice(sentBefore).every((m) => m.chat_id === 1001) && tg.sent().slice(sentBefore).some((m) => m.text.includes("postgres")));
+
+	// A reply in words goes as written, also once the question is no longer the latest.
+	tg.message(1001, "sqlite, but ask me again next week", { reply_to_message: { message_id: question.id } });
+	await until(() => replies().length === 2 && replies()[1].status === "done", 5000, "the second reply's turn");
+	assert.match(replies()[1].prompt, /\n\nsqlite, but ask me again next week$/);
+
+	// An ordinary message, or a reply to anything else, goes where it went before: to the subscribed conversation, as a Telegram message.
 	tg.message(1001, "is it raining?");
-	await until(() => events() === 1, 5000, "the message to arrive as a message");
-	assert.equal(h.pine.approvals.pending().length, 1, "the question still waits");
-	// A reply to the question answers it, in the owner's own words too.
-	tg.message(1001, "only the mode", { reply_to_message: { message_id: question.id } });
-	await run;
-	assert.match(h.toolResults().at(-1)!, /^Your owner answered in their own words: only the mode\n/);
+	await until(() => replies().length === 3 && replies()[2].status === "done", 5000, "the ordinary message");
+	tg.message(1001, "1", { reply_to_message: { message_id: tg.calls.findLast((c) => c.method === "sendMessage")!.id } });
+	await until(() => replies().length === 4, 5000, "the reply to the bot's answer");
+	for (const m of replies().slice(2)) assert.match(m.prompt, /^\[Your owner wrote this to you through "phone"/);
+	assert.match(replies()[3].prompt, /\n\n1$/, "a digit that answers no question is a digit");
 	await h.close();
 });
 
-test("telegram: an agent's own bot carries that agent's questions, and nobody else's are shown or answered there", { skip: "rewritten by ticket 02" }, async (t) => {
+test("telegram: an agent's own bot carries that agent's questions, and nobody else's are shown or answered there", async (t) => {
 	const forSlack = await fakeTelegram();
 	const forKevin = await fakeTelegram();
 	t.after(() => Promise.all([forSlack.close(), forKevin.close()]));
@@ -387,22 +385,20 @@ test("telegram: an agent's own bot carries that agent's questions, and nobody el
 		},
 	});
 	await until(() => h.pine.sources.list().filter((s) => s.running).length === 2, 4000, "both bots to run");
-	const asking = h.pine.agents.run({ agent: "slack", prompt: mockMsg([{ tools: [call("question", { question: "Which color for the header?", choices: ["Blue", "Green"] })] }]), ...owner });
-	await until(() => forSlack.sent().some((m) => /slack asks:\nWhich color/.test(m.text)), 5000, "the question on slack's bot");
+	const run = await h.pine.agents.run({ agent: "slack", prompt: mockMsg([{ tools: [call("question", { question: "Which color for the header?", choices: ["Blue", "Green"] })] }, { text: "asked" }]), kind: "event", ...owner });
+	await until(() => forSlack.sent().some((m) => /^slack asks:\nWhich color for the header\?\n\n1\. Blue\n2\. Green\n/.test(m.text)), 5000, "the question on slack's bot");
 	await sleep(150);
 	assert.equal(forKevin.sent().length, 0, "kevin's bot shows nothing of slack's");
-	const id = h.pine.approvals.pending()[0].id;
-	// Nor can it answer one: not by a command, and not by a button it never had.
-	forKevin.message(1001, "/allow");
-	await until(() => forKevin.sent().some((m) => m.text === "No such open request."), 4000, "kevin's bot to say there is none");
-	forKevin.callback(1001, `ap:${id}:c1`);
-	forKevin.message(1001, `/allow ${id}`);
-	await until(() => forKevin.sent().length === 2, 4000, "the second refusal");
-	assert.equal(h.pine.approvals.pending().length, 1, "the question is still open");
-	const question = forSlack.sent().find((m) => /Which color/.test(m.text));
-	forSlack.callback(1001, question.reply_markup.inline_keyboard[1][0].callback_data);
-	const r = await asking;
-	assert.match(r.text, /Your owner answered: Green/);
+	const question = forSlack.calls.find((c) => c.method === "sendMessage" && /Which color/.test(c.body.text))!;
+	// A reply on kevin's bot to the same message id is an ordinary message to kevin: it answers nothing of slack's.
+	forKevin.message(1001, "2", { reply_to_message: { message_id: question.id } });
+	const kevins = () => h.pine.tasks.list({ agent: "kevin", limit: 10 }).filter((x) => x.kind === "event");
+	await until(() => kevins().some((x) => x.status === "done"), 5000, "kevin's message");
+	assert.match(kevins()[0].prompt, /^\[Your owner wrote this to you through "tg-kevin"/);
+	forSlack.message(1001, "2", { reply_to_message: { message_id: question.id } });
+	const answer = () => h.pine.tasks.list({ agent: "slack", limit: 10 }).find((x) => x.id > run.id);
+	await until(() => answer()?.status === "done", 5000, "slack's answer");
+	assert.equal(answer()!.meta.body, "Green");
 	await h.close();
 });
 
