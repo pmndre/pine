@@ -1,212 +1,266 @@
-// The agent, beside its conversation: who it is, what it runs on, what it is doing, and what it
-// has been given (what it listens to, its schedules, skills and servers, what it remembers).
-// A conversation in pine is a conversation with an agent; this is the agent.
-import { TriangleAlertIcon, CheckIcon, CpuIcon, SettingsIcon, ShieldIcon, SparkleIcon, BookIcon, ClockIcon, PlugIcon, ZapIcon } from "lucide-react";
+// The agent, beside its conversation: who it is, what it runs on, what it is doing, and what this
+// conversation has been given (skills, servers, what wakes it), and the files it reads with each message. A conversation in pine
+// is a conversation with an agent; this is the agent.
+//
+// The tab is an overview, and Settings is where things are kept: each part has the name and the order of
+// its part on the agent's page in Settings, one way there ("Manage"), and rows that open the thing itself,
+// in the same dialog Settings opens (`openThing`) or at its place in Settings. A row says whom the thing is
+// for only when that is not this agent: "all agents" or "this conversation".
+import { BlocksIcon, BookIcon, CheckIcon, ChevronRightIcon, ClockIcon, FolderIcon, GitBranchIcon, PlugIcon, SettingsIcon, TriangleAlertIcon, ZapIcon } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
+import { AgentAvatar } from "@/components/agent-avatar";
+import { AgentFacts } from "@/components/agent-facts";
+import { Pulse } from "@/components/pulse";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { api } from "./api.ts";
-import { CODE_LINES } from "./lists.tsx";
-import { store, type Tab, useModel } from "./model.ts";
-import { childKind, MODES, oneLine, short } from "./text.ts";
-import { useLoad } from "./use-load.ts";
-import { Pulse } from "@/components/pulse";
-import { HoverTooltip } from "@/components/hover-tooltip";
-import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Printed } from "@/components/printed";
-import { AgentAvatar } from "@/components/agent-avatar";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ReactNode } from "react";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { type AgentFileKey, AgentFiles, changedFiles, FilesSkeleton, UnsavedBar } from "./AgentFiles.tsx";
+import { api } from "./api.ts";
+import { bridge } from "./bridge.ts";
+import { store, type Tab, useModel } from "./model.ts";
+import { childKind, oneLine, plural, tilde } from "./text.ts";
+import { goTo, LISTS, openThing, routeOf, routeSaid, whenShort } from "./things.ts";
+import { useLoad } from "./use-load.ts";
 
-const NONE = "px-3.5 py-0.5 text-faint wrap-anywhere";
-/** A section: its title over its rows. A heading, not a FieldSet: the rows are read, there is nothing in them to fill in. */
-const SECTION = "flex min-w-0 flex-col";
-const TITLE = "mt-1.5 mb-1 flex min-h-6 w-full items-center gap-2 pr-2 pl-3.5 text-xs font-semibold text-faint";
+// One inset for the whole tab: every row, heading and line starts where a stock xs Item starts (px-2.5).
+const INSET = "px-2.5";
 
 /**
- * One section of the Agent panel: its title, a count, an action, and its rows. With `skeleton` it
- * draws its title and a few row bars while it first loads; with `error` it says why it failed, in
- * place of its rows, so a failure reads apart from loading and from empty.
+ * A row of the tab: what the thing is (an icon), its name, a line about it, and whom it is for when that is
+ * not this agent. With `onOpen` the whole row is a button that opens it.
  */
-export function AgentSection({ title, count, action, skeleton = false, error, children }: { title: ReactNode; count?: number; action?: ReactNode; skeleton?: boolean; error?: string; children?: ReactNode }) {
+export function AgentRow({ media, title, about, tag, onOpen }: { media: ReactNode; title: ReactNode; about?: ReactNode; tag?: string; onOpen?: () => void }) {
 	return (
-		<section className={SECTION} data-slot="agent-section">
-			<h3 className={TITLE}>
-				{title}
-				{skeleton ? <Skeleton className="h-4 w-5" /> : count !== undefined && !error ? <Badge variant="secondary">{count}</Badge> : null}
-				{action ? <><span className="min-w-0 flex-1" />{action}</> : null}
-			</h3>
+		<Item size="xs" render={onOpen ? <button type="button" onClick={onOpen} /> : undefined}>
+			{/* An icon's box (size-4), also for a dot smaller than an icon, so that it sits on the title's line. */}
+			<ItemMedia variant="icon" className="size-4">{media}</ItemMedia>
+			<ItemContent className="min-w-0 text-left">
+				<ItemTitle className="max-w-full">{title}</ItemTitle>
+				{about ? <ItemDescription className="wrap-anywhere">{about}</ItemDescription> : null}
+			</ItemContent>
+			{tag || onOpen ? (
+				<ItemActions>
+					{tag ? <Badge variant="secondary">{tag}</Badge> : null}
+					{onOpen ? <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" /> : null}
+				</ItemActions>
+			) : null}
+		</Item>
+	);
+}
+
+/**
+ * One part of the tab: its heading, one way on to where its things are kept (`manage`), then its rows, or a
+ * line when it has none (`empty`). With `skeleton` it draws bars of a row's shape while it first loads; with
+ * `error` it says why it failed, so that a failure reads apart from loading and from empty.
+ */
+export function AgentSection({ title, manage, skeleton = false, error, empty, children }: { title: ReactNode; manage?: () => void; skeleton?: boolean; error?: string; empty?: ReactNode; children?: ReactNode }) {
+	return (
+		<section className="flex min-w-0 flex-col gap-1" data-slot="agent-section">
+			<div className={cn("flex h-7 items-center justify-between gap-2", INSET)}>
+				<h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
+				{manage ? <Button variant="ghost" size="xs" className="-mr-1.5" onClick={manage}>Manage</Button> : null}
+			</div>
 			{skeleton ? (
-				<div className="flex flex-col gap-2 px-3.5 py-1">
-					<Skeleton className="h-4 w-2/3" />
-					<Skeleton className="h-4 w-1/2" />
-				</div>
+				<Item size="xs">
+					<ItemContent className="gap-2">
+						<Skeleton className="h-4 w-1/3" />
+						<Skeleton className="h-3.5 w-2/3" />
+					</ItemContent>
+				</Item>
 			) : error ? (
-				<Alert variant="destructive" className="mx-3.5 w-auto"><TriangleAlertIcon /><AlertDescription className="wrap-anywhere">{error}</AlertDescription></Alert>
-			) : children}
+				<div className={INSET}>
+					<Alert variant="destructive"><TriangleAlertIcon /><AlertDescription className="wrap-anywhere">{error}</AlertDescription></Alert>
+				</div>
+			) : empty ? (
+				// A row without a name: the line stands where a row's description stands, at its size.
+				<Item size="xs">
+					<ItemContent>
+						<ItemDescription className="line-clamp-none wrap-anywhere">{empty}</ItemDescription>
+					</ItemContent>
+				</Item>
+			) : (
+				children
+			)}
 		</section>
 	);
 }
 
-/** What a section of useLoad shows: its skeleton on the first load only, then its error or its rows. */
+/** What a part shows of its load: bars on the first load only, then its error or its rows. */
 function state(load: { data?: unknown; error?: string }) {
 	return { skeleton: load.data === undefined && load.error === undefined, error: load.data === undefined ? load.error : undefined };
 }
 
 export function AgentView({ tab }: { tab: Tab }) {
 	useModel(tab);
+	useModel(LISTS);
 	const s = useModel(store);
 	const info = s.agent(tab.agent);
-	// Each is asked by itself, so one that fails says so in its own section and the others still show.
-	const detail = useLoad(() => api.agentDetail(tab.agent), [tab.agent, tab.codeTick]);
-	const sources = useLoad(() => api.agentSources(tab.agent, tab.session), [tab.key, tab.codeTick]);
-	const schedules = useLoad(() => api.schedules(), [tab.agent, tab.codeTick]);
-	const skills = useLoad(() => api.skills(), [tab.agent, tab.codeTick]);
-	const servers = useLoad(() => api.mcp(), [tab.agent, tab.codeTick]);
+	const id = tab.agent;
+	// Each list is asked for by itself, so that one that fails says so in its own part and the others still
+	// show; and again when a dialog or Settings changed one (LISTS).
+	const again = [tab.codeTick, LISTS.v];
+	const detail = useLoad(() => api.agentDetail(id), [id, ...again]);
+	const sources = useLoad(() => api.agentSources(id, tab.session), [tab.key, ...again]);
+	const schedules = useLoad(() => api.schedules(), [id, ...again]);
+	const routes = useLoad(() => api.routes(), [id, ...again]);
+	const skills = useLoad(() => api.skills(), [id, ...again]);
+	const extensions = useLoad(() => api.extensions(), [id, ...again]);
+	const servers = useLoad(() => api.mcp(), [id, ...again]);
+	const [texts, setTexts] = useState<Partial<Record<AgentFileKey, string>>>({});
+	const [busy, setBusy] = useState(false);
+	useEffect(() => setTexts({}), [id]);
 	if (!info) return null;
-	const mode = MODES.find((m) => m.value === info.mode);
+	// What this conversation has: the agent's own, what is for all agents, and what is for this conversation alone.
 	const listens = (sources.data ?? []).filter((x) => x.local || x.agent || x.global);
 	const could = (sources.data ?? []).length - listens.length;
-	const timed = (schedules.data ?? []).filter((x) => x.scope === tab.agent || (x.scope === "global" && x.task));
-	const knows = (skills.data ?? []).filter((x) => x.scope === "global" || (x.agent === tab.agent && (x.scope === "agent" || x.session === tab.session)));
-	const tools = (servers.data ?? []).filter((x) => x.enabled && x.agents.includes(tab.agent) && (!x.session || x.session === tab.session));
+	const timed = (schedules.data ?? []).filter((x) => x.scope === id || (x.scope === "global" && x.task));
+	const ruled = (routes.data ?? []).filter((r) => routeOf(r, id));
+	const knows = (skills.data ?? []).filter((x) => x.scope === "global" || (x.agent === id && (x.scope === "agent" || x.session === tab.session)));
+	const loads = (extensions.data ?? []).filter((x) => x.scope === "global" || x.agent === id);
+	const tools = (servers.data ?? []).filter((x) => x.enabled && x.agents.includes(id) && (!x.session || x.session === tab.session));
 	const helpers = [...tab.children].reverse().slice(0, 8);
-	const elsewhere = [...s.busy].filter(([key, tasks]) => tasks.size && key.startsWith(`${tab.agent}:`) && key !== tab.key).map(([key]) => key.slice(tab.agent.length + 1));
-	const memory = detail.data?.files.memory?.trim();
+	const elsewhere = [...s.busy].filter(([key, tasks]) => tasks.size && key.startsWith(`${id}:`) && key !== tab.key).map(([key]) => key.slice(id.length + 1));
+	// What was typed into the agent's files and not saved yet. It is kept while the lists are asked again
+	// (after each turn), and dropped with the agent.
+	const unsaved = detail.data ? changedFiles(detail.data.files, texts) : [];
+	const save = async () => {
+		if (!unsaved.length) return;
+		setBusy(true);
+		const done = await store.attempt(() => api.updateAgent(id, Object.fromEntries(unsaved.map((f) => [f.key, texts[f.key]]))));
+		setBusy(false);
+		if (!done) return;
+		store.flash(`Saved ${unsaved.map((f) => f.name).join(", ")}. ${id} reads the change from the next message on.${done.warnings.length ? ` Note: ${done.warnings.join("; ")}` : ""}`, done.warnings.length ? "warn" : "good", done.warnings.length ? 9000 : 3500);
+		setTexts({});
+		detail.reload();
+	};
+	// Where a part's things are kept: its part of the agent's page in Settings.
+	const manage = (part: string) => () => goTo({ section: "agents", agent: id, find: `[data-find="agent-${part}"]` });
+	// Whom a thing is for, said only when it is not this agent as a whole.
+	const forWhom = (scope: string, session?: string) => (scope === "global" ? "all agents" : session && session !== "main" ? (session === tab.session ? "this conversation" : `in “${session}”`) : undefined);
 	return (
 		<ScrollArea className="flex min-h-0 flex-1 cursor-auto flex-col select-text *:data-[slot=scroll-area-viewport]:scroll-fade">
-		<div className="flex flex-col gap-3 pb-2">
-			<Item className="px-3.5 pt-4 pb-0.5">
-				<ItemMedia>
-					<AgentAvatar agent={{ id: tab.agent, color: store.agent(tab.agent)?.color, main: store.agent(tab.agent)?.main }} size="lg" />
-				</ItemMedia>
-				<ItemContent>
-					<ItemTitle>{tab.agent}{info.main ? <Badge>main</Badge> : null}</ItemTitle>
-					<ItemDescription>{info.description || "no description"}</ItemDescription>
-				</ItemContent>
-				<ItemActions>
-					<Button variant="outline" size="xs" onClick={() => s.openSettings("agents", tab.agent)}><SettingsIcon data-icon="inline-start" />Settings</Button>
-				</ItemActions>
-			</Item>
-			<div className="mt-0.5 flex flex-wrap gap-1.5 px-3.5">
-				<HoverTooltip><TooltipTrigger render={<Badge variant="outline" render={<button type="button" onClick={() => void s.pickModel(tab)} />}><CpuIcon data-icon="inline-start" />{info.model}</Badge>} /><TooltipContent>The model it runs on</TooltipContent></HoverTooltip>
-				<HoverTooltip><TooltipTrigger render={<Badge variant="outline" render={<button type="button" onClick={() => void s.pickReasoning(tab)} />}><SparkleIcon data-icon="inline-start" />reasoning {info.thinking}</Badge>} /><TooltipContent>How long the model thinks before it answers</TooltipContent></HoverTooltip>
-				<HoverTooltip><TooltipTrigger render={<Badge variant="outline" render={<button type="button" onClick={() => void s.pickMode(tab)} />}><ShieldIcon data-icon="inline-start" />{info.mode} · {info.mode === "auto" || info.mode === "bypass" ? "your account" : "in a sandbox"}</Badge>} /><TooltipContent>{mode?.about ?? "How much it asks and how far it reaches"}</TooltipContent></HoverTooltip>
-				{info.delegates.length ? <Badge variant="outline">hands work to {info.delegates.includes("*") ? (info.main ? "all other agents" : `all agents except ${store.agents.find((a) => a.main)?.id ?? "the main one"}`) : info.delegates.join(", ")}</Badge> : null}
+			<div className="flex flex-col gap-4 p-1.5 pb-4">
+				<header className="flex flex-col gap-2">
+					<Item size="xs">
+						<ItemMedia>
+							<AgentAvatar agent={{ id, color: info.color, main: info.main }} size="lg" />
+						</ItemMedia>
+						<ItemContent className="min-w-0">
+							<ItemTitle>{id}</ItemTitle>
+							<ItemDescription>{info.description || "no description"}</ItemDescription>
+						</ItemContent>
+						<ItemActions>
+							<Button variant="outline" size="xs" onClick={() => s.openSettings("agents", id)}><SettingsIcon data-icon="inline-start" />Settings</Button>
+						</ItemActions>
+					</Item>
+					<div className={cn("flex flex-wrap gap-1.5", INSET)}>
+						<AgentFacts agent={info} mainId={store.agents.find((a) => a.main)?.id} pick={{ model: () => void s.pickModel(tab), reasoning: () => void s.pickReasoning(tab), mode: () => void s.pickMode(tab) }} />
+					</div>
+				</header>
+
+				{tab.busy || helpers.length || elsewhere.length ? (
+					<AgentSection title="At work">
+						<ItemGroup>
+							{tab.busy ? <AgentRow media={<Pulse />} title="this conversation" about={`${tab.thinking ? "thinking" : "working"}${tab.toolCalls ? ` · ${plural(tab.toolCalls, "tool call")}` : ""}`} /> : null}
+							{helpers.map(([task, c]) => <AgentRow key={task} media={c.running ? <Pulse /> : <CheckIcon />} title={c.agent} about={`${childKind(c.kind)} #${task}: ${c.label}`} onOpen={() => void s.openTask(task)} />)}
+							{elsewhere.map((session) => <AgentRow key={session} media={<Pulse />} title={session} about={`another conversation with ${id}`} onOpen={() => void s.openTab(id, session)} />)}
+						</ItemGroup>
+					</AgentSection>
+				) : null}
+
+				<AgentSection title="Skills" manage={manage("skills")} {...state(skills)} empty={knows.length ? undefined : `No skills. Ask ${id} to “make a skill of this”.`}>
+					<ItemGroup>
+						{knows.map((x) => <AgentRow key={x.dir} media={<BookIcon />} title={x.name} about={x.description || undefined} tag={forWhom(x.scope === "global" ? "global" : id, x.session)} onOpen={() => openThing({ kind: "skill", skill: x })} />)}
+					</ItemGroup>
+				</AgentSection>
+
+				{/* Shown only when there is one: most agents have none, and a row that says so every time is noise. */}
+				{loads.length ? (
+					<AgentSection title="Extensions" manage={manage("extensions")}>
+						<ItemGroup>
+							{loads.map((x) => <AgentRow key={`${x.agent ?? ""}:${x.source}`} media={<BlocksIcon />} title={x.name} about={x.description || x.version || undefined} tag={forWhom(x.scope === "global" ? "global" : id)} onOpen={() => openThing({ kind: "extension", extension: x })} />)}
+						</ItemGroup>
+					</AgentSection>
+				) : null}
+
+				<AgentSection title="MCP servers" manage={manage("mcp")} {...state(servers)} empty={tools.length ? undefined : "No MCP servers."}>
+					<ItemGroup>
+						{tools.map((x) => (
+							<AgentRow
+								key={`${x.scope}:${x.name}`}
+								media={<PlugIcon />}
+								title={x.name}
+								about={x.target || undefined}
+								tag={forWhom(x.scope, x.session)}
+								onOpen={() => goTo(x.scope === "global" ? { section: "mcp", find: `[data-find="mcp:global:${x.name}"]` } : { section: "agents", agent: id, find: `[data-find="mcp:${x.scope}:${x.name}"]` })}
+							/>
+						))}
+					</ItemGroup>
+				</AgentSection>
+
+				<AgentSection
+					title="Sources"
+					manage={manage("sources")}
+					{...state(sources)}
+					empty={listens.length ? undefined : `Nothing wakes ${id} yet. ${could > 0 ? `It could listen to ${plural(could, "source")}: ask it to watch one, or press Manage.` : "Ask it to watch something, such as “tell me when a file lands in ~/Scans”."}`}
+				>
+					<ItemGroup>
+						{listens.map((x) => (
+							<AgentRow
+								key={x.name}
+								media={<ZapIcon />}
+								title={x.name}
+								about={(x.local ?? x.agent ?? x.global)?.note || x.description || x.type}
+								tag={x.local ? "this conversation" : x.agent ? undefined : "all agents"}
+								// Its row on the agent's page, which lists the agent's own sources and the shared ones it listens to.
+								onOpen={() => goTo({ section: "agents", agent: id, find: `[data-find^="source:"][data-find$=":${x.name}"]` })}
+							/>
+						))}
+					</ItemGroup>
+				</AgentSection>
+
+				<AgentSection title="Schedules" manage={manage("schedules")} {...state(schedules)} empty={timed.length ? undefined : `Nothing is scheduled. Ask ${id}, for example “every morning at seven…”.`}>
+					<ItemGroup>
+						{timed.map((x) => <AgentRow key={`${x.scope}:${x.name}`} media={<ClockIcon />} title={x.name} about={`${whenShort(x)}${x.task ? ` · ${oneLine(x.task)}` : ""}`} tag={forWhom(x.scope, x.session)} onOpen={() => openThing({ kind: "schedule", schedule: x })} />)}
+					</ItemGroup>
+				</AgentSection>
+
+				{/* Most agents have no route: the part is there only when one concerns this agent. */}
+				{ruled.length ? (
+					<AgentSection title="Routes" manage={manage("routes")}>
+						<ItemGroup>
+							{ruled.map((r) => {
+								const said = routeSaid(r);
+								return <AgentRow key={r.name} media={<GitBranchIcon />} title={r.name} about={`when ${said.when}: ${said.then}`} onOpen={() => openThing({ kind: "route", route: r })} />;
+							})}
+						</ItemGroup>
+					</AgentSection>
+				) : null}
+
+				{/* The agent's own files, as on its page in Settings: read, changed and saved here too. */}
+				<AgentSection title="Instructions" manage={manage("instructions")} error={state(detail).error}>
+					<div className={INSET}>
+						{detail.data ? <AgentFiles id={id} files={detail.data.files} texts={texts} onText={(key, v) => setTexts((was) => ({ ...was, [key]: v }))} onSave={() => void save()} /> : <FilesSkeleton />}
+					</div>
+				</AgentSection>
+
+				{detail.data ? (
+					<AgentSection title="Workspace">
+						<AgentRow
+							media={<FolderIcon />}
+							title={<span className="min-w-0 truncate" title={detail.data.workspace}>{tilde(detail.data.workspace)}</span>}
+							about={tab.folder ? "The Files tab shows this conversation's folder instead." : "The Files tab shows it."}
+							onOpen={store.remote ? undefined : () => void bridge.reveal(detail.data!.workspace)}
+						/>
+					</AgentSection>
+				) : null}
+				{/* While a file is changed, the way to keep it stays in sight at the foot of the tab. */}
+				{unsaved.length ? <UnsavedBar busy={busy} discard={() => setTexts({})} save={() => void save()}>Unsaved: {unsaved.map((f) => f.name).join(", ")}</UnsavedBar> : null}
 			</div>
-
-			{tab.busy || helpers.length || elsewhere.length ? (
-				<section className={SECTION}>
-					{/* Each ItemMedia here is an icon's box (size-4): ItemMedia puts its content at the top beside a title with a
-					   description, and a dot smaller than an icon would sit above the middle of the title's line. */}
-					<h3 className={TITLE}>At work</h3>
-					{tab.busy ? (
-						<Item size="xs">
-							<ItemMedia className="size-4"><Pulse /></ItemMedia>
-							<ItemContent>
-								<ItemTitle>this conversation</ItemTitle>
-								<ItemDescription>{`${tab.thinking ? "thinking" : "working"}${tab.toolCalls ? ` · ${tab.toolCalls} tool calls` : ""}`}</ItemDescription>
-							</ItemContent>
-						</Item>
-					) : null}
-					{helpers.map(([id, c]) => (
-						<Item key={id} size="xs" render={<button type="button" onClick={() => void s.openTask(id)} />}>
-							<ItemMedia className="size-4">{c.running ? <Pulse /> : <CheckIcon />}</ItemMedia>
-							<ItemContent>
-								<ItemTitle>{c.agent}</ItemTitle>
-								<ItemDescription>{`${childKind(c.kind)} #${id}: ${c.label}`}</ItemDescription>
-							</ItemContent>
-							<ItemActions><Badge variant="secondary">open</Badge></ItemActions>
-						</Item>
-					))}
-					{elsewhere.map((session) => (
-						<Item key={session} size="xs" render={<button type="button" onClick={() => void s.openTab(tab.agent, session)} />}>
-							<ItemMedia className="size-4"><Pulse /></ItemMedia>
-							<ItemContent>
-								<ItemTitle>{session}</ItemTitle>
-								<ItemDescription>another conversation of {tab.agent}</ItemDescription>
-							</ItemContent>
-							<ItemActions><Badge variant="secondary">open</Badge></ItemActions>
-						</Item>
-					))}
-				</section>
-			) : null}
-
-			{
-				<AgentSection title="Listens to" count={listens.length} {...state(sources)} action={<Button variant="ghost" size="xs" onClick={() => s.openSettings("events")}>Events</Button>}>
-					{listens.length ? listens.map((x) => (
-						<Item key={x.name} size="xs">
-							<ItemMedia><ZapIcon /></ItemMedia>
-							<ItemContent>
-								<ItemTitle>{x.name}</ItemTitle>
-								<ItemDescription>{(x.local ?? x.agent ?? x.global)?.note || x.description || x.type}</ItemDescription>
-							</ItemContent>
-							<ItemActions><Badge variant="secondary">{x.local ? "this conversation" : x.agent ? "as an agent" : "all agents"}</Badge></ItemActions>
-						</Item>
-					)) : <div className={NONE}>Nothing wakes it by itself.{could > 0 ? ` ${could} event source${could === 1 ? "" : "s"} could: ask it to watch one, or subscribe it under Events.` : " Ask it to watch something (“tell me when a file lands in ~/Scans”)."}</div>}
-				</AgentSection>
-			}
-			{
-				<AgentSection title="Schedules" count={timed.length} {...state(schedules)}>
-					{timed.length ? timed.map((x) => {
-						const tag = x.scope === "global" ? "all agents" : x.session && x.session !== "main" ? x.session : undefined;
-						return (
-							<Item key={`${x.scope}:${x.name}`} size="xs">
-								<ItemMedia><ClockIcon /></ItemMedia>
-								<ItemContent>
-									<ItemTitle>{x.name}</ItemTitle>
-									<ItemDescription>{`${x.when}${x.task ? ` · ${oneLine(x.task)}` : ""}`}</ItemDescription>
-								</ItemContent>
-								{tag ? <ItemActions><Badge variant="secondary">{tag}</Badge></ItemActions> : null}
-							</Item>
-						);
-					}) : <div className={NONE}>Nothing is scheduled. Ask it (“every morning at seven …”).</div>}
-				</AgentSection>
-			}
-			{
-				<AgentSection title="Skills" count={knows.length} {...state(skills)} action={<Button variant="ghost" size="xs" onClick={() => s.openSettings("skills")}>Skills</Button>}>
-					{knows.length ? knows.map((x) => {
-						const tag = x.scope === "global" ? "all agents" : x.scope === "local" ? "this conversation" : undefined;
-						return (
-							<Item key={x.dir} size="xs">
-								<ItemMedia><BookIcon /></ItemMedia>
-								<ItemContent>
-									<ItemTitle>{x.name}</ItemTitle>
-									{x.description ? <ItemDescription>{x.description}</ItemDescription> : null}
-								</ItemContent>
-								{tag ? <ItemActions><Badge variant="secondary">{tag}</Badge></ItemActions> : null}
-							</Item>
-						);
-					}) : <div className={NONE}>No skills yet. Ask it to “make a skill for this”.</div>}
-				</AgentSection>
-			}
-			{
-				<AgentSection title="MCP servers" count={tools.length} {...state(servers)} action={<Button variant="ghost" size="xs" onClick={() => s.openSettings("mcp")}>Servers</Button>}>
-					{tools.length ? tools.map((x) => {
-						const tag = x.scope === "global" ? "all agents" : x.session ? "this conversation" : undefined;
-						return (
-							<Item key={`${x.scope}:${x.name}`} size="xs">
-								<ItemMedia><PlugIcon /></ItemMedia>
-								<ItemContent>
-									<ItemTitle>{x.name}</ItemTitle>
-									{x.target ? <ItemDescription>{x.target}</ItemDescription> : null}
-								</ItemContent>
-								{tag ? <ItemActions><Badge variant="secondary">{tag}</Badge></ItemActions> : null}
-							</Item>
-						);
-					}) : <div className={NONE}>No MCP servers.</div>}
-				</AgentSection>
-			}
-			{detail.data && memory === undefined ? null : (
-				<AgentSection title="What it remembers" {...state(detail)}>
-					{memory ? <Printed capped text={short(memory, 6000)} className="mx-3.5 w-auto" contentClassName={CODE_LINES} /> : <div className={NONE}>MEMORY.md is empty.</div>}
-				</AgentSection>
-			)}
-			{detail.data ? <div className={cn(NONE, "pb-4")}>The agent's workspace is {detail.data.workspace}; the Files view shows {tab.folder ? "the folder this conversation works in" : "it"}.</div> : null}
-		</div>
 		</ScrollArea>
 	);
 }

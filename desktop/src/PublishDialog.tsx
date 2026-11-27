@@ -11,8 +11,8 @@ import { shortcut } from "./text.ts";
 
 /** What is wrong with a topic, if anything. The old one-line form split at the first space, so a topic never had one. */
 function topicError(topic: string): string | undefined {
-	if (!topic.trim()) return "Name the topic.";
-	if (/\s/.test(topic.trim())) return "A topic has no spaces: use / between the parts, such as house/mode.";
+	if (!topic.trim()) return "Enter a topic.";
+	if (/\s/.test(topic.trim())) return "A topic cannot contain spaces. Use / between the parts, as in house/mode.";
 }
 
 /** What is wrong with a payload, if anything: nothing at all is no payload, anything else has to be JSON. */
@@ -55,7 +55,7 @@ export function PublishDialog({ topic: firstTopic = "", payload: firstPayload = 
 				<div data-slot="publish-form" className="contents">
 					<DialogHeader>
 						<DialogTitle>Publish an event</DialogTitle>
-						<DialogDescription>It is published as yours, as the owner: routes and agents subscribed to that topic get it.</DialogDescription>
+						<DialogDescription>The event is published in your name, as the owner. Routes and agents subscribed to the topic receive it.</DialogDescription>
 					</DialogHeader>
 					<FieldGroup>
 						<Field data-invalid={showTopic ? true : undefined}>
@@ -78,7 +78,7 @@ export function PublishDialog({ topic: firstTopic = "", payload: firstPayload = 
 									if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.preventDefault(), void send());
 								}}
 							/>
-							{showPayload ? <FieldError>{wrong.payload}</FieldError> : <FieldDescription>JSON: an object, a list, a string in quotes, a number, true or false. Empty publishes the event without one.</FieldDescription>}
+							{showPayload ? <FieldError>{wrong.payload}</FieldError> : <FieldDescription>JSON: an object, a list, a quoted string, a number, true or false. Leave it empty to publish the event without a payload.</FieldDescription>}
 						</Field>
 					</FieldGroup>
 					<DialogFooter>

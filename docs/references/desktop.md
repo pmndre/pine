@@ -54,7 +54,7 @@ update an AppImage in place. Your pine home (`~/.pine`) is not in the app and st
 | | |
 |---|---|
 | `Restart to update` | In the side bar's foot, Settings > General and **Check for Updates…**. The new app restarts every pine the old one started. A pine it only attached to (started in a terminal or at login) you restart yourself. While agents work, it warns how many conversations would be cut off: **Restart now**, **Restart when they are done** or **Cancel** |
-| `Restart when they are done` | **Restarts when the work is done** waits in the side bar's foot. Click it, or **Call off the wait** in Settings > General, to cancel |
+| `Restart when they are done` | **Restarts when the work is done** waits in the side bar's foot. Click it, or **Cancel the wait** in Settings > General, to cancel |
 | `Check for Updates…` | Asks again now. In the **Pine** menu (Help elsewhere), or `updates` in the palette |
 | Settings > General | The version, **Check now**, **Check for updates at start**, and **Update automatically** (on by default) |
 | `Pine <version> is available` | Shown when the app does not update itself (**Update automatically** off, or the download or install failed). A click opens the release's page |
@@ -73,7 +73,7 @@ pine says that the app updates itself.
 | Nothing to answer with | While the main agent has no model that answers, the app opens **Onboarding**. Conversations show **Connect a model first** with **Set up a model…**, and Settings > Models lists each agent that cannot answer, and why. A message you send meanwhile says it was not answered. Send it again once a model is there |
 | A sign-in in Settings > Models | Sign in to a Claude, ChatGPT or Copilot subscription in the browser, or any provider with an API key. If the current model cannot answer, pine switches to the provider's usual one and says which (**Another one…**); else it offers **Choose the model your agents run on**. The choice is `defaults.model` |
 | The first message | No agent writes first. Each introduces itself once, in its answer to your first message; `defaults.introduce` turns this off ([agents.md](agents.md), "Meeting an agent") |
-| The browser of the web tools is missing | Each pine version drives its own browser build. When it is not on this computer, the app asks once per version to fetch it (**Fetch it** in Settings > General, `pine browser-install`). Until then the browser tools fail; web search and reading a page work |
+| The browser of the web tools is missing | Each pine version drives its own browser build. When it is not on this computer, the app asks once per version to fetch it (**Download** in Settings > General, `pine browser-install`). Until then the browser tools fail; web search and reading a page work |
 
 ### Onboarding: getting started
 
@@ -98,7 +98,7 @@ nor keeps what you type: paste the key into the field.
 | Which provider? | Anthropic, OpenAI, Google Gemini, OpenRouter, xAI, or **Another…** (a search of every provider) |
 | Your API key for … | A hidden field. **Save** stores the key in `auth.json` in pine's home, where no agent reads it; the conversation says only **Key saved for …**. A refused key says why, with **Try again** |
 | Which default model should your agents run on? | The model every agent without its own runs on (`defaults.model`). First pine's choice (recommended: Enter or **1** keeps it), then up to four other models of the same provider, then **Another…** (a search of every model) |
-| After that | pine sends one fixed message as yours: look at what is set up, then ask about the few things most worth setting up first, with a way to leave it for later. The main agent answers there, introduces itself, and asks with a card where you tick, answer in words, or press **Later** |
+| After that | pine sends one fixed message as yours: look at what is set up, then ask about the few things most worth setting up first, with a way to leave it for later. The main agent answers there, introduces itself, and asks its questions; answer with a pick on the card or in your own words |
 
 ### `pine` in a terminal
 
@@ -125,7 +125,7 @@ of its own") for the daemon of your home.
 | What it finds | What happens |
 |---|---|
 | A pine runs for this home (started in a terminal, at login, by the terminal UI) | The app attaches (`attached` in the side bar). Quitting the app leaves it running |
-| `An older pine runs` | The attached pine is older than the app's; the side bar's foot and Settings > General show both versions. Restart it on the newer version, or stop it and let the app start its own |
+| `An older pine is running` | The attached pine is older than the app's; the side bar's foot and Settings > General show both versions. Restart it on the newer version, or stop it and let the app start its own |
 | Nothing runs | The app starts one (`started here`), logging to `data/pine.log`, restarts it if it stops answering, and stops it when you quit |
 | No pine home yet; no Node or pine | A screen offers `pine init`; a screen says what to install |
 
@@ -185,10 +185,10 @@ opens. A row of tabs is one Tab stop (arrows, then Enter or Space). A line's but
 a group's `+`, remove) show on hover or keyboard focus, always in a narrow window, and are Tab stops
 after their line. An agent's `+` always shows.
 
-**A conversation.** An empty one shows its agent: purpose, model, mode, whom it hands work to, and
+**A conversation.** An empty one shows its agent: purpose, model, mode, whom it delegates to, and
 its skills, sources, schedules and MCP servers. Each turn's work (tool calls, thoughts, sub-tasks)
 is one line that a click opens; `↳ … ↗` opens a sub-agent's or delegated task's work in a tab.
-**Take back** (`/undo`) stands above your last message. Scrolled up, the view holds still, and a
+**Undo** (`/undo`) stands above your last message. Scrolled up, the view holds still, and a
 button brings you back to the end. The top line shows the conversation (`main / notes`), its folder and how full
 its context is (hover: cache share, speed). Your sent message moves to the top with the answer
 below it, unless the agent follows the answer ("When you send a message" in Settings > Agents):
@@ -366,11 +366,11 @@ else the agent's workspace). Put it beside the conversation to watch files chang
 | View | Shows |
 |---|---|
 | Files | The folder as a tree, a search by name or content, and the editor; changed files colored in a git repository ("Files") |
-| Changes | **All changes** since the last commit, with diffs. **Last turn**: what your last message changed, with "Take back" (`/undo`, `/code turn`) |
+| Changes | **All changes** since the last commit, with diffs. **Last turn**: what your last message changed, with "Undo" (`/undo`, `/code turn`) |
 | Output | The last messages' tool calls with all they printed |
 | Terminal | A shell of your own in the folder (`` ⌃` ``, View > Terminal, `/terminal`; "The terminal") |
 | Browser | The conversation's browser (`⇧⌘B`; "The browser") |
-| Agent | The agent's purpose, model, reasoning and mode (a click changes each), delegates, current work, subscriptions, schedules, skills, MCP servers and `MEMORY.md` |
+| Agent | The agent's purpose, model, reasoning and mode (a click changes each), delegates and current work. Then what this conversation has, in the order of the agent's page in Settings: skills, MCP servers, sources it listens to, schedules, routes (when one concerns the agent), then **Instructions** (`AGENTS.md`, `SOUL.md`, `TOOLS.md` and `MEMORY.md` as on the agent's page: read, change, **Save changes**; `MEMORY.md` is read only) and the workspace. A row says "all agents" or "this conversation" when the thing is not the agent's own. A skill, schedule or route opens from its row in the dialog Settings opens it in; a source or server row goes to its place in Settings; **Manage** goes to that part of the agent's page |
 | Running | What the conversation's commands left running (a dev server): ports as links, last output, Stop. Shown while something runs, or with `/code running` |
 | Board | The conversation's board ("The Board tab"). Shown while there is one, or with `/code board` |
 
@@ -383,9 +383,9 @@ the board, counting unsettled tasks.
 
 | On the tab | Meaning |
 |---|---|
-| A task | Number, text and state: open, waiting for other tasks, being worked on (by a sub-agent or a named agent), done, failed, or "Waits for an answer". A click shows its result and notes |
-| "Waits for an answer" | Its worker needs a decision. The agent that gave out the work answers what it can, and you answer the rest on the line under the task. The task then opens again |
-| The menu at a task's right | "Take it back" (stops its sub-agent; a new one takes it), "Open it again", "Mark as done", "Remove" |
+| A task | Number, text and state: open, waiting for other tasks, being worked on (by a sub-agent or a named agent), done, failed, or "Waiting for an answer". A click shows its result and notes |
+| "Waiting for an answer" | Its worker needs a decision. The agent that gave out the work answers what it can, and you answer the rest on the line under the task. The task then opens again |
+| The menu at a task's right | "Take it back" (stops its sub-agent; a new one takes it), "Reopen", "Mark as done", "Remove" |
 | Notes | Findings and decisions with their writer, each with Remove. "from outside content" marks one by a run that read outside content |
 | The line at the bottom | Adds your own task; a running pool takes it, else it waits for the agent |
 | The list at the top left, Clear | Picks the board where there are several; Clear removes the board and everything on it |
@@ -407,7 +407,7 @@ rename them, and a selection skips them. In a folder you opened, `AGENTS.md` is 
 | Entry | What it does | Mac | Windows, Linux |
 |---|---|---|---|
 | Open | In the editor (or the player) | `↩` | Enter |
-| Show in the Finder (Explorer, Files) | In the system's file manager, for a folder on this computer | `⌥⌘R` | Alt+Shift+R |
+| Show in Finder (Explorer, Files) | In the system's file manager, for a folder on this computer | `⌥⌘R` | Alt+Shift+R |
 | New File…, New Folder… | `docs/notes.md` makes the folders on the way | | |
 | Cut, Copy | Keeps the rows for Paste and puts their paths on the clipboard | `⌘X`, `⌘C` | Ctrl+X, Ctrl+C |
 | Paste | Within the conversation's folder. A copy onto a taken name is renamed (`notes copy.md`); a move onto one is refused | `⌘V` | Ctrl+V |
@@ -433,7 +433,7 @@ nothing you type.
 | | |
 |---|---|
 | One per window and conversation | Keeps running with its scrollback, and moves with its tab. It ends when its tab or window closes, the window switches machine, or Pine quits |
-| ↻ | Starts a new shell. After `exit`, **Start it again** |
+| ↻ | Starts a new shell. After `exit`, **Restart** |
 | Keys, off a Mac | `Ctrl` and a letter go to the shell (`Ctrl+W`, `Ctrl+R`); `Ctrl+Shift`, `Ctrl+Alt`, `Ctrl` and a digit, `Ctrl+Tab`, `Ctrl+,` and `` Ctrl+` `` stay the app's. `Ctrl+Shift+C` copies, `Ctrl+Shift+V` pastes |
 
 **Run (▶).** A shell code block in an answer (`bash`, `sh`, `zsh`, `shell`, `fish`, `ksh`) has a
@@ -468,7 +468,7 @@ it.
 | What the agent knows | It sees your changes at its next look, and is told before it acts when you went elsewhere ([mcp.md](mcp.md), "Seeing the browser, and logging in yourself") |
 | No page | Empty until someone opens a page. It closes after 15 idle minutes and when pine restarts; opening an address starts it again, logins kept |
 | Running in this conversation | While no page is open: ports of programs this conversation left running |
-| Opened by the agent before | While no page is open: the agent's last 12 addresses in this conversation, newest first, to get back to its page. Never one it was refused |
+| Opened earlier by the agent | While no page is open: the agent's last 12 addresses in this conversation, newest first, to get back to its page. Never one it was refused |
 
 Pages the agent made for you (a board, switches, a form) show here too, and pressing on them wakes
 the agent ([interfaces.md](interfaces.md)). The page gets no permission (camera, microphone,
@@ -490,7 +490,7 @@ client have no view.
 |---|---|
 | On top | Each approval an agent waits for, and each conversation whose questions are open, with **Answer** |
 | The view | A click shows an agent or a piece of work below; a double click opens it |
-| What happened | Newest first, in plain words: what woke whom, what was handed on, who answered, what you were asked and said. Drag its top edge to resize |
+| Activity | Newest first, in plain words: what woke whom, what was handed on, who answered, what you were asked and said. Drag its top edge to resize |
 | Looking closer | The chosen agent (mode, work, conversations, recent work), piece of work (origin, mode, outside content, hand-offs, questions, steps with tokens; **Open**), board or task (text, state, result, notes) |
 
 The words below the view are the app's. The script learns only the shape of pine, never a prompt,
@@ -581,14 +581,22 @@ what it does or by its key in `pine.json`, and anything pine has (an agent and i
 provider, a model server, an MCP server, a skill, a source, a schedule, a route, a machine). Enter
 goes there and outlines it.
 
+Each thing is listed where it belongs. The pages MCP servers, Skills and Events hold what is for all
+agents, and end with **Agents' own**: the agents that have their own, each a link to its page. An
+agent's page holds its own skills, MCP servers, sources, schedules and routes, and those of its
+conversations (marked "only in" the conversation), each with its add button. A route or a schedule
+opens from its row: change it and **Save changes**, or **Remove** it. A route that does more than the
+form shows (a command, two actions) opens read only.
+
 | Page | What you do there | By command or the main agent |
 |---|---|---|
 | General | **This app**: theme, updates, notifications. **pine**: version, started or attached, sandbox, Show log, Restart, Keep pine running after the app quits, the `pine` command, the web tools' browser, the home folder. **Worth a look**: what `pine check` says. **Defaults for agents**, **Limits**, **Security**: starting model, reasoning and mode, time limits, how many agents work at once, what pine asks. Hover a name for its key. Model-server tuning goes into `pine.json` by hand ([setup.md](setup.md), "pine's settings") | `set_setting`; `pine check`; `pine browser-install` |
-| Agents | Every agent and **New agent**. An agent's page edits its color, name, model and reasoning, "When you send a message", instructions (`AGENTS.md`, `SOUL.md`, `TOOLS.md`; `MEMORY.md` and your rules shown), permissions (mode, shell network, built-in tools, delegates), folders outside the workspace (read only or read and write), and removes it. **Instructions for all agents**: `AGENTS.md`, `TOOLS.md`, `USER.md` of pine's home | `create_agent`, `update_agent`, `rename_agent`, `remove_agent`; `pine agent …` |
+| Agents | Every agent and **New agent**. An agent's page edits its color, name, model and reasoning, "When you send a message", instructions (`AGENTS.md`, `SOUL.md`, `TOOLS.md`; `MEMORY.md`, and your rules when there are some, shown), permissions (mode, shell network, built-in tools, delegates), folders outside the workspace (read only or read and write); lists its own skills, MCP servers, sources (and the sources for all agents it listens to, with **Listen to**), schedules and routes (its own, and those that wake it); opens its conversations; and removes it. **Instructions for all agents**: `AGENTS.md`, `TOOLS.md`, `USER.md` of pine's home | `create_agent`, `update_agent`, `rename_agent`, `remove_agent`; `pine agent …` |
 | Models | What is missing and why, **Default model** (`defaults.model`), subscriptions and API keys (sign in by browser or key, sign out), your model servers with how many agents may use each model at once (`limits.models`, else `limits.maxConcurrentRuns`) and **Connect a server**, and **Decision models** for routes' typed questions ([events.md](events.md), "Typed questions") | `add_model_server`, `add_model`, `configure_model`, `remove_model`, `add_decision_model`; `pine model …`, `pine login`, `pine logout` |
-| MCP servers | Each server, whom it is for, whether it connects. **Add server**: an https address or a program on this computer, for all agents or one; browser sign-in for remote ones | `add_mcp_server`; `pine mcp …` |
-| Skills | Read, change, add (for all or one agent) and remove skills. One in a folder your configuration names is read only | `add_skill`, `remove_skill`; `pine skills` |
-| Events | **Sources** (status, subscribers, last event; add by type with a form and a secret in its own field, subscribe, unsubscribe, remove), **Schedules** (at set times, every so often, once at a time, once after a while), **Routes** (often unneeded: subscribe instead, or use a schedule), shown as When and Then. A route has a topic, an optional condition, a pace (each event, limited, after a burst) and an action (wake an agent, set state, publish, ask a model, decide) | `add_source`, `subscribe`, `add_schedule`, `add_route`; `pine sources`, `pine subscribe`, `pine schedules` |
+| MCP servers | Servers for all agents, whether each connects. **Add server**: an https address or a program on this computer, for all agents or one; browser sign-in for remote ones | `add_mcp_server`; `pine mcp …` |
+| Skills | Skills for all agents: open one to read, change or remove it; add one for all or one agent. One in a folder your configuration names is read only | `add_skill`, `remove_skill`; `pine skills` |
+| Extensions | Extensions for all agents, with their versions: open one to see where it came from and what it brings, check for an update, or remove it. **Install extension** takes an npm or git source or a path, looks it up, and installs what it showed you, for all agents or one. **In pi** lists what pi has that pine does not ([extensions.md](extensions.md)) | `extensions`, `add_extension`, `update_extension`, `remove_extension`; `pine extensions` |
+| Events | What is for all agents: **Sources** (status, who listens, last event; add by type with a form and a secret in its own field, subscribe, unsubscribe, remove), **Schedules** (at set times, every so often, once at a time, once after a while), **Routes** (often unneeded: subscribe instead, or use a schedule), shown as When and Then. A route has a topic, an optional condition, a pace (each event, limited, after a burst) and an action (wake an agent, set state, publish, ask a model, decide) | `add_source`, `subscribe`, `add_schedule`, `add_route`; `pine sources`, `pine subscribe`, `pine schedules` |
 | Environments | This computer and your SSH machines: add, use, forget ("Environments: the pine of another machine") | `ssh` to the machine and `pine` there |
 | Browser access | Paired devices and their switches ([Browser access](#browser-access-a-browser-with-no-ssh-to-set-up)) | None: it is the app's own |
 
@@ -650,8 +658,8 @@ on Windows, pine in WSL is reached this way ([operations.md](operations.md), "On
 | Use another pine | Pick it in the side bar's foot or the pill, Use in Settings > Environments, or "Use the pine on …" in the palette. Only that window switches; **Open in new window** (or `⌘`-click) opens it in its own |
 | Switch back | The pine you left keeps working; its approvals and notices wait until a window uses it |
 | Connecting, or not reached | "Connecting to <host>", then "Loading the agents…". If unreachable, ssh's reason with Try again and Use this Mac (and Disconnect where offered) |
-| Agents that do not load | "Could not load the agents of <host>", the reason, Try again and the machine list |
-| Forget a machine | Forget on its line; if it is open in another window, **Close its window and forget** |
+| Agents that do not load | "Could not load the agents on <host>", the reason, Try again and the machine list |
+| Forget a machine | Forget on its line; if it is open in another window, **Close the window and forget** |
 | Disconnect | Web client only: logs out of the machine in use but keeps it and its host key, unlike Forget. In the machine menu, Settings > Environments and the first screen |
 | Quitting | Ends every connection. A pine the app started remotely stops; one already running there goes on |
 
@@ -667,7 +675,7 @@ remade.
 | A pine home there | `pine init` on that machine first |
 
 With another machine's pine, a conversation's folder is a path there that you type (no dropped
-folders, no Show in the Finder). The terminal and Run are not offered, since they are this
+folders, no Show in Finder). The terminal and Run are not offered, since they are this
 computer's shells. The browser runs there, so `localhost:3000` is that machine's. Settings > General
 is about the app and this computer's pine. A folder opened from the Finder (`Pine <folder>`), a
 `pine://pair` address and the Dock's **Add a Device…** go to the last local window, or a new one.

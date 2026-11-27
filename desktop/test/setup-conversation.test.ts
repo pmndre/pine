@@ -108,7 +108,7 @@ test("a subscription reaches a model: pine names the one its agents run on now, 
 	await sees("[data-card=sign-in-card] [data-sign-in=code]");
 	// The owner signs in in the browser.
 	fs.writeFileSync(browserDone, "sk-ant-not-a-real-key-0123456789");
-	await sees("[data-slot=setup-model] >> text=/Your agents run on anthropic\\//");
+	await sees("[data-slot=setup-model] >> text=/anthropic\\//");
 	await question("Which default model should your agents run on?");
 	const agents = (await api("GET", "/agents")) as any[];
 	const main = agents.find((a) => a.main);
@@ -132,7 +132,7 @@ test("a reload draws the steps again from the daemon's state, and nothing of the
 	await page.reload();
 	await sees("[data-slot=conversation-head] >> text=Onboarding");
 	await sees("[data-slot=setup-welcome]");
-	await sees("[data-slot=setup-model] >> text=/Your agents run on anthropic\\//");
+	await sees("[data-slot=setup-model] >> text=/anthropic\\//");
 	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=Claude");
 	// What comes after it is setup-default-model.test.ts's.
 	await question("Which default model should your agents run on?");

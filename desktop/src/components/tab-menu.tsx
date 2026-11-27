@@ -51,7 +51,7 @@ export function TabMenu({ trigger, pin, moveToWindow = false, others = true, rig
 					<>
 						<ContextMenuSeparator />
 						<ContextMenuGroup>
-							<ContextMenuItem disabled={pin === "main"} title={pin === "main" ? "An agent's main conversation always stays" : undefined} onClick={() => onAction(pin === "unpin" ? "unpin" : "pin")}>
+							<ContextMenuItem disabled={pin === "main"} title={pin === "main" ? "An agent's main conversation is always kept" : undefined} onClick={() => onAction(pin === "unpin" ? "unpin" : "pin")}>
 								{pin === "unpin" ? "Unpin" : "Pin"}
 							</ContextMenuItem>
 						</ContextMenuGroup>

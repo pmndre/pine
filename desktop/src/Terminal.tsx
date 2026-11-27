@@ -166,12 +166,12 @@ export function TerminalView({ tab }: { tab: Tab }) {
 					{state.ended !== undefined ? ` · ended${state.ended ? ` (${state.ended})` : ""}` : ""}
 				</span>
 				<HoverTooltip>
-					<TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Start the shell again" onClick={() => void restart()}><RotateCwIcon /></Button>} />
-					<TooltipContent>Start the shell again</TooltipContent>
+					<TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Restart the shell" onClick={() => void restart()}><RotateCwIcon /></Button>} />
+					<TooltipContent>Restart the shell</TooltipContent>
 				</HoverTooltip>
 			</div>
 			{state.error ? (
-				<Empty><EmptyHeader><EmptyMedia variant="icon"><SquareTerminalIcon /></EmptyMedia><EmptyTitle>The terminal did not start</EmptyTitle><EmptyDescription>{state.error}</EmptyDescription></EmptyHeader></Empty>
+				<Empty><EmptyHeader><EmptyMedia variant="icon"><SquareTerminalIcon /></EmptyMedia><EmptyTitle>Could not start the terminal</EmptyTitle><EmptyDescription>{state.error}</EmptyDescription></EmptyHeader></Empty>
 			) : (
 				<div className="relative flex min-h-0 flex-1 flex-col bg-background p-1.5" onClick={() => term.current?.focus()}>
 					<div ref={host} data-slot="terminal" className={cn("min-h-0 flex-1", !state.cwd && "opacity-0")} />
@@ -180,7 +180,7 @@ export function TerminalView({ tab }: { tab: Tab }) {
 					{state.ended !== undefined ? (
 						<div className="flex flex-none items-center justify-center gap-2 py-1.5 text-xs text-muted-foreground">
 							The shell ended.
-							<Button variant="outline" size="xs" onClick={() => void restart()}>Start it again</Button>
+							<Button variant="outline" size="xs" onClick={() => void restart()}>Restart</Button>
 						</div>
 					) : null}
 				</div>

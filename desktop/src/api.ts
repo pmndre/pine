@@ -9,7 +9,7 @@ export class ApiError extends Error {
 	data: any;
 	constructor(status: number, data: any) {
 		// An address the daemon does not have at all is one a newer pine has: the app attached to an older one.
-		super(status === 404 && (data?.error === "not found" || typeof data?.error !== "string") ? "This pine does not know that yet: it is older than the app. Update pine and restart it." : typeof data?.error === "string" ? data.error : `HTTP ${status}`);
+		super(status === 404 && (data?.error === "not found" || typeof data?.error !== "string") ? "This pine is older than the app and does not support that yet. Update pine and restart it." : typeof data?.error === "string" ? data.error : `HTTP ${status}`);
 		this.status = status;
 		this.data = data;
 	}
@@ -360,6 +360,42 @@ export interface AgentDetail {
 	files: { instructions?: string; soul?: string; tooling?: string; memory?: string; rules?: string };
 }
 
+/** An extension installed in pine: a pi extension or a pi package that carries some. */
+export interface Extension {
+	source: string;
+	kind: "npm" | "git" | "local" | "file";
+	name: string;
+	version?: string;
+	description?: string;
+	scope: "global" | "agent";
+	agent?: string;
+	path: string;
+	/** False: you put it there by hand; pine lists it and leaves it alone. */
+	managed: boolean;
+	extensions: string[];
+	skills: string[];
+	unused: string[];
+	problem?: string;
+}
+/** What a source turned out to be, pinned to a version: what an installation would install. */
+export interface ExtensionProposal {
+	source: string;
+	kind: "npm" | "git" | "local";
+	name: string;
+	version?: string;
+	description?: string;
+	from?: string;
+}
+/** An extension pi itself has on this computer, to bring over. */
+export interface PiExtension {
+	source: string;
+	name: string;
+	version?: string;
+	description?: string;
+	kind: "npm" | "git" | "local";
+	installed: boolean;
+}
+
 export interface Skill {
 	name: string;
 	description: string;
@@ -379,6 +415,10 @@ export interface Schedule {
 	task?: string;
 	next?: number;
 	topic: string;
+	/** Its times as the form takes them: one of the three. */
+	cron?: string;
+	every?: string;
+	at?: string;
 }
 
 export interface AskQuestion {
@@ -405,6 +445,8 @@ export interface Route {
 	/** A command run in an agent's sandbox with no model, given the event as JSON on stdin. */
 	run?: { command: string; agent?: string };
 	trust?: string;
+	/** The agent the route belongs to, when that agent made it for itself: it goes when the agent goes. */
+	of?: string;
 }
 
 export interface SourceType {
@@ -635,7 +677,7 @@ export const api = {
 	subscribeAll: (source: string, details: Record<string, unknown> = {}) => post<any>("/subscribe", { source, ...details }),
 	unsubscribeAll: (source: string) => post<{ unsubscribed: boolean }>("/unsubscribe", { source }),
 	schedules: () => get<Schedule[]>("/schedules"),
-	addSchedule: (body: { name: string; task: string; cron?: string; every?: string; at?: string; agent?: string; session?: string }) => post<Schedule>("/schedules", body),
+	addSchedule: (body: { name: string; task: string; cron?: string; every?: string; at?: string; agent?: string; session?: string; replace?: string }) => post<Schedule>("/schedules", body),
 	removeSchedule: (name: string, agent?: string) => post<{ removed: boolean }>("/schedules/remove", { name, agent }),
 	routes: () => get<Route[]>("/routes"),
 	addRoute: (body: Record<string, string | undefined>) => post<{ name: string; lines: string[]; wider?: string }>("/routes", body),
@@ -660,6 +702,12 @@ export const api = {
 	eraseAgent: (agent: string, keepFiles: boolean) => post<{ kept?: string; problem?: string }>(`${a(agent)}/erase`, { agent, keepFiles }),
 	shared: () => get<Array<{ name: string; about: string; text: string }>>("/shared"),
 	setShared: (name: string, text: string) => post<{ ok: boolean }>("/shared", { name, text }),
+	extensions: () => get<Extension[]>("/extensions"),
+	piExtensions: () => get<PiExtension[]>("/extensions/pi"),
+	proposeExtension: (source: string) => post<ExtensionProposal>("/extensions/propose", { source }),
+	installExtension: (body: { source: string; agent?: string; scripts?: boolean }) => post<Extension>("/extensions", body),
+	removeExtension: (source: string, agent?: string) => post<{ removed: boolean }>("/extensions/remove", { source, agent }),
+	updateExtension: (source: string, agent?: string, check?: boolean) => post<{ from: string | null; to: string | null; source: string | null; updated: boolean }>("/extensions/update", { source, agent, check }),
 	skills: () => get<Skill[]>("/skills"),
 	addSkill: (body: { name: string; description: string; instructions: string; agent?: string }) => post<{ name: string; dir: string; replaced: boolean }>("/skills", body),
 	removeSkill: (name: string, agent?: string, session?: string) => post<{ removed: boolean }>("/skills/remove", { name, agent, session }),

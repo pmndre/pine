@@ -45,7 +45,7 @@ export function PickDialog({ p }: { p: Picker }) {
 								</CommandItem>
 							))}
 				</CommandGroup>
-				{p.free || p.loading ? null : <CommandEmpty>Nothing fits.</CommandEmpty>}
+				{p.free || p.loading ? null : <CommandEmpty>No matches.</CommandEmpty>}
 			</CommandList>
 		</Command>
 	);

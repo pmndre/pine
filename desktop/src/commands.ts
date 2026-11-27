@@ -37,16 +37,16 @@ export const COMMANDS: Command[] = [
 			if (!t) return;
 			if (args.trim()) return store.openTab(t.agent, args.trim());
 			const list = await api.sessions(t.agent).catch(() => []);
-			const session = await store.pick({ title: `Conversations of ${t.agent}`, items: list.map((s) => ({ value: s.session, label: `${s.pinned || s.session === "main" ? "★ " : ""}${s.session}`, about: `${plural(s.tasks, "message")} · ${ago(s.last)}${s.folder ? ` · ${s.folder}` : ""}` })), current: t.session, placeholder: "Search conversations" });
+			const session = await store.pick({ title: `Conversations with ${t.agent}`, items: list.map((s) => ({ value: s.session, label: `${s.pinned || s.session === "main" ? "★ " : ""}${s.session}`, about: `${plural(s.tasks, "message")} · ${ago(s.last)}${s.folder ? ` · ${s.folder}` : ""}` })), current: t.session, placeholder: "Search conversations" });
 			if (session) await store.openTab(t.agent, session);
 		},
 	},
-	{ name: "close", title: "Close tab", about: "Close this tab; the conversation stays in the list", keys: "⌘W", run: menu("close") },
-	{ name: "close-others", title: "Close other tabs", about: "Close all tabs except this one; the conversations stay in the list", run: (_a, tab) => store.closeTabs("others", tab) },
+	{ name: "close", title: "Close tab", about: "Close this tab. The conversation stays in the list", keys: "⌘W", run: menu("close") },
+	{ name: "close-others", title: "Close other tabs", about: "Close all tabs except this one. The conversations stay in the list", run: (_a, tab) => store.closeTabs("others", tab) },
 	{ name: "close-right", title: "Close tabs to the right", about: "Close the tabs to the right of this one", run: (_a, tab) => store.closeTabs("right", tab) },
-	{ name: "close-all", title: "Close all tabs", about: "Close all tabs, including the agent's main conversation; a tab that waits for your answer stays", run: (_a, tab) => store.closeTabs("all", tab) },
+	{ name: "close-all", title: "Close all tabs", about: "Close all tabs, including the agent's main conversation. A tab waiting for your answer stays open", run: (_a, tab) => store.closeTabs("all", tab) },
 	{ name: "rename", title: "Rename conversation", about: "Give this conversation a new name", hint: "<name>", chat: true, run: (args, tab) => (chat(tab) ? (args.trim() ? store.rename(tab!.agent, tab!.session, args.trim()) : store.askRename(tab!)) : undefined) },
-	{ name: "pin", title: "Pin conversation", about: "Keep this conversation however long it is not used", chat: true, run: (_a, tab) => (chat(tab) ? store.pin(tab!, true) : undefined) },
+	{ name: "pin", title: "Pin conversation", about: "Keep this conversation even when it goes unused", chat: true, run: (_a, tab) => (chat(tab) ? store.pin(tab!, true) : undefined) },
 	{
 		name: "group", title: "Move conversation to group", about: "Put this conversation, with the conversations branched from it, into a group of the agent's conversations, or take it out of one", hint: "[name | -]", chat: true,
 		run: (args, tab) => {
@@ -58,15 +58,15 @@ export const COMMANDS: Command[] = [
 			return store.moveToGroup(t.agent, t.session, name === "-" ? null : name);
 		},
 	},
-	{ name: "unpin", title: "Unpin conversation", about: "Let this conversation go when it has not been used for a while", chat: true, run: (_a, tab) => (chat(tab) ? store.pin(tab!, false) : undefined) },
+	{ name: "unpin", title: "Unpin conversation", about: "Let pine remove this conversation after it goes unused for a while", chat: true, run: (_a, tab) => (chat(tab) ? store.pin(tab!, false) : undefined) },
 	{ name: "reset", title: "Start over", about: "Forget this conversation and start fresh", chat: true, run: menu("reset") },
-	{ name: "undo", title: "Take back last message", about: "Undo your last message: files the agent changed for it go back to how they were, and what you wrote goes back into the message box", keys: "⇧⌘Z", chat: true, run: menu("undo") },
-	{ name: "branch", title: "Branch conversation", about: "Go on in a new conversation that has all of this one; this one stays as it is. A message of yours branches from there. --worktree: the new one works in a separate worktree", hint: "[--worktree]", chat: true, run: (args) => store.command(/(^|\s)(--worktree|-w)(\s|$)/.test(args) ? "branch-worktree" : "branch") },
-	{ name: "worktree", title: "Worktree", about: "Work in a separate checkout of the folder's repository, apart from other conversations; in one: merge it, update it or discard it", chat: true, run: menu("worktree") },
-	{ name: "redo", title: "Bring back what was taken back", about: "Until you send a new message", keys: "⇧⌘Y", chat: true, run: menu("redo") },
-	{ name: "compact", title: "Shorten the conversation", about: "The earlier part becomes a summary, which frees the model's context", chat: true, run: menu("compact") },
+	{ name: "undo", title: "Undo last message", about: "Restore the files the agent changed and put your message back in the message box", keys: "⇧⌘Z", chat: true, run: menu("undo") },
+	{ name: "branch", title: "Branch conversation", about: "Continue in a new conversation that starts as a copy of this one, which stays unchanged. You can also branch from one of your messages. --worktree puts the new conversation in a separate worktree", hint: "[--worktree]", chat: true, run: (args) => store.command(/(^|\s)(--worktree|-w)(\s|$)/.test(args) ? "branch-worktree" : "branch") },
+	{ name: "worktree", title: "Worktree", about: "Work in a separate checkout of the folder's repository, apart from other conversations. In a worktree, this merges, updates or discards it", chat: true, run: menu("worktree") },
+	{ name: "redo", title: "Redo", about: "Bring back the message you undid, until you send a new one", keys: "⇧⌘Y", chat: true, run: menu("redo") },
+	{ name: "compact", title: "Shorten the conversation", about: "Replace the earlier part with a summary to free up the model's context", chat: true, run: menu("compact") },
 	{
-		name: "folder", title: "Folder of this conversation", about: "Open a folder of yours for it, or none", hint: "[path|none]", chat: true,
+		name: "folder", title: "Conversation folder", about: "Open one of your folders for this conversation, or none", hint: "[path|none]", chat: true,
 		run: (args, tab) => {
 			const t = chat(tab);
 			if (!t) return;
@@ -75,7 +75,7 @@ export const COMMANDS: Command[] = [
 		},
 	},
 	{
-		name: "code", title: "Side panel", about: "The agent, files, changes, tool output, what is running, the board, a terminal and the browser of the conversation in front", hint: "[agent|files|changes|turn|output|running|board|terminal|browser|off]", keys: "⌥⌘B",
+		name: "code", title: "Side panel", about: "Agent, files, changes, tool output, running programs, board, terminal and browser for the current conversation", hint: "[agent|files|changes|turn|output|running|board|terminal|browser|off]", keys: "⌥⌘B",
 		run: (args) => {
 			const word = args.trim().toLowerCase();
 			if (!word) return store.command("code");
@@ -84,11 +84,11 @@ export const COMMANDS: Command[] = [
 			return store.command(`code-${word}`);
 		},
 	},
-	{ name: "terminal", title: "Terminal", about: "A shell of your own in the conversation's folder, in the side panel", keys: "⌃`", chat: true, run: () => store.command("code-terminal") },
-	{ name: "browser", title: "Browser", about: "The agent's browser, a part of the side panel", keys: "⇧⌘B", run: menu("browser") },
-	{ name: "view", title: "View", about: "All of pine at a glance, drawn by the view in pine's views folder, in a panel at the right", keys: "⇧⌘O", run: menu("view") },
-	{ name: "goal", title: "Goal", about: "Keep the agent working until something is reached", hint: "[objective|pause|resume|clear]", chat: true, run: (args, tab) => (chat(tab) ? (args.trim() ? store.setGoal(tab!, args) : store.askGoal(tab!)) : undefined) },
-	{ name: "swarm", title: "Swarm", about: "Have the agent lead a job: sub-agents work it through on the board, and the answer is checked", hint: "[what is to be done|pause|resume|clear]", chat: true, run: (args, tab) => (chat(tab) ? store.setSwarm(tab!, args) : undefined) },
+	{ name: "terminal", title: "Terminal", about: "Your own shell in the conversation's folder, in the side panel", keys: "⌃`", chat: true, run: () => store.command("code-terminal") },
+	{ name: "browser", title: "Browser", about: "The agent's browser, in the side panel", keys: "⇧⌘B", run: menu("browser") },
+	{ name: "view", title: "View", about: "All of pine at a glance in a panel on the right, drawn by the view in pine's views folder", keys: "⇧⌘O", run: menu("view") },
+	{ name: "goal", title: "Goal", about: "Keep the agent working until a goal is met", hint: "[objective|pause|resume|clear]", chat: true, run: (args, tab) => (chat(tab) ? (args.trim() ? store.setGoal(tab!, args) : store.askGoal(tab!)) : undefined) },
+	{ name: "swarm", title: "Swarm", about: "Have the agent lead a job. Sub-agents work through it on the board, and the answer is checked", hint: "[what is to be done|pause|resume|clear]", chat: true, run: (args, tab) => (chat(tab) ? store.setSwarm(tab!, args) : undefined) },
 	{ name: "stop", title: "Stop", about: "Stop what the agent is doing", keys: "⌘.", run: (_a, tab) => (tab?.busy ? store.stop(tab) : store.flash("Nothing is running.")) },
 	{
 		name: "model", title: "Model", about: "Show or switch this agent's model", hint: "[provider/id]", keys: "⇧⌘M", chat: true,
@@ -99,7 +99,7 @@ export const COMMANDS: Command[] = [
 			if (!wanted) return store.pickModel(t);
 			const models = await api.models().catch(() => [] as string[]);
 			const hit = models.find((m) => m === wanted) ?? (models.filter((m) => m.includes(wanted)).length === 1 ? models.find((m) => m.includes(wanted)) : undefined);
-			if (!hit) return store.flash(`No single model fits "${wanted}".`, "bad");
+			if (!hit) return store.flash(`No single model matches "${wanted}".`, "bad");
 			if (await store.attempt(() => api.setModel(t.agent, hit))) {
 				const info = store.agent(t.agent);
 				if (info) info.model = hit;
@@ -110,13 +110,13 @@ export const COMMANDS: Command[] = [
 		},
 	},
 	{
-		name: "reasoning", title: "Reasoning", about: "How much this agent's model thinks before it answers", hint: `[${REASONING.join("|")}]`, chat: true,
+		name: "reasoning", title: "Reasoning", about: "How much this agent's model thinks before answering", hint: `[${REASONING.join("|")}]`, chat: true,
 		run: async (args, tab) => {
 			const t = chat(tab);
 			if (!t) return;
 			const level = args.trim().toLowerCase();
 			if (!level) return store.pickReasoning(t);
-			if (!REASONING.includes(level)) return store.flash(`Reasoning is one of ${REASONING.join(", ")}.`, "bad");
+			if (!REASONING.includes(level)) return store.flash(`Reasoning must be one of ${REASONING.join(", ")}.`, "bad");
 			if (await store.attempt(() => api.setThinking(t.agent, level))) {
 				const info = store.agent(t.agent);
 				if (info) info.thinking = level;
@@ -136,7 +136,7 @@ export const COMMANDS: Command[] = [
 		},
 	},
 	{
-		name: "voice", title: "Dictate the message", about: "Say the message instead of typing it; the words are recognised on this computer itself", hint: "[language, for example de-DE]", keys: "⌃R", chat: true,
+		name: "voice", title: "Dictate the message", about: "Speak the message instead of typing it. Speech is recognised on this computer", hint: "[language, for example de-DE]", keys: "⌃R", chat: true,
 		run: (args) => {
 			if (args.trim()) store.voiceLanguage = args.trim();
 			return store.command("voice");
@@ -161,9 +161,9 @@ export const COMMANDS: Command[] = [
 			tab.touch();
 		},
 	},
-	{ name: "sources", title: "Event sources", about: "What can wake an agent, whether it runs, who is subscribed", run: menu("settings:events") },
+	{ name: "sources", title: "Event sources", about: "Sources that can wake an agent, whether each is running, and who is subscribed", run: menu("settings:events") },
 	{
-		name: "subscribe", title: "Subscribe to an event source", about: "Wake on a source's events: this conversation (local), the agent, or all agents (global)", hint: "[local|agent|global] <source> [what to do]", chat: true,
+		name: "subscribe", title: "Subscribe to an event source", about: "Wake on events from a source: this conversation (local), the agent, or all agents (global)", hint: "[local|agent|global] <source> [what to do]", chat: true,
 		run: async (args, tab) => {
 			const t = chat(tab);
 			if (!t) return;
@@ -183,7 +183,7 @@ export const COMMANDS: Command[] = [
 		},
 	},
 	{
-		name: "unsubscribe", title: "End a subscription", about: "End a subscription of this conversation, the agent, or all agents", hint: "[local|agent|global] <source>", chat: true,
+		name: "unsubscribe", title: "End a subscription", about: "End a subscription for this conversation, the agent, or all agents", hint: "[local|agent|global] <source>", chat: true,
 		run: async (args, tab) => {
 			const t = chat(tab);
 			if (!t) return;
@@ -202,26 +202,26 @@ export const COMMANDS: Command[] = [
 	},
 	{ name: "mcp", title: "MCP servers", about: "List them, add one, or sign in to one", run: menu("settings:mcp") },
 	{ name: "events", title: "Event log", about: "Watch everything that happens, live", keys: "⇧⌘L", run: menu("events") },
-	{ name: "manual", title: "Manual", about: "Read pine's manual: everything it does and how", run: menu("manual") },
+	{ name: "manual", title: "Manual", about: "Read pine's manual: what pine can do and how", run: menu("manual") },
 	{
-		name: "tasks", title: "Recent tasks", about: "Recent tasks of this agent", chat: true,
+		name: "tasks", title: "Recent tasks", about: "This agent's recent tasks", chat: true,
 		run: async (_a, tab) => {
 			const t = chat(tab);
 			if (!t) return;
 			const list = await store.attempt(() => api.tasks(t.agent, 15));
 			if (!list) return;
-			const id = await store.pick({ title: `Recent tasks of ${t.agent}`, items: list.map((x) => ({ value: String(x.id), label: `#${x.id} ${x.status}`, about: `${x.kind} · ${x.session} · ${short(oneLine(x.meta?.label ?? x.prompt), 80)}` })), placeholder: "Search tasks" });
+			const id = await store.pick({ title: `Recent tasks for ${t.agent}`, items: list.map((x) => ({ value: String(x.id), label: `#${x.id} ${x.status}`, about: `${x.kind} · ${x.session} · ${short(oneLine(x.meta?.label ?? x.prompt), 80)}` })), placeholder: "Search tasks" });
 			if (id) await store.openTask(Number(id));
 		},
 	},
-	{ name: "task", title: "Show one task", about: "What one task did, step by step (a sub-agent, for example)", hint: "<id>", run: (args) => (Number(args) > 0 ? store.openTask(Number(args)) : store.flash("Give the task's number: /task 12")) },
+	{ name: "task", title: "Show one task", about: "Show the steps of one task, such as a sub-agent's", hint: "<id>", run: (args) => (Number(args) > 0 ? store.openTask(Number(args)) : store.flash("Enter the task number, like /task 12")) },
 	{
-		name: "approve", title: "Allow what waits", about: "Allow the action that waits for approval", hint: "[id] [always]",
+		name: "approve", title: "Allow pending request", about: "Allow the action waiting for approval", hint: "[id] [always]",
 		run: async (args) => answer(args, true),
 	},
-	{ name: "deny", title: "Refuse what waits", about: "Refuse the action that waits for approval", hint: "[id]", run: async (args) => answer(args, false) },
+	{ name: "deny", title: "Refuse pending request", about: "Refuse the action waiting for approval", hint: "[id]", run: async (args) => answer(args, false) },
 	{
-		name: "state", title: "Shared state", about: "The small facts agents and routes share", hint: "[key pattern]",
+		name: "state", title: "Shared state", about: "Small facts that agents and routes share", hint: "[key pattern]",
 		run: async (args, tab) => {
 			const list = await store.attempt(() => api.state(args.trim() || "#"));
 			if (!list || !tab) return;
@@ -230,7 +230,7 @@ export const COMMANDS: Command[] = [
 		},
 	},
 	{
-		name: "emit", title: "Publish an event", about: "Publish an event as yourself: a form, or at once with a topic and JSON", hint: "[topic] [json]",
+		name: "emit", title: "Publish an event", about: "Publish an event as yourself, through a form or directly with a topic and JSON", hint: "[topic] [json]",
 		run: async (args) => {
 			const at = args.trim().indexOf(" ");
 			const topic = at < 0 ? args.trim() : args.trim().slice(0, at);
@@ -246,7 +246,7 @@ export const COMMANDS: Command[] = [
 			await store.publish(topic, payload);
 		},
 	},
-	{ name: "copy", title: "Copy last answer", about: "Copy the agent's last answer, as it wrote it (Markdown)", keys: "⇧⌘C", chat: true, run: menu("copy") },
+	{ name: "copy", title: "Copy last answer", about: "Copy the agent's last answer as Markdown", keys: "⇧⌘C", chat: true, run: menu("copy") },
 	{
 		name: "export", title: "Export conversation", about: "Save this conversation as Markdown, or copy it", hint: "[copy] [full]", keys: "⇧⌘E", chat: true,
 		run: async (args, tab) => {
@@ -259,7 +259,7 @@ export const COMMANDS: Command[] = [
 		},
 	},
 	{
-		name: "notify", title: "Notifications", about: "A notification when the agent is done or needs you while the window is not in front", hint: "[on|off]",
+		name: "notify", title: "Notifications", about: "Notify you when the agent is done or needs you while the window is in the background", hint: "[on|off]",
 		run: async (args) => {
 			const word = args.trim().toLowerCase();
 			const on = word === "on" ? true : word === "off" ? false : !store.prefs.notify;
@@ -268,13 +268,13 @@ export const COMMANDS: Command[] = [
 			store.flash(on ? "Notifications are on." : "Notifications are off.");
 		},
 	},
-	{ name: "clear", title: "Clear the view", about: "Clear this tab's view; the conversation is kept", chat: true, run: menu("clear") },
+	{ name: "clear", title: "Clear the view", about: "Clear this tab's view. The conversation is kept", chat: true, run: menu("clear") },
 	{ name: "settings", title: "Settings", about: "Agents, models, MCP servers, skills, events and pine's own settings", keys: "⌘,", run: menu("settings") },
 	{ name: "sidebar", title: "Toggle sidebar", about: "Show or hide the list of agents and conversations", keys: "⌘B", run: menu("sidebar") },
-	{ name: "open", title: "Open a folder", about: "A conversation that works in a folder of yours", keys: "⌘O", run: menu("open-folder") },
-	{ name: "device", title: "Add a device", about: "Pair a phone or a browser with this computer: a code to scan, or a link", keys: "⇧⌘D", run: menu("add-device") },
+	{ name: "open", title: "Open a folder", about: "Start a conversation that works in one of your folders", keys: "⌘O", run: menu("open-folder") },
+	{ name: "device", title: "Add a device", about: "Pair a phone or browser with this computer by scanning a code or opening a link", keys: "⇧⌘D", run: menu("add-device") },
 	{ name: "updates", title: "Check for updates", about: "Ask GitHub whether there is a newer Pine app", run: menu("updates") },
-	{ name: "help", title: "Keys and commands", about: "What can be typed and pressed", run: menu("help") },
+	{ name: "help", title: "Keys and commands", about: "Keyboard shortcuts and slash commands", run: menu("help") },
 ];
 
 async function answer(args: string, allow: boolean): Promise<void> {
@@ -283,7 +283,7 @@ async function answer(args: string, allow: boolean): Promise<void> {
 	const id = words.find((w) => w !== "always") ?? "";
 	const pending = await api.approvals().catch(() => []);
 	const target = id || (pending.length === 1 ? pending[0].id : "");
-	if (!target) return store.flash(pending.length ? `Several requests wait: ${pending.map((p) => p.id).join(", ")}` : "Nothing waits for approval.");
+	if (!target) return store.flash(pending.length ? `Several requests are waiting: ${pending.map((p) => p.id).join(", ")}` : "Nothing is waiting for approval.");
 	const req = pending.find((p) => p.id === target);
 	// One that needs a value is answered in its dialog, a sign-in's choice from its card above the composer.
 	if (allow && req && (req.inputs?.length || isPick(req))) return store.ask(target);

@@ -3,13 +3,14 @@
 // The parts are shadcn's chat components, composed the way its AI Elements pages show: the thread
 // is Message Scroller, a turn is Message (and Bubble for the owner's), the work of a turn is Trace
 // (Task, Tool, Reasoning, Subagent and Plan), a request is an Item (Confirmation), a note is a Marker.
-import { ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, CpuIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, ShieldIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
 import { Fragment, memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { Sound } from "@/components/sound";
 import { contextMenu } from "@/components/page-menu";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Attachment, AttachmentContent, AttachmentGroup, AttachmentMedia, AttachmentTitle } from "@/components/ui/attachment";
 import { AgentAvatar } from "@/components/agent-avatar";
+import { AgentFacts } from "@/components/agent-facts";
 import { ModelNotice } from "@/components/model-notice";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,7 +47,7 @@ import { Markdown, MEDIA } from "./markdown.tsx";
 import { runs } from "./work-runs.ts";
 import { type Bookmark, isPick, type Item, type Part, type QuoteSource, quoteId, type SentQuote, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { SetupCard, SetupScript } from "./setup/engine.tsx";
-import { childKind, clock, count, MODES, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
+import { childKind, clock, count, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
 import { sameSource } from "../../src/quotes.ts";
 
@@ -158,9 +159,9 @@ function Call({ tool, subject, status, ms, depth = 0, output, error, images }: {
 				{(images ?? []).map((id) => (
 					<div className={MEDIA.box.image} key={id}>
 						<Dialog>
-							<DialogTrigger nativeButton={false} aria-label="The picture, larger" render={<img className={MEDIA.image} src={media.tool(id)} alt="" />} />
+							<DialogTrigger nativeButton={false} aria-label="Enlarge the picture" render={<img className={MEDIA.image} src={media.tool(id)} alt="" />} />
 							<DialogContent showCloseButton={false} className="flex max-h-11/12 w-auto max-w-11/12 flex-col items-center sm:max-w-11/12">
-								<DialogTitle className="sr-only">The picture, larger</DialogTitle>
+								<DialogTitle className="sr-only">Enlarged picture</DialogTitle>
 								<DialogClose nativeButton={false} aria-label="Close the picture" render={<img src={media.tool(id)} alt="" className="min-h-0 max-w-full rounded-md object-contain" />} />
 							</DialogContent>
 						</Dialog>
@@ -344,7 +345,7 @@ function SteerLine({ tab, steer }: { tab: Tab; steer: Steer }) {
 			not read yet ·
 			<HoverTooltip>
 				<TooltipTrigger render={<Button variant="link" size="xs" onClick={() => void store.sendNow(tab, steer)} />}>send now</TooltipTrigger>
-				<TooltipContent>Stops what the agent is doing right now, gives it this message, and lets it carry on</TooltipContent>
+				<TooltipContent>Interrupts the agent, hands it this message, and lets it continue</TooltipContent>
 			</HoverTooltip>
 		</span>
 	);
@@ -389,7 +390,7 @@ function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
 	if (question && (state === "allowed" || state === "denied")) return <QuestionTrace data-item="approval" data-state={state} question={req.summary} answer={item.answer} answered={state === "allowed"} by={item.by} />;
 	if (state !== "open") {
 		const head = state === "gone" ? "No longer open" : state === "allowed" ? "Allowed" : "Denied";
-		const about = state === "gone" ? "pine was restarted, or the question ran out of time" : [item.by ? `(${item.by})` : "", item.always && req.remember ? `${req.remember} will not ask again in this conversation` : ""].filter(Boolean).join(" · ");
+		const about = state === "gone" ? "pine restarted, or the question timed out" : [item.by ? `(${item.by})` : "", item.always && req.remember ? `${req.remember} will not ask again in this conversation` : ""].filter(Boolean).join(" · ");
 		const what = [head, question ? "" : req.tool, oneLine(req.summary)].filter(Boolean).join(" · ");
 		return (
 			<Trace data-item="approval" data-state={state}>
@@ -509,13 +510,15 @@ function ComposerChoice({ tab }: { tab: Tab }) {
 }
 
 /** The agent's list of steps (its todo tool, Plan): how far it is, and each step. */
-export function Steps({ items }: { items: Array<{ text: string; status: string }> }) {
+export function Steps({ items, live }: { items: Array<{ text: string; status: string }>; live: boolean }) {
 	const done = items.filter((t) => t.status === "done").length;
+	// A step in work that nobody works on (the turn was stopped, pine was restarted) is drawn still, not running.
+	const doing = (t: { status: string }) => t.status === "in_progress" && live;
 	return (
 		<Trace data-item="steps">
 			<TraceCollapsible defaultOpen>
 				<TraceCollapsibleTrigger>
-					<TraceLine status={items.some((t) => t.status === "in_progress") ? "running" : undefined}>
+					<TraceLine status={items.some(doing) ? "running" : undefined}>
 						<TraceIcon>
 							<ListChecksIcon />
 						</TraceIcon>
@@ -526,7 +529,7 @@ export function Steps({ items }: { items: Array<{ text: string; status: string }
 				<TraceCollapsibleContent>
 					<Trace>
 						{items.map((t, i) => (
-							<TraceLine key={i} status={t.status === "in_progress" ? "running" : t.status === "done" ? undefined : "pending"}>
+							<TraceLine key={i} status={doing(t) ? "running" : t.status === "done" ? undefined : "pending"}>
 								<TraceIcon>{t.status === "done" ? <CircleCheckIcon /> : t.status === "in_progress" ? <CircleDotIcon /> : <CircleIcon />}</TraceIcon>
 								<TraceTitle className="select-text" title={t.text}>{t.text}</TraceTitle>
 							</TraceLine>
@@ -598,7 +601,7 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 		case "questions":
 			return <Questions item={item} tab={tab} />;
 		case "steps":
-			return <Steps items={item.items} />;
+			return <Steps items={item.items} live={item === tab.steps && tab.busy} />;
 		case "media":
 			return (
 				<div className={MEDIA.box[item.kind]}>
@@ -606,7 +609,7 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 						<Dialog>
 							<DialogTrigger nativeButton={false} render={<img className={MEDIA.image} src={item.url} alt={item.name} draggable={false} />} />
 							<DialogContent showCloseButton={false} className="flex max-h-11/12 w-auto max-w-11/12 flex-col items-center sm:max-w-11/12">
-								<DialogTitle className="sr-only">The picture, larger</DialogTitle>
+								<DialogTitle className="sr-only">Enlarged picture</DialogTitle>
 								<DialogClose nativeButton={false} aria-label="Close the picture" render={<img src={item.url} alt="" className="min-h-0 max-w-full rounded-md object-contain" />} />
 							</DialogContent>
 						</Dialog>
@@ -617,7 +620,7 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 		case "swarm": {
 			const w = item.swarm;
 			return (
-				<Marker className="select-text">
+				<Marker className="select-text" data-item="swarm" data-state={w.status === "active" && w.checking ? "checking" : w.status}>
 					<MarkerIcon>{w.status === "done" ? <CheckIcon /> : w.status === "active" ? <UsersIcon /> : <ClockIcon />}</MarkerIcon>
 					<MarkerContent>
 						swarm · {w.note}
@@ -661,9 +664,9 @@ function Checkpoint({ tab }: { tab: Tab }) {
 			<MarkerContent className="inline-flex items-center gap-2">
 				before your last message
 				<HoverTooltip>
-					<TooltipTrigger render={<Button size="xs" variant="outline" onClick={() => void store.undo(tab, false)} />}>Take back</TooltipTrigger>
+					<TooltipTrigger render={<Button size="xs" variant="outline" onClick={() => void store.undo(tab, false)} />}>Undo</TooltipTrigger>
 					<TooltipContent>
-						Undo your last message. Files the agent changed for it go back to how they were, the agent's answer is removed, and what you wrote goes back into the message box so you can edit it and send it again.
+						Undo your last message. Files the agent changed are restored, the agent's answer is removed, and your message returns to the message box so you can edit it and send it again.
 						<Kbd>{shortcut("⇧⌘Z")}</Kbd>
 					</TooltipContent>
 				</HoverTooltip>
@@ -743,7 +746,6 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 		// Short, for the stock toast's row: its action says the rest.
 		store.noModelNotice({ title: "Connect a model first", description: "Your agents can't answer you yet." });
 	}, [problem]);
-	const mode = MODES.find((m) => m.value === info?.mode);
 	const h = has?.holdings;
 	const counts: Array<[string, number]> = h ? [["skill", h.skills.length], ["event source", h.sources.length], ["schedule", h.schedules.length], ["MCP server", h.servers.length], ["conversation", h.conversations.length]] : [];
 	return (
@@ -756,14 +758,11 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 					<h1>{tab.agent}</h1>
 				</EmptyTitle>
 				{/* A long path is broken where the line ends, not pushed out of it. */}
-				<EmptyDescription className="wrap-anywhere">{info?.description || "An agent of yours."}</EmptyDescription>
+				<EmptyDescription className="wrap-anywhere">{info?.description || "One of your agents."}</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>
 				<div className="flex flex-wrap justify-center gap-1.5">
-					<HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}><CpuIcon data-icon="inline-start" /><b>{info?.model ?? "no model"}</b></TooltipTrigger><TooltipContent>The model it runs on</TooltipContent></HoverTooltip>
-					<HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}><ShieldIcon data-icon="inline-start" /><b>{info?.mode}</b>{info?.mode === "auto" || info?.mode === "bypass" ? "your account, no sandbox" : "in a sandbox"}</TooltipTrigger><TooltipContent>{mode?.about ?? "How much it asks and how far it reaches"}</TooltipContent></HoverTooltip>
-					{info?.main ? <HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}>administers pine</TooltipTrigger><TooltipContent>It creates and changes the other agents and pine's settings when you ask it to</TooltipContent></HoverTooltip> : null}
-					{info?.delegates.length ? <HoverTooltip><TooltipTrigger render={<Badge variant="outline" />}>hands work to <b>{info.delegates.includes("*") ? (info.main ? "all other agents" : `all agents except ${store.agents.find((a) => a.main)?.id ?? "the main one"}`) : info.delegates.join(", ")}</b></TooltipTrigger><TooltipContent>Agents it can hand work to</TooltipContent></HoverTooltip> : null}
+					{info ? <AgentFacts agent={info} mainId={store.agents.find((a) => a.main)?.id} pick={{ model: () => void store.pickModel(tab), reasoning: () => void store.pickReasoning(tab), mode: () => void store.pickMode(tab) }} /> : null}
 					{asked === tab.agent ? counts.filter(([, n]) => n > 0).map(([what, n]) => <Badge variant="outline" key={what}><b>{n}</b>{n === 1 ? what : `${what}s`}</Badge>) : <WelcomeBadgesSkeleton count={2} />}
 				</div>
 				{/* The main agent's says it in a toast (above); another agent's on its card. */}
@@ -884,11 +883,11 @@ function StatusLine({ tab }: { tab: Tab }) {
 		</Marker>
 	);
 	if (!tab.busy) {
-		if (waiting.length) return line(<TriangleAlertIcon />, isPick(waiting[0].req) ? "A question waits for your answer." : "A request waits for your approval.", approval ? <Button variant="outline" size="xs" onClick={() => store.ask(approval.req.id)}>Open</Button> : null, true);
+		if (waiting.length) return line(<TriangleAlertIcon />, isPick(waiting[0].req) ? "A question is waiting for your answer." : "A request is waiting for your approval.", approval ? <Button variant="outline" size="xs" onClick={() => store.ask(approval.req.id)}>Open</Button> : null, true);
 		if (swarm) return line(<UsersIcon />, `swarm · round ${swarm.round} of ${swarm.until} · ${swarm.checking ? "checking the answer" : "looking at the board"}`, <Button variant="outline" size="xs" onClick={() => void store.setSwarm(tab, "pause")}>Pause</Button>);
 		if (goal) return line(<TargetIcon />, `goal · round ${goal.round} of ${goal.until} · checking whether it is met`, <Button variant="outline" size="xs" onClick={() => void store.setGoal(tab, "pause")}>Pause</Button>);
-		if (held) return line(<TriangleAlertIcon />, `A question of ${held.req.agent}'s in another conversation waits for you.`, <Button variant="outline" size="xs" onClick={() => void store.goToAsk(held.req)}>Go there</Button>, true);
-		if (elsewhere) return line(<TriangleAlertIcon />, `${elsewhere.agent} · ${elsewhere.session} waits for you.`, <Button variant="outline" size="xs" onClick={() => store.activate(elsewhere)}>Go there</Button>, true);
+		if (held) return line(<TriangleAlertIcon />, `${held.req.agent} has a question for you in another conversation.`, <Button variant="outline" size="xs" onClick={() => void store.goToAsk(held.req)}>Go there</Button>, true);
+		if (elsewhere) return line(<TriangleAlertIcon />, `${elsewhere.agent} · ${elsewhere.session} is waiting for you.`, <Button variant="outline" size="xs" onClick={() => store.activate(elsewhere)}>Go there</Button>, true);
 		if (tab.programs.length) return line(<PlayIcon />, `${plural(tab.programs.length, "program")} still running`, <Button variant="ghost" size="xs" onClick={() => void store.command("code-running")}>Show</Button>);
 		return null;
 	}
@@ -1361,7 +1360,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 					{chat ? (
 						<Composer tab={tab} host={slot} />
 					) : tab.busy ? (
-						<div className="flex items-center gap-2"><span className="min-w-0 flex-1 text-muted-foreground">This tab shows one task's work and takes no messages.</span><Button variant="outline" size="xs" onClick={() => void store.stop(tab)}><SquareIcon data-icon="inline-start" />Stop this task</Button></div>
+						<div className="flex items-center gap-2"><span className="min-w-0 flex-1 text-muted-foreground">This tab shows the work of one task and is read-only.</span><Button variant="outline" size="xs" onClick={() => void store.stop(tab)}><SquareIcon data-icon="inline-start" />Stop this task</Button></div>
 					) : null}
 				</div>
 			</div>

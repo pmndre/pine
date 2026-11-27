@@ -1,3 +1,4 @@
+import { installedSources } from "./extensions.ts";
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -891,6 +892,7 @@ export function audit(cfg: PineConfig): string[] {
 		if (isInside(realish(a.workspace), realish(cfg.home))) out.push(`agent ${a.id}: the workspace contains pine's home directory`);
 		if (a.untrusted && a.untrusted.tools.some((t) => ["bash", "write", "edit"].includes(t))) out.push(`agent ${a.id}: runs triggered by untrusted events may use ${a.untrusted.tools.filter((t) => ["bash", "write", "edit"].includes(t)).join(", ")}`);
 	}
+	for (const x of installedSources(cfg)) out.push(`extension ${x.source} (${x.agent ? `agent ${x.agent}` : "all agents"}): its code runs inside the daemon, with your rights and outside any sandbox`);
 	if (cfg.http && !["127.0.0.1", "localhost", "::1"].includes(cfg.http.host)) out.push(`http listens on ${cfg.http.host}; anyone who can reach it and knows the token controls every agent. Prefer loopback plus a tunnel.`);
 	for (const [name, h] of Object.entries(cfg.http?.hooks ?? {})) if (!h.secret) out.push(`http hook "${name}" has no secret; anyone who can reach the port can publish ${h.topic}`);
 	// A source whose events count as the owner's words: fine for a paired Telegram account, a risk for anything others can feed.

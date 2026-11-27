@@ -73,7 +73,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 	const relayMoved = relay.address.trim() !== (state.relay?.address ?? "") || relay.username.trim() !== (state.relay?.username ?? "");
 	const relayChanged = relayMoved || relay.password !== "";
 	// A kept password belongs to the relay it was given for: saved with another address or user name, it is forgotten.
-	const passwordHint = !state.relay?.password ? "" : relayMoved && relay.address.trim() ? "Not kept for another address or user name: enter the password again" : "Kept. Write a new one to change it";
+	const passwordHint = !state.relay?.password ? "" : relayMoved && relay.address.trim() ? "The saved password was for another address or user name. Enter it again" : "Saved. Type a new one to change it";
 	const saveRelay = async () => {
 		setRelayError(undefined);
 		try {
@@ -108,12 +108,12 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 						<FieldContent>
 							<FieldLabel htmlFor={`${field}-on`}>
 								Browser access
-								<Badge data-slot="access-status" variant={status.variant}>{status.text}</Badge>
+								<Badge data-slot="access-status" data-state={state.status} variant={status.variant}>{status.text}</Badge>
 							</FieldLabel>
 							<FieldDescription>
 								{state.status === "unreachable"
-									? `The app cannot reach the service where browsers find this ${computer}. It tries again by itself; the rest of the app works as before.`
-									: "A browser you paired opens your conversations from anywhere, peer to peer. Turned off, the app contacts no service and lets nobody in; your devices are kept."}
+									? `The app cannot reach the service that browsers use to find this ${computer}. It will keep trying. The rest of the app works as usual.`
+									: "Open your conversations from anywhere in a browser you paired, over a peer-to-peer connection. When this is off, the app contacts no service and lets nobody in. Your paired devices stay on the list."}
 							</FieldDescription>
 						</FieldContent>
 						<Switch id={`${field}-on`} data-slot="access-switch" checked={state.enabled} disabled={state.problem?.kind === "keychain"} onCheckedChange={turn} />
@@ -124,7 +124,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 							<FieldDescription>
 								{state.paused
 									? `Paused until ${new Date(state.paused).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} after 3 refusals. Turn it on to end the pause now.`
-									: `The Pine app on a phone on this network finds this ${computer} and can ask to connect without a code. You still allow it here, after comparing four digits. Off: pair with the code of Add a device.`}
+									: `The Pine app on a phone on this network can find this ${computer} and ask to connect without a code. You still approve it here after comparing four digits. When this is off, pair with a code from Add a device.`}
 							</FieldDescription>
 						</FieldContent>
 						<Switch id={`${field}-visible`} data-slot="access-visible" checked={state.visible && !state.paused} disabled={!state.enabled} onCheckedChange={(visible) => change({ visible })} />
@@ -138,7 +138,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 					<Field orientation="horizontal" data-setting="access-login">
 						<FieldContent>
 							<FieldLabel htmlFor={`${field}-login`}>Open Pine at login</FieldLabel>
-							<FieldDescription>So that this {computer} can be reached after a restart without your opening the app.</FieldDescription>
+							<FieldDescription>Keeps this {computer} reachable after a restart, without you opening the app.</FieldDescription>
 						</FieldContent>
 						<Switch id={`${field}-login`} data-slot="access-login" checked={state.openAtLogin} onCheckedChange={(openAtLogin) => change({ openAtLogin })} />
 					</Field>
@@ -150,7 +150,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 								<InputGroupButton variant="outline" disabled={service.trim() === state.service} onClick={() => void saveService()}>Save</InputGroupButton>
 							</InputGroupAddon>
 						</InputGroup>
-						<FieldDescription>Where browsers open the web client and find this {computer}. Changing it makes the paired browsers that use the old address pair again.</FieldDescription>
+						<FieldDescription>The address where browsers open the web client and find this {computer}. If you change it, browsers paired through the old address have to pair again.</FieldDescription>
 						{serviceError ? <FieldError>{serviceError}</FieldError> : null}
 					</Field>
 				</FieldGroup>
@@ -176,7 +176,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 										<AlertDialogContent>
 											<AlertDialogHeader>
 												<AlertDialogTitle className="wrap-anywhere">Remove {d.name}?</AlertDialogTitle>
-												<AlertDialogDescription>The device is disconnected now, and can only connect again if you add it again.</AlertDialogDescription>
+												<AlertDialogDescription>The device is disconnected now and has to be added again before it can reconnect.</AlertDialogDescription>
 											</AlertDialogHeader>
 											<AlertDialogFooter>
 												<AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -189,12 +189,12 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 						))}
 					</ItemGroup>
 				) : (
-					<Empty><EmptyHeader><EmptyMedia variant="icon"><LaptopIcon /></EmptyMedia><EmptyTitle>No device is paired</EmptyTitle><EmptyDescription>Add one by scanning a code with the device's camera, or with a link you open in the device's browser.</EmptyDescription></EmptyHeader></Empty>
+					<Empty><EmptyHeader><EmptyMedia variant="icon"><LaptopIcon /></EmptyMedia><EmptyTitle>No paired devices</EmptyTitle><EmptyDescription>To add one, scan a code with the device's camera or open a link in the device's browser.</EmptyDescription></EmptyHeader></Empty>
 				)}
 			</Section>
 			<FieldSeparator />
 			{/* A set of its own: inside the group of This Mac, its fields were drawn with no height once the try's line appeared. */}
-			<Section title="Relay server (TURN)" about="Used when no direct connection can be made, for example from some mobile networks. Leave it empty if you have none." data-setting="access-relay">
+			<Section title="Relay server (TURN)" about="Used when a direct connection is not possible, for example on some mobile networks. Leave this empty if you have no relay." data-setting="access-relay">
 				<FieldGroup>
 					<Field data-invalid={relayError ? true : undefined}>
 						<FieldLabel htmlFor={`${field}-relay`}>Address</FieldLabel>
@@ -206,7 +206,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 					</Field>
 					<Field>
 						<FieldLabel htmlFor={`${field}-relay-password`}>Password</FieldLabel>
-						<Input id={`${field}-relay-password`} data-slot="relay-password" type="password" autoComplete="new-password" placeholder={passwordHint} value={relay.password} onChange={(e) => setRelay({ ...relay, password: e.target.value })} onKeyDown={(e) => e.key === "Enter" && relayChanged && void saveRelay()} />
+						<Input id={`${field}-relay-password`} data-slot="relay-password" data-kept={!state.relay?.password ? "no" : relayMoved && relay.address.trim() ? "other" : "yes"} type="password" autoComplete="new-password" placeholder={passwordHint} value={relay.password} onChange={(e) => setRelay({ ...relay, password: e.target.value })} onKeyDown={(e) => e.key === "Enter" && relayChanged && void saveRelay()} />
 					</Field>
 					{/* Save, and beside it how the relay was tried: a failed try is said as an error, like a refused save. */}
 					<Field orientation="horizontal">
@@ -222,7 +222,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 					<div data-slot="access-turn-on" className="contents">
 						<AlertDialogHeader>
 							<AlertDialogTitle>Turn on browser access?</AlertDialogTitle>
-							<AlertDialogDescription>This {computer} waits at the service for the browsers you pair. It can be reached while Pine is open.</AlertDialogDescription>
+							<AlertDialogDescription>This {computer} will wait at the service for the browsers you paired. They can reach it while Pine is open.</AlertDialogDescription>
 						</AlertDialogHeader>
 						<Field orientation="horizontal">
 							<Checkbox id={`${field}-login-first`} checked={login} onCheckedChange={setLogin} />
@@ -267,7 +267,7 @@ export function BrowserAccessFailed({ error }: { error: string }) {
 	return (
 		<Alert variant="destructive" data-slot="access-load-error">
 			<TriangleAlertIcon />
-			<AlertDescription>Browser access could not be read: {error}</AlertDescription>
+			<AlertDescription>Could not load browser access: {error}</AlertDescription>
 		</Alert>
 	);
 }

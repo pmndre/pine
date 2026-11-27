@@ -70,7 +70,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 			<Item variant="outline" size="sm" data-slot="setup-signed-in">
 				<ItemContent>
 					<ItemTitle>Signed in to {name}</ItemTitle>
-					<ItemDescription className="line-clamp-none">{s.chosen ? `Your agents run on ${s.chosen} now.` : "Choose the model your agents run on."}</ItemDescription>
+					<ItemDescription className="line-clamp-none">{s.chosen ? `Your agents now run on ${s.chosen}.` : "Choose the model your agents run on."}</ItemDescription>
 				</ItemContent>
 				{s.chosen ? null : (
 					<ItemActions>
@@ -80,7 +80,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 			</Item>
 		);
 	// A sign-in that ended without a model (cancelled elsewhere, refused): said on the card, which stays until Cancel.
-	const error = run.error ?? (s?.done ? (s.error ?? "The sign-in ended, and no model came with it.") : undefined);
+	const error = run.error ?? (s?.done ? (s.error ?? "The sign-in finished, but no model came with it.") : undefined);
 	return (
 		<SignInCard
 			provider={name}
@@ -89,7 +89,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 			question={s?.done ? undefined : s?.question}
 			error={error}
 			onOpen={() => run.openPage()}
-			onCopy={(code) => void navigator.clipboard.writeText(code).then(() => store.flash("The code is on the clipboard.", "good", 3000), () => store.flash("Could not copy the code.", "bad"))}
+			onCopy={(code) => void navigator.clipboard.writeText(code).then(() => store.flash("Code copied.", "good", 3000), () => store.flash("Could not copy the code.", "bad"))}
 			onAnswer={(answer) => void run.answer(answer)}
 			onCancel={() => {
 				picked.stop();
@@ -102,7 +102,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 export const subscription: SetupBranch = {
 	id: "subscription",
 	label: "A subscription",
-	description: "Claude, ChatGPT or GitHub Copilot, if you pay for one already. You sign in in your browser and copy no key.",
+	description: "Claude, ChatGPT or GitHub Copilot, if you already pay for one. You sign in in your browser, with no key to copy.",
 	derive: (facts) => {
 		const provider = facts.main.model?.split("/")[0] ?? "";
 		const sub = SUBSCRIPTIONS[provider];

@@ -133,7 +133,7 @@ export function Manual() {
 	const follow = useMemo(() => ({ can: (href: string) => OWN_LINK.test(href), go: (href: string) => {
 		const to = resolve(href, chapterId, chapters, shown);
 		if (to) go(to);
-		else store.flash("That file is not a part of the manual.", "muted");
+		else store.flash("That file is not part of the manual.", "muted");
 	} }), [chapterId, chapters, shown]);
 	const pick = (h: ManualHit) => go({ chapter: h.chapter, section: h.section, row: h.row ? h.title : undefined });
 	const keys = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -173,7 +173,7 @@ export function Manual() {
 																</SidebarMenuButton>
 																{c.sections.length ? (
 																	<>
-																		<CollapsibleTrigger render={<SidebarMenuAction className="data-panel-open:rotate-90" aria-label={`${open.has(c.id) ? "Hide" : "Show"} the parts of ${c.title}`} />}>
+																		<CollapsibleTrigger render={<SidebarMenuAction className="data-panel-open:rotate-90" aria-label={`${open.has(c.id) ? "Hide" : "Show"} the sections of ${c.title}`} />}>
 																			<ChevronRightIcon />
 																		</CollapsibleTrigger>
 																		<CollapsibleContent>
@@ -232,7 +232,7 @@ export function Manual() {
 								<Empty className="h-full">
 									<EmptyHeader>
 										<EmptyMedia variant="icon"><BookOpenIcon /></EmptyMedia>
-										<EmptyTitle>The manual did not load</EmptyTitle>
+										<EmptyTitle>Could not load the manual</EmptyTitle>
 										<EmptyDescription>{book.error ?? text.error}</EmptyDescription>
 									</EmptyHeader>
 								</Empty>
@@ -321,7 +321,7 @@ function Found({ query, hits, titleOf, pick, back }: { query: string; hits?: { q
 		<div data-slot="manual-results" className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 pt-8 pb-10 @lg/manual:px-10">
 			<header className="flex flex-col gap-1">
 				<h1 className="text-xl font-semibold tracking-tight">{`“${query.trim()}”`}</h1>
-				{hits?.list.length ? <p className="text-muted-foreground">The parts of the manual that fit best. Pick one to read it.</p> : null}
+				{hits?.list.length ? <p className="text-muted-foreground">The best matches in the manual. Pick one to read it.</p> : null}
 			</header>
 			{!hits ? (
 				<ItemGroup aria-busy="true" aria-label="Searching the manual">
@@ -350,8 +350,8 @@ function Found({ query, hits, titleOf, pick, back }: { query: string; hits?: { q
 				<Empty>
 					<EmptyHeader>
 						<EmptyMedia variant="icon"><SearchIcon /></EmptyMedia>
-						<EmptyTitle>Nothing in the manual fits</EmptyTitle>
-						<EmptyDescription>Try other words: the manual says "event source" for what watches something, "schedule" for what happens at a time, "approval" for what asks you. You can also ask the main agent.</EmptyDescription>
+						<EmptyTitle>No matches in the manual</EmptyTitle>
+						<EmptyDescription>Try other words. The manual calls something that watches for changes an "event source", something that runs at a set time a "schedule", and a question pine asks you an "approval". You can also ask the main agent.</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
 			)}

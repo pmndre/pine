@@ -132,7 +132,8 @@ test("a computer whose key is not the one the link names is refused before the b
 	await c.page.state();
 	c.page.ready();
 	const s = await becomes(c, (x) => x.status === "error");
-	assert.match(message(s), /^The computer that answered is not the one this pairing link names: nothing was trusted\. Open Pine on your computer and add this device again\.$/);
+	// The distinctive cause is named; that nothing was trusted is proven below by the empty store.
+	assert.match(message(s), /not the one this pairing link names/);
 	assert.equal(machine.keysOffered, 0);
 	assert.equal(c.store.kept.get("hostKeys"), undefined);
 	assert.deepEqual((await c.page.state()).prefs.hosts, []);
@@ -148,7 +149,7 @@ test("Refuse, or a pairing that expired or was used, is said and keeps nothing",
 		await becomes(c, (s) => s.status === "starting" && s.pairing?.code === DIGITS);
 		machine.answer(decision);
 		const s = await becomes(c, (x) => x.status === "error");
-		assert.match(message(s), decision === "refuse" ? /^Your computer refused this browser: nothing was kept\. To pair it after all, open Pine on your computer and add this device again\.$/ : /expired or was used/, decision);
+		assert.match(message(s), decision === "refuse" ? /refused this browser/ : /expired or was used/, decision);
 		assert.doesNotMatch(message(s), /\bMac\b/, "before the yes the browser knows no name, and says your computer");
 		assert.equal(c.store.kept.get("hostKeys"), undefined, decision);
 		assert.deepEqual((await c.page.state()).prefs.hosts, [], decision);

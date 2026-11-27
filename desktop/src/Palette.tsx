@@ -8,7 +8,8 @@ import { computerWord } from "./machines.ts";
 import { useNamedLine } from "./lists.tsx";
 import { store, useModel } from "./model.ts";
 import { ago, fuzzy, shortcut } from "./text.ts";
-import { goTo, useSettingsIndex } from "./Settings.tsx";
+import { useSettingsIndex } from "./Settings.tsx";
+import { goTo } from "./things.ts";
 import { search } from "./settings-index.ts";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -37,7 +38,7 @@ export function Palette() {
 		for (const c of COMMANDS) if (!c.chat || chat) rows.push({ id: `c:${c.name}`, group: "Commands", label: c.title, about: c.about, keys: c.keys, run: () => void c.run("", s.active) });
 		if (typeof bridge.newWindow === "function") rows.push({ id: "c:new-window", group: "Commands", label: "New window", about: "Open another Pine window", keys: "⌘N", run: () => void bridge.newWindow?.() });
 		for (const a of s.agents) rows.push({ id: `a:${a.id}`, group: "Agents", label: `New conversation with ${a.id}`, about: a.description, run: () => void s.newConversation(a.id) });
-		for (const [id, label] of [["general", "General"], ["agents", "Agents"], ["models", "Models"], ["mcp", "MCP servers"], ["skills", "Skills"], ["events", "Events"], ["environments", "Environments"]]) rows.push({ id: `p:${id}`, group: "Settings", label: `Settings: ${label}`, run: () => void s.command(`settings:${id}`) });
+		for (const [id, label] of [["general", "General"], ["agents", "Agents"], ["models", "Models"], ["mcp", "MCP servers"], ["skills", "Skills"], ["extensions", "Extensions"], ["events", "Events"], ["environments", "Environments"]]) rows.push({ id: `p:${id}`, group: "Settings", label: `Settings: ${label}`, run: () => void s.command(`settings:${id}`) });
 		// The machines whose pine the app can use (Settings > Environments), but the one it uses; this computer only where there is one.
 		for (const host of [...(s.local ? [undefined] : []), ...s.prefs.hosts]) if (host !== s.service.host) rows.push({ id: `e:${host ?? ""}`, group: "Environments", label: `Use the pine on ${host ? s.nameOf(host) : `this ${computerWord(s.platform)}`}`, run: () => void s.useMachine(host) });
 		return rows;
@@ -71,7 +72,7 @@ export function Palette() {
 		const byName = named.map(here);
 		const settings: Row[] = search(index, q).slice(0, 8).map((e) => ({ id: `f:${e.id}`, group: "In Settings", label: e.title, about: e.path.join(" › "), run: () => goTo(e.place) }));
 		const read: Row[] = manual.map((h) => ({ id: `r:${h.id}`, group: "In the manual", label: h.title, about: h.where.split(" › ").slice(1).join(" › ") || undefined, run: () => s.openManual({ chapter: h.chapter, section: h.section, row: h.row ? h.title : undefined }) }));
-		const said: Row[] = found.filter((m) => !listed.has(`${m.agent}:${m.session}`)).map((m) => ({ id: `m:${m.agent}:${m.session}`, group: "Said in conversations", label: `${m.agent} · ${s.titleOf(m.agent, m.session)}`, about: `${m.who}: ${m.snippet}`, keys: ago(m.ts), run: () => void s.openFound(m.agent, m.session, query.trim()) }));
+		const said: Row[] = found.filter((m) => !listed.has(`${m.agent}:${m.session}`)).map((m) => ({ id: `m:${m.agent}:${m.session}`, group: "In conversations", label: `${m.agent} · ${s.titleOf(m.agent, m.session)}`, about: `${m.who}: ${m.snippet}`, keys: ago(m.ts), run: () => void s.openFound(m.agent, m.session, query.trim()) }));
 		return [...byName, ...settings, ...read, ...said, ...described.filter((r) => !holds(r) || !listed.has(`${r.conv!.agent}:${r.conv!.session}`)), ...loose.filter((r) => !r.conv || !listed.has(`${r.conv.agent}:${r.conv.session}`))].slice(0, 80);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [query, all, s.said, index, manual]);
@@ -81,9 +82,9 @@ export function Palette() {
 	const close = () => ((s.palette = false), s.touch());
 	const run = (r: Row) => (close(), r.run());
 	return (
-		<CommandDialog open onOpenChange={(open) => open || close()} title="Search everything" description="Conversations, by name or by what was said, commands, agents and settings" className="sm:max-w-xl">
+		<CommandDialog open onOpenChange={(open) => open || close()} title="Search everything" description="Find conversations by name or content, plus commands, agents and settings" className="sm:max-w-xl">
 			<Command {...line} shouldFilter={false} loop>
-				<CommandInput placeholder="Search conversations (by name or by what was said), commands, agents" value={query} onValueChange={setQuery} />
+				<CommandInput placeholder="Search conversations, commands, agents and settings" value={query} onValueChange={setQuery} />
 				<CommandList className="scroll-fade">
 					{groups.map((g, n) => (
 						<CommandGroup key={`${n}:${g.name}`} heading={g.name}>
@@ -103,7 +104,7 @@ export function Palette() {
 							</div>
 						)
 					) : (
-						<CommandEmpty>Nothing fits.</CommandEmpty>
+						<CommandEmpty>No matches.</CommandEmpty>
 					)}
 				</CommandList>
 			</Command>

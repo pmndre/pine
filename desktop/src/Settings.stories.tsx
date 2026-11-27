@@ -4,7 +4,7 @@ import type { AgentDetail, AgentInfo, McpServer, Overview, Route, Schedule, Sett
 import { store } from "./model.ts";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { NewRoute, NewSchedule, Routes, Schedules, Settings, SettingsItem, ThemePicker } from "./Settings.tsx";
+import { NewRoute, NewSchedule, Routes, Schedules, Settings, SettingsItem, ThemePicker, ThingDialog } from "./Settings.tsx";
 import { THEMES } from "../.storybook/themes.ts";
 import type { ThemeEntry } from "./theme.ts";
 
@@ -102,6 +102,18 @@ const answers: Record<string, unknown> = {
 		{ name: "local", baseUrl: "http://127.0.0.1:8080/v1", key: "none", runs: 8, models: [{ id: "qwen3-coder", contextWindow: 65536, images: false, reasoning: true }, { id: "gemma-4-vision", contextWindow: 32768, images: true, reasoning: false, limit: 1 }, { id: "nomic-embed-text-v2-moe-long-name-of-a-model", contextWindow: 8192, images: false, reasoning: false }] },
 		{ name: "studio", baseUrl: "http://studio.local:1234/v1", key: "PINE_MODEL_STUDIO_API_KEY in .env", runs: 8, models: [{ id: "glm-5.3", contextWindow: 131072, images: true, reasoning: true }] },
 	],
+	// Extensions: a package from npm for all agents, one from git with a skill, a file placed by hand, one of an
+	// agent's own that is no longer on disk; and what pi has that pine does not.
+	"/extensions": [
+		{ source: "npm:pi-web-tools@1.4.2", kind: "npm", name: "pi-web-tools", version: "1.4.2", description: "Search and fetch tools with citations.", scope: "global", path: "/Users/me/.pine/packages/npm/node_modules/pi-web-tools", managed: true, extensions: ["extensions/search.ts", "extensions/fetch.ts"], skills: [], unused: ["2 prompt templates"] },
+		{ source: "git:github.com/example/pi-review@3f2c1a9b7d", kind: "git", name: "pi-review", version: "3f2c1a9b7d", description: "A review checklist as a tool, with the skill that says when to run it.", scope: "global", path: "/Users/me/.pine/packages/git/github.com/example/pi-review", managed: true, extensions: ["src/review.ts"], skills: ["review"], unused: [] },
+		{ source: "/Users/me/.pine/agents/scout/extensions/citations.ts", kind: "file", name: "citations", description: "Cite the paragraph for every legal claim.", scope: "agent", agent: "scout", path: "/Users/me/.pine/agents/scout/extensions/citations.ts", managed: false, extensions: ["citations.ts"], skills: [], unused: [] },
+		{ source: "npm:pi-notes@0.9.0", kind: "npm", name: "pi-notes", scope: "agent", agent: "scout", path: "", managed: true, extensions: [], skills: [], unused: [], problem: "it is not installed here any more; remove it and install it again" },
+	],
+	"/extensions/pi": [
+		{ source: "npm:pi-web-tools@1.4.2", name: "pi-web-tools", version: "1.4.2", kind: "npm", installed: true },
+		{ source: "npm:pi-git-helpers@2.0.1", name: "pi-git-helpers", version: "2.0.1", description: "Commit, branch and review helpers for a coding session.", kind: "npm", installed: false },
+	],
 	"/mcp": mcp,
 	"/mcp/states": { linear: "needs sign-in", notes: "connected" },
 	"/routes": routes,
@@ -174,6 +186,9 @@ export const Agents: Story = { args: { section: "agents" } };
 /** One agent's page: at the top its avatar in its color (coral), which opens the color, and its name, which renames it; then its model, mode, tools and files. */
 export const AgentPage: Story = { args: { section: "agents", agent: "scout" } };
 
+/** Extensions: those for all agents with their versions, the agents' own, and what pi has that pine does not, each with Install. */
+export const Extensions: Story = { args: { section: "extensions" } };
+
 /** MCP servers in each scope and state, with Sign in and Remove, above the form that adds one. */
 export const McpServers: Story = { args: { section: "mcp" } };
 
@@ -208,7 +223,7 @@ export const SearchFindsNothing: Story = {
 	args: { section: "general" },
 	play: async ({ canvas, userEvent }) => {
 		await userEvent.type(await canvas.findByRole("searchbox", { name: "Search Settings" }), "zzqqxx");
-		await canvas.findByText("Nothing in Settings fits");
+		await canvas.findByText("No matches in Settings");
 	},
 };
 
@@ -239,7 +254,7 @@ export const EnvironmentsMultiWindow: Story = {
 		await expect(within(studio).getByText("in another window")).toBeVisible();
 		await expect(canvasElement.querySelectorAll('[data-slot="open-in-new-window"]')).toHaveLength(3);
 		await userEvent.click(within(studio).getByRole("button", { name: "Forget" }));
-		await expect(await within(document.body).findByRole("button", { name: "Close its window and forget" })).toBeVisible();
+		await expect(await within(document.body).findByRole("button", { name: "Close the window and forget" })).toBeVisible();
 	},
 };
 
@@ -251,6 +266,8 @@ export const ScheduleList: Story = {
 		return (
 			<div className="flex w-full max-w-250 flex-col gap-6">
 				<Schedules />
+				{/* A row opens in the app's one dialog, which App.tsx holds. */}
+				<ThingDialog />
 			</div>
 		);
 	},
@@ -277,6 +294,8 @@ export const RouteList: Story = {
 		return (
 			<div className="flex w-full max-w-250 flex-col gap-6">
 				<Routes />
+				{/* A row opens in the app's one dialog, which App.tsx holds. */}
+				<ThingDialog />
 			</div>
 		);
 	},
@@ -482,6 +501,8 @@ export const ModelsLoading = neverAnswers("models");
 export const McpLoading = neverAnswers("mcp");
 /** Skills on their first load. */
 export const SkillsLoading = neverAnswers("skills");
+/** Extensions before the list arrived: bars in the shape of its rows. */
+export const ExtensionsLoading = neverAnswers("extensions");
 /** Events on their first load: sources, schedules and routes as skeleton rows. */
 export const EventsLoading = neverAnswers("events");
 /** One agent's page on its first load: its heading, fields and editor as skeletons. */

@@ -83,12 +83,12 @@ export function launcher(resources: string | undefined, env: NodeJS.ProcessEnv =
 	if (!file || !fs.existsSync(file)) return {};
 	if (platform === "darwin") {
 		// Opened from a disk image or straight from Downloads, macOS runs the app from a place that changes with every start.
-		if (file.startsWith("/Volumes/") || file.includes("/AppTranslocation/")) return { why: "Move Pine into your Applications folder and open it from there. Where it is now, macOS runs it from a place that changes, and a command could not find it again." };
+		if (file.startsWith("/Volumes/") || file.includes("/AppTranslocation/")) return { why: "Move Pine into your Applications folder and open it from there. From where it is now, macOS runs it from a location that changes, so a command could not find it again." };
 	}
 	if (platform === "linux") {
 		const image = env.APPIMAGE;
 		if (image && path.isAbsolute(image) && fs.existsSync(image) && !image.startsWith("/tmp/.mount_")) return { file: image };
-		if (file.startsWith("/tmp/.mount_")) return { why: "This AppImage did not say where it lies, and the folder it runs from changes with every start. Start Pine from the AppImage file itself." };
+		if (file.startsWith("/tmp/.mount_")) return { why: "This AppImage did not report its location, and the folder it runs from changes on each start. Start Pine from the AppImage file itself." };
 	}
 	return { file };
 }
@@ -113,7 +113,7 @@ export function look(resources: string | undefined, env: NodeJS.ProcessEnv, home
 			const other = ["pine.cmd", "pine.exe", "pine.bat"].map((name) => path.join(dir, name)).find((f) => fs.existsSync(f));
 			if (other) return { state: "other", at: other };
 		}
-		return { state: "unavailable", why: `Not set up. The installer puts pine into your PATH (${ours}): install Pine again with its installer, then open a new terminal.` };
+		return { state: "unavailable", why: `Not set up. The installer adds pine to your PATH (${ours}). Install Pine again with the installer, then open a new terminal.` };
 	}
 	for (const dir of dirsOf(env, platform)) {
 		const at = path.join(dir, "pine");
@@ -135,9 +135,9 @@ export function look(resources: string | undefined, env: NodeJS.ProcessEnv, home
 /** What is so, in words for the owner: for the settings page and the menu alike. */
 export function said(c: Command, platform: string = process.platform): string {
 	const first = c.why ? `${c.why} ` : "";
-	if (c.state === "here") return `${first}pine in a terminal is the pine of this app (${c.at}).${c.managed ? " The installer put it there, and uninstalling Pine takes it away." : ""}`;
-	if (c.state === "other") return `${first}pine in a terminal is another pine (${c.at}), installed by itself. This app leaves it alone and uses the pine it came with.`;
-	if (c.state === "none") return `${first}Not set up. Pine can put a pine command into ${path.dirname(c.at ?? SHARED)}, so that a terminal has the pine of this app.${c.password ? (platform === "darwin" ? " macOS asks for your password." : " The system asks for your password.") : ""}`;
+	if (c.state === "here") return `${first}pine in a terminal is this app's pine (${c.at}).${c.managed ? " The installer put it there, and uninstalling Pine removes it." : ""}`;
+	if (c.state === "other") return `${first}pine in a terminal is a different pine (${c.at}) that was installed separately. This app leaves it alone and uses the pine it ships with.`;
+	if (c.state === "none") return `${first}Not set up. Pine can add a pine command to ${path.dirname(c.at ?? SHARED)} so that a terminal runs this app's pine.${c.password ? (platform === "darwin" ? " macOS will ask for your password." : " The system will ask for your password.") : ""}`;
 	return c.why ?? "";
 }
 
@@ -162,17 +162,17 @@ export const asRoot = (script: string, args: string[]) => ["/bin/sh", "-c", scri
 async function withPassword(action: "link" | "unlink", target: string, platform: string): Promise<string | undefined> {
 	if (platform === "linux") {
 		const script = action === "link" ? `/bin/mkdir -p ${SHARED} && /bin/ln -sfn "$1" ${SHARED}/pine` : '/bin/rm -f "$1"';
-		if (!fs.existsSync("/usr/bin/pkexec")) return `This system cannot ask for your password here (it has no pkexec). In a terminal: sudo ${action === "link" ? `ln -sfn '${target}' ${SHARED}/pine` : `rm '${target}'`}`;
+		if (!fs.existsSync("/usr/bin/pkexec")) return `This system cannot ask for your password here because it has no pkexec. Run this in a terminal instead: sudo ${action === "link" ? `ln -sfn '${target}' ${SHARED}/pine` : `rm '${target}'`}`;
 		const done = await run("/usr/bin/pkexec", asRoot(script, [target]));
 		if (done.code === 0) return undefined;
-		return done.code === 126 || done.code === 127 ? "Nothing was changed: the password was not given." : `The system did not do it (${done.err.trim().slice(0, 200) || "it gave no reason"}).`;
+		return done.code === 126 || done.code === 127 ? "Nothing was changed because no password was entered." : `The system refused (${done.err.trim().slice(0, 200) || "no reason given"}).`;
 	}
 	const done =
 		action === "link"
-			? await run("/usr/bin/osascript", asOwner("Pine wants to put the pine command into /usr/local/bin, so that it works in a terminal.", `"/bin/mkdir -p ${SHARED} && /bin/ln -sfn " & quoted form of (item 1 of argv) & " ${SHARED}/pine"`, [target]))
-			: await run("/usr/bin/osascript", asOwner("Pine wants to remove the pine command it put into place.", `"/bin/rm -f " & quoted form of (item 1 of argv)`, [target]));
+			? await run("/usr/bin/osascript", asOwner("Pine wants to add the pine command to /usr/local/bin so that it works in a terminal.", `"/bin/mkdir -p ${SHARED} && /bin/ln -sfn " & quoted form of (item 1 of argv) & " ${SHARED}/pine"`, [target]))
+			: await run("/usr/bin/osascript", asOwner("Pine wants to remove the pine command it installed.", `"/bin/rm -f " & quoted form of (item 1 of argv)`, [target]));
 	if (done.code === 0) return undefined;
-	return /-128|cancel/i.test(done.err) ? "Nothing was changed: the password was not given." : `macOS did not do it (${done.err.trim().slice(0, 200) || "it gave no reason"}).`;
+	return /-128|cancel/i.test(done.err) ? "Nothing was changed because no password was entered." : `macOS refused (${done.err.trim().slice(0, 200) || "no reason given"}).`;
 }
 
 /** Put the link into place. Hands back what the shell has afterwards, with `why` when it did not work. */
@@ -183,8 +183,8 @@ export async function install(resources: string | undefined, env: NodeJS.Process
 	const file = launcher(resources, env, platform).file!;
 	// A link of an app that has moved away may stand where the new one goes; anything else there is not this app's to replace.
 	const there = linkOf(now.at);
-	if (there === undefined && fs.existsSync(now.at)) return { ...now, why: `${now.at} is something else, and Pine does not replace it.` };
-	if (there !== undefined && !OURS.test(there)) return { ...now, why: `${now.at} is a link to ${there}, and Pine does not replace it.` };
+	if (there === undefined && fs.existsSync(now.at)) return { ...now, why: `${now.at} already exists as something else, and Pine will not replace it.` };
+	if (there !== undefined && !OURS.test(there)) return { ...now, why: `${now.at} is a link to ${there}, and Pine will not replace it.` };
 	let why: string | undefined;
 	if (now.password) why = await withPassword("link", file, platform);
 	else {
@@ -192,7 +192,7 @@ export async function install(resources: string | undefined, env: NodeJS.Process
 			if (there !== undefined) fs.unlinkSync(now.at);
 			fs.symlinkSync(file, now.at);
 		} catch (e) {
-			why = `The link could not be made (${e instanceof Error ? e.message : String(e)}).`;
+			why = `Could not create the link (${e instanceof Error ? e.message : String(e)}).`;
 		}
 	}
 	return { ...look(resources, env, home, platform), ...(why ? { why } : {}) };
@@ -202,13 +202,13 @@ export async function install(resources: string | undefined, env: NodeJS.Process
 export async function remove(resources: string | undefined, env: NodeJS.ProcessEnv, home = os.homedir(), platform: string = process.platform): Promise<Command> {
 	const now = look(resources, env, home, platform);
 	if (now.state !== "here" || !now.at || now.managed) return now;
-	if (linkOf(now.at) === undefined) return { ...now, why: `${now.at} is not a link, and Pine did not make it.` };
+	if (linkOf(now.at) === undefined) return { ...now, why: `${now.at} is not a link, and Pine did not create it.` };
 	let why: string | undefined;
 	if (writable(path.dirname(now.at))) {
 		try {
 			fs.unlinkSync(now.at);
 		} catch (e) {
-			why = `The link could not be removed (${e instanceof Error ? e.message : String(e)}).`;
+			why = `Could not remove the link (${e instanceof Error ? e.message : String(e)}).`;
 		}
 	} else why = await withPassword("unlink", now.at, platform);
 	return { ...look(resources, env, home, platform), ...(why ? { why } : {}) };

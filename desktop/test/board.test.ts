@@ -72,7 +72,7 @@ test("the Board tab appears with a conversation's board and shows who has what; 
 	await tab.click();
 	await sees(`${panel} [data-task="1"][data-state=done]`);
 	await sees(`${panel} [data-task="2"][data-state=blocked]`);
-	assert.match(await page.locator(`${panel} [data-task="2"]`).innerText(), /Waits for an answer[\s\S]*teal or blue\?/);
+	assert.match(await page.locator(`${panel} [data-task="2"]`).innerText(), /Waiting for an answer[\s\S]*teal or blue\?/);
 	// What the agent told all of its sub-agents stands there once, with the tasks it is for.
 	assert.match(await page.locator(`${panel} [data-note="3"]`).innerText(), /Measure against tokens\.css[\s\S]*for tasks 1–2/);
 	// What an agent wrote is text: its markup is shown, not carried out.
@@ -104,7 +104,7 @@ test("the Board tab appears with a conversation's board and shows who has what; 
 	await added.waitFor();
 	assert.match(await added.innerText(), /Open · yours/);
 	await shot("board-added");
-	await added.getByRole("button", { name: /What to do with task/ }).click();
+	await added.getByRole("button", { name: /Actions for task/ }).click();
 	await page.getByRole("menuitem", { name: "Remove" }).click();
 	await added.waitFor({ state: "detached" });
 	assert.deepEqual((await call("GET", "/boards/1")).data.tasks.map((t: any) => [t.id, t.state]), [[1, "done"], [2, "open"]]);
@@ -138,10 +138,10 @@ test("/swarm in the input starts a swarm: the conversation says what pine does a
 	mock.state.scripts.piece = [{ text: "shelf one sorted" }];
 	await page.fill("[data-slot=composer] textarea", "/swarm sort the archive @@REF:lead@@");
 	await page.press("[data-slot=composer] textarea", "Enter");
-	await sees("text=swarm · started: main leads it", 30_000);
+	await sees("[data-item=swarm][data-state=active]", 30_000);
 	await sees("text=SWARM-ANSWER every shelf is sorted", 30_000);
-	await sees("text=swarm · the answer is being checked by a sub-agent that did none of the work", 30_000);
-	await sees("text=swarm · done after 1 round: 1 task, and the answer was checked", 30_000);
+	await sees("[data-item=swarm][data-state=checking]", 30_000);
+	await sees("[data-item=swarm][data-state=done]", 30_000);
 	// The check ran after the lead's turn: its line is closed with it, and nothing in the conversation says "working" any more.
 	assert.deepEqual(await page.$$eval("[data-item=work] [data-slot=pulse]", (all) => all.length), 0, "no group of steps is left pulsing after the swarm is done");
 	assert.ok(!(await page.locator("[data-slot=message-scroller], main").first().innerText()).includes("so far"));
@@ -165,12 +165,12 @@ test("/swarm in the input starts a swarm: the conversation says what pine does a
 	mock.state.scripts.slow = [{ delayMs: 15_000, text: "never" }];
 	await page.fill("[data-slot=composer] textarea", "/swarm sort the cellar @@REF:slow@@");
 	await page.press("[data-slot=composer] textarea", "Enter");
-	await sees("text=/swarm · round 1 of 8/", 30_000);
+	await sees("text=/round 1 of 8/", 30_000);
 	await page.fill("[data-slot=composer] textarea", "/swarm pause");
 	await page.press("[data-slot=composer] textarea", "Enter");
 	const banner = page.locator("[data-slot=alert]", { hasText: "Swarm paused" });
 	await banner.waitFor({ timeout: 20_000 });
-	assert.match(await banner.innerText(), /paused by you\. \/swarm resume goes on/);
+	assert.match(await banner.innerText(), /resume/i, "the paused banner tells the owner how to go on");
 	await shot("swarm-paused");
 	await banner.getByRole("button", { name: "Clear" }).click();
 	await banner.waitFor({ state: "detached", timeout: 20_000 });

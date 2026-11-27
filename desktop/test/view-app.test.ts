@@ -102,7 +102,7 @@ test("work main hands books shows at books, held to main's safe mode; what happe
 	await new Promise((r) => setTimeout(r, 1200));
 	await shoot("office");
 	await page.waitForFunction(() => /books answered main/.test(document.querySelector("[data-slot=view-inspector]")?.textContent ?? ""), null, { timeout: 15_000 });
-	assert.match(await page.textContent("[data-slot=view-inspector]"), /main handed books a task: Check the books/);
+	assert.match(await page.textContent("[data-slot=view-inspector]"), /main delegated a task to books: Check the books/);
 	await frame().locator("[data-slot=office-words] > li[data-agent=books] li[data-work]").waitFor({ state: "detached", timeout: 15_000 });
 });
 
@@ -125,16 +125,16 @@ test("the line between the view and what happened is moved to give either more r
 });
 
 test("a piece of work chosen under the view shows what it was given, what it did and what it answered", async () => {
-	await page.locator("[data-slot=view-inspector] button", { hasText: "main handed books a task" }).click();
+	await page.locator("[data-slot=view-inspector] button", { hasText: "main delegated a task to books" }).click();
 	await page.waitForSelector("[data-slot=view-inspector] [data-slot=job-record]", { timeout: 10_000 });
 	await page.waitForFunction(() => /the books are balanced/.test(document.querySelector("[data-slot=job-record]")?.textContent ?? ""), null, { timeout: 10_000 });
 	const record = await page.textContent("[data-slot=job-record]");
-	assert.match(record, /What it did/);
+	assert.match(record, /Steps/);
 	assert.match(record, /Check the books/, "the task books was given, in full");
 	assert.match(record, /tokens read/, "and what it cost");
 	await page.locator("[data-slot=job-record]").scrollIntoViewIfNeeded();
 	await shoot("job-record");
-	await page.locator("[data-slot=view-inspector]").getByRole("button", { name: "Back to what happened" }).click();
+	await page.locator("[data-slot=view-inspector]").getByRole("button", { name: "Back to activity" }).click();
 	await page.waitForSelector("[data-slot=view-inspector] [data-slot=job-record]", { state: "detached", timeout: 5000 });
 });
 

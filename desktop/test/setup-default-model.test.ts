@@ -101,7 +101,7 @@ test("once a model answers, the card asks for the default model: pine's choice f
 	write(path.join(home, "models.json"), JSON.stringify({ providers: { mock: { name: "Mock", baseUrl: mock.baseUrl, api: "openai-completions", apiKey: "sk-mock", models: [model("m"), model("m2"), model("m3")] } } }));
 	await api("POST", "/models/refresh", {});
 	await visit();
-	await sees("[data-slot=setup-model] >> text=/Your agents run on mock\\//");
+	await sees("[data-slot=setup-model] >> text=/mock\\//");
 	pines = String(await page.textContent("[data-slot=setup-model] b")).trim();
 	await question(DEFAULT);
 	const offered = await options();

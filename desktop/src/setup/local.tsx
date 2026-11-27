@@ -208,11 +208,11 @@ function Card({ ctx }: { ctx: SetupContext }) {
 	if (chosen && local.needs === "key")
 		return (
 			<AskCard
-				title={`${chosen.title} wants a key`}
-				about="It was started with a key, and answers only to it."
+				title={`${chosen.title} requires a key`}
+				about="The server was started with a key and answers only requests that include it."
 				field="key"
 				label={`Key for ${chosen.title}`}
-				help="It is not shown, and goes straight into pine's .env: no agent and no model reads it."
+				help="What you type stays hidden and goes straight into pine's .env file. No agent or model reads it."
 				secret
 				button="Unlock"
 				onSend={(key) => {
@@ -226,7 +226,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 		return (
 			<AskCard
 				title={`How much context does ${chosen.title} give?`}
-				about="It does not say how many tokens one request may use: give what it was started with."
+				about="The server does not report how many tokens one request may use. Enter the context size it was started with."
 				field="context"
 				label="Context, in tokens"
 				help="For example 32768."
@@ -242,7 +242,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 		return (
 			<AskCard
 				title={found?.length || local.typing ? "The address of your model server" : `pine found no model server on ${where()}`}
-				about={found?.length || local.typing ? "A server that speaks OpenAI's API, as LM Studio, Ollama and llama.cpp do." : "It looked at the usual ports of llama.cpp (8080), Ollama (11434) and LM Studio (1234). If yours runs elsewhere, give its address."}
+				about={found?.length || local.typing ? "A server that speaks OpenAI's API, as LM Studio, Ollama and llama.cpp do." : "pine checked the usual ports of llama.cpp (8080), Ollama (11434) and LM Studio (1234). If your server runs elsewhere, enter the address."}
 				field="address"
 				label="Address"
 				help="For example http://127.0.0.1:8080"
@@ -259,7 +259,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 			<FormCard
 				data-card="setup-local"
 				title={chosen ? `Adding ${chosen.title}` : `Looking for model servers on ${where()}`}
-				about={chosen ? "Asking it what it serves…" : "llama.cpp, Ollama, LM Studio and Pinecone, on their usual ports…"}
+				about={chosen ? "Asking the server which models it has…" : "llama.cpp, Ollama, LM Studio and Pinecone, on their usual ports…"}
 				start={<Button size="sm" variant="ghost" onClick={back}>Back</Button>}
 				end={<Pulse label="Loading" />}
 			/>
@@ -271,7 +271,7 @@ function Card({ ctx }: { ctx: SetupContext }) {
 			from="pine asks"
 			options={[
 				...found.map((s) => ({ label: s.title, description: describe(s) })),
-				{ label: OTHER, description: `A server pine did not find on ${where()}: you give its address.` },
+				{ label: OTHER, description: `A server pine did not find on ${where()}. You enter the address.` },
 			]}
 			autoFocus
 			actions={<Button size="sm" variant="ghost" onClick={back}>Back</Button>}
@@ -291,9 +291,9 @@ function Card({ ctx }: { ctx: SetupContext }) {
 /** One line for a server that answered: where, what it serves, what picking it adds. */
 function describe(s: LocalServer): string {
 	const where = new URL(s.url).host;
-	if (s.locked) return `${where}, wants a key.`;
+	if (s.locked) return `${where}, requires a key.`;
 	const models = s.models.length > 3 ? `${s.models.slice(0, 3).join(", ")} and ${s.models.length - 3} more` : s.models.join(", ");
-	return s.mcp ? `${where}: ${models}, and its tools for all your agents.` : `${where}: ${models}.`;
+	return s.mcp ? `${where}: ${models}, plus tools for all your agents.` : `${where}: ${models}.`;
 }
 
 export const localBranch: SetupBranch = {

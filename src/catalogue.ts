@@ -41,7 +41,7 @@ export const DECLARED_SERVERS = ["web"];
  * was two calls of one tool, and a model sends two calls of one tool in two answers about half the
  * time; as two tools it sends them in one, as it does when every tool is declared by itself.
  */
-const LISTS = ["sources", "schedules", "mcp_servers", "skills", "models", "agents", "settings", "routes", "conversations", "boards"];
+const LISTS = ["sources", "schedules", "mcp_servers", "skills", "models", "agents", "settings", "routes", "conversations", "boards", "extensions"];
 
 const GROUPS: Array<[id: string, name: string, about: string, tools: string[]]> = [
 	["lists", "pine_list", "What there is: the lists of what you have and of what pine has. Use it when your owner asks what you are watching, what is scheduled, which servers, skills, models, agents or conversations there are, or how pine is set up", LISTS],
@@ -54,6 +54,7 @@ const GROUPS: Array<[id: string, name: string, about: string, tools: string[]]> 
 	["schedules", "pine_schedules", "Schedules: do something at a set time, once or again and again (reminders, daily checks).", ["add_schedule", "remove_schedule"]],
 	["mcp", "pine_mcp", "MCP servers: connect and remove servers that give you more tools, and sign in to one that needs it.", ["add_mcp_server", "remove_mcp_server", "sign_in_mcp_server", "list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource"]],
 	["skills", "pine_skills", "Skills: written-down ways of doing something, which you follow later.", ["add_skill", "remove_skill"]],
+	["extensions", "pine_extensions", "Extensions: programs installed into pine that give agents more tools or change what they are told (pi extensions and pi packages, also called plugins). Install, update and remove them.", ["add_extension", "update_extension", "remove_extension"]],
 	["agents", "pine_agents", "pine's agents: create, change, rename and remove them.", ["create_agent", "update_agent", "rename_agent", "remove_agent"]],
 	[
 		"settings",
@@ -96,6 +97,10 @@ const BRIEF: Record<string, string> = {
 	remove_source: "remove an event source for good, when your owner no longer wants it watched at all (to only stop being woken: unsubscribe)",
 	publish_event: "publish an event on pine's bus",
 	add_source_type: "bring in a new kind of event source (a module)",
+	extensions: "the extensions installed in pine, where each came from and what it brings",
+	add_extension: 'install an extension or pi package: `source` is "npm:name", "git:github.com/owner/repo" or a file or folder in your workspace; for all agents, or with `agent` for one. Your owner confirms it',
+	update_extension: "bring an installed extension to its newest version; your owner confirms it",
+	remove_extension: "remove an installed extension",
 	remove_source_type: "remove a kind of event source",
 	schedules: "what is scheduled for you, and when each is next due",
 	add_schedule: "do a task at a time, once or again and again (reminders, daily checks); give exactly one of cron, every, at, in. For what should happen when a thing arrives or changes (a file in a folder, a page), not at a time: add_source",

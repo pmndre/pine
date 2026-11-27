@@ -145,8 +145,8 @@ export const NotReached: Story = {
 	play: async (context) => {
 		await meta.play(context);
 		const { canvasElement, userEvent } = context;
-		await expect(within(canvasElement).getByText(/is not reached over SSH/)).toHaveTextContent("me@build-box is not reached over SSH");
-		await expect(canvasElement.querySelector('[data-environment="me@build-box"] [data-slot="badge"]')).toHaveTextContent("not reached");
+		await expect(within(canvasElement).getByText(/Could not reach/)).toHaveTextContent("Could not reach me@build-box over SSH");
+		await expect(canvasElement.querySelector('[data-environment="me@build-box"] [data-slot="badge"]')).toHaveTextContent("unreachable");
 		await userEvent.click(canvasElement.querySelector<HTMLElement>('[data-environment="me@build-box"] [data-slot="disconnect"]')!);
 		await expect(disconnected).toHaveBeenCalledTimes(1);
 	},
@@ -201,7 +201,7 @@ export const LoadFailed: Story = {
 		await meta.play(context);
 		const { canvasElement, userEvent } = context;
 		const canvas = within(canvasElement);
-		await expect(canvas.getByText(/Could not load the agents of/)).toHaveTextContent("me@build-box");
+		await expect(canvas.getByText(/Could not load the agents on/)).toHaveTextContent("me@build-box");
 		await expect(canvas.getByText("The channel to the daemon was closed.")).toBeInTheDocument();
 		await expect(canvasElement.querySelector('[data-environment="me@build-box"] [data-slot="disconnect"]')).not.toBeNull();
 		// No wait shown on the row: it answered, and did not load.
@@ -233,7 +233,7 @@ export const PairingExpired: Story = {
 	play: async (context) => {
 		await meta.play(context);
 		const canvas = within(context.canvasElement);
-		await expect(canvas.getByText("The pairing did not go through")).toBeInTheDocument();
+		await expect(canvas.getByText("Pairing failed")).toBeInTheDocument();
 		await expect(canvas.getByText(/expired or was used already/)).toBeInTheDocument();
 	},
 };
@@ -284,7 +284,7 @@ export const PairedComputerNotReached: Story = {
 	play: async (context) => {
 		await meta.play(context);
 		const { canvasElement, userEvent } = context;
-		await expect(within(canvasElement).getByText(/is not reached$/)).toHaveTextContent("Studio Mac is not reached");
+		await expect(within(canvasElement).getByText(/^Could not reach/)).toHaveTextContent("Could not reach Studio Mac");
 		await expect(within(canvasElement).queryAllByText(/q1w2e3r4/)).toHaveLength(0);
 		const row = canvasElement.querySelector<HTMLElement>(`[data-environment="${PAIRED}"]`)!;
 		await expect(row).toHaveTextContent("Studio Mac");
@@ -320,7 +320,7 @@ export const PairOrSsh: Story = {
 		await expect(canvas.getByText("Pair this browser with your computer")).toBeInTheDocument();
 		await expect(canvasElement).not.toHaveTextContent(/\bMac\b/);
 		await expect(canvasElement.querySelector('[data-slot="pair-how-to"]')).not.toBeNull();
-		await expect(canvasElement.querySelector('[data-slot="meeting-line"]')).toHaveTextContent(`Found through ${SERVICE}. The connection is then made between the two devices, directly or through a relay server the computer's owner named.`);
+		await expect(canvasElement.querySelector('[data-slot="meeting-line"]')).toHaveTextContent(`Found through ${SERVICE}. The two devices then connect directly, or through a relay server that the computer's owner chose.`);
 		await expect(canvasElement.querySelector("input")).toBeNull();
 		await expect(canvasElement.querySelector('[data-slot="device-key"]')).toBeNull();
 		await expect(canvasElement.querySelector('[data-slot="back-to-pairing"]')).toBeNull();
@@ -341,7 +341,7 @@ export const PairToSshAndBack: Story = {
 		await expect(canvas.getByRole("button", { name: "Back to pairing" })).toBeInTheDocument();
 		await expect(canvasElement.querySelector("input")).not.toBeNull();
 		await expect(canvasElement.querySelector('[data-slot="device-key"]')).not.toBeNull();
-		await expect(canvasElement.querySelector('[data-slot="relay-line"]')).toHaveTextContent(`Connections go through the relay at ${SERVICE}. It carries SSH only and cannot read it.`);
+		await expect(canvasElement.querySelector('[data-slot="relay-line"]')).toHaveTextContent(`Connections go through the relay at ${SERVICE}. The relay carries only SSH and cannot read it.`);
 		await expect(canvasElement.querySelector('[data-slot="pair-how-to"]')).toBeNull();
 		await expect(canvasElement.querySelector('[data-slot="ssh-instead"]')).toBeNull();
 		await userEvent.click(canvas.getByRole("button", { name: "Back to pairing" }));
@@ -372,7 +372,7 @@ export const ThroughTheService: Story = {
 		const { canvasElement } = context;
 		await expect(canvasElement.querySelector('[data-slot="back-to-pairing"]')).not.toBeNull();
 		await expect(canvasElement.querySelector('[data-environment="me@build-box"] [data-slot="reached-through"]')).toHaveTextContent(`Through the relay at ${SERVICE}.`);
-		await expect(canvasElement.querySelector(`[data-environment="${PAIRED}"] [data-slot="reached-through"]`)).toHaveTextContent(`Found through ${SERVICE}. The connection is then made between the two devices, directly or through a relay server the computer's owner named.`);
+		await expect(canvasElement.querySelector(`[data-environment="${PAIRED}"] [data-slot="reached-through"]`)).toHaveTextContent(`Found through ${SERVICE}. The two devices then connect directly, or through a relay server that the computer's owner chose.`);
 	},
 };
 
@@ -447,7 +447,7 @@ export const PhoneNearbyFound: Story = {
 export const PhoneNearbyEmpty: Story = {
 	args: { hosts: [], canPair: true, phone: true, state: { status: "error", kind: "ssh", message: NO_MACHINE }, nearby: { computers: [] } },
 	play: async ({ canvasElement }) => {
-		await expect(canvasElement.querySelector('[data-slot="pair-nearby-empty"]')).toHaveTextContent("No computer found on this network yet. Pine must be open, with Browser access on.");
+		await expect(canvasElement.querySelector('[data-slot="pair-nearby-empty"]')).toHaveTextContent("No computer found on this network yet. Pine must be open there, with Browser access turned on.");
 	},
 };
 

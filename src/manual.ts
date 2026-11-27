@@ -44,6 +44,7 @@ const SYNONYMS: string[][] = [
 	// The manual: what somebody calls the text they want to read about pine themselves.
 	["manual", "documentation", "docs", "doc", "handbook", "guide", "reference", "help", "readme"],
 	["mcp", "server", "connector", "integration", "plugin", "extension", "tool"],
+	["extension", "plugin", "addon", "package", "npm", "module"],
 	["skill", "procedure", "howto", "recipe", "playbook", "instruction", "knowhow"],
 	["secret", "token", "password", "key", "credential", "apikey", "env"],
 	["approve", "approval", "permission", "confirm", "consent", "ask", "allow", "deny", "dialog", "prompt", "question"],

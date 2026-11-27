@@ -268,7 +268,7 @@ function doingText(j: Job, w: World): string {
 		case "waiting": {
 			const on = j.waitingOn.map((c) => w.jobs.get(c)).filter((c): c is Job => Boolean(c && !ENDED.includes(c.doing)));
 			const names = [...new Set(on.map((c) => (c.kind === "subagent" ? "copies" : c.agent)))];
-			return names.length ? `waits for ${names.join(", ")}` : "waits";
+			return names.length ? `waiting for ${names.join(", ")}` : "waiting";
 		}
 		case "asking":
 			return "asks you";
@@ -303,9 +303,9 @@ function Marks({ j }: { j: Job }) {
 			{held ? (
 				<HoverTooltip>
 					<TooltipTrigger render={<span className="flex-none text-warn" />}>
-						<ShieldIcon className="size-3 shrink-0" aria-label={`held to ${mode} mode`} />
+						<ShieldIcon className="size-3 shrink-0" aria-label={`limited to ${mode} mode`} />
 					</TooltipTrigger>
-					<TooltipContent>Held to {mode} mode: it was handed on from work in that mode, and {j.agent} works in {own} by itself</TooltipContent>
+					<TooltipContent>Limited to {mode} mode because the task was delegated from work in that mode. By default, {j.agent} works in {own}</TooltipContent>
 				</HoverTooltip>
 			) : null}
 			{outside ? (
@@ -313,7 +313,7 @@ function Marks({ j }: { j: Job }) {
 					<TooltipTrigger render={<span className="flex-none text-warn" />}>
 						<TriangleAlertIcon className="size-3 shrink-0" aria-label="read outside content" />
 					</TooltipTrigger>
-					<TooltipContent>The conversation read outside content ({outside}): sending something out asks you</TooltipContent>
+					<TooltipContent>The conversation read outside content ({outside}), so the agent asks before sending anything out</TooltipContent>
 				</HoverTooltip>
 			) : null}
 		</>
@@ -328,7 +328,7 @@ function ModeBadge({ mode }: { mode: string }) {
 				{open ? <ShieldOffIcon data-icon="inline-start" /> : <ShieldIcon data-icon="inline-start" />}
 				{mode}
 			</TooltipTrigger>
-			<TooltipContent>{open ? "Works with your account, without a sandbox" : mode === "plan" ? "Plans: looks and changes nothing" : "Works in a sandbox"}{mode === "bypass" ? ", and asks nothing" : mode === "manual" ? ", and asks before each action" : ""}</TooltipContent>
+			<TooltipContent>{open ? "Works with your account, without a sandbox" : mode === "plan" ? "Plan mode: read-only" : "Works in a sandbox"}{mode === "bypass" ? ", and never asks" : mode === "manual" ? ", and asks before each action" : ""}</TooltipContent>
 		</HoverTooltip>
 	);
 }
@@ -438,7 +438,7 @@ export function ViewPanel({ id }: { id: string }) {
 				<ResizablePanel id="view-stage" className="relative" minSize={120}>
 					<ViewFrame key={id} id={id} sel={chosen} pick={(t) => setSel(t)} />
 				</ResizablePanel>
-				<ResizableHandle disableDoubleClick onDoubleClick={() => (inspector.current?.resize(INSPECTOR_HEIGHT), keep(INSPECTOR_HEIGHT))} title="Drag to give the view or what happened more room" />
+				<ResizableHandle disableDoubleClick onDoubleClick={() => (inspector.current?.resize(INSPECTOR_HEIGHT), keep(INSPECTOR_HEIGHT))} title="Drag to resize the view and the activity list" />
 				<ResizablePanel id="view-inspector-panel" panelRef={inspector} defaultSize={kept() ?? INSPECTOR_HEIGHT} minSize={96} groupResizeBehavior="preserve-pixel-size">
 					<Inspector sel={chosen} pick={pick} />
 				</ResizablePanel>
@@ -536,7 +536,7 @@ function ViewFrame({ id, sel, pick }: { id: string; sel: Sel; pick: (s: Sel) => 
 			<Empty data-slot="view-problem" className="absolute inset-0">
 				<EmptyHeader>
 					<EmptyMedia variant="icon"><TriangleAlertIcon /></EmptyMedia>
-					<EmptyTitle>The view {id} cannot be shown</EmptyTitle>
+					<EmptyTitle>Could not show the view {id}</EmptyTitle>
 					<EmptyDescription>{code.problem}</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
@@ -633,8 +633,8 @@ function Feed({ now, pick }: { now: number; pick: (s: Sel) => void }) {
 	return (
 		<>
 			<div className="flex items-baseline gap-2">
-				<span className="font-medium text-muted-foreground">What happened</span>
-				<span className="min-w-0 flex-1 truncate text-end text-faint">click anything to look closer · double-click to open it</span>
+				<span className="font-medium text-muted-foreground">Activity</span>
+				<span className="min-w-0 flex-1 truncate text-end text-faint">click anything for details · double-click to open it</span>
 			</div>
 			{!lines.length && !isSeeded() ? (
 				[0, 1, 2].map((i) => <JobLine key={i} skeleton />)
@@ -646,7 +646,7 @@ function Feed({ now, pick }: { now: number; pick: (s: Sel) => void }) {
 					</button>
 				))
 			) : (
-				<span className="text-faint">Nothing yet. Ask an agent something, and watch it here. Click an agent or a piece of work to see more of it.</span>
+				<span className="text-faint">Nothing yet. Ask an agent something and watch it work here. Click an agent or a task for details.</span>
 			)}
 		</>
 	);
@@ -688,10 +688,10 @@ function AgentDetailLive({ id, now, pick }: { id: string; now: number; pick: (s:
 				<ModeBadge mode={a.mode} />
 				<span className="min-w-0 flex-1" />
 				<Button variant="outline" size="xs" onClick={() => void store.openTab(id, "main")}><ExternalLinkIcon data-icon="inline-start" />Open</Button>
-				<Button variant="ghost" size="icon-xs" aria-label="Back to what happened" onClick={() => pick(undefined)}><XIcon /></Button>
+				<Button variant="ghost" size="icon-xs" aria-label="Back to activity" onClick={() => pick(undefined)}><XIcon /></Button>
 			</div>
 			{a.description ? <p className="text-muted-foreground">{a.description}</p> : null}
-			<span className="mt-1 font-medium text-muted-foreground">{working.length ? `At work: ${working.length}` : "Idle"}</span>
+			<span className="mt-1 font-medium text-muted-foreground">{working.length ? `Working: ${working.length}` : "Idle"}</span>
 			{working.map((j) => <JobLine key={j.id} j={j} now={now} pick={pick} />)}
 			{rooms.length ? <span className="mt-1 font-medium text-muted-foreground">Conversations pine has open</span> : null}
 			{rooms.map((r) => (
@@ -753,7 +753,7 @@ function BoardDetail({ id, task, pick }: { id: number; task?: number; pick: (s: 
 			<ClipboardListIcon className="size-4 flex-none text-muted-foreground" />
 			<span className="min-w-0 flex-1 truncate text-sm font-medium">{v ? boardLabel(v.board) : "Board"}{t ? ` · task #${t.id}` : ""}</span>
 			{t ? <Button variant="outline" size="xs" onClick={() => pick({ k: "board", id })}>The whole board</Button> : null}
-			<Button variant="ghost" size="icon-xs" aria-label="Back to what happened" onClick={() => pick(undefined)}><XIcon /></Button>
+			<Button variant="ghost" size="icon-xs" aria-label="Back to activity" onClick={() => pick(undefined)}><XIcon /></Button>
 		</div>
 	);
 	if (!v)
@@ -782,9 +782,9 @@ function BoardDetail({ id, task, pick }: { id: number; task?: number; pick: (s: 
 					<dt className="text-muted-foreground">Posted by</dt>
 					<dd>{t.by === "owner" ? "you" : t.by}{t.outside ? " · after reading outside content" : ""}</dd>
 					{t.after.length ? <><dt className="text-muted-foreground">Comes after</dt><dd>{t.after.map((a) => <button key={a} type="button" className="mr-1.5 hover:underline" onClick={() => pick({ k: "board", id, task: a })}>#{a}</button>)}</dd></> : null}
-					{t.result ? <><dt className="text-muted-foreground">{t.state === "blocked" ? "It asks" : t.state === "failed" ? "Why" : "Result"}</dt><dd className="whitespace-pre-wrap break-words">{t.result}</dd></> : null}
+					{t.result ? <><dt className="text-muted-foreground">{t.state === "blocked" ? "Question" : t.state === "failed" ? "Why" : "Result"}</dt><dd className="whitespace-pre-wrap break-words">{t.result}</dd></> : null}
 				</dl>
-				{notes.length ? <span className="mt-1 font-medium text-muted-foreground">Notes about it</span> : null}
+				{notes.length ? <span className="mt-1 font-medium text-muted-foreground">Notes on this task</span> : null}
 				{notes.map((n) => <p key={n.id} className="whitespace-pre-wrap break-words"><span className="text-muted-foreground">{n.by === "owner" ? "you" : n.by}: </span>{n.text}</p>)}
 			</>
 		);
@@ -819,24 +819,24 @@ function JobDetail({ j, now, pick }: { j: Job; now: number; pick: (s: Sel) => vo
 				<AgentAvatar agent={{ id: j.agent, color: colorOf(j.agent), main: store.agent(j.agent)?.main }} size="sm" />
 				<span className="min-w-0 flex-1 truncate text-sm font-medium">{j.label || "(no text)"}</span>
 				<Button variant="outline" size="xs" onClick={() => openJob(j)}><ExternalLinkIcon data-icon="inline-start" />Open</Button>
-				<Button variant="ghost" size="icon-xs" aria-label="Back to what happened" onClick={() => pick(undefined)}><XIcon /></Button>
+				<Button variant="ghost" size="icon-xs" aria-label="Back to activity" onClick={() => pick(undefined)}><XIcon /></Button>
 			</div>
 			<dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
 				<dt className="text-muted-foreground">Agent</dt>
-				<dd><button type="button" className="hover:underline" onClick={() => pick({ k: "agent", id: j.agent })}>{j.agent}</button>{j.kind === "subagent" ? ", a copy (sub-agent)" : ""}</dd>
+				<dd><button type="button" className="hover:underline" onClick={() => pick({ k: "agent", id: j.agent })}>{j.agent}</button>{j.kind === "subagent" ? ", a sub-agent" : ""}</dd>
 				<dt className="text-muted-foreground">Came from</dt>
 				<dd className="flex items-center gap-1.5"><FromIcon from={j.from} />{fromText(j.from)}{parent ? <> · <button type="button" className="hover:underline" onClick={() => pick({ k: "job", id: parent.id })}>{parent.agent}'s work</button></> : null}</dd>
 				<dt className="text-muted-foreground">Now</dt>
 				<dd className={cn("flex items-center gap-1.5", j.doing === "asking" && "text-warn")}><DoingIcon j={j} />{doingText(j, w)}{j.subject ? <span className="truncate text-muted-foreground">{j.subject}</span> : null}</dd>
-				{j.ask ? <><dt className="text-muted-foreground">Asks you</dt><dd className="flex items-center gap-2"><span className="truncate">{j.ask.summary}</span><Button size="xs" onClick={() => store.ask(j.ask!.id)}>Answer</Button></dd></> : null}
+				{j.ask ? <><dt className="text-muted-foreground">Question for you</dt><dd className="flex items-center gap-2"><span className="truncate">{j.ask.summary}</span><Button size="xs" onClick={() => store.ask(j.ask!.id)}>Answer</Button></dd></> : null}
 				<dt className="text-muted-foreground">Mode</dt>
-				<dd>{mode ?? own ?? "?"}{mode && own && mode !== own && stricter(mode, own) ? ` (held to it: ${j.agent} works in ${own} by itself)` : ""}</dd>
-				{outside ? <><dt className="text-muted-foreground">Outside content</dt><dd className="text-warn">{outside}: sending something out asks you</dd></> : null}
+				<dd>{mode ?? own ?? "?"}{mode && own && mode !== own && stricter(mode, own) ? ` (limited: ${j.agent} works in ${own} by default)` : ""}</dd>
+				{outside ? <><dt className="text-muted-foreground">Outside content</dt><dd className="text-warn">{outside}: the agent asks before sending anything out</dd></> : null}
 				<dt className="text-muted-foreground">Time</dt>
 				<dd className="tabular-nums">{ago(end - j.started)}{j.tools ? ` · ${j.tools} tool call${j.tools === 1 ? "" : "s"}` : ""}</dd>
 				{j.error ? <><dt className="text-muted-foreground">Error</dt><dd className="text-destructive">{j.error}</dd></> : null}
 			</dl>
-			{children.length ? <span className="mt-1 font-medium text-muted-foreground">It handed on</span> : null}
+			{children.length ? <span className="mt-1 font-medium text-muted-foreground">Delegated</span> : null}
 			{children.map((c) => <JobLine key={c.id} j={c} now={now} pick={pick} />)}
 			<JobRecord j={j} />
 		</>
@@ -854,7 +854,7 @@ function JobRecord({ j }: { j: Job }) {
 	const stats = got.data?.task.meta.stats;
 	if (!got.data)
 		return got.error ? (
-			<span className="mt-1 text-muted-foreground">Its record cannot be read: {got.error}</span>
+			<span className="mt-1 text-muted-foreground">Could not load the record: {got.error}</span>
 		) : (
 			<div data-slot="job-record-skeleton" className="mt-1 flex flex-col gap-1.5">
 				<Skeleton className="h-3.5 w-24" />
@@ -866,7 +866,7 @@ function JobRecord({ j }: { j: Job }) {
 	return (
 		<section data-slot="job-record" className="mt-1 flex flex-col gap-1.5">
 			<div className="flex items-baseline gap-2">
-				<span className="font-medium text-muted-foreground">What it did</span>
+				<span className="font-medium text-muted-foreground">Steps</span>
 				{stats ? <span className="min-w-0 flex-1 truncate text-end text-faint tabular-nums">{count(stats.input)} tokens read · {count(stats.output)} written · {stats.turns} turn{stats.turns === 1 ? "" : "s"}</span> : null}
 			</div>
 			{entries.length ? entries.map((e, i) => <Entry key={i} entry={e} agent={j.agent} />) : <span className="text-faint">Nothing yet.</span>}

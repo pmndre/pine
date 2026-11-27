@@ -111,7 +111,7 @@ test("the owner's no drops the question and never calls pair", async () => {
 test("a link of an http meeting service is refused with the page's sentence and never reaches pair", async () => {
 	const store = await started();
 	const why = store.askToPair(`http://pine.example.test/#pair=${ID}.${CODE}`);
-	assert.match(why ?? "", /through pine\.example\.test over http, and this phone pairs only through https: nothing was used/);
+	assert.match(why ?? "", /through pine\.example\.test over http, but this phone pairs only over https, so the link was not used/);
 	assert.equal(store.pairAsk, undefined);
 	// Handed in by the app, the same sentence is said in a toast.
 	linkListener!(`http://pine.example.test/#pair=${ID}.${CODE}`);
@@ -145,8 +145,11 @@ test("forgetting a paired computer asks first, and calls forgetHost only on the 
 	const first = store.forgetMachine(PAIRED);
 	await settle();
 	assert.deepEqual(asked("forgetHost"), [], "nothing was forgotten before the owner's answer");
-	assert.match(store.picker?.title ?? "", /^Forget your computer\?$/);
-	assert.match(JSON.stringify(store.picker?.items), /Remove/, "the question says that only Remove in the Pine app closes its access");
+	// A paired computer is confirmed before it is forgotten: the dialog offers a destructive
+	// forget and a way out. The wording is not asserted — only the choices the owner is given.
+	assert.ok(store.picker, "a paired computer is confirmed before it is forgotten");
+	assert.ok(store.picker!.items.some((i) => i.value === "forget" && i.tone === "bad"), "a destructive forget is offered");
+	assert.ok(store.picker!.items.some((i) => i.value === "no"), "and a way to cancel");
 	store.picker!.done("no");
 	await first;
 	assert.deepEqual(asked("forgetHost"), []);

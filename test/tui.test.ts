@@ -1814,7 +1814,14 @@ test("tui: the agent's list of steps is shown and kept up to date, and the agent
 	const note = notesOf(t.h.mock.state.requests.at(-1)).join("\n");
 	assert.ok(note.includes("Your list of steps in this conversation") && note.includes("- [~] change it"), note);
 
+	// That answer left the list as it was: it was set aside, and an open list nobody keeps goes.
+	await done(t.h, 2);
+	assert.deepEqual(await t.app.client.todos("main", "main"), []);
+
 	// It is the conversation's: there after the UI opens again, gone after a reset. A run from outside has no such tool.
+	await t.send(mockMsg([{ tools: [list("in_progress", "pending", "pending")] }, { text: "Again." }]));
+	await t.sees("Again.");
+	await done(t.h, 3);
 	assert.equal((await t.app.client.todos("main", "main")).length, 3);
 	await t.send("/reset");
 	await t.sees("fresh conversation");

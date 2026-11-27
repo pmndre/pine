@@ -221,6 +221,12 @@ desktop/
     View.tsx       the view's panel. view-world.ts is pine as the page knows it; view-state.ts what a
                    view is told (names and states, no text); view-frame.ts (view.html) the frame
     Settings.tsx   the settings pages; settings-index.ts what their search finds
+    AgentFiles.tsx an agent's instruction files as tabs over an editor, the same part on the agent's page
+                   in Settings and in the side panel's Agent tab; Editor.tsx the editor itself (CodeMirror)
+    things.ts      what Settings and the side panel's Agent tab (AgentView.tsx) share about sources,
+                   schedules, routes, skills and servers: how one is said in words, the sign that a list
+                   changed (`LISTS`), and `openThing`, which opens a route, a schedule or a skill in the
+                   one dialog App.tsx holds (`ThingDialog` in Settings.tsx)
     Manual.tsx     the Manual tab: pine's manual from the daemon (`GET /manual`), its parts, chapters, a chapter, its search
     sign-in.ts     a provider sign-in as the page follows it; components/sign-in-card.tsx its card
     setup/         Onboarding's steps: engine.tsx walks them (and asks the default model), types.ts,

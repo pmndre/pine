@@ -79,7 +79,7 @@ test("a key typed in the card reaches a model, and the conversation says only th
 	await sees(field);
 	await page.fill(field, KEY);
 	await page.locator("[data-card=setup-api-key]").getByRole("button", { name: "Save" }).click();
-	await sees("[data-slot=setup-model] >> text=/Your agents run on anthropic\\//");
+	await sees("[data-slot=setup-model] >> text=/Your agents now run on anthropic\\//");
 	await sees("[data-slot=message-scroller-content] [data-item=setup-answer] >> text=Key saved for Anthropic");
 	const main = ((await api("GET", "/agents")) as any[]).find((a) => a.main);
 	assert.match(main.model, /^anthropic\//);
@@ -99,7 +99,7 @@ test("a key typed in the card reaches a model, and the conversation says only th
 
 test("after a reload, a key folds as the API key it is, not as a subscription of the same provider", async () => {
 	await page.reload();
-	await sees("[data-slot=setup-model] >> text=/Your agents run on anthropic\\//");
+	await sees("[data-slot=setup-model] >> text=/Your agents now run on anthropic\\//");
 	const answers = "[data-slot=message-scroller-content] [data-item=setup-answer]";
 	await sees(`${answers} >> text=An API key`);
 	await sees(`${answers} >> text=Key saved for Anthropic`);

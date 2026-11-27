@@ -22,7 +22,7 @@ export const KEY_PROVIDERS: Record<string, { title: string; about: string }> = {
 	anthropic: { title: "Anthropic", about: "Claude models. A key from console.anthropic.com" },
 	openai: { title: "OpenAI", about: "GPT models. A key from platform.openai.com" },
 	google: { title: "Google Gemini", about: "Gemini models. A key from Google AI Studio" },
-	openrouter: { title: "OpenRouter", about: "Models of many companies with one key, from openrouter.ai" },
+	openrouter: { title: "OpenRouter", about: "Models from many companies with one key from openrouter.ai" },
 	xai: { title: "xAI", about: "Grok models. A key from console.x.ai" },
 };
 
@@ -30,7 +30,7 @@ export const KEY_PROVIDERS: Record<string, { title: string; about: string }> = {
 const KNOWN: Record<string, { title?: string; about?: string; words: string }> = {
 	// pi took out the sign-in with a Gemini subscription (Gemini CLI, Antigravity): searching for one finds this row,
 	// which says what works instead.
-	google: { title: "Google Gemini", about: "Needs an API key from Google AI Studio: there is no sign-in with a Gemini or Antigravity subscription", words: "gemini antigravity gemini-cli ai studio" },
+	google: { title: "Google Gemini", about: "Needs an API key from Google AI Studio. Signing in with a Gemini or Antigravity subscription is not possible", words: "gemini antigravity gemini-cli ai studio" },
 	"google-vertex": { words: "gemini" },
 	anthropic: { words: "claude anthropic" },
 	"openai-codex": { words: "chatgpt codex gpt" },

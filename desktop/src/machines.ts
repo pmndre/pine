@@ -175,14 +175,14 @@ export function machinesView(o: { canPair: boolean; canAddHost: boolean; hosts: 
  * What the SSH view says under the field that adds a user@host machine, where the bridge names its
  * service (`AppState.serviceHost`): the relay carries the SSH bytes, which are encrypted end to end.
  */
-export const relayLine = (serviceHost: string) => `Connections go through the relay at ${serviceHost}. It carries SSH only and cannot read it.`;
+export const relayLine = (serviceHost: string) => `Connections go through the relay at ${serviceHost}. The relay carries only SSH and cannot read it.`;
 
 /**
  * What the pairing view says: the meeting service passes the few messages that set up the
  * connection, and carries nothing after. The connection is direct, or goes through a relay server
  * (TURN) that the computer's owner named in the Pine app: true of every paired computer, connected or not.
  */
-export const meetingLine = (serviceHost: string) => `Found through ${serviceHost}. The connection is then made between the two devices, directly or through a relay server the computer's owner named.`;
+export const meetingLine = (serviceHost: string) => `Found through ${serviceHost}. The two devices then connect directly, or through a relay server that the computer's owner chose.`;
 
 /**
  * The sentence the first screen draws under its title for an SSH trouble. The bridge's state with

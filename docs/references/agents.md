@@ -16,7 +16,7 @@ agents/gonzo/
     MEMORY.md      what should outlive a conversation
   skills/        its own skills, one folder each
   conversations/ what was set up for one conversation alone; made when needed
-  extensions/    optional: its own pi extensions
+  extensions/    optional: pi extensions you placed for it (extensions.md)
   AGENTS.md      optional: rules of yours that the agent cannot change
 ```
 
@@ -466,18 +466,9 @@ Description up to 1024 characters, instructions 40 000, files at most 200 and 4 
 
 ## pi extensions
 
-Any pi extension works in pine:
-
-```ts
-// ~/.pine/agents/gonzo/extensions/citations.ts
-export default function (pi) {
-	pi.on("before_agent_start", async (event) => ({ systemPrompt: `${event.systemPrompt}\n\nCite the paragraph for every legal claim.` }));
-}
-```
-
-Files in `agents/<id>/extensions/` load by themselves; list others under `extensions`. pi's guide is
-`node_modules/@earendil-works/pi-coding-agent/docs/extensions.md`. Its terminal UI features do
-nothing in the daemon. `.pi/extensions/` in a workspace is not loaded (see `trustWorkspace` in
+Any pi extension works in pine, and pi packages are installed in Settings > Extensions or by the
+main agent: see [extensions.md](extensions.md). A file you place in `agents/<id>/extensions/`
+loads by itself. `.pi/extensions/` in a workspace is not loaded (see `trustWorkspace` in
 [configuration.md](configuration.md)).
 
 ## What the model server keeps

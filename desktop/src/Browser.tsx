@@ -241,8 +241,8 @@ export function BrowserView({ tab }: { tab: Tab }) {
 						</div>
 					</ScrollArea>
 					<HoverTooltip>
-						<TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="A new tab" onClick={() => (act({ do: "newtab" }), line.current?.focus())} />}><PlusIcon /></TooltipTrigger>
-						<TooltipContent>A new tab</TooltipContent>
+						<TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="New tab" onClick={() => (act({ do: "newtab" }), line.current?.focus())} />}><PlusIcon /></TooltipTrigger>
+						<TooltipContent>New tab</TooltipContent>
 					</HoverTooltip>
 				</div>
 			) : null}
@@ -257,8 +257,8 @@ export function BrowserView({ tab }: { tab: Tab }) {
 						<TooltipContent>Forward</TooltipContent>
 					</HoverTooltip>
 					<HoverTooltip>
-						<TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Load the page again" disabled={!open} onClick={() => act({ do: "reload" })} />}><RotateCwIcon /></TooltipTrigger>
-						<TooltipContent>Load the page again</TooltipContent>
+						<TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label="Reload the page" disabled={!open} onClick={() => act({ do: "reload" })} />}><RotateCwIcon /></TooltipTrigger>
+						<TooltipContent>Reload the page</TooltipContent>
 					</HoverTooltip>
 				</ButtonGroup>
 				<InputGroup className="ml-1 min-w-0 flex-1">
@@ -266,7 +266,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 						aria-label="Address"
 						className="min-w-0"
 						spellCheck={false}
-						placeholder="An address: example.com, or localhost:3000"
+						placeholder="Enter an address, like example.com or localhost:3000"
 						ref={line}
 						value={address ?? (front?.url === "about:blank" ? "" : (front?.url ?? ""))}
 						onChange={(e) => setAddress(e.target.value)}
@@ -324,7 +324,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 					{drawn ? null : <BrowserSkeleton className="absolute inset-0" />}
 				</ScrollArea>
 			) : !state ? (
-				lookError ? <Empty><EmptyHeader><EmptyMedia variant="icon"><EyeIcon /></EmptyMedia><EmptyTitle>The browser cannot be reached</EmptyTitle><EmptyDescription>{lookError}</EmptyDescription></EmptyHeader></Empty> : <BrowserSkeleton className="min-h-0 flex-1" />
+				lookError ? <Empty><EmptyHeader><EmptyMedia variant="icon"><EyeIcon /></EmptyMedia><EmptyTitle>Could not reach the browser</EmptyTitle><EmptyDescription>{lookError}</EmptyDescription></EmptyHeader></Empty> : <BrowserSkeleton className="min-h-0 flex-1" />
 			) : (
 				<Empty>
 					<EmptyHeader>
@@ -332,7 +332,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 							<EyeIcon />
 						</EmptyMedia>
 						<EmptyTitle>No page is open</EmptyTitle>
-						<EmptyDescription>This is the browser the agent of this conversation works in. A page it opens is shown here as it is, and you can use it too: click, type, log in. Type an address above to open one yourself.</EmptyDescription>
+						<EmptyDescription>This is the browser this conversation's agent uses. Pages the agent opens appear here, and you can click, type and log in on them yourself. To open a page, type an address above.</EmptyDescription>
 					</EmptyHeader>
 					{/* What the conversation's own programs listen on (the code pane's Running): a server the agent started is one click away. */}
 					{running.length ? (
@@ -348,7 +348,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 					) : null}
 					{visited.length ? (
 						<EmptyContent data-offer="visited">
-							<EmptyDescription>Opened by the agent before</EmptyDescription>
+							<EmptyDescription>Opened earlier by the agent</EmptyDescription>
 							{/* (An address is text an agent chose: drawn as text, whole in the tooltip, and opened only by this click.) */}
 							{visited.map((url) => (
 								<HoverTooltip key={url}>
@@ -360,7 +360,7 @@ export function BrowserView({ tab }: { tab: Tab }) {
 					) : null}
 				</Empty>
 			)}
-			{open ? <div className="flex flex-none items-center gap-1.5 border-t border-line-soft px-2.5 py-1 text-xs text-faint"><ShieldIcon className="size-3 shrink-0" /><span className="truncate">The agent's browser, behind pine's guard. What you do here, the agent sees when it next looks.</span></div> : null}
+			{open ? <div className="flex flex-none items-center gap-1.5 border-t border-line-soft px-2.5 py-1 text-xs text-faint"><ShieldIcon className="size-3 shrink-0" /><span className="truncate">The agent's browser, behind pine's guard. The agent sees what you do here the next time it looks.</span></div> : null}
 		</div>
 	);
 }

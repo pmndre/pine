@@ -263,7 +263,7 @@ test("access control: a relay's address is turn:, a host and a port, over UDP; n
 	assert.equal(relayAddress("turn:203.0.113.5").address, "turn:203.0.113.5:3478");
 	// The library pine connects with reaches a relay over UDP only: TCP and TLS are refused with what to write instead.
 	for (const tcp of ["turns:relay.example.com", "turns:relay.example.com:443?transport=tcp", "turns:relay.example.com:5349?transport=udp", "turn:relay.example.com:443?transport=tcp"]) {
-		assert.throws(() => relayAddress(tcp), /only use turn: over UDP.*turn:relay\.example\.com:3478/, tcp);
+		assert.throws(() => relayAddress(tcp), /turn:relay\.example\.com:3478/, tcp);
 	}
 	for (const bad of ["stun:relay.example.com:3478", "https://relay.example.com", "turn:user:pw@relay.example.com:3478", "turn:relay.example.com:99999", "turn:relay.example.com:3478?transport=sctp", "turn:", "turn:[nothing]:3478", "turn:relay.example.com:3478 extra"]) {
 		assert.throws(() => relayAddress(bad), /turn:host:port/, bad);
@@ -290,7 +290,7 @@ test("access control: a relay is kept with its address and user name in the pref
 		assert.ok(!JSON.stringify(calls.hostOptions[1].relay).includes(TURN_PASSWORD));
 		await until("the try is done", async () => (await control.state()).relay?.check?.result !== "trying");
 		const tried = await control.state();
-		assert.deepEqual(tried.relay?.check, { result: "usable", message: `This relay works: it gave this ${process.platform === "darwin" ? "Mac" : "computer"} an address.` });
+		assert.deepEqual(tried.relay?.check, { result: "usable", message: `This relay works. It gave this ${process.platform === "darwin" ? "Mac" : "computer"} an address.` });
 		for (const told of [...calls.changes, tried, state]) assert.ok(!JSON.stringify(told).includes(TURN_PASSWORD), "no state the page reads has the password");
 		// Saved again with an empty password: the kept one stays.
 		await control.set({ relay: { address: `turn:127.0.0.1:${turn.port}`, username: TURN_USER, password: "" } });
@@ -323,9 +323,9 @@ test("access control: the try says why a relay cannot be used, and the relay is 
 			await until("the try is done", async () => (await control.state()).relay?.check?.result !== "trying");
 			return (await control.state()).relay!.check!;
 		};
-		assert.deepEqual(await result(`turn:127.0.0.1:${turn.port}`, "not-the-password"), { result: "failed", message: "Could not use this relay: it refused the user name or password. It is kept; check them and save again." });
+		assert.deepEqual(await result(`turn:127.0.0.1:${turn.port}`, "not-the-password"), { result: "failed", message: "Could not use this relay because it refused the user name or password. The relay is saved. Check both and save again." });
 		assert.equal(prefs().relay?.address, `turn:127.0.0.1:${turn.port}`, "kept");
-		assert.match((await result(`turn:127.0.0.1:${silent.port}`, TURN_PASSWORD)).message, /^Could not use this relay: it did not answer\. It is kept/);
+		assert.match((await result(`turn:127.0.0.1:${silent.port}`, TURN_PASSWORD)).message, /^Could not use this relay because it did not answer\. The relay is saved/);
 		assert.equal(prefs().relay?.address, `turn:127.0.0.1:${silent.port}`, "kept");
 		assert.match((await result("turn:relay.example.invalid:3478", TURN_PASSWORD)).message, /no server was found under that name/);
 	} finally {

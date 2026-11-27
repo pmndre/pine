@@ -54,7 +54,7 @@ test("Without a home the app runs pine init by itself, and nothing as administra
 	if (process.platform === "linux") {
 		assert.ok(!init.includes("--yes"), `pine init was told to run what needs an administrator: ${init.join(" ")}`);
 		// What pine would run is on the screen, with what to do; pine is not asked again by itself.
-		await page.locator("[data-slot=toast]", { hasText: "Part of it needs an administrator" }).waitFor({ timeout: 10_000 });
+		await page.locator("[data-slot=toast]", { hasText: "Part of the setup needs an administrator" }).waitFor({ timeout: 10_000 });
 		assert.match(await page.textContent("body"), /sudo apt-get install -y bubblewrap/);
 		const before = services();
 		await new Promise((r) => setTimeout(r, 500));

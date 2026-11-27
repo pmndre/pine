@@ -44,11 +44,11 @@ export function AddDeviceDialog({ opened, stale, now, onClose, onNew, onCopy }: 
 				<div data-slot="pairing-dialog" className="contents">
 					<DialogHeader>
 						<DialogTitle>Add a device</DialogTitle>
-						<DialogDescription>{stale ? "This code no longer works: it was used, or the two minutes are over." : "Scan the code with the device's camera, or send yourself the link and open it in the device's browser."}</DialogDescription>
+						<DialogDescription>{stale ? "This code no longer works. It was already used, or the two minutes ran out." : "Scan the code with the device's camera, or send yourself the link and open it in the device's browser."}</DialogDescription>
 					</DialogHeader>
 					{opened && !stale ? (
 						<>
-							<QrCode value={opened.link} label="QR code of the pairing link" className="mx-auto w-full max-w-56 rounded-lg" />
+							<QrCode value={opened.link} label="QR code for the pairing link" className="mx-auto w-full max-w-56 rounded-lg" />
 							<p className="text-center text-sm text-muted-foreground">Works once, for <span data-slot="pairing-time" className="font-mono tabular-nums">{left(Date.parse(opened.expires) - now)}</span> more.</p>
 						</>
 					) : null}
@@ -135,7 +135,7 @@ function usePausedNotice(state: AccessState | undefined, platform: string, resum
 		if (!paused) return;
 		const id = toast.add({
 			title: "Visibility paused after 3 refusals",
-			description: `For an hour, this ${computerWord(platform)} is not announced on this network and takes no request without a code.`,
+			description: `For an hour, this ${computerWord(platform)} is hidden on this network and accepts only requests with a code.`,
 			type: "warning",
 			timeout: 0,
 			actionProps: { children: "Turn on now", onClick: resume },
@@ -177,7 +177,7 @@ export function DevicePairing() {
 				now={now}
 				onClose={() => s.closePairing()}
 				onNew={() => void s.addDevice()}
-				onCopy={() => void bridge.copyPairingLink!().then(() => store.flash("The link is on the clipboard.", "good", 3000), (e: unknown) => store.flash(errText(e), "bad"))}
+				onCopy={() => void bridge.copyPairingLink!().then(() => store.flash("Link copied.", "good", 3000), (e: unknown) => store.flash(errText(e), "bad"))}
 			/>
 			<PairingQuestion request={state?.request} answer={answer} />
 		</>

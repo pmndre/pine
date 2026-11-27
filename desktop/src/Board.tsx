@@ -25,13 +25,13 @@ import { useLoad } from "./use-load.ts";
 const SUB = "flex min-h-9 flex-none items-center gap-1.5 border-b border-line-soft px-2.5 py-1.5 text-sm text-muted-foreground";
 
 /** A board as the owner calls it. */
-export const boardLabel = (b: BoardBrief) => (b.scope === "global" ? `${b.name} · all agents` : b.scope === "agent" ? `${b.name} · all conversations of ${b.agent}` : b.name || "This conversation");
+export const boardLabel = (b: BoardBrief) => (b.scope === "global" ? `${b.name} · all agents` : b.scope === "agent" ? `${b.name} · all of ${b.agent}'s conversations` : b.name || "This conversation");
 
 /** Where a task stands, in a few words. */
 export function taskLine(t: BoardItem): string {
 	if (t.state === "taken") return t.sub ? `A sub-agent of ${t.holder ?? "the agent"} is working on it` : `${t.holder ?? "An agent"} is working on it`;
 	if (t.state === "open") return t.waits.length ? `Waiting for ${t.waits.map((w) => `#${w}`).join(", ")}` : "Open";
-	return t.state === "done" ? "Done" : t.state === "failed" ? "Failed" : "Waits for an answer";
+	return t.state === "done" ? "Done" : t.state === "failed" ? "Failed" : "Waiting for an answer";
 }
 
 function TaskIcon({ task }: { task: BoardItem }) {
@@ -147,13 +147,13 @@ export function BoardList({ view, actions }: { view: BoardView; actions: BoardAc
 									</Collapsible>
 									<ItemActions>
 										<DropdownMenu>
-											<DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`What to do with task ${t.id}`} />}>
+											<DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Actions for task ${t.id}`} />}>
 												<EllipsisIcon />
 											</DropdownMenuTrigger>
 											<DropdownMenuContent align="end">
 												<DropdownMenuGroup>
 													{t.state === "taken" ? <DropdownMenuItem onClick={() => void actions.act(t.id, "reopen")}>Take it back</DropdownMenuItem> : null}
-													{t.state === "done" || t.state === "failed" || t.state === "blocked" ? <DropdownMenuItem onClick={() => void actions.act(t.id, "reopen")}>Open it again</DropdownMenuItem> : null}
+													{t.state === "done" || t.state === "failed" || t.state === "blocked" ? <DropdownMenuItem onClick={() => void actions.act(t.id, "reopen")}>Reopen</DropdownMenuItem> : null}
 													{t.state !== "done" ? <DropdownMenuItem onClick={() => void actions.act(t.id, "done")}>Mark as done</DropdownMenuItem> : null}
 												</DropdownMenuGroup>
 												<DropdownMenuSeparator />
@@ -241,7 +241,7 @@ export function BoardTab({ tab }: { tab: Tab }) {
 						</EmptyMedia>
 						<EmptyTitle>No board yet</EmptyTitle>
 						<EmptyDescription>
-							A board holds the tasks of a job that several work on, who has each, and what they found. The agent starts one when it splits a job among sub-agents, or you add the first task here.
+							A board tracks a job that several agents share: the tasks, who has each one, and what they found. The agent starts a board when it splits a job among sub-agents, or you can add the first task here.
 						</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
@@ -276,7 +276,7 @@ export function BoardTab({ tab }: { tab: Tab }) {
 					<AlertDialogContent>
 						<AlertDialogHeader>
 							<AlertDialogTitle>Remove this board?</AlertDialogTitle>
-							<AlertDialogDescription>The tasks on it, their results and the notes are deleted too. A sub-agent working on one of these tasks finishes without the board.</AlertDialogDescription>
+							<AlertDialogDescription>This also deletes the board's tasks, results and notes. A sub-agent still working on one of the tasks finishes without the board.</AlertDialogDescription>
 						</AlertDialogHeader>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -287,7 +287,7 @@ export function BoardTab({ tab }: { tab: Tab }) {
 					</AlertDialogContent>
 				</AlertDialog>
 			</div>
-			{view.data ? <BoardList view={view.data} actions={actions} /> : view.error ? <Empty><EmptyHeader><EmptyMedia variant="icon"><ClipboardListIcon /></EmptyMedia><EmptyTitle>The board cannot be read</EmptyTitle><EmptyDescription>{view.error}</EmptyDescription></EmptyHeader></Empty> : <Pulse label="Loading" className="m-auto" />}
+			{view.data ? <BoardList view={view.data} actions={actions} /> : view.error ? <Empty><EmptyHeader><EmptyMedia variant="icon"><ClipboardListIcon /></EmptyMedia><EmptyTitle>Could not load the board</EmptyTitle><EmptyDescription>{view.error}</EmptyDescription></EmptyHeader></Empty> : <Pulse label="Loading" className="m-auto" />}
 			{add}
 		</>
 	);

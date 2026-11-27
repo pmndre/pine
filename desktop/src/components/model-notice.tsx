@@ -26,10 +26,10 @@ export function ModelNotice({ agent, model, problem, retry, onSetup }: {
 			<AlertDescription>
 				{model ? (
 					<>
-						<b>{agent}</b> cannot answer: {problem} Sign in to its provider, add a model server of your own, or choose another model.
+						<b>{agent}</b> cannot answer: {problem} Sign in to the model's provider, add your own model server, or choose another model.
 					</>
 				) : (
-					"Connect a model first: sign in to a subscription or add a model server of your own."
+					"Connect a model first: sign in to a subscription or add your own model server."
 				)}
 				{retry ? " Then send your message again." : null}
 			</AlertDescription>

@@ -291,6 +291,8 @@ started.
 For work with several steps an agent keeps a list (its `todo` tool): `✓` done, `◐` in work, `☐` to
 do, and `step 2 of 5` in the status line. The list survives a restart; `/reset` clears it. pine
 reminds the agent of open steps with your next message and after six tool calls without a change.
+If the agent answers that message and leaves the list as it was, the list goes: that work was
+stopped or set aside.
 With the code pane open, up to six steps stand at its top.
 
 ## The tool calls of a turn

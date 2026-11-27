@@ -63,7 +63,8 @@ After a conversation has read outside content (a web page, somebody else's messa
 
 - pine refuses, without asking: `update_agent`, `rename_agent`, `remove_agent`, `set_setting`,
   `set_conversation`, `remove_conversation`, `rename_group`, `remove_group`, `sign_in`,
-  `sign_out`, `sign_in_mcp_server`, `add_source_type`, `add_model_server`, `add_model`,
+  `sign_out`, `sign_in_mcp_server`, `add_source_type`, `add_extension`, `update_extension`,
+  `remove_extension`, `add_model_server`, `add_model`,
   `configure_model`, and a route with `trust: "owner"`. Use a new conversation or `/reset`;
 - pine asks about `add_route`, `remove_route`, `add_decision_model` and `remove_decision_model`,
   naming the outside content;
@@ -296,6 +297,9 @@ and conversations are in the sections above.
 | `read_source` `source` [`data`] | Reads earlier messages through a source that can be asked (a Slack channel or thread: `data` is `{"channel": "C0123", "thread": "..."}`). Not asked about; the result is outside content |
 | `remove_source` `name` | Stops and deletes a source, with its subscriptions and folder access |
 | `add_source_type` `name` `file`, `remove_source_type` `name` | Main agent only. Registers a module as a new source type, or removes one ([sources.md](sources.md)) |
+| **Extensions** | |
+| `extensions` | Main agent only. Lists the installed extensions |
+| `add_extension` `source` [`agent`] [`scripts`], `update_extension` `source` [`agent`], `remove_extension` `source` [`agent`] | Main agent only. Installs, updates or removes a pi extension or package; you confirm each ([extensions.md](extensions.md)) |
 | **Schedules** | |
 | `schedules` | Lists the agent's schedules and when each is next due |
 | `add_schedule` `name` `task` + one of `cron`, `every`, `at`, `in` [`scope`] | Runs the task at set times, repeatedly, or once ([events.md](events.md), "Schedules") |
@@ -323,7 +327,7 @@ and conversations are in the sections above.
 | `sign_in_mcp_server` `name` [`agent`] | Main agent only. After you confirm, signs in to a remote MCP server in the browser of pine's computer; pine keeps the token. Same as `pine mcp login <name>` |
 | **Asking, and keeping track** | |
 | `question` `question` [`header`] [`options`] [`multiSelect`] | Asks the owner one question the agent cannot go on without: two to six `options` (`{ label, description? }`, best first), a `header` of up to 12 characters, `multiSelect` for several. One question per call, several calls for several questions. It returns at once ("Asked"); the agent then ends its turn unless it can go on without the answer. The owner answers with their next message, which may be about other things too. Works in plan mode, not in a run the owner did not start, never for a sub-agent |
-| `todo` `items` | The agent's list of steps, sent whole: each `pending`, `in_progress` (one) or `done`, up to 30. The owner sees it; pine reminds the agent after six tool calls without a change. Not in a run the owner did not start |
+| `todo` `items` | The agent's list of steps, sent whole: each `pending`, `in_progress` (one) or `done`, up to 30. The owner sees it; pine reminds the agent after six tool calls without a change, and drops a list with open steps that an answer to the owner's next message left as it was. Not in a run the owner did not start |
 | **Other tools** | |
 | `stop_program` [`id`] | Stops a program the conversation's commands left running or started with `background: true`; without `id`, lists them. Never asks. Only with `bash` ([coding.md](coding.md)) |
 | `request_access` [`path`] [`write`] [`network`] `reason` | Asks you for a path outside the workspace (`write: true` to change it) or the network, until reset or restart ([security.md](security.md), "When a call needs something outside: pine asks you") |

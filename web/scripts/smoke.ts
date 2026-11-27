@@ -226,7 +226,7 @@ try {
 		assert.equal(await frame.getByPlaceholder("you@server").count(), 0);
 		assert.equal(await frame.locator("[data-slot=device-key]").count(), 0);
 		assert.equal(await frame.locator("[data-slot=back-to-pairing]").count(), 0);
-		assert.equal(await frame.locator("[data-slot=meeting-line]").innerText(), `Found through 127.0.0.1:${relayPort}. The connection is then made between the two devices, directly or through a relay server the computer's owner named.`);
+		assert.equal(await frame.locator("[data-slot=meeting-line]").innerText(), `Found through 127.0.0.1:${relayPort}. The two devices then connect directly, or through a relay server that the computer's owner chose.`);
 	});
 
 	await check("the link to SSH shows the SSH view, and its back control returns to pairing", async () => {
@@ -242,7 +242,7 @@ try {
 	});
 
 	await check("the SSH view names this deployment's host as the relay's, which carries SSH only and cannot read it", async () => {
-		assert.equal(await frame.locator("[data-slot=relay-line]").innerText(), `Connections go through the relay at 127.0.0.1:${relayPort}. It carries SSH only and cannot read it.`);
+		assert.equal(await frame.locator("[data-slot=relay-line]").innerText(), `Connections go through the relay at 127.0.0.1:${relayPort}. The relay carries only SSH and cannot read it.`);
 	});
 
 	await check("the page cannot reach the bridge's IndexedDB, its document or its cookies", async () => {
@@ -445,7 +445,7 @@ try {
 		const before = relayed.length;
 		// As a deploy does: the Worker goes, what it carried is cut, and it comes back on the same address.
 		await stopRelay();
-		await status.and(frame.locator('[aria-label*="pine does not answer"]')).waitFor({ timeout: 10_000 });
+		await status.and(frame.locator('[aria-label*="pine is not responding"]')).waitFor({ timeout: 10_000 });
 		await startRelay();
 		await status.and(frame.locator('[aria-label*="pine 0"], [aria-label*="pine 1"]')).waitFor({ timeout: 30_000 });
 		assert.ok(relayed.length > before, "a new connection went through the relay");
@@ -609,7 +609,7 @@ try {
 		const foot = screen.locator("[data-slot=service-status]");
 		// As the app does when it quits and opens again: the same key, from the same folder.
 		await computer.stop();
-		await foot.and(screen.locator(`[aria-label*="${COMPUTER} not reached"], [aria-label*="connecting to ${COMPUTER}"], [aria-label*="pine does not answer"]`)).waitFor({ timeout: 30_000 });
+		await foot.and(screen.locator(`[aria-label*="cannot reach ${COMPUTER}"], [aria-label*="connecting to ${COMPUTER}"], [aria-label*="pine is not responding"]`)).waitFor({ timeout: 30_000 });
 		computer = await startHost();
 		assert.equal(`paired:${computer.machineId}`, paired, "the same computer");
 		await foot.and(screen.locator(`[aria-label*="· ${COMPUTER}"]`)).waitFor({ timeout: 90_000 });

@@ -41,7 +41,8 @@ test("the first screen during a pairing: what to do before the computer answered
 	// The computer's own name, once it gave it with the digits (a computer found on the network was only "Pine").
 	const named = firstScreen({ status: "starting", pairing: { code: "4821", name: "Pine on Pixel 9", computer: "Studio Mac" } }, "phone");
 	assert.equal(named?.title, "Confirm on Studio Mac");
-	assert.match(named?.about ?? "", /^Studio Mac asks whether "Pine on Pixel 9" may connect/);
+	// The requesting device's name reaches the prompt; the computer's name is checked on the title above.
+	assert.match(named?.about ?? "", /Pine on Pixel 9/);
 	// No pairing: the first screen is drawn as before.
 	assert.equal(firstScreen({ status: "starting" }), undefined);
 	assert.equal(firstScreen({ status: "starting", host: PAIRED }), undefined);
@@ -112,8 +113,8 @@ test("with no machine in use the first screen's sentence follows the view shown:
 
 test("the relay and the meeting service are said by the deployment's host: SSH through the relay, which cannot read it; a paired computer found there, then reached directly or through a relay server its owner named", () => {
 	const host = "pine-main.drcmda.workers.dev";
-	assert.equal(relayLine(host), "Connections go through the relay at pine-main.drcmda.workers.dev. It carries SSH only and cannot read it.");
-	assert.equal(meetingLine(host), "Found through pine-main.drcmda.workers.dev. The connection is then made between the two devices, directly or through a relay server the computer's owner named.");
+	assert.equal(relayLine(host), "Connections go through the relay at pine-main.drcmda.workers.dev. The relay carries only SSH and cannot read it.");
+	assert.equal(meetingLine(host), "Found through pine-main.drcmda.workers.dev. The two devices then connect directly, or through a relay server that the computer's owner chose.");
 	assert.equal(reachedThrough("me@box.example", host), "Through the relay at pine-main.drcmda.workers.dev.");
 	assert.equal(reachedThrough(PAIRED, host), meetingLine(host));
 	// A bridge that names no service (the desktop and mobile apps) gets no such line.

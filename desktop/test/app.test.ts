@@ -177,7 +177,7 @@ test("the agent's browser is a part of the side panel, shown as a picture, and w
 		await page.mouse.wheel(0, 120);
 		await page.click("[data-slot=browser] [data-slot=tabs-trigger] >> nth=1");
 		// A tab of the owner's own, and one closed.
-		await page.click("[data-slot=browser] button[aria-label='A new tab']");
+		await page.click("[data-slot=browser] button[aria-label='New tab']");
 		// The tabs are drawn again once the new one is asked for: a click before that can land on a button that is gone.
 		await waitFor("a new tab arrived", () => ops().some((o) => o.do === "newtab"));
 		// The button to close a tab that is not in front shows under the pointer only. So the pointer goes to the tab
@@ -478,8 +478,8 @@ test("no key in the menus does two things, and the window closes as on a Mac: by
 	const as = (key: string) => key.split("+").map((p) => word[p.toLowerCase()] ?? p.toLowerCase()).sort().join("+");
 	const owners = new Map<string, string[]>();
 	for (const i of items) owners.set(as(i.key), [...(owners.get(as(i.key)) ?? []), i.label]);
-	// Electron's Redo and pine's Take Back Last Message share ⇧⌘Z on a Mac too: that is left as it is there.
-	const twice = [...owners].filter(([key, who]) => who.length > 1 && !(key === as("Shift+CmdOrCtrl+Z") && who.length === 2 && who.includes("Redo") && who.includes("Take Back Last Message")));
+	// Electron's Redo and pine's Undo Last Message share ⇧⌘Z on a Mac too: that is left as it is there.
+	const twice = [...owners].filter(([key, who]) => who.length > 1 && !(key === as("Shift+CmdOrCtrl+Z") && who.length === 2 && who.includes("Redo") && who.includes("Undo Last Message")));
 	assert.deepEqual(twice, [], `keys that do two things: ${JSON.stringify(twice)}`);
 	assert.deepEqual(owners.get(as("CmdOrCtrl+W")), ["Close Tab"]);
 	assert.ok(!items.some((i) => i.label === "Close"), "a menu item closes the window");
@@ -520,7 +520,7 @@ test("text selected in an answer is quoted: a badge above the input, a markdown 
 	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=old copy of the lockfile");
 	assert.equal(await page.$("[data-slot=selection-toolbar]"), null);
 	// A click on the badge above the input goes back to the answer.
-	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: /Go to where you quoted/ }).click();
+	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: /Go to the quoted text/ }).click();
 	await lit();
 	await unlit();
 	// Sent, the quote goes first, as markdown: that is what the agent reads.
@@ -534,15 +534,15 @@ test("text selected in an answer is quoted: a badge above the input, a markdown 
 	const sent = page.locator("[data-item=user]").last();
 	assert.equal(await sent.locator("[data-slot=quote-chip]").count(), 1);
 	assert.doesNotMatch(await sent.textContent(), /> old copy/);
-	await sent.locator("[data-slot=quote-chip]").getByRole("button", { name: /Go to where you quoted/ }).click();
+	await sent.locator("[data-slot=quote-chip]").getByRole("button", { name: /Go to the quoted text/ }).click();
 	await lit();
 	await unlit();
 	// Taken back, the quote is a badge above the input again and the rest is in the input, and the badge still finds its answer.
 	await menu("undo");
-	await sees("[data-slot=marker][data-tone=accent] >> text=Taken back");
+	await sees("[data-slot=marker][data-tone=accent] >> text=Undone");
 	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=old copy of the lockfile");
 	assert.match(await page.inputValue("[data-slot=composer] textarea"), /^why is that\? /);
-	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: /Go to where you quoted/ }).click();
+	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: /Go to the quoted text/ }).click();
 	await page.waitForFunction(() => [...document.querySelectorAll("[data-item=answer]")].some((e) => e.textContent!.includes("QUOTE-SOURCE") && (e.closest("[data-message-id]")?.getAnimations().length ?? 0) > 0));
 	await page.locator("[data-slot=composer] [data-slot=quote-chip]").getByRole("button", { name: "Remove quote" }).click();
 	assert.equal(await page.$("[data-slot=composer] [data-slot=quote-chip]"), null);
@@ -909,7 +909,7 @@ test("an approval is asked in a dialog and answered from it; a question is a car
 test("a value only the owner has, left empty, is marked as missing in the approval and nothing is allowed", { skip: process.platform === "win32" && "a local MCP server needs a sandbox, and Windows has none of pine's" }, async () => {
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [{ name: "add_mcp_server", args: { name: "keyed", command: "npx -y example-mcp", secrets: ["EXAMPLE_KEY"] } }] }, { text: "not added then" }], "add a server with a key "));
 	await page.keyboard.press("Enter");
-	const asked = "role=dialog[name=/^Approval needed, and something only you have/]";
+	const asked = "role=dialog[name=/^Approval needed, plus something only you can provide/]";
 	await sees(asked);
 	const field = page.locator(asked).locator("[data-slot=field]", { has: page.locator("#ap-EXAMPLE_KEY") });
 	assert.equal(await field.getAttribute("data-invalid"), null, "not marked before the owner tried to allow it");
@@ -964,42 +964,37 @@ const hears = async (text: string) => {
 const lastOwner = () => page.$$eval('[data-item="user"] [data-slot=bubble-content]', (els: Element[]) => els.at(-1)?.textContent ?? "");
 /** The turn's questions in the thread, as they stand: open, folded or closed. */
 const asked = (state: string) => `[data-item="questions"][data-state="${state}"]`;
+/** The card's buttons, by their stock slot. */
+const button = (slot: "previous" | "next" | "skip" | "submit") => page.locator(`${QUESTIONS} [data-slot=questionnaire-${slot}]`);
+/** The card's progress stands at question `n`. */
+const at = (n: number) => page.waitForFunction(([s, n]: string[]) => document.querySelector(s)?.getAttribute("aria-valuenow") === n, [`${QUESTIONS} [data-slot=questionnaire-progress]`, String(n)]);
 
-test("the questions of a turn are one card: Next, Previous and Skip, 1 / 3 at the top right of the item; Send posts one message of the owner's, a line per question answered, the skipped left out", async () => {
+test("the questions of a turn are one card: Next, Previous and Skip, and where it stands; Send posts one message of the owner's, a line per question answered, the skipped left out", async () => {
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [asks("Which side?"), asks("Which end?", ["top", "bottom"]), { name: "question", args: { question: "Anything else?" } }] }, { text: "asked three" }], "ask three "));
 	await page.keyboard.press("Enter");
 	// The question returns at once: the turn goes on and ends, and the card stays.
 	await sees("[data-slot=markdown] >> text=asked three");
 	await sees(QUESTIONS);
 	const progress = page.locator(`${QUESTIONS} [data-slot=questionnaire-progress]`);
-	assert.equal(await progress.textContent(), "1 / 3");
-	assert.equal(await progress.getAttribute("aria-valuetext"), "Question 1 of 3");
-	// At the top right of the item, on the title's line.
-	const place = await page.$eval(QUESTIONS, (form: Element) => {
-		const box = (s: string) => form.querySelector(s)!.getBoundingClientRect();
-		const title = [...form.querySelectorAll("[data-slot=questionnaire-item]")].find((i) => !i.hasAttribute("hidden"))!.querySelector("[data-slot=questionnaire-title]")!.getBoundingClientRect();
-		const p = box("[data-slot=questionnaire-progress]");
-		return { right: box("[data-slot=questionnaire-item]").right - p.right, overlap: Math.min(p.bottom, title.bottom) - Math.max(p.top, title.top), clear: p.left - title.right };
-	});
-	assert.ok(Math.abs(place.right) <= 1 && place.overlap > 0, `not at the top right on the title's line: ${JSON.stringify(place)}`);
-	assert.ok(place.clear >= -0.5, `the progress lies over the title: ${JSON.stringify(place)}`);
+	assert.equal(await progress.getAttribute("aria-valuenow"), "1");
+	assert.equal(await progress.getAttribute("aria-valuemax"), "3");
 	// The thread says each in one line while the card shows them.
 	assert.equal(await page.locator(`${asked("open")} [data-slot=trace-line]`).count(), 3);
 	await shot("03-questions");
 	await page.locator(QUESTIONS).getByRole("radio", { name: /yes/ }).click();
-	await page.locator(QUESTIONS).getByRole("button", { name: "Next" }).click();
-	await page.waitForFunction((s: string) => document.querySelector(s)?.textContent === "2 / 3", `${QUESTIONS} [data-slot=questionnaire-progress]`);
+	await button("next").click();
+	await at(2);
 	// Previous goes back to the first, its pick kept.
-	await page.locator(QUESTIONS).getByRole("button", { name: "Previous" }).click();
-	await page.waitForFunction((s: string) => document.querySelector(s)?.textContent === "1 / 3", `${QUESTIONS} [data-slot=questionnaire-progress]`);
+	await button("previous").click();
+	await at(1);
 	assert.ok(await page.locator(QUESTIONS).getByRole("radio", { name: /yes/ }).isChecked());
-	await page.locator(QUESTIONS).getByRole("button", { name: "Next" }).click();
+	await button("next").click();
 	await page.locator(QUESTIONS).getByRole("radio", { name: /bottom/ }).click();
-	await page.locator(QUESTIONS).getByRole("button", { name: "Next" }).click();
+	await button("next").click();
 	// The last has no options: it says to answer by typing, and Skip sends what was picked.
-	await page.waitForFunction((s: string) => document.querySelector(s)?.textContent === "3 / 3", `${QUESTIONS} [data-slot=questionnaire-progress]`);
+	await at(3);
 	assert.equal(await page.locator(`${QUESTIONS} [data-slot=questionnaire-item]:not([hidden]) [data-slot=questionnaire-choice]`).count(), 0);
-	await page.locator(QUESTIONS).getByRole("button", { name: "Skip" }).click();
+	await button("skip").click();
 	await page.waitForSelector(QUESTIONS, { state: "detached" });
 	assert.equal(await lastOwner(), "Which side? yes\nWhich end? bottom");
 	await hears("Which side? yes\nWhich end? bottom");
@@ -1012,9 +1007,9 @@ test("the questions of a turn are one card: Next, Previous and Skip, 1 / 3 at th
 	await page.keyboard.press("Enter");
 	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Alone?"), QUESTIONS, { timeout: 10_000 });
 	assert.equal(await page.locator(`${QUESTIONS} [data-slot=questionnaire-progress]`).count(), 0);
-	assert.ok(await page.locator(QUESTIONS).getByRole("button", { name: "Skip" }).isHidden());
+	assert.ok(await button("skip").isHidden());
 	await page.locator(QUESTIONS).getByRole("radio", { name: /not this/ }).click();
-	await page.locator(QUESTIONS).getByRole("button", { name: "Send" }).click();
+	await button("submit").click();
 	await page.waitForSelector(QUESTIONS, { state: "detached" });
 	assert.equal(await lastOwner(), "not this");
 	await hears("not this");
@@ -1027,7 +1022,7 @@ test("a question is answered by a pick, a digit or the arrows, sent with Send or
 	// The first option is the one the agent would pick.
 	assert.equal(await page.locator(`${QUESTIONS} [data-slot=questionnaire-choice]`).first().locator("[data-slot=badge]").count(), 1);
 	// A click only picks, and the pick can change before it goes.
-	const send = page.locator(QUESTIONS).getByRole("button", { name: "Send" });
+	const send = button("submit");
 	assert.ok(await send.isDisabled(), "nothing picked, nothing to send");
 	await page.locator(QUESTIONS).getByRole("radio", { name: /red/ }).click();
 	await page.locator(QUESTIONS).getByRole("radio", { name: /blue/ }).click();
@@ -1047,7 +1042,7 @@ test("a question is answered by a pick, a digit or the arrows, sent with Send or
 	assert.equal(await page.locator(`${QUESTIONS} [data-slot=badge]`).count(), 0, "no option is the recommended one when several may be picked");
 	await page.locator(QUESTIONS).getByRole("checkbox", { name: /green/ }).click();
 	await page.keyboard.press("3");
-	await page.locator(QUESTIONS).getByRole("button", { name: "Send" }).click();
+	await button("submit").click();
 	await page.waitForSelector(QUESTIONS, { state: "detached" });
 	assert.equal(await lastOwner(), "green, red");
 	await hears("green, red");
@@ -1062,17 +1057,16 @@ test("the questions' card goes on a typed message and on the agent's next turn, 
 	// The tab says that it waits for the owner.
 	await sees("[data-slot=tab][data-active] [data-slot=badge][data-variant=destructive]");
 	// The button on the composer's edge folds the card away, and the thread then shows the question in full, read only.
-	const hide = page.getByRole("button", { name: "Hide main's question" });
-	const show = page.getByRole("button", { name: "Show main's question" });
-	assert.equal(await hide.getAttribute("aria-expanded"), "true");
+	const toggle = page.locator("[data-question-toggle]");
+	assert.equal(await toggle.getAttribute("aria-expanded"), "true");
 	assert.equal(await page.locator(asked("open")).count(), 1);
-	await hide.click();
+	await toggle.click();
 	await page.waitForSelector(QUESTIONS, { state: "detached" });
 	await sees(asked("folded"));
 	assert.match(await page.textContent(asked("folded")), /Which bin\?[\s\S]*blue[\s\S]*green/);
 	assert.equal(await page.locator(`${asked("folded")} input`).count(), 0, "read only");
-	assert.equal(await show.getAttribute("aria-expanded"), "false");
-	await show.click();
+	assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+	await toggle.click();
 	await sees(QUESTIONS);
 	await sees(asked("open"));
 	// The conversation opened again (the page drawn anew) shows the card again, from the turn's record.
@@ -1209,7 +1203,7 @@ test("the questions' card says quietly that the conversation has read outside co
 	}
 	// Answered, the turn it starts ends with the daemon's word again: the mark is gone with it.
 	await page.locator(QUESTIONS).getByRole("radio", { name: /yes/ }).click();
-	await page.locator(QUESTIONS).getByRole("button", { name: "Send" }).click();
+	await button("submit").click();
 	await page.waitForSelector(QUESTIONS, { state: "detached" });
 	await hears("yes");
 });
@@ -1324,7 +1318,7 @@ test("a sign-in's choices are a question card answered by a pick and Send; what 
 	await page.waitForSelector(card, { state: "detached" });
 	await sees('[data-item="approval"][data-state="allowed"] >> text=/Bearer token/');
 	// The token the flow asks next is typed: that request has only a field, and opens the approval dialog.
-	const typed = "role=dialog[name=/^Approval needed, and something only you have/]";
+	const typed = "role=dialog[name=/^Approval needed, plus something only you can provide/]";
 	await sees(typed);
 	assert.match(await page.textContent(typed), /bearer token/i);
 	assert.equal(await page.locator(card).count(), 0);
@@ -1347,7 +1341,7 @@ test("a folder is opened for a conversation: changes, and a file edited and save
 	await sees("[data-slot=code-panel] [role=tab][aria-selected=true] >> text=Files");
 	await page.locator("[data-slot=code-panel]").getByRole("tab", { name: "Agent" }).click();
 	await sees("[data-slot=code-panel] [data-slot=item-title] >> text=main");
-	assert.match(await page.textContent("[data-slot=code-panel]"), /it administers pine[\s\S]*mock\/m[\s\S]*hands work to scout/);
+	assert.match(await page.textContent("[data-slot=code-panel]"), /it administers pine[\s\S]*mock\/m[\s\S]*delegates to scout/);
 	// The panel is as wide as it is dragged, by the edge before it, and the keyboard moves that edge too.
 	const was = await page.$eval("[data-slot=code-panel]", (el: Element) => el.getBoundingClientRect().width);
 	const edge = await page.$eval(CODE_EDGE, (el: Element) => el.getBoundingClientRect());
@@ -1446,7 +1440,7 @@ test("a file is opened from the panel's tree, its changes and its search with th
 	// So are the changes: Tab from the refresh button, Enter opens the diff.
 	await page.locator("[data-slot=code-panel]").getByRole("tab", { name: "Changes" }).click();
 	await sees("[data-slot=code-panel] [role=listbox] [role=option]");
-	await page.focus("[data-slot=code-panel] button[aria-label='Read again']");
+	await page.focus("[data-slot=code-panel] button[aria-label='Refresh']");
 	await page.keyboard.press("Tab");
 	assert.equal((await focused()).role, "option");
 	await page.keyboard.press("Enter");
@@ -1595,12 +1589,12 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await page.locator("[data-slot=settings-page]").getByRole("button", { name: "New schedule" }).click();
 	const scheduleForm = page.locator("[data-slot=dialog-content]");
 	await scheduleForm.getByLabel("Times").fill("0 7 * * *");
-	await scheduleForm.getByLabel("With the task").fill("Say good morning.");
+	await scheduleForm.getByLabel("Task", { exact: true }).fill("Say good morning.");
 	await scheduleForm.getByLabel("Name", { exact: true }).fill("morning");
 	await scheduleForm.getByRole("button", { name: "Add schedule" }).click();
 	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
 	await sees("[data-slot=settings-page] [data-slot=item-title] >> text=morning");
-	await sees("[data-slot=settings-page] [data-slot=item-description] >> text=wake all agents, each in their main conversation");
+	await sees("[data-slot=settings-page] [data-slot=item-description] >> text=wake all agents, each in its main conversation");
 	assert.match(fs.readFileSync(path.join(home, "pine.json"), "utf8"), /"morning"/);
 	await shot("08-settings-schedules");
 	// Events: a route, as When and Then. Only the fields of the action chosen are shown, and only they are sent.
@@ -1620,12 +1614,37 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await sees("[data-slot=settings-page] [data-slot=item-description] >> text=set house/mode to");
 	const route = JSON.parse(fs.readFileSync(path.join(home, "pine.json"), "utf8")).routes.find((r: { name: string }) => r.name === "mode");
 	assert.deepEqual(route, { name: "mode", on: "source/house/message", when: { "payload.topic": "house/mode" }, set: { "house/mode": "{{payload.value}}" } });
+	// A route opens from its row with what it does filled in, and is saved in its place.
+	await page.click("[data-slot=settings-page] [data-find='route:mode']");
+	assert.equal(await routeForm.getByLabel("Shared state").inputValue(), '{"house/mode":"{{payload.value}}"}');
+	await routeForm.getByLabel("Only if").fill('{"payload.topic": "house/level"}');
+	await routeForm.getByRole("button", { name: "Save changes" }).click();
+	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
+	await sees("[data-slot=settings-page] [data-find='route:mode'] >> text=house/level");
+	const routes = JSON.parse(fs.readFileSync(path.join(home, "pine.json"), "utf8")).routes;
+	assert.deepEqual(routes.map((r: { name: string }) => r.name), ["mode"]);
+	assert.deepEqual(routes[0].when, { "payload.topic": "house/level" });
+	// An agent's own schedule is added on its page, and the Events page points there.
+	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=Agents");
+	await page.click("[data-slot=settings-page] [data-slot=item] >> text=books");
+	await page.locator("[data-find=agent-schedules]").getByRole("button", { name: "New schedule" }).click();
+	assert.equal(await scheduleForm.getByLabel("Wake").isDisabled(), true, "it is the agent's");
+	await scheduleForm.getByLabel("Times").fill("0 9 * * 1");
+	await scheduleForm.getByLabel("Task", { exact: true }).fill("Sum up last week's spending.");
+	await scheduleForm.getByLabel("Name", { exact: true }).fill("weekly");
+	await scheduleForm.getByRole("button", { name: "Add schedule" }).click();
+	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
+	await sees("[data-find=agent-schedules] [data-slot=item-title] >> text=weekly");
+	assert.equal(JSON.parse(fs.readFileSync(path.join(home, "agents", "books", "agent.json"), "utf8")).schedules[0].name, "weekly");
+	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=Events");
+	await sees("[data-find=own-sources] [data-slot=item-description] >> text=1 schedule");
+	assert.equal(await page.locator("[data-find=schedules] [data-slot=item-title]", { hasText: "weekly" }).count(), 0, "not among those for all agents");
 	// A decision model at an address of its own (Models), which a route then names.
 	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=Models");
 	await page.locator("[data-slot=settings-page]").getByRole("button", { name: "Add a decision model" }).click();
 	const decisionForm = page.locator("[data-slot=dialog-content]");
-	await decisionForm.getByLabel("Where it is").click();
-	await page.getByRole("option", { name: "Another server, by its address" }).click();
+	await decisionForm.getByLabel("Where it runs").click();
+	await page.getByRole("option", { name: "Another server, by address" }).click();
 	await decisionForm.getByLabel("Address").fill("http://127.0.0.1:9");
 	await decisionForm.getByLabel("Model", { exact: true }).fill("judge-7b");
 	await decisionForm.getByLabel("Name", { exact: true }).fill("judge");
@@ -1670,7 +1689,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	assert.match(fs.readFileSync(path.join(home, "auth.json"), "utf8"), /opencode/);
 	// A sign-in changes no agent's model, so the dialog offers the new ones for all agents.
 	await page.locator("[data-slot=dialog-content]").getByRole("button", { name: "Choose the model your agents run on" }).click();
-	await sees("[cmdk-group-heading] >> text=Model for all agents without a model of their own");
+	await sees("[cmdk-group-heading] >> text=Default model for agents without one of their own");
 	const offered = await page.$$eval("[data-slot=command-item] > :first-child", (els: Element[]) => els.map((e) => e.textContent ?? ""));
 	assert.ok(offered.length > 0 && offered.every((m) => m.startsWith("opencode/")), JSON.stringify(offered.slice(0, 5)));
 	await page.click("[data-slot=command-item] >> nth=0");
@@ -1701,7 +1720,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await sees("[data-slot=settings-page] h1 >> text=Models");
 	// "Change" offers every model that can be used now.
 	await page.locator("[data-setting=fallback-model]").getByRole("button", { name: "Change" }).click();
-	await sees("[cmdk-group-heading] >> text=Model for all agents without a model of their own");
+	await sees("[cmdk-group-heading] >> text=Default model for agents without one of their own");
 	await page.getByRole("option", { name: "mock/m" }).click();
 	await sees("[data-slot=toast] >> text=Your agents now run on mock/m");
 	await page.waitForSelector("[data-slot=settings-page] [data-slot=model-notice]", { state: "detached" });
@@ -1748,10 +1767,11 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=Skills");
 	await page.locator("[data-slot=settings-page]").getByRole("button", { name: "New skill" }).click();
 	await page.fill("input[placeholder='invoices']", "invoices");
-	await page.fill("[data-slot=settings-page] textarea", "File an invoice. Use when a bill arrives.");
-	await page.click("[data-slot=settings-page] .cm-content");
+	await page.fill("[data-slot=dialog-content] textarea", "File an invoice. Use when a bill arrives.");
+	await page.click("[data-slot=dialog-content] .cm-content");
 	await page.keyboard.type("1. Read the bill.");
-	await page.locator("[data-slot=settings-page]").getByRole("button", { name: "Save skill" }).click();
+	await page.locator("[data-slot=dialog-content]").getByRole("button", { name: "Add skill" }).click();
+	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
 	await sees("[data-slot=settings-page] [data-slot=item-title] >> text=invoices");
 	assert.match(fs.readFileSync(path.join(home, "skills", "invoices", "SKILL.md"), "utf8"), /Read the bill/);
 	// Events: a folder to watch, set up from the type's own options.
@@ -1784,7 +1804,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	// General, where what was the App page went: the browser of the web tools is still not there, and can be fetched from here. (The
 	// test fetches nothing: PINE_SKIP_DOWNLOADS. What the command printed is shown.)
 	await sees(`[data-setting=browser] [data-slot=badge][data-variant=outline] >> text=not on this ${HERE}`);
-	await page.locator("[data-setting=browser]").getByRole("button", { name: "Fetch it" }).click();
+	await page.locator("[data-setting=browser]").getByRole("button", { name: "Download" }).click();
 	await sees("[data-setting=browser] [data-slot=code-block-content] >> text=Not fetched: PINE_SKIP_DOWNLOADS is set.");
 	// Fetched some other way (a terminal): the page says so when it is opened again.
 	const { browserPlaces } = await import("../../src/browser-build.ts");
@@ -1836,7 +1856,7 @@ test("settings are searched: what fits is listed in place of the page, and a pic
 	await sees("[data-slot=settings-results] [data-result$=':scans'] >> text=Events › Sources");
 	// Nothing fits: said so. Escape empties the field, and the page that was open is back.
 	await field.fill("zzqqxx");
-	await sees("[data-slot=settings-page] >> text=Nothing in Settings fits");
+	await sees("[data-slot=settings-page] >> text=No matches in Settings");
 	await field.press("Escape");
 	assert.equal(await field.inputValue(), "");
 	await sees("[data-slot=settings-page] h1 >> text=Models");
@@ -1930,6 +1950,23 @@ test("beside a conversation, the panel's Agent view says what the agent has been
 	await sees("[data-slot=code-panel] [role=tab][aria-selected=true] >> text=Agent");
 	await sees("[data-slot=code-panel] [data-slot=item-title] >> text=invoices");
 	await sees("[data-slot=code-panel] [data-slot=item-title] >> text=morning");
-	assert.match(await page.textContent("[data-slot=code-panel]"), /Nothing wakes it by itself\. 1 event source could/);
+	assert.match(await page.textContent("[data-slot=code-panel]"), /Nothing wakes main yet\. It could listen to 1 source/);
+	// A row opens the thing itself, in the dialog Settings opens it in; what is for all agents says so.
+	const morning = page.locator("[data-slot=code-panel] [data-slot=item]", { has: page.locator("[data-slot=item-title]", { hasText: "morning" }) });
+	assert.match((await morning.textContent()) ?? "", /all agents/);
+	await morning.click();
+	await sees("[data-slot=dialog-content] [data-slot=dialog-title] >> text=morning");
+	assert.equal(await page.locator("[data-slot=dialog-content]").getByLabel("Task", { exact: true }).inputValue(), "Say good morning.");
+	await page.keyboard.press("Escape");
+	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
+	// The agent's files are the part its page in Settings has: its four files, one tab each.
+	const files = page.locator("[data-slot=agent-section]", { has: page.locator("h3", { hasText: "Instructions" }) });
+	assert.deepEqual(await files.locator("[role=tab]").allTextContents(), ["AGENTS.md", "SOUL.md", "TOOLS.md", "MEMORY.md"]);
+	await files.getByRole("tab", { name: "MEMORY.md" }).click();
+	await sees("[data-slot=agent-section] >> text=Only the agent changes this file.");
+	// "Manage" leads to that part of the agent's page in Settings.
+	await page.locator("[data-slot=agent-section]", { has: page.locator("h3", { hasText: "Schedules" }) }).getByRole("button", { name: "Manage" }).click();
+	await sees("[data-slot=settings-page] [data-find=agent-schedules][data-found]");
+	await page.click("[data-slot=tab] >> nth=0");
 	await shot("14-agent-view");
 });

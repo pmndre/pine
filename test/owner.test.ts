@@ -180,6 +180,14 @@ test("the owner adds, replaces and removes skills, schedules and routes", async 
 		assert.ok(r.status === 400 || r.status === 404, JSON.stringify(bad));
 		assert.match(r.body.error, why);
 	}
+	// A schedule changed in place: the same agent, a new time and task; a change that does not pass leaves it as it was.
+	const changed = (await a.post("/schedules", { replace: "morning", name: "morning", task: "Say what is due this week.", cron: "0 8 * * 1", agent: "books" })).body;
+	assert.deepEqual({ name: changed.name, scope: changed.scope, task: changed.task }, { name: "morning", scope: "books", task: "Say what is due this week." });
+	assert.equal(json(path.join(h.home, "agents", "books", "agent.json")).schedules.length, 1);
+	assert.match((await a.post("/schedules", { replace: "morning", name: "morning", task: "x", cron: "not a time", agent: "books" })).body.error, /./);
+	assert.equal(json(path.join(h.home, "agents", "books", "agent.json")).schedules[0].cron, "0 8 * * 1", "a failed change keeps the old one");
+	assert.equal(((await a.get("/schedules")).body as any[]).filter((s) => s.name === "morning").length, 1);
+	assert.equal((await a.post("/schedules", { replace: "nothing", name: "x", task: "y", every: "1h" })).status, 400);
 	assert.equal((await a.post("/schedules/remove", { name: "morning" })).status, 404, "it is the agent's");
 	assert.deepEqual((await a.post("/schedules/remove", { name: "morning", agent: "books" })).body, { removed: true });
 	assert.deepEqual((await a.post("/schedules/remove", { name: "tick" })).body, { removed: true });
@@ -197,6 +205,24 @@ test("the owner adds, replaces and removes skills, schedules and routes", async 
 	assert.match(widened.wider, /treated as coming from you/);
 	assert.equal((await a.post("/routes", { name: "door", on: "x/y", agent: "main" })).status, 400, "a name is used once");
 	assert.match((await a.post("/routes", { name: "idle", on: "x/y" })).body.error, /has to do something/);
+	// A route changed in place: checked as if the old one were gone, so it may keep its name.
+	const moved = (await a.post("/routes", { replace: "door", name: "door", on: "test/door2", set: '{"house/door": "open"}' })).body;
+	assert.equal(moved.name, "door");
+	assert.deepEqual(((await a.get("/routes")).body as any[]).map((r) => [r.name, r.on]), [["door", ["test/door2"]], ["mine", ["test/mine"]]], "in the same place");
+	assert.equal((await a.post("/routes", { replace: "nothing", name: "x", on: "x/y", agent: "main" })).status, 404);
+	assert.equal((await a.post("/routes", { replace: "door", name: "door", on: "" })).status, 400);
+	assert.equal(json(path.join(h.home, "pine.json")).routes[0].on, "test/door2", "a failed change keeps the old one");
+	await a.post("/routes", { replace: "door", name: "door", on: "test/door", when: '{"payload.open": true}', set: '{"house/door": "open"}' });
+	// A route of an agent's own: on its own state, acting within it, and it stays the agent's when it changes.
+	const own = (await a.post("/routes", { name: "flagged", of: "books", on: "state/agent/books/flag", set: '{"agent/books/seen": "yes"}' })).body;
+	assert.ok(own.lines.some((l: string) => l.includes("of books")));
+	assert.equal(((await a.get("/routes")).body as any[]).find((r) => r.name === "flagged").of, "books");
+	assert.match((await a.post("/routes", { name: "wide", of: "books", on: "test/door", agent: "books" })).body.error, /not an event of yours/);
+	assert.equal((await a.post("/routes", { name: "admin", of: "main", on: "x/y", agent: "main" })).status, 400);
+	await a.post("/routes", { replace: "flagged", name: "flagged", on: "state/agent/books/flag", set: '{"agent/books/seen": "twice"}' });
+	assert.equal(((await a.get("/routes")).body as any[]).find((r) => r.name === "flagged").of, "books");
+	assert.match((await a.post("/routes", { replace: "flagged", name: "flagged", on: "test/door", agent: "books" })).body.error, /not an event of yours/);
+	await a.post("/routes/remove", { name: "flagged" });
 	assert.deepEqual((await a.post("/routes/remove", { name: "door" })).body, { removed: true });
 	assert.equal((await a.post("/routes/remove", { name: "door" })).status, 404);
 	await a.post("/state", { key: "house/door", value: null });

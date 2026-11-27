@@ -66,6 +66,10 @@ export interface ScheduleInfo {
 	/** The next time it fires, if that can be said. */
 	next?: number;
 	topic: string;
+	/** Its times as a form takes them again: exactly one of the three. */
+	cron?: string;
+	every?: string;
+	at?: string;
 }
 
 interface Entry {
@@ -240,7 +244,7 @@ export class Scheduler {
 	}
 
 	private info(e: Entry): ScheduleInfo {
-		return { name: e.name, scope: e.scope, session: e.scope === "global" ? undefined : (e.s.session ?? "main"), when: whenText(e.s), task: e.s.task, next: this.next(e), topic: e.s.topic };
+		return { name: e.name, scope: e.scope, session: e.scope === "global" ? undefined : (e.s.session ?? "main"), when: whenText(e.s), task: e.s.task, next: this.next(e), topic: e.s.topic, ...(e.s.cron ? { cron: e.s.cron } : e.s.every ? { every: span(e.s.every) } : e.s.at !== undefined ? { at: localTime(e.s.at).replace("T", " ").slice(0, 16) } : {}) };
 	}
 
 	list(): ScheduleInfo[] {
@@ -319,6 +323,31 @@ export class Scheduler {
 			this.log.info(`schedule ${name} removed ${agentId ? `from ${agentId}` : "for all agents"}`);
 		}
 		return done;
+	}
+
+	/**
+	 * A changed schedule in the place of one by its name: the old one is taken out, the new one checked
+	 * and added, and if that fails the file and the list are as they were.
+	 */
+	replace(agentId: string | undefined, name: string, raw: Parameters<Scheduler["check"]>[0]): ScheduleInfo {
+		const agent = agentId ? this.cfg.agents[agentId] : undefined;
+		if (agentId && !agent) throw new Error(`unknown agent "${agentId}"`);
+		const list = agent ? agent.schedules : this.cfg.schedules;
+		const at = list.findIndex((s) => s.name === name);
+		if (at < 0) throw new Error(`there is no schedule "${name}" ${agent ? `of ${agent.id}` : "for all agents"}`);
+		const old = list[at];
+		const file = this.file(agentId);
+		const before = fs.readFileSync(file, "utf8");
+		this.drop(agentId, name);
+		try {
+			return this.add(agentId, this.check(raw));
+		} catch (e) {
+			fs.writeFileSync(file, before);
+			list.splice(at, 0, old);
+			this.wire();
+			this.arm();
+			throw e;
+		}
 	}
 
 	/** A conversation was removed: what was scheduled for it alone goes with it. */

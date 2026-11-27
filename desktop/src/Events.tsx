@@ -50,7 +50,7 @@ export function Events({ tab }: { tab: Tab }) {
 					</InputGroupAddon>
 					<InputGroupInput aria-label="Filter the events" placeholder="Filter by word or topic (agent/#)" value={filter} onChange={(e) => setFilter(e.target.value)} spellCheck={false} />
 				</InputGroup>
-				<span className="truncate text-faint">{shown.length} shown · text deltas are left out</span>
+				<span className="truncate text-faint">{shown.length} shown · text deltas are hidden</span>
 				<span className="min-w-0 flex-1" />
 				<Button variant="outline" size="xs" onClick={() => (setFrozen([...tab.log]), setPaused(!paused))}>{paused ? <PlayIcon data-icon="inline-start" /> : <SquareIcon data-icon="inline-start" />}{paused ? "Follow" : "Pause"}</Button>
 				<Button variant="outline" size="xs" onClick={() => store.setPublishing(true)}><ZapIcon data-icon="inline-start" />Publish…</Button>
@@ -89,7 +89,7 @@ export function Events({ tab }: { tab: Tab }) {
 									) : tab.logError && !tab.log.length ? (
 										<Empty><EmptyHeader><EmptyMedia variant="icon"><CircleAlertIcon /></EmptyMedia><EmptyTitle>Could not load the events</EmptyTitle><EmptyDescription>{tab.logError}</EmptyDescription></EmptyHeader><EmptyContent><Button variant="outline" size="xs" onClick={() => void store.fillEvents(tab)}>Try again</Button></EmptyContent></Empty>
 									) : (
-										<Empty><EmptyHeader><EmptyMedia variant="icon"><AudioLinesIcon /></EmptyMedia><EmptyTitle>{tab.log.length ? "No event fits the filter" : "No events yet"}</EmptyTitle><EmptyDescription>Messages, tool calls, sources, schedules and approvals all pass through here.</EmptyDescription></EmptyHeader></Empty>
+										<Empty><EmptyHeader><EmptyMedia variant="icon"><AudioLinesIcon /></EmptyMedia><EmptyTitle>{tab.log.length ? "No events match the filter" : "No events yet"}</EmptyTitle><EmptyDescription>Messages, tool calls, sources, schedules and approvals all appear here.</EmptyDescription></EmptyHeader></Empty>
 									)}
 								</MessageScrollerItem>
 							)}

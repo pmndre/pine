@@ -9,14 +9,14 @@ export default meta;
 
 type Story = StoryObj<typeof meta>;
 
-/** Every source is in: a query that fits nothing says "Nothing fits." */
+/** Every source is in: a query that fits nothing says "No matches." */
 export const Palette: Story = {
 	beforeEach: () => {
 		store.titled = true;
 	},
 };
 
-/** What was said (and the conversations) is still loading: skeleton lines in place of "Nothing fits.". */
+/** What was said (and the conversations) is still loading: skeleton lines in place of "No matches.". */
 export const PaletteLoading: Story = {
 	beforeEach: () => {
 		store.titled = false;

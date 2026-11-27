@@ -103,6 +103,6 @@ folder is in pine's home, which no agent can write.
 |---|---|
 | The panel says the view stopped, and why | It threw an error. Fix it, then close and open the panel |
 | The view is greyed out in the list | Capitals or spaces in its name, or over a megabyte |
-| "cannot be shown", with the reason | Its TypeScript cannot be erased (`enum`, `namespace`, parameter properties) |
+| "Could not show the view", with the reason | Its TypeScript cannot be erased (`enum`, `namespace`, parameter properties) |
 | No button for the panel | No view in the folder, or `ui.view` is `off` |
 | Your change to `office.ts` is gone after an update | pine kept it as `office-mine.ts` ("The views pine comes with") |

@@ -33,7 +33,7 @@ export const PickDialogLong: Story = {
 };
 
 /** A name of the owner's own, taken with Enter: no list under the title. */
-export const PickDialogFree: Story = { args: { p: { title: "Rename the conversation", placeholder: "The new name", free: true, items: [], done: () => {} } } };
+export const PickDialogFree: Story = { args: { p: { title: "Rename the conversation", placeholder: "New name", free: true, items: [], done: () => {} } } };
 
 /** A choice that cannot be taken back makes it an alert dialog, drawn like the others. */
 export const PickDialogRemoving: Story = {
@@ -42,8 +42,8 @@ export const PickDialogRemoving: Story = {
 			title: "Remove the agent spare?",
 			done: () => {},
 			items: [
-				{ value: "erase", label: "Remove it with everything it has", about: "its 2 conversations, sources, schedules, servers, skills and its folder. This cannot be undone", tone: "bad" },
-				{ value: "keep", label: "Remove it, but keep its folder", about: "the folder is moved to removed/ in pine's home" },
+				{ value: "erase", label: "Remove the agent and everything it owns", about: "the agent's 2 conversations, sources, schedules, servers, skills and folder. This cannot be undone", tone: "bad" },
+				{ value: "keep", label: "Remove the agent but keep the folder", about: "the folder is moved to removed/ in pine's home" },
 				{ value: "no", label: "Cancel" },
 			],
 		},

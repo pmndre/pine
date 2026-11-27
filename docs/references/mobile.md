@@ -98,7 +98,7 @@ with Browser access and "Visible on this network" on ([desktop.md](desktop.md#wi
 |---|---|
 | `On this network` | Each one as "Pine" and the first six characters of its key's fingerprint (never its name), with "Through <host>" for another meeting service |
 | A tap | Asks without a code. Both show four digits: press Allow only if they match and the question is on your own computer, since any computer can call itself "Pine". The announcement (a fingerprint, an `https` meeting service, a random word that changes every five minutes) is not trusted: the app checks the key through the meeting service |
-| `Local Network` | iOS asks once. If refused, the list says "Pine cannot look on this network": turn on Settings > Pine > Local Network. Android asks nothing |
+| `Local Network` | iOS asks once. If refused, the list says "Pine cannot search this network": turn on Settings > Pine > Local Network. Android asks nothing |
 | No computer is listed | Pine must be open with Browser access and Visible on this network on, on the same Wi-Fi. Guest and office Wi-Fi often keep devices apart. Three requests without a yes in ten minutes hide the computer for an hour: pair with the code |
 
 ### How the link reaches the app

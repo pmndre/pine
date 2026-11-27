@@ -58,7 +58,7 @@ export const TurningOn: Story = {
 
 /** No service address (a build that names no official one): the problem is said under the switch. */
 export const NeedsAnAddress: Story = {
-	args: { state: { ...off, service: "", problem: { kind: "address", message: "Browser access needs the address of the service a browser opens: write the address of your own deployment of pine's web client." } } },
+	args: { state: { ...off, service: "", problem: { kind: "address", message: "Browser access needs the address of the service that a browser opens. Enter the address of your own deployment of pine's web client." } } },
 };
 
 /** On and waiting at the service, with devices: one connected on the same network, one seen yesterday, one connected directly over IPv6 with a long name. */
@@ -102,7 +102,7 @@ export const NoRelay: Story = {
 	play: async ({ canvasElement }) => {
 		const canvas = within(canvasElement);
 		await expect(canvas.getByText("Relay server (TURN)")).toBeInTheDocument();
-		await expect(canvas.getByText(/Used when no direct connection can be made/)).toBeInTheDocument();
+		await expect(canvas.getByText(/Used when a direct connection is not possible/)).toBeInTheDocument();
 		await expect(canvas.getByLabelText("Address")).toHaveValue("");
 		await expect(canvasElement.querySelector("[data-slot=relay-check]")).toBeNull();
 	},
@@ -116,7 +116,7 @@ export const RelayUsable: Story = {
 		state: {
 			...waiting,
 			devices: [{ ...devices[0], connected: { path: "relay" } }, devices[1]],
-			relay: { ...RELAY, password: true, check: { result: "usable", message: "This relay works: it gave this Mac an address." } },
+			relay: { ...RELAY, password: true, check: { result: "usable", message: "This relay works. It gave this Mac an address." } },
 		},
 	},
 	play: async ({ canvasElement }) => {
@@ -135,14 +135,14 @@ export const RelayMoved: Story = {
 		const address = canvas.getByLabelText("Address");
 		await userEvent.clear(address);
 		await userEvent.type(address, "turn:other.example.com:3478");
-		await expect(canvas.getByLabelText("Password")).toHaveAttribute("placeholder", expect.stringMatching(/^Not kept for another address/));
+		await expect(canvas.getByLabelText("Password")).toHaveAttribute("placeholder", expect.stringMatching(/^The saved password was for another address/));
 	},
 };
 
 /** A relay that refused the user name or password: it is kept, and the line under it says what to check. */
 export const RelayRefused: Story = {
 	args: {
-		state: { ...waiting, relay: { ...RELAY, password: true, check: { result: "failed", message: "Could not use this relay: it refused the user name or password. It is kept; check them and save again." } } },
+		state: { ...waiting, relay: { ...RELAY, password: true, check: { result: "failed", message: "Could not use this relay because it refused the user name or password. The relay is saved. Check both and save again." } } },
 	},
 	play: async ({ canvasElement }) => {
 		await expect(within(canvasElement).getByText(/refused the user name or password/)).toBeInTheDocument();

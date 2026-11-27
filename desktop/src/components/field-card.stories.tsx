@@ -42,7 +42,7 @@ export const Key: Story = {
 export const ErrorAndBusy: Story = {
 	args: {
 		title: "LM Studio wants a key",
-		about: "It was started with a key, and answers only to it.",
+		about: "The server was started with a key and answers only requests that include it.",
 		label: "Key for LM Studio",
 		type: "password",
 		help: undefined,

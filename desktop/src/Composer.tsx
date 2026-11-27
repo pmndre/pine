@@ -161,7 +161,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 			bridge.onVoice((m: { type: string; text?: string; state?: string; error?: string }) => {
 				if (!hearing.current) return;
 				if (m.type === "ready") setVoice("listening");
-				else if (m.type === "model") setVoiceNote(m.state === "downloading" ? "macOS is downloading the speech model for this language, once" : "");
+				else if (m.type === "model") setVoiceNote(m.state === "downloading" ? "macOS is downloading the speech model for this language (only once)" : "");
 				else if (m.type === "partial") set(heard(m.text ?? ""));
 				else if (m.type === "done") {
 					hearing.current = false;
@@ -252,7 +252,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 		// kept for the arrows, nor sent.
 		if (above?.secret && value) {
 			set("");
-			return store.flash("Paste the key in the field of the card above: what is typed here is not kept.", "warn", 7000);
+			return store.flash("Paste the key into the card above. Text typed here is not saved.", "warn", 7000);
 		}
 		if (command) {
 			tab.inputs.push(value);
@@ -326,7 +326,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 			// A folder is opened for the conversation, as with /folder.
 			if (entry.webkitGetAsEntry()?.isDirectory) {
 				// A folder from the Finder is one of this computer's, which another machine's pine does not have.
-				if (store.remote) store.flash(`That folder is on this computer, and ${tab.agent} works on ${store.remote}: choose a folder there instead.`, "warn", 7000);
+				if (store.remote) store.flash(`That folder is on this computer, but ${tab.agent} works on ${store.remote}. Choose a folder there instead.`, "warn", 7000);
 				else {
 					const dir = bridge.pathOf(file);
 					if (dir) await store.setFolder(tab, dir);
@@ -357,7 +357,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 			{goal && goal.status !== "active" ? (
 				<Alert>
 					<ClockIcon />
-					<AlertTitle>Goal {goal.status === "paused" ? "paused" : goal.status === "blocked" ? "waits for you" : "limit reached"}</AlertTitle>
+					<AlertTitle>Goal {goal.status === "paused" ? "paused" : goal.status === "blocked" ? "waiting for you" : "limit reached"}</AlertTitle>
 					<AlertDescription className="truncate">{goal.note}</AlertDescription>
 					<AlertAction>
 						<Button variant="link" size="xs" onClick={() => void store.setGoal(tab, "resume")}>Resume</Button>
@@ -380,7 +380,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 				<Alert>
 					<MicIcon />
 					<AlertTitle>{voice === "starting" ? "getting ready to listen…" : "listening"}</AlertTitle>
-					<AlertDescription>{voice === "starting" ? "" : "speak · ↩ when you are done · esc to throw it away"}{voiceNote ? ` · ${voiceNote}` : ""}</AlertDescription>
+					<AlertDescription>{voice === "starting" ? "" : "speak · ↩ when you are done · esc to discard"}{voiceNote ? ` · ${voiceNote}` : ""}</AlertDescription>
 				</Alert>
 			) : null}
 			{/* The files are pine's own (`attach`: its limits, a folder opened instead, base64 for the daemon).
@@ -438,7 +438,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 									<AttachmentMedia><PlusIcon /></AttachmentMedia>
 									<AttachmentContent>
 										<AttachmentTitle>Drop to attach</AttachmentTitle>
-										<AttachmentDescription>a folder is opened for the conversation</AttachmentDescription>
+										<AttachmentDescription>drop a folder to open it for this conversation</AttachmentDescription>
 									</AttachmentContent>
 								</Chip>
 							) : null}
@@ -517,12 +517,12 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 						</HoverTooltip>
 						<DropdownMenu>
 							<HoverTooltip>
-								<TooltipTrigger render={<DropdownMenuTrigger render={<InputGroupButton size="sm" className="@max-md/bar:size-8 @max-md/bar:px-0!" aria-label={`Reasoning: ${thinking}, how much the model thinks before it answers`} />} />}>
+								<TooltipTrigger render={<DropdownMenuTrigger render={<InputGroupButton size="sm" className="@max-md/bar:size-8 @max-md/bar:px-0!" aria-label={`Reasoning: ${thinking}, how much the model thinks before answering`} />} />}>
 									<SparkleIcon data-icon="inline-start" />
 									<span className="@max-md/bar:hidden">{thinking}</span>
 									<ChevronDownIcon data-icon="inline-end" className="@max-md/bar:hidden" />
 								</TooltipTrigger>
-								<TooltipContent>Reasoning: {thinking}, how much the model thinks before it answers</TooltipContent>
+								<TooltipContent>Reasoning: {thinking}, how much the model thinks before answering</TooltipContent>
 							</HoverTooltip>
 							<DropdownMenuContent side="top" className="w-72" onClick={inMenu}>
 								<DropdownMenuGroup>
@@ -565,11 +565,11 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 							</DropdownMenuContent>
 						</DropdownMenu>
 						<HoverTooltip>
-							<TooltipTrigger render={<InputGroupButton size="sm" className="@max-md/bar:size-8 @max-md/bar:px-0! min-w-0 shrink" onClick={() => void store.pickFolder(tab)} aria-label={tab.folder ? `Works in ${tab.folder}` : "Where this conversation works: the agent's own workspace, or a folder of yours"} />}>
+							<TooltipTrigger render={<InputGroupButton size="sm" className="@max-md/bar:size-8 @max-md/bar:px-0! min-w-0 shrink" onClick={() => void store.pickFolder(tab)} aria-label={tab.folder ? `Works in ${tab.folder}` : "Where this conversation works: the agent's workspace or one of your folders"} />}>
 								<FolderIcon data-icon="inline-start" />
 								<span className="truncate @max-sm/bar:hidden">{tab.folder ? baseName(tab.folder) : "workspace"}</span>
 							</TooltipTrigger>
-							<TooltipContent>{tab.folder ? `Works in ${tab.folder}` : "Where this conversation works: the agent's own workspace, or a folder of yours"}</TooltipContent>
+							<TooltipContent>{tab.folder ? `Works in ${tab.folder}` : "Where this conversation works: the agent's workspace or one of your folders"}</TooltipContent>
 						</HoverTooltip>
 						{tainted ? (
 							<HoverTooltip>
@@ -577,15 +577,15 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 									<EyeIcon data-icon="inline-start" />
 									<span className="truncate @max-xl/bar:hidden">outside content</span>
 								</TooltipTrigger>
-								<TooltipContent>This conversation has read outside content ({tainted}): the agent asks before it sends something out.</TooltipContent>
+								<TooltipContent>This conversation has read outside content ({tainted}), so the agent asks before sending anything out.</TooltipContent>
 							</HoverTooltip>
 						) : null}
 						<span className="ml-auto" />
 						{DICTATES.includes(store.platform) ? (
 							<HoverTooltip>
-								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant={voice !== "off" ? "destructive" : "ghost"} onClick={() => void dictate()} aria-label={voice === "off" ? "Dictate the message" : "End the listening"} />}><MicIcon /></TooltipTrigger>
+								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant={voice !== "off" ? "destructive" : "ghost"} onClick={() => void dictate()} aria-label={voice === "off" ? "Dictate the message" : "Stop listening"} />}><MicIcon /></TooltipTrigger>
 								<TooltipContent>
-									{voice === "off" ? "Dictate the message" : "End the listening"}
+									{voice === "off" ? "Dictate the message" : "Stop listening"}
 									{voice === "off" ? <Kbd>{shortcut("⌃R")}</Kbd> : null}
 								</TooltipContent>
 							</HoverTooltip>
@@ -602,9 +602,9 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 							<HoverTooltip>
 								{/* Said as disabled, not disabled: a disabled button inside an InputGroup dims the whole
 								    composer (`has-disabled:`). With nothing to send, `send` does nothing. */}
-								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} aria-disabled={(!text.trim() && !tab.quotes.length) || undefined} aria-label={tab.busy ? `Give it to the agent while it works · ${shortcut("⌥↩")} waits until it is done` : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
+								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} aria-disabled={(!text.trim() && !tab.quotes.length) || undefined} aria-label={tab.busy ? `Send to the agent while it works · ${shortcut("⌥↩")} queues it until the agent is done` : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
 								<TooltipContent>
-									{tab.busy ? `Give it to the agent while it works · ${shortcut("⌥↩")} waits until it is done` : "Send"}
+									{tab.busy ? `Send to the agent while it works · ${shortcut("⌥↩")} queues it until the agent is done` : "Send"}
 									<Kbd>{shortcut("↩")}</Kbd>
 								</TooltipContent>
 							</HoverTooltip>
@@ -614,7 +614,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 				<QuestionToggle tab={tab} />
 			</div>
 			<input ref={picker} type="file" multiple hidden onChange={(e) => (void attach(tab, [...(e.target.files ?? [])]), (e.target.value = ""))} />
-			{tab.folder && !tab.items.length ? <div className="px-1 text-faint text-xs">{tab.agent}'s tools start in {tilde(tab.folder)} and may read and change what is in it.</div> : null}
+			{tab.folder && !tab.items.length ? <div className="px-1 text-faint text-xs">{tab.agent}'s tools start in {tilde(tab.folder)} and can read and change the files there.</div> : null}
 		</>
 	);
 }

@@ -30,7 +30,7 @@ import { Events } from "./Events.tsx";
 import { type Beside, isPick, PANE, paneOf, ROOM, store, type Tab, type UpdatePhase, useModel, useSignal } from "./model.ts";
 import * as dock from "./dock.ts";
 import { ViewAside } from "./View.tsx";
-import { Breakable, MachineList, NewAgent, Settings } from "./Settings.tsx";
+import { Breakable, MachineList, NewAgent, Settings, ThingDialog } from "./Settings.tsx";
 import { Manual } from "./Manual.tsx";
 import { computerWord, firstScreen, isPaired, noMachineSaid } from "./machines.ts";
 import { ApprovalDialog } from "./ApprovalDialog.tsx";
@@ -196,7 +196,7 @@ export function Gate() {
 						// No home yet: this computer's is made without a question (setUp in model.ts), and what pine init says is shown as it comes.
 						s.initRunning ? "Setting up pine" : "pine is not ready yet",
 						s.local
-							? `pine keeps your agents, their workspaces and pine's settings in a home folder (${s.prefs.home ?? s.home ?? "~/.pine"}). Making it copies the example home and fetches the browser that the web tools use (about 600 MB, once).`
+							? `pine keeps your agents, their workspaces and your settings in a home folder (${s.prefs.home ?? s.home ?? "~/.pine"}). Setup copies the example home and downloads the browser that the web tools use (about 600 MB, one time).`
 							: "There is no pine home on that machine yet. Run pine init there, then try again.",
 						<>
 							{s.initLines.length ? <Printed sm className="w-full text-start text-wrap" text={s.initLines.slice(-40).join("\n")} /> : null}
@@ -205,7 +205,7 @@ export function Gate() {
 					]
 				: state.status === "error"
 					? [
-							state.kind === "no-node" ? "pine needs Node" : state.kind === "no-pine" ? "pine is not installed" : state.kind === "ssh" ? (host ? paired ? <>{named} is not reached</> : <>{named} is not reached over SSH</> : s.pairFailed ? "The pairing did not go through" : pairFirst ? `Pair this ${s.device} with your computer` : "Choose a machine") : host ? <>pine on {named} did not start</> : "pine did not start",
+							state.kind === "no-node" ? "pine needs Node" : state.kind === "no-pine" ? "pine is not installed" : state.kind === "ssh" ? (host ? paired ? <>Could not reach {named}</> : <>Could not reach {named} over SSH</> : s.pairFailed ? "Pairing failed" : pairFirst ? `Pair this ${s.device} with your computer` : "Choose a machine") : host ? <>pine on {named} did not start</> : "pine did not start",
 							// No machine in use in the pairing view: the list's three lines say how, once.
 							said ?? "",
 							<div key="b" className="flex w-full flex-col items-center gap-4">
@@ -226,7 +226,7 @@ export function Gate() {
 					: s.loadError
 						? // The pine answered and its agents could not be loaded: said, with a way to ask again, never a wait that does not end.
 							[
-								host ? <>Could not load the agents of {named}</> : "Could not load your agents",
+								host ? <>Could not load the agents on {named}</> : "Could not load your agents",
 								s.loadError,
 								<div key="l" className="flex w-full flex-col items-center gap-4">
 									<div className="flex items-center gap-2">
@@ -333,11 +333,11 @@ async function conversationPicked(agent: string, c: Conv, picked: string | undef
 	}
 	if (picked === "pin") await s.pin({ agent, session: c.session }, !c.pinned);
 	if (picked === "rename") {
-		const to = await s.pick({ title: `Another name for ${c.session}`, items: [], free: true, placeholder: "The new name" });
+		const to = await s.pick({ title: `Rename ${c.session}`, items: [], free: true, placeholder: "New name" });
 		if (to?.trim()) await s.rename(agent, c.session, to.trim());
 	}
 	if (picked === "remove") {
-		const sure = await s.pick({ title: `Remove the conversation ${c.session} of ${agent}?`, items: [{ value: "yes", label: "Remove it for good", about: "The messages, what the agent may do without asking here, what it listens to and whatever was set up only for this conversation are all deleted.", tone: "bad" }, { value: "no", label: "Cancel" }] });
+		const sure = await s.pick({ title: `Remove the conversation ${c.session} with ${agent}?`, items: [{ value: "yes", label: "Remove permanently", about: "This deletes the messages, the permissions you gave the agent here, the conversation's subscriptions, and anything set up only for this conversation.", tone: "bad" }, { value: "no", label: "Cancel" }] });
 		if (sure === "yes") await s.removeConversation(agent, c.session);
 	}
 	if (picked === "reset") {
@@ -381,7 +381,7 @@ function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth
 	const main = c.session === "main";
 	const { setOpenMobile } = useSidebar();
 	const menu = async () => conversationPicked(agent, c, await contextMenu(conversationItems(c, movable)));
-	const kept = main ? "the agent's own, always kept" : c.pinned ? "pinned" : c.group ? `kept in the group ${c.group}` : c.open ? "open in a tab" : c.expires ? `goes ${until(c.expires)}` : "kept";
+	const kept = main ? "the agent's main conversation, always kept" : c.pinned ? "pinned" : c.group ? `kept in the group ${c.group}` : c.open ? "open in a tab" : c.expires ? `removed ${until(c.expires)}` : "kept";
 	const working = tab?.busy || s.isBusy(agent, c.session);
 	const on = Boolean(tab && tab === s.active);
 	return (
@@ -404,12 +404,12 @@ function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth
 				// A stop of its own after the row (Tab from the list), shown with the pointer or the keyboard on the row; its keys are not the list's.
 				<AlertDialog>
 					<HoverTooltip>
-						<TooltipTrigger render={<AlertDialogTrigger render={<SidebarMenuAction showOnHover onKeyDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} />} aria-label="Remove this conversation for good"><Trash2Icon /></AlertDialogTrigger>} />
-						<TooltipContent>Remove this conversation for good</TooltipContent>
+						<TooltipTrigger render={<AlertDialogTrigger render={<SidebarMenuAction showOnHover onKeyDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} />} aria-label="Remove this conversation permanently"><Trash2Icon /></AlertDialogTrigger>} />
+						<TooltipContent>Remove this conversation permanently</TooltipContent>
 					</HoverTooltip>
 					<AlertDialogContent>
 						<AlertDialogHeader>
-							<AlertDialogTitle>Remove the conversation {s.titleOf(agent, c.session)} for good?</AlertDialogTitle>
+							<AlertDialogTitle>Remove the conversation {s.titleOf(agent, c.session)} permanently?</AlertDialogTitle>
 						</AlertDialogHeader>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -471,7 +471,7 @@ function ConversationGroup({ agent, name, rows }: { agent: string; name: string;
 			<Collapsible open={!folded} onOpenChange={() => s.toggleGroupFold(agent, name)}>
 				<SidebarMenu>
 					<SidebarMenuItem className="[-webkit-app-region:no-drag]" onContextMenu={(e) => (e.preventDefault(), void menu())}>
-						<CollapsibleTrigger render={<SidebarMenuButton className="pl-8" title={`${name}: ${count === 1 ? "1 conversation" : `${count} conversations`}, kept however long they are not used`} />}>
+						<CollapsibleTrigger render={<SidebarMenuButton className="pl-8" title={`${name}: ${count === 1 ? "1 conversation" : `${count} conversations`}, kept even when unused`} />}>
 							<span className="grid h-4 w-6 flex-none place-items-center">{waits ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working && folded ? <Pulse /> : unread && folded ? <Badge className="size-2 p-0" /> : folded ? <FolderClosedIcon className="text-faint" /> : <FolderOpenIcon className="text-faint" />}</span>
 							<span data-slot="group-label" className="min-w-0 flex-1 truncate">{name}</span>
 						</CollapsibleTrigger>
@@ -535,7 +535,7 @@ function Group({ a }: { a: AgentInfo }) {
 	const working = s.isBusy(a.id) || tabs.some((t) => t.busy);
 	const unread = tabs.some((t) => t.unread);
 	const pickFolder = async () => {
-		const dir = await s.chooseFolder(`A folder for a conversation with ${a.id}`);
+		const dir = await s.chooseFolder(`Choose a folder for a conversation with ${a.id}`);
 		if (dir) await s.openFolder(dir, a.id);
 	};
 	// Its name and its color are changed where they are shown: the name turns into a field, the color opens over the avatar.
@@ -610,7 +610,7 @@ function Group({ a }: { a: AgentInfo }) {
 						)}
 						{/* The agent's other actions, as shadcn's sidebar puts them: a More action that opens a menu. The plus stays one click away. */}
 						<DropdownMenu>
-							<DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="right-7" aria-label={`More for ${a.id}`} />}><EllipsisIcon /></DropdownMenuTrigger>
+							<DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="right-7" data-agent-action="more" aria-label={`More actions for ${a.id}`} />}><EllipsisIcon /></DropdownMenuTrigger>
 							<DropdownMenuContent side="right" align="start" className="min-w-56">
 								<DropdownMenuGroup>
 									<DropdownMenuItem onClick={() => void pickFolder()}><FolderIcon />Open a folder with {a.id}…</DropdownMenuItem>
@@ -618,7 +618,7 @@ function Group({ a }: { a: AgentInfo }) {
 								</DropdownMenuGroup>
 							</DropdownMenuContent>
 						</DropdownMenu>
-						<HoverTooltip><TooltipTrigger render={<SidebarMenuAction onClick={() => void s.newConversation(a.id)} aria-label={`New conversation with ${a.id}`} />}><PlusIcon /></TooltipTrigger><TooltipContent>{`New conversation with ${a.id}`}</TooltipContent></HoverTooltip>
+						<HoverTooltip><TooltipTrigger render={<SidebarMenuAction onClick={() => void s.newConversation(a.id)} data-agent-action="new" aria-label={`New conversation with ${a.id}`} />}><PlusIcon /></TooltipTrigger><TooltipContent>{`New conversation with ${a.id}`}</TooltipContent></HoverTooltip>
 					</>
 				)}
 			</SidebarMenuItem>
@@ -660,7 +660,7 @@ export function Sidebar() {
 					<SidebarGroup className="pt-1 pb-0">
 						<SidebarMenu>
 							<SidebarMenuItem className="[-webkit-app-region:no-drag]">
-								<HoverTooltip><TooltipTrigger render={<SidebarMenuButton onClick={() => void s.command("palette")} />}><SearchIcon /><span className="min-w-0 flex-1">Search</span><Kbd>{shortcut("⌘K")}</Kbd></TooltipTrigger><TooltipContent>Find a conversation by name or by what was said in it, or a command, an agent, a settings page</TooltipContent></HoverTooltip>
+								<HoverTooltip><TooltipTrigger render={<SidebarMenuButton onClick={() => void s.command("palette")} />}><SearchIcon /><span className="min-w-0 flex-1">Search</span><Kbd>{shortcut("⌘K")}</Kbd></TooltipTrigger><TooltipContent>Find a conversation by name or content, or a command, an agent or a settings page</TooltipContent></HoverTooltip>
 							</SidebarMenuItem>
 						</SidebarMenu>
 					</SidebarGroup>
@@ -676,7 +676,7 @@ export function Sidebar() {
 					{update ? <SidebarMenuItem className="[-webkit-app-region:no-drag]"><UpdateButton update={update} /></SidebarMenuItem> : null}
 					{older ? (
 						<SidebarMenuItem className="[-webkit-app-region:no-drag]" data-notice="older-pine">
-							<HoverTooltip><TooltipTrigger render={<SidebarMenuButton onClick={() => s.openSettings("general")} />}><TriangleAlertIcon /><span className="min-w-0 flex-1 truncate">An older pine runs</span></TooltipTrigger><TooltipContent>{`The pine this app attached to is ${older.version}, older than the app's own (${older.olderThan}). Restart it on the newer one: Settings › General says how.`}</TooltipContent></HoverTooltip>
+							<HoverTooltip><TooltipTrigger render={<SidebarMenuButton onClick={() => s.openSettings("general")} />}><TriangleAlertIcon /><span className="min-w-0 flex-1 truncate">An older pine is running</span></TooltipTrigger><TooltipContent>{`This app is attached to pine ${older.version}, which is older than the pine it ships with (${older.olderThan}). Restart pine on the newer version. Settings › General explains how.`}</TooltipContent></HoverTooltip>
 						</SidebarMenuItem>
 					) : null}
 					<SidebarMenuItem className="[-webkit-app-region:no-drag]">
@@ -792,17 +792,17 @@ export function Machines() {
 		state.status !== "ready"
 			? reached
 				? state.status === "error"
-					? `${reached} not reached`
+					? `cannot reach ${reached}`
 					: `connecting to ${reached}`
 				: "starting"
 			: !s.connected
-				? "pine does not answer"
+				? "pine is not responding"
 				: `pine${state.version ? ` ${state.version}` : ""} · ${on ?? (state.started ? "started here" : "attached")}`;
-	const about = state.status === "ready" ? `${state.home} · ${state.host ? (isPaired(state.host) ? `paired with this ${s.device}` : `over SSH (${state.host})`) : state.started ? "started by this app" : "a pine that was already running"}` : "";
+	const about = state.status === "ready" ? `${state.home} · ${state.host ? (isPaired(state.host) ? `paired with this ${s.device}` : `over SSH (${state.host})`) : state.started ? "started by this app" : "already running when the app started"}` : "";
 	return (
 		<SidebarMenuItem className="[-webkit-app-region:no-drag]">
 			<DropdownMenu open={open} onOpenChange={setOpen}>
-				<DropdownMenuTrigger render={<SidebarMenuButton data-slot="service-status" title={about} aria-label={`The pine the app uses: ${text}. Use another one`} />}>
+				<DropdownMenuTrigger render={<SidebarMenuButton data-slot="service-status" title={about} aria-label={`The pine this app uses: ${text}. Switch to another`} />}>
 					{/* The dot stands in the place of the icons in the rows above it: its middle under theirs, and what is written beside it under their names. */}
 					<span className="grid size-4 flex-none place-items-center"><span className={cn(DOT, state.status === "error" ? "bg-destructive" : state.status !== "ready" ? "bg-warn" : s.connected ? "bg-primary" : "bg-destructive")} /></span>
 					<span className="min-w-0 flex-1 truncate">{text}</span>
@@ -1001,7 +1001,7 @@ function DockTab({ item, row, index, end }: { item: string; row: string[]; index
 					}}
 					onClick={() => s.front(item)}
 					onAuxClick={(e) => e.button === 1 && close()}
-					title={tab ? (tab.kind === "chat" ? `${tab.agent} · ${tab.session}${tab.folder ? ` · ${tab.folder}` : ""}` : tab.kind === "task" ? `task #${tab.task}` : tab.kind) : pane === "code" ? "The side panel: the files, changes, output, terminal and browser of the conversation last in front" : "The view of all of pine"}
+					title={tab ? (tab.kind === "chat" ? `${tab.agent} · ${tab.session}${tab.folder ? ` · ${tab.folder}` : ""}` : tab.kind === "task" ? `task #${tab.task}` : tab.kind) : pane === "code" ? "Side panel: files, changes, output, terminal and browser for the most recent conversation" : "View: all of pine at a glance"}
 				>
 					<TabFace item={item} />
 					{kept && tab?.session !== "main" ? <StarIcon className="text-warn" /> : null}
@@ -1036,7 +1036,7 @@ function WindowControls({ column }: { column: boolean }) {
 	return (
 		<>
 			{s.remote || !column ? <EnvironmentPill /> : null}
-			<BesideToggle which="code" label="Side panel: the files, changes, output, terminal and browser of the conversation in front" keys="⌥⌘B" icon={<PanelRightIcon />} />
+			<BesideToggle which="code" label="Side panel: files, changes, output, terminal and browser for the current conversation" keys="⌥⌘B" icon={<PanelRightIcon />} />
 			{s.hasView ? <BesideToggle which="view" label={`View: all of pine at a glance, drawn by ${s.view}`} keys="⇧⌘O" icon={<RadarIcon />} /> : null}
 			{/* Off a Mac the window shows no menu bar (electron/main.ts): its menus open from here, beside the system's window controls. */}
 			{s.platform !== "darwin" && bridge.appMenu ? (
@@ -1055,7 +1055,7 @@ function WindowControls({ column }: { column: boolean }) {
 function NewConversationButton({ group }: { group?: string }) {
 	const s = store;
 	const with_ = s.agentInFront();
-	const say = with_ ? `New conversation with ${with_}` : "New conversation: you are asked with which agent";
+	const say = with_ ? `New conversation with ${with_}` : "New conversation: choose an agent";
 	return <HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" className="shrink-0 text-muted-foreground [-webkit-app-region:no-drag]" onClick={() => (group && s.focusGroup(group), void s.newConversation())} aria-label={say} />}><PlusIcon /></TooltipTrigger><TooltipContent>{say}<Kbd>{shortcut("⌘T")}</Kbd></TooltipContent></HoverTooltip>;
 }
 
@@ -1091,7 +1091,7 @@ function TabListButton({ items, front }: { items: string[]; front?: string }) {
 			<ComboboxContent align="end" className="w-72">
 				{/* Stock means no ring in a combobox's popup, where the search always has the keyboard, but its focus-visible ring wins. */}
 				<ComboboxInput showTrigger={false} placeholder="Search tabs" className="has-[[data-slot=input-group-control]:focus-visible]:border-input/30 has-[[data-slot=input-group-control]:focus-visible]:ring-0" />
-				<ComboboxEmpty>No tab is called that.</ComboboxEmpty>
+				<ComboboxEmpty>No tab by that name.</ComboboxEmpty>
 				<ComboboxList>{(item: string) => <ComboboxItem key={item} value={item} data-item={item}><TabFace item={item} /></ComboboxItem>}</ComboboxList>
 			</ComboboxContent>
 		</Combobox>
@@ -1218,7 +1218,7 @@ class TabBoundary extends Component<{ what: string; close: () => void; children:
 						<EmptyMedia variant="icon">
 							<TriangleAlertIcon />
 						</EmptyMedia>
-						<EmptyTitle>That tab could not be drawn</EmptyTitle>
+						<EmptyTitle>Could not show that tab</EmptyTitle>
 						<EmptyDescription>{error.message || String(error)}</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
@@ -1236,7 +1236,7 @@ class TabBoundary extends Component<{ what: string; close: () => void; children:
 function Body({ item }: { item: string }) {
 	const s = useModel(store);
 	const pane = paneOf(item);
-	if (pane === "code") return s.codeTab ? <CodePanel key={`code:${s.codeTab.id}`} tab={s.codeTab} /> : <PaneFrame><Empty><EmptyHeader><EmptyMedia variant="icon"><PanelRightIcon /></EmptyMedia><EmptyTitle>No conversation is open</EmptyTitle><EmptyDescription>The side panel shows the files, changes, terminal and browser of the conversation last in front. Open one.</EmptyDescription></EmptyHeader></Empty></PaneFrame>;
+	if (pane === "code") return s.codeTab ? <CodePanel key={`code:${s.codeTab.id}`} tab={s.codeTab} /> : <PaneFrame><Empty><EmptyHeader><EmptyMedia variant="icon"><PanelRightIcon /></EmptyMedia><EmptyTitle>No conversation is open</EmptyTitle><EmptyDescription>The side panel shows the files, changes, terminal and browser for the most recent conversation. Open a conversation to use it.</EmptyDescription></EmptyHeader></Empty></PaneFrame>;
 	if (pane === "view") return <ViewAside />;
 	const tab = s.tabOf(item);
 	if (!tab) return <NoTab />;
@@ -1340,7 +1340,7 @@ function Edge({ h, next }: { h: dock.Handle; next?: string }) {
 				e.preventDefault();
 				by(keys[e.key]);
 			}}
-			title={`Drag to make the groups ${row ? "wider or narrower" : "taller or shorter"}`}
+			title="Drag to resize the groups"
 			className={cn("absolute z-10 touch-none rounded-full after:absolute after:rounded-full after:bg-ring/0 after:transition-colors hover:after:bg-ring/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-hidden", row ? "cursor-col-resize after:inset-y-2 after:left-1/2 after:w-0.5 after:-translate-x-1/2" : "cursor-row-resize after:inset-x-2 after:top-1/2 after:h-0.5 after:-translate-y-1/2")}
 			style={{ left: h.rect.x, top: h.rect.y, width: h.rect.width, height: h.rect.height }}
 			onPointerDown={(e) => {
@@ -1487,7 +1487,7 @@ function NoTab() {
 			<EmptyHeader>
 				<EmptyMedia variant="icon"><MessageSquareIcon /></EmptyMedia>
 				<EmptyTitle>No tab is open</EmptyTitle>
-				<EmptyDescription>All conversations are still in the side bar. Open one there, or start a new one.</EmptyDescription>
+				<EmptyDescription>Your conversations are still in the sidebar. Open one there, or start a new one.</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent className="flex-row justify-center">
 				<Button onClick={() => void s.newConversation()}>New conversation<Kbd>{shortcut("⌘T")}</Kbd></Button>
@@ -1510,15 +1510,15 @@ function Asking() {
 
 function Help({ close }: { close: () => void }) {
 	const keys: Array<[string, string]> = [
-		["↩", "Send. While the agent works, the message is given to that work and read at the agent's next step"],
-		["⌥↩", "Send, but let the message wait until the agent is done"],
+		["↩", "Send. If the agent is working, it reads the message at the next step"],
+		["⌥↩", "Send, but hold the message until the agent is done"],
 		["⇧↩", "New line"],
-		["↑ ↓", "Earlier inputs, while the input is empty"],
+		["↑ ↓", "Earlier messages, while the message box is empty"],
 		["esc", "Stop what the agent is doing"],
-		["⇧⇥", "Next mode for this agent, while the input is empty"],
-		["@", "Point at a file of the conversation's folder"],
+		["⇧⇥", "Next mode for this agent, while the message box is empty"],
+		["@", "Mention a file in the conversation's folder"],
 		["/", "Commands, as in the terminal UI"],
-		["⌘K", "Everything by name"],
+		["⌘K", "Search everything by name"],
 		["⌘1 … ⌘9", "Go to that tab"],
 		["⌃⇥", "Next tab"],
 	];
@@ -1557,13 +1557,13 @@ function UpdateButton({ update: u }: { update: UpdatePhase }) {
 	const s = useModel(store);
 	switch (u.phase) {
 		case "waiting":
-			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton onClick={() => s.cancelUpdateWait()} />}><HourglassIcon /><span className="min-w-0 flex-1 truncate">Restarts when the work is done</span><XIcon /></TooltipTrigger><TooltipContent>{`Pine ${u.version} is installed once no conversation is at work. Click to call it off: the update stays ready for a restart or a quit.`}</TooltipContent></HoverTooltip>;
+			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton onClick={() => s.cancelUpdateWait()} />}><HourglassIcon /><span className="min-w-0 flex-1 truncate">Restarts when the work is done</span><XIcon /></TooltipTrigger><TooltipContent>{`Pine ${u.version} will be installed once no conversation is working. Click to cancel the wait. The update stays ready for the next restart or quit.`}</TooltipContent></HoverTooltip>;
 		case "ready":
-			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton variant="outline" onClick={() => void s.restartToUpdate()} />}><RotateCwIcon /><span className="min-w-0 flex-1 truncate">Restart to update</span></TooltipTrigger><TooltipContent>{`Pine ${u.version} is downloaded. Pine quits, puts the new app in place of this one (${u.mine}) and opens again, with the pine it started.`}</TooltipContent></HoverTooltip>;
+			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton variant="outline" onClick={() => void s.restartToUpdate()} />}><RotateCwIcon /><span className="min-w-0 flex-1 truncate">Restart to update</span></TooltipTrigger><TooltipContent>{`Pine ${u.version} is downloaded. Pine will quit, replace this app (${u.mine}) with the new one and reopen, along with the pine it started.`}</TooltipContent></HoverTooltip>;
 		case "downloading":
 			return <SidebarMenuButton disabled><DownloadIcon /><span className="min-w-0 flex-1 truncate">Downloading Pine {u.version}…</span></SidebarMenuButton>;
 		case "link":
-			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton variant="outline" onClick={() => void bridge.open(u.url)} />}><ArrowUpIcon /><span className="min-w-0 flex-1 truncate">Pine {u.version} is available</span><ExternalLinkIcon /></TooltipTrigger><TooltipContent>{`${u.reason ? `${u.reason} ` : ""}This is Pine ${u.mine}. Opens the release's page on GitHub in your browser. The new app is ${newApp().what} there: ${newApp().how}.`}</TooltipContent></HoverTooltip>;
+			return <HoverTooltip><TooltipTrigger render={<SidebarMenuButton variant="outline" onClick={() => void bridge.open(u.url)} />}><ArrowUpIcon /><span className="min-w-0 flex-1 truncate">Pine {u.version} is available</span><ExternalLinkIcon /></TooltipTrigger><TooltipContent>{`${u.reason ? `${u.reason} ` : ""}This is Pine ${u.mine}. Click to open the release page on GitHub in your browser. The new app is ${newApp().what} there: ${newApp().how}.`}</TooltipContent></HoverTooltip>;
 	}
 }
 
@@ -1584,7 +1584,7 @@ function UpdateAsk() {
 					<DialogHeader>
 						<DialogTitle>Pine {u.version} is available</DialogTitle>
 						{u.reason ? <DialogDescription className="select-text">{u.reason}</DialogDescription> : null}
-						<DialogDescription className="select-text">This is Pine {u.mine}. The new app is {newApp().what} on the release's page on GitHub: {newApp().how}. Your pine home, with your agents, conversations and settings, stays as it is.</DialogDescription>
+						<DialogDescription className="select-text">This is Pine {u.mine}. The new app is {newApp().what} on the release page on GitHub: {newApp().how}. Your pine home, with your agents, conversations and settings, stays as it is.</DialogDescription>
 					</DialogHeader>
 					<p className="cursor-auto font-mono text-xs text-faint select-text">{u.url}</p>
 					<DialogFooter>
@@ -1595,11 +1595,11 @@ function UpdateAsk() {
 			</Dialog>
 		);
 	}
-	const title = { waiting: `Pine ${u.version} is ready`, ready: `Pine ${u.version} is ready`, downloading: `Pine ${u.version} is being downloaded` }[u.phase];
+	const title = { waiting: `Pine ${u.version} is ready`, ready: `Pine ${u.version} is ready`, downloading: `Downloading Pine ${u.version}` }[u.phase];
 	const text = {
-		waiting: `This is Pine ${u.mine}. Pine restarts to update once no conversation is at work. Call off the wait to keep working on this version: the update stays ready for a restart or a quit.`,
-		ready: `This is Pine ${u.mine}. Restart to update: Pine quits, puts the new app in place of this one and opens again, with the pine it started. Or quit when you like: the update is installed then.`,
-		downloading: `This is Pine ${u.mine}. The new app is downloaded in the background; "Restart to update" appears at the foot of the side bar when it is ready.`,
+		waiting: `This is Pine ${u.mine}. Pine will restart to update once no conversation is working. Cancel the wait to keep working on this version. The update stays ready for the next restart or quit.`,
+		ready: `This is Pine ${u.mine}. When you restart to update, Pine quits, replaces this app with the new one and reopens, along with the pine it started. You can also quit whenever you like, and the update is installed then.`,
+		downloading: `This is Pine ${u.mine}. The new app is downloading in the background. "Restart to update" appears at the bottom of the sidebar when it is ready.`,
 	}[u.phase];
 	return (
 		<Dialog open onOpenChange={(open) => open || close()}>
@@ -1611,7 +1611,7 @@ function UpdateAsk() {
 				<DialogFooter>
 					<Button variant="outline" onClick={close}>{u.phase === "ready" ? "Not now" : "Close"}</Button>
 					{u.phase === "ready" ? <Button onClick={() => void s.restartToUpdate()}><RotateCwIcon data-icon="inline-start" />Restart to update</Button> : null}
-					{u.phase === "waiting" ? <Button variant="outline" onClick={() => s.cancelUpdateWait()}><XIcon data-icon="inline-start" />Call off the wait</Button> : null}
+					{u.phase === "waiting" ? <Button variant="outline" onClick={() => s.cancelUpdateWait()}><XIcon data-icon="inline-start" />Cancel the wait</Button> : null}
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
@@ -1630,7 +1630,7 @@ function HomeScreenTip() {
 			<DialogContent showCloseButton={false} className="sm:max-w-lg" data-slot="home-screen-tip">
 				<DialogHeader>
 					<DialogTitle>Add Pine to your home screen</DialogTitle>
-					<DialogDescription className="select-text">In your browser's menu, choose Add to Home screen. Pine then opens like an app and connects to {s.service.host ? s.nameOf(s.service.host) : "your computer"} by itself: it keeps this browser's key, so there is nothing to pair again.</DialogDescription>
+					<DialogDescription className="select-text">In your browser's menu, choose Add to Home screen. Pine then opens like an app and connects to {s.service.host ? s.nameOf(s.service.host) : "your computer"} automatically. It keeps this browser's key, so you do not have to pair again.</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
 					<Button onClick={close}>Got it</Button>
@@ -1653,12 +1653,12 @@ function BrowserAsk() {
 			<DialogContent showCloseButton={false} className="sm:max-w-xl">
 				<DialogHeader>
 					<DialogTitle>The browser for the web tools is not on this {computerWord(s.platform)}</DialogTitle>
-					<DialogDescription className="select-text">Your agents open pages that need a real browser with one that pine fetches for itself. Each version of pine uses a specific browser build, and the one for this version is not here yet: it was never fetched, or it is the build of an older pine. It is about 600 MB and is fetched once. Until then the browser tools do not work; web search and reading a page do.</DialogDescription>
+					<DialogDescription className="select-text">For pages that need a real browser, your agents use one that pine downloads. Each version of pine needs a specific browser build, and the build for this version is not here yet. Either it was never downloaded, or the one here belongs to an older pine. The download is about 600 MB and happens once. Until then the browser tools do not work, but web search and reading a page do.</DialogDescription>
 				</DialogHeader>
 				{s.initLines.length ? <Printed sm text={s.initLines.slice(-12).join("\n")} /> : null}
 				<DialogFooter>
 					<Button variant="outline" disabled={s.browserFetching} onClick={later}>Not now</Button>
-					<Button disabled={s.browserFetching} onClick={() => void s.fetchBrowser()}>{s.browserFetching ? <><Pulse label="Loading" data-icon="inline-start" />Fetching…</> : "Fetch it"}</Button>
+					<Button disabled={s.browserFetching} onClick={() => void s.fetchBrowser()}>{s.browserFetching ? <><Pulse label="Loading" data-icon="inline-start" />Downloading…</> : "Download"}</Button>
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
@@ -1726,7 +1726,7 @@ export function App() {
 								<ResizablePanel id="sidebar-panel" className="flex" panelRef={side} defaultSize={store.widthOf("sidebar") ?? (Number(localStorage.getItem(SIDE_KEY)) || SIDE_WIDTH)} minSize={190} maxSize={460} groupResizeBehavior="preserve-pixel-size">
 									<Sidebar />
 								</ResizablePanel>
-								<ResizableHandle className="bg-transparent" disableDoubleClick onDoubleClick={() => (side.current?.resize(SIDE_WIDTH), store.setPanelWidth("sidebar", SIDE_WIDTH), typeof bridge.windowLayout !== "function" && localStorage.setItem(SIDE_KEY, String(SIDE_WIDTH)))} title="Drag to make the side bar wider or narrower" />
+								<ResizableHandle className="bg-transparent" disableDoubleClick onDoubleClick={() => (side.current?.resize(SIDE_WIDTH), store.setPanelWidth("sidebar", SIDE_WIDTH), typeof bridge.windowLayout !== "function" && localStorage.setItem(SIDE_KEY, String(SIDE_WIDTH)))} title="Drag to resize the sidebar" />
 							</>
 						) : null}
 						<ResizablePanel id="main" className="flex">
@@ -1755,6 +1755,7 @@ export function App() {
 			{s.picker ? <PickDialog key={s.picker.title} p={s.picker} /> : null}
 			{s.publishing ? <PublishDialog /> : null}
 			{/* A new agent is met in its conversation: once made, that opens in a tab, wherever the dialog was opened from. */}
+			<ThingDialog />
 			{s.newAgent ? <NewAgent close={() => ((s.newAgent = false), s.touch())} made={(id) => ((s.newAgent = false), s.touch(), void s.openTab(id, "main"))} /> : null}
 			{s.palette ? <Palette /> : null}
 			<Asking />

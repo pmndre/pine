@@ -49,6 +49,7 @@ Every `pine` command, and which ones need a running daemon. Installing and start
 | `pine mcp remove <name> [--agent <id>]` | Removes a server |
 | `pine mcp login <name>`, `pine mcp logout <name>` | Signs in to a remote server in the browser, or forgets its tokens |
 | `pine skills` | Every skill, whom it is for, where it lies |
+| `pine extensions` | Every installed extension, whom it is for, where it came from |
 | `pine schedules` | Everything scheduled: for whom, when, the task |
 | `pine manual <words>`, `pine manual --read <id>` | Searches this manual as agents do, or reads parts by id (commas). Alone, lists the parts |
 

@@ -712,6 +712,31 @@ export function addRoute(cfg: PineConfig, entry: Record<string, unknown>): Route
 	}
 }
 
+/**
+ * Put a changed route in the place of one by its name, in one write: the old one stays where it was
+ * if the new one does not load. The routes that stay keep their names, as with dropRoute.
+ */
+export function replaceRoute(cfg: PineConfig, name: string, entry: Record<string, unknown>): RouteConfig {
+	const file = path.join(cfg.home, "pine.json");
+	const before = fs.readFileSync(file, "utf8");
+	try {
+		editJson(file, (raw) => {
+			const named = (Array.isArray(raw.routes) ? raw.routes : []).map((r: any, i: number) => (r && typeof r === "object" && r.name === undefined ? { name: `route${i}`, ...r } : r));
+			const at = named.findIndex((r: any) => r?.name === name);
+			if (at < 0) throw new Error(`there is no route "${name}"`);
+			named[at] = entry;
+			raw.routes = named;
+		});
+		const made = loadConfig(cfg.home).routes.find((r) => r.name === entry.name);
+		if (!made) throw new Error("the route was not found after writing it");
+		cfg.routes.splice(cfg.routes.findIndex((r) => r.name === name), 1, made);
+		return made;
+	} catch (e) {
+		fs.writeFileSync(file, before);
+		throw new Error(`not changed: ${errText(e)}`);
+	}
+}
+
 /** Take a route out of pine.json by its name. The routes that stay keep their names, also those that had none of their own. */
 export function dropRoute(cfg: PineConfig, name: string): boolean {
 	if (!cfg.routes.some((r) => r.name === name)) return false;

@@ -87,7 +87,7 @@ test("while the key's field is open, what is typed in the composer is neither sh
 	await sees("[data-card=setup-api-key][data-provider=anthropic] input[type=password]");
 	await page.waitForFunction((c: string) => /paste the key/i.test(document.querySelector(c)?.getAttribute("placeholder") ?? ""), composer, { timeout: patient(5000) });
 	await type(typed);
-	await sees("[data-slot=toast] >> text=/Paste the key in the field/");
+	await sees("[data-slot=toast] >> text=/Paste the key into the card above/");
 	assert.equal(await page.inputValue(composer), "");
 	const shown = await page.evaluate(() => document.body.innerText + [...document.querySelectorAll("input, textarea")].map((e) => (e as HTMLInputElement).value).join("\n"));
 	assert.ok(!shown.includes(typed), "not shown anywhere in the window");

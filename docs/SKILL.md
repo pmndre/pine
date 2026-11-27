@@ -48,6 +48,7 @@ The manual has six parts. Each chapter is one file in `references/`.
 | Chapter | What it holds |
 |---|---|
 | [Agents](references/agents.md) | Workspace and files, persona, conversations, delegation, sub-agents, goal mode, skills |
+| [Extensions](references/extensions.md) | pi extensions and packages: installing, updating, removing, where they are kept |
 | [Teams of agents: boards and swarms](references/boards.md) | Agents and sub-agents sharing a job on a board; swarms |
 | [Working on code](references/coding.md) | Folders and worktrees, the code pane, programs left running, `/undo` |
 | [MCP servers, web search and the browser](references/mcp.md) | Adding MCP servers; web search, page reading and the bundled browser |
@@ -111,6 +112,7 @@ holds for all agents goes into pine's home, which only the main agent writes
 | `add_schedule` | Something at a set time: `cron`, `every`, `at` or `in` | [events.md](references/events.md) |
 | `add_mcp_server` | An MCP server, by `url` or `command`; they confirm, and its tools arrive next turn. "Unauthorized" needs a sign-in: `sign_in_mcp_server` (main agent), or Settings > MCP servers | [mcp.md](references/mcp.md) |
 | `add_skill` | A procedure remembered (a fact goes into `MEMORY.md`) | [agents.md](references/agents.md) |
+| `add_extension` | Main agent: a pi extension or package from npm, git or a file; they confirm | [extensions.md](references/extensions.md) |
 | `question`, `todo` | A decision with two to six options; a list of steps, sent whole each time | [setup.md](references/setup.md) |
 | `subagent` | A job split into independent tasks; many become a pool on your board | [boards.md](references/boards.md) |
 | `stop_program` | Ends a server left running, started with `background: true` on the shell tool | [coding.md](references/coding.md) |

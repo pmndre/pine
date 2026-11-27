@@ -9,20 +9,6 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbS
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { css } from "@codemirror/lang-css";
-import { html } from "@codemirror/lang-html";
-import { javascript } from "@codemirror/lang-javascript";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
-import { python } from "@codemirror/lang-python";
-import { rust } from "@codemirror/lang-rust";
-import { yaml } from "@codemirror/lang-yaml";
-import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
-import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
-import { drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from "@codemirror/view";
-import { tags as t } from "@lezer/highlight";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "usehooks-ts";
 import { CodeBlock, CodeBlockContent, CodeBlockLine } from "@/components/ui/code-block";
@@ -30,6 +16,7 @@ import { Printed } from "@/components/printed";
 import { SideSheet } from "@/components/side-sheet";
 import { api, type Change, media, type TranscriptEntry } from "./api.ts";
 import { AgentView } from "./AgentView.tsx";
+import { Editor } from "./Editor.tsx";
 import { BoardTab } from "./Board.tsx";
 import { bridge } from "./bridge.ts";
 import { Steps } from "./Conversation.tsx";
@@ -57,56 +44,6 @@ import { cn } from "@/lib/utils";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 /** What a file's place is shown in, by the name the system gives its file manager. */
-
-// ---- the editor ------------------------------------------------------------------------------------
-
-// The editor says what a token is and what it looks like. The colors are tokens of index.css
-// (`--code-*`), so light and dark differ there and nowhere else.
-const colors = HighlightStyle.define([
-	{ tag: [t.comment], color: "var(--code-comment)", fontStyle: "italic" },
-	{ tag: [t.meta], color: "var(--code-meta)", fontStyle: "var(--code-meta-style)" },
-	{ tag: [t.keyword], color: "var(--code-keyword)" },
-	{ tag: [t.definitionKeyword], color: "var(--code-definition)" },
-	{ tag: [t.controlKeyword], color: "var(--code-control)" },
-	{ tag: [t.moduleKeyword, t.modifier, t.operatorKeyword, t.self], color: "var(--code-modifier)" },
-	{ tag: [t.string, t.special(t.string)], color: "var(--code-string)" },
-	{ tag: [t.regexp, t.escape], color: "var(--code-regexp)" },
-	{ tag: [t.number, t.atom, t.url, t.bool], color: "var(--code-literal)" },
-	{ tag: [t.null], color: "var(--code-null)" },
-	{ tag: [t.variableName, t.propertyName], color: "var(--code-name)" },
-	{ tag: [t.attributeName], color: "var(--code-attribute)", fontStyle: "var(--code-attribute-style)" },
-	{ tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--code-call)" },
-	{ tag: [t.function(t.definition(t.variableName)), t.definition(t.function(t.propertyName)), t.className, t.definition(t.className)], color: "var(--code-function)" },
-	{ tag: [t.typeName], color: "var(--code-type)" },
-	{ tag: [t.namespace], color: "var(--code-namespace)" },
-	{ tag: [t.tagName], color: "var(--code-tag)" },
-	{ tag: [t.heading], color: "var(--code-heading)", fontWeight: "var(--font-weight-semibold)" },
-	{ tag: [t.emphasis], color: "var(--code-emphasis)", fontStyle: "italic" },
-	{ tag: [t.strong], color: "var(--code-emphasis)", fontWeight: "var(--font-weight-semibold)" },
-	{ tag: [t.link], color: "var(--code-link)", textDecoration: "underline" },
-	{ tag: [t.inserted], color: "var(--code-inserted)" },
-	{ tag: [t.deleted, t.invalid], color: "var(--code-deleted)" },
-	{ tag: [t.punctuation, t.bracket], color: "var(--code-punctuation)" },
-	{ tag: [t.operator], color: "var(--code-operator)" },
-]);
-
-// CodeMirror's own look, in pine's tokens. A theme of CodeMirror's comes after its base theme, so it
-// wins without `!important`; the focused selection repeats the base theme's longer selector.
-const look = EditorView.theme({
-	"&": { height: "100%", minWidth: "0", flex: "1", backgroundColor: "var(--background)", color: "var(--code-text)" },
-	"&.cm-focused": { outline: "none" },
-	// Lines one and a half times the text apart, as an editor sets code (VS Code's on a Mac); a diff and
-	// what a program printed are set the same in the panel (CODE_LINES).
-	".cm-scroller": { fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", lineHeight: "var(--leading-normal)" },
-	".cm-gutters": { borderRight: "1px solid var(--line-soft)", backgroundColor: "var(--background)", color: "var(--code-gutter)" },
-	".cm-activeLine": { backgroundColor: "var(--code-active-line)" },
-	".cm-activeLineGutter": { backgroundColor: "var(--code-active-line)", color: "var(--code-gutter-active)" },
-	".cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { background: "var(--select)" },
-	".cm-cursor": { borderLeftColor: "var(--code-cursor)" },
-	".cm-panels": { borderColor: "var(--border)", backgroundColor: "var(--secondary)", color: "var(--foreground)" },
-	".cm-textfield, .cm-button": { borderRadius: "calc(var(--radius) * 0.8)", borderColor: "var(--border)", backgroundColor: "var(--card)", backgroundImage: "none", fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", color: "var(--foreground)" },
-	".cm-searchMatch": { backgroundColor: "var(--code-match)", outline: "1px solid var(--code-match-line)" },
-});
 
 // The panel's parts: a bar of controls with a line under it, and what scrolls below: a stock
 // ScrollArea that fades where it is cut (scroll-fade sits on its viewport, the element that
@@ -136,68 +73,6 @@ function gitTones(data?: { root: string; top?: string; files: Change[] }): (path
 		const inside = data.files.filter((f) => f.path.startsWith(`${full}/`));
 		return inside.length ? (inside.every((f) => f.status === "?" || f.status === "A") ? STATUS.A : STATUS.M) : undefined;
 	};
-}
-
-function language(file: string): Extension {
-	const ext = file.slice(file.lastIndexOf(".") + 1).toLowerCase();
-	if (["ts", "mts", "cts"].includes(ext)) return javascript({ typescript: true });
-	if (ext === "tsx") return javascript({ typescript: true, jsx: true });
-	if (["js", "mjs", "cjs", "jsx"].includes(ext)) return javascript({ jsx: true });
-	if (["json", "jsonc"].includes(ext)) return json();
-	if (["md", "markdown", "mdx"].includes(ext)) return markdown();
-	if (["css", "scss"].includes(ext)) return css();
-	if (["html", "htm", "vue", "svelte", "xml", "svg"].includes(ext)) return html();
-	if (ext === "py") return python();
-	if (ext === "rs") return rust();
-	if (["yml", "yaml"].includes(ext)) return yaml();
-	return [];
-}
-
-/** A text editor. `text` is what is on disk; what is typed is told with `onChange`, and ⌘S asks to save. */
-export function Editor({ file, text, readOnly, onChange, onSave }: { file: string; text: string; readOnly?: boolean; onChange?: (text: string) => void; onSave?: () => void }) {
-	const host = useRef<HTMLDivElement>(null);
-	const view = useRef<EditorView>(undefined);
-	const lock = useRef(new Compartment());
-	const live = useRef({ onChange, onSave });
-	live.current = { onChange, onSave };
-	useEffect(() => {
-		const v = new EditorView({
-			parent: host.current!,
-			state: EditorState.create({
-				doc: text,
-				extensions: [
-					lineNumbers(),
-					highlightActiveLineGutter(),
-					highlightActiveLine(),
-					history(),
-					drawSelection(),
-					indentOnInput(),
-					bracketMatching(),
-					highlightSelectionMatches(),
-					search({ top: true }),
-					look,
-					syntaxHighlighting(colors),
-					language(file),
-					EditorView.lineWrapping,
-					keymap.of([{ key: "Mod-s", run: () => (live.current.onSave?.(), true) }, ...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
-					lock.current.of([EditorState.readOnly.of(Boolean(readOnly)), EditorView.editable.of(!readOnly)]),
-					EditorView.updateListener.of((u) => u.docChanged && live.current.onChange?.(u.state.doc.toString())),
-				],
-			}),
-		});
-		view.current = v;
-		return () => v.destroy();
-		// A new file is a new editor; what it shows of the old one is replaced below.
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [file]);
-	useEffect(() => {
-		const v = view.current;
-		if (v && v.state.doc.toString() !== text) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: text } });
-	}, [text]);
-	useEffect(() => {
-		view.current?.dispatch({ effects: lock.current.reconfigure([EditorState.readOnly.of(Boolean(readOnly)), EditorView.editable.of(!readOnly)]) });
-	}, [readOnly]);
-	return <div className="flex min-h-0 flex-1 overflow-hidden" ref={host} />;
 }
 
 // What a line of a unified diff is: a change is drawn by the stock line variants, which put the
@@ -318,9 +193,9 @@ function Changes({ tab, turn, openFile }: { tab: Tab; turn: boolean; openFile: (
 		const prefix = top && root && root !== top && root.startsWith(`${top}/`) ? `${root.slice(top.length + 1)}/` : "";
 		return prefix && p.startsWith(prefix) ? p.slice(prefix.length) : p;
 	};
-	if (list.error) return <Empty><EmptyHeader><EmptyMedia variant="icon">{turn ? <Undo2Icon /> : <GitBranchIcon />}</EmptyMedia><EmptyTitle>{turn ? "The last message cannot be read" : "No changes to show"}</EmptyTitle><EmptyDescription>{list.error}</EmptyDescription></EmptyHeader></Empty>;
+	if (list.error) return <Empty><EmptyHeader><EmptyMedia variant="icon">{turn ? <Undo2Icon /> : <GitBranchIcon />}</EmptyMedia><EmptyTitle>{turn ? "Could not load the last message" : "No changes to show"}</EmptyTitle><EmptyDescription>{list.error}</EmptyDescription></EmptyHeader></Empty>;
 	if (!data) return <div className="flex flex-col">{Array.from({ length: 5 }, (_, i) => <ChangeRow key={i} skeleton />)}</div>;
-	if (!turn && !data.repo) return <Empty><EmptyHeader><EmptyMedia variant="icon"><GitBranchIcon /></EmptyMedia><EmptyTitle>Not a git repository</EmptyTitle><EmptyDescription>The folder this conversation works in has no git history, so there are no changes to show. The files are in the Files view.</EmptyDescription></EmptyHeader></Empty>;
+	if (!turn && !data.repo) return <Empty><EmptyHeader><EmptyMedia variant="icon"><GitBranchIcon /></EmptyMedia><EmptyTitle>Not a git repository</EmptyTitle><EmptyDescription>This conversation's folder has no git history, so there are no changes to show. The Files view lists the files.</EmptyDescription></EmptyHeader></Empty>;
 	if (file)
 		return (
 			<>
@@ -329,14 +204,14 @@ function Changes({ tab, turn, openFile }: { tab: Tab; turn: boolean; openFile: (
 					<PathCrumbs path={file} />
 					<Button variant="ghost" size="xs" onClick={() => openFile(inFolder(file))}><PencilIcon data-icon="inline-start" />Edit</Button>
 				</div>
-				<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">{diff.data ? <><Diff text={diff.data.diff || "No difference."} />{diff.data.truncated ? <p className="px-3 py-2.5 text-sm text-muted-foreground select-text">… the rest of this diff is too long to show.</p> : null}</> : diff.error ? <Empty><EmptyHeader><EmptyMedia variant="icon"><GitBranchIcon /></EmptyMedia><EmptyTitle>This diff cannot be shown</EmptyTitle><EmptyDescription>{diff.error}</EmptyDescription></EmptyHeader></Empty> : <LinesSkeleton />}</div><ScrollBar orientation="horizontal" /></ScrollArea>
+				<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">{diff.data ? <><Diff text={diff.data.diff || "No difference."} />{diff.data.truncated ? <p className="px-3 py-2.5 text-sm text-muted-foreground select-text">… the rest of this diff is too long to show.</p> : null}</> : diff.error ? <Empty><EmptyHeader><EmptyMedia variant="icon"><GitBranchIcon /></EmptyMedia><EmptyTitle>Could not show this diff</EmptyTitle><EmptyDescription>{diff.error}</EmptyDescription></EmptyHeader></Empty> : <LinesSkeleton />}</div><ScrollBar orientation="horizontal" /></ScrollArea>
 			</>
 		);
 	return (
 		<>
 			<div className={SUB}>
-				{turn ? <><Undo2Icon className="size-4 shrink-0" /><span className="min-w-0 flex-1 truncate">{data.prompt ? `Since “${short(oneLine(data.prompt), 60)}”` : "Since your last message"}</span>{data.files.length ? <Button variant="outline" size="xs" onClick={() => void store.undo(tab, false)}>Take back</Button> : null}</> : <><GitBranchIcon className="size-3.5 shrink-0" /><span className="min-w-0 flex-1 truncate">{data.branch || "no branch"}{data.worktree ? ` · ${data.worktree.ahead} ahead of ${data.worktree.base}${data.worktree.behind ? `, ${data.worktree.behind} behind` : ""}` : ""} · {data.files.length ? plural(data.files.length, "changed file") : "clean"}</span>{data.worktree ? <Button variant="outline" size="xs" onClick={() => void store.worktreeMenu(tab)}>{data.worktree.ahead && !data.worktree.dirty ? "Merge…" : "Worktree…"}</Button> : null}</>}
-				<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={list.reload} aria-label="Read again"><RotateCwIcon /></Button>} /><TooltipContent>Read again</TooltipContent></HoverTooltip>
+				{turn ? <><Undo2Icon className="size-4 shrink-0" /><span className="min-w-0 flex-1 truncate">{data.prompt ? `Since “${short(oneLine(data.prompt), 60)}”` : "Since your last message"}</span>{data.files.length ? <Button variant="outline" size="xs" onClick={() => void store.undo(tab, false)}>Undo</Button> : null}</> : <><GitBranchIcon className="size-3.5 shrink-0" /><span className="min-w-0 flex-1 truncate">{data.branch || "no branch"}{data.worktree ? ` · ${data.worktree.ahead} ahead of ${data.worktree.base}${data.worktree.behind ? `, ${data.worktree.behind} behind` : ""}` : ""} · {data.files.length ? plural(data.files.length, "changed file") : "clean"}</span>{data.worktree ? <Button variant="outline" size="xs" onClick={() => void store.worktreeMenu(tab)}>{data.worktree.ahead && !data.worktree.dirty ? "Merge…" : "Worktree…"}</Button> : null}</>}
+				<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={list.reload} aria-label="Refresh"><RotateCwIcon /></Button>} /><TooltipContent>Refresh</TooltipContent></HoverTooltip>
 			</div>
 			<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">
 				{data.note ? <p className="px-3 py-2.5 text-sm text-muted-foreground select-text">{data.note}</p> : null}
@@ -388,7 +263,7 @@ function FileTree({ tab, tick, rows, select, isDir, redraw }: { tab: Tab; tick: 
 	const toggle = (full: string) => (state.open.has(full) ? state.open.delete(full) : state.open.add(full), redraw());
 	return (
 		<>
-			{failed ? <Empty><EmptyHeader><EmptyMedia variant="icon"><FolderIcon /></EmptyMedia><EmptyTitle>This folder cannot be read</EmptyTitle><EmptyDescription>{failed}</EmptyDescription></EmptyHeader></Empty> : null}
+			{failed ? <Empty><EmptyHeader><EmptyMedia variant="icon"><FolderIcon /></EmptyMedia><EmptyTitle>Could not read this folder</EmptyTitle><EmptyDescription>{failed}</EmptyDescription></EmptyHeader></Empty> : null}
 			{entries && !entries.length ? <Empty><EmptyHeader><EmptyMedia variant="icon"><FolderIcon /></EmptyMedia><EmptyTitle>This folder is empty</EmptyTitle></EmptyHeader></Empty> : null}
 			<Tree
 				aria-label="Files"
@@ -491,7 +366,7 @@ function FileView({ tab, file, close }: { tab: Tab; file: string; close: () => v
 				<AlertDialog open={leaving} onOpenChange={setLeaving}>
 					<AlertDialogContent>
 						<AlertDialogHeader>
-							<AlertDialogTitle>Leave {file} without saving what you typed?</AlertDialogTitle>
+							<AlertDialogTitle>Leave {file} without saving your changes?</AlertDialogTitle>
 						</AlertDialogHeader>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -508,7 +383,7 @@ function FileView({ tab, file, close }: { tab: Tab; file: string; close: () => v
 				<Alert className="m-2 w-auto">
 					<AlertDescription>This file changed on disk while you were typing.</AlertDescription>
 					<AlertAction>
-						<Button variant="outline" size="xs" onClick={() => edit({ base: text, draft: undefined })}>Take the new one</Button>
+						<Button variant="outline" size="xs" onClick={() => edit({ base: text, draft: undefined })}>Load the new version</Button>
 					</AlertAction>
 				</Alert>
 			) : null}
@@ -522,7 +397,7 @@ function FileView({ tab, file, close }: { tab: Tab; file: string; close: () => v
 				{kind ? (
 					<div className="p-3.5">{kind === "image" ? <img className={PICTURE} src={media.workspace(tab.agent, file, tab.session)} alt={file} /> : kind === "video" ? <video className="block max-h-90 max-w-full rounded-lg bg-black sm:max-w-lg" src={media.workspace(tab.agent, file, tab.session)} controls /> : <audio className="block w-full max-w-md" src={media.workspace(tab.agent, file, tab.session)} controls />}</div>
 				) : disk.error ? (
-					<Empty><EmptyHeader><EmptyMedia variant="icon"><FileIcon /></EmptyMedia><EmptyTitle>This file cannot be shown</EmptyTitle><EmptyDescription>{disk.error}</EmptyDescription></EmptyHeader></Empty>
+					<Empty><EmptyHeader><EmptyMedia variant="icon"><FileIcon /></EmptyMedia><EmptyTitle>Could not show this file</EmptyTitle><EmptyDescription>{disk.error}</EmptyDescription></EmptyHeader></Empty>
 				) : !disk.data ? (
 					<LinesSkeleton rows={12} />
 				) : (
@@ -598,7 +473,7 @@ function Files({ tab, file, setFile }: { tab: Tab; file?: string; setFile: (file
 					<InputGroupAddon>
 						<SearchIcon />
 					</InputGroupAddon>
-					<InputGroupInput aria-label={state.contents ? "Find a file by its name or its text" : "Find a file"} placeholder={`Find a file${state.contents ? " or text" : ""}${root ? ` in ${tilde(root)}` : ""}`} value={query} onChange={(e) => setQuery(e.target.value)} />
+					<InputGroupInput aria-label={state.contents ? "Find a file by name or contents" : "Find a file"} placeholder={`Find a file${state.contents ? " or text" : ""}${root ? ` in ${tilde(root)}` : ""}`} value={query} onChange={(e) => setQuery(e.target.value)} />
 					<InputGroupAddon align="inline-end">
 						<HoverTooltip>
 							<TooltipTrigger render={<InputGroupButton size="icon-xs" variant={state.contents ? "secondary" : "ghost"} aria-pressed={state.contents} aria-label="Search inside files too" onClick={() => ((state.contents = !state.contents), redraw())} />}>
@@ -608,7 +483,7 @@ function Files({ tab, file, setFile }: { tab: Tab; file?: string; setFile: (file
 						</HoverTooltip>
 					</InputGroupAddon>
 				</InputGroup>
-				<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => setTick((n) => n + 1)} aria-label="Read again"><RotateCwIcon /></Button>} /><TooltipContent>Read again</TooltipContent></HoverTooltip>
+				<HoverTooltip><TooltipTrigger render={<Button variant="ghost" size="icon-xs" onClick={() => setTick((n) => n + 1)} aria-label="Refresh"><RotateCwIcon /></Button>} /><TooltipContent>Refresh</TooltipContent></HoverTooltip>
 			</div>
 			<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade">
 				{/* A right click beside the rows is about the folder itself: new files go to its top. */}
@@ -616,7 +491,7 @@ function Files({ tab, file, setFile }: { tab: Tab; file?: string; setFile: (file
 					{q ? (
 						found.data?.length ? (
 							<Listbox
-								aria-label="Files that fit"
+								aria-label="Matching files"
 								className="outline-none"
 								multiple
 								activation="automatic"
@@ -639,7 +514,7 @@ function Files({ tab, file, setFile }: { tab: Tab; file?: string; setFile: (file
 						) : found.loading ? (
 							<Pulse label="Loading" className="m-auto" />
 						) : (
-							<Empty><EmptyHeader><EmptyMedia variant="icon"><SearchIcon /></EmptyMedia><EmptyTitle>{state.contents ? "No file fits or holds it" : "No file fits"}</EmptyTitle></EmptyHeader></Empty>
+							<Empty><EmptyHeader><EmptyMedia variant="icon"><SearchIcon /></EmptyMedia><EmptyTitle>{state.contents ? "No file name or contents match" : "No matching files"}</EmptyTitle></EmptyHeader></Empty>
 						)
 					) : (
 						<FileTree tab={tab} tick={tick} rows={rows} select={select} isDir={isDir} redraw={redraw} />
@@ -663,8 +538,8 @@ function Output({ tab }: { tab: Tab }) {
 		return out;
 	}, [tab.key, tab.codeTick]);
 	const [open, setOpen] = useState<string>();
-	if (!calls.data) return calls.error ? <Empty><EmptyHeader><EmptyMedia variant="icon"><SquareTerminalIcon /></EmptyMedia><EmptyTitle>The tool calls cannot be read</EmptyTitle><EmptyDescription>{calls.error}</EmptyDescription></EmptyHeader></Empty> : <div className="flex flex-col">{Array.from({ length: 5 }, (_, i) => <ChangeRow key={i} skeleton />)}</div>;
-	if (!calls.data.length) return <Empty><EmptyHeader><EmptyMedia variant="icon"><SquareTerminalIcon /></EmptyMedia><EmptyTitle>No tool calls yet</EmptyTitle><EmptyDescription>What the agent's commands and tools print appears here.</EmptyDescription></EmptyHeader></Empty>;
+	if (!calls.data) return calls.error ? <Empty><EmptyHeader><EmptyMedia variant="icon"><SquareTerminalIcon /></EmptyMedia><EmptyTitle>Could not load the tool calls</EmptyTitle><EmptyDescription>{calls.error}</EmptyDescription></EmptyHeader></Empty> : <div className="flex flex-col">{Array.from({ length: 5 }, (_, i) => <ChangeRow key={i} skeleton />)}</div>;
+	if (!calls.data.length) return <Empty><EmptyHeader><EmptyMedia variant="icon"><SquareTerminalIcon /></EmptyMedia><EmptyTitle>No tool calls yet</EmptyTitle><EmptyDescription>Output from the agent's commands and tools appears here.</EmptyDescription></EmptyHeader></Empty>;
 	const shown = calls.data.find((c) => `${c.task}:${c.n}` === open);
 	if (shown)
 		return (
@@ -675,7 +550,7 @@ function Output({ tab }: { tab: Tab }) {
 					<span className="min-w-0 flex-1 truncate font-mono text-faint">{shown.entry.subject}</span>
 				</div>
 				<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">
-					<Printed text={shown.entry.result || "(it printed nothing)"} failed={shown.entry.ok === false} className="m-2" contentClassName={CODE_LINES} />
+					<Printed text={shown.entry.result || "(no output)"} failed={shown.entry.ok === false} className="m-2" contentClassName={CODE_LINES} />
 					{(shown.entry.images ?? []).map((id) => <div className="p-3" key={id}><img className={PICTURE} src={media.tool(id)} alt="" /></div>)}
 				</div></ScrollArea>
 			</>
@@ -699,7 +574,7 @@ function Output({ tab }: { tab: Tab }) {
 /** What the conversation's commands left running, and the way to stop each. */
 function Running({ tab }: { tab: Tab }) {
 	if (!tab.programsRead) return <LinesSkeleton rows={3} />;
-	if (!tab.programs.length) return <Empty><EmptyHeader><EmptyMedia variant="icon"><PlayIcon /></EmptyMedia><EmptyTitle>Nothing is running</EmptyTitle><EmptyDescription>A dev server or a watcher the agent starts keeps running after the agent is done. It is listed here, and stopped from here.</EmptyDescription></EmptyHeader></Empty>;
+	if (!tab.programs.length) return <Empty><EmptyHeader><EmptyMedia variant="icon"><PlayIcon /></EmptyMedia><EmptyTitle>Nothing is running</EmptyTitle><EmptyDescription>A dev server or watcher that the agent starts keeps running after the agent is done. You can see it here and stop it.</EmptyDescription></EmptyHeader></Empty>;
 	return (
 		<ScrollArea className="flex min-h-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="flex min-h-full flex-col">
 			<ItemGroup className="p-2">
@@ -811,7 +686,7 @@ export function CodePanel({ tab }: { tab: Tab }) {
 				</>
 			}
 		>
-			{steps ? <ScrollArea className="flex max-h-48 min-h-0 flex-none flex-col border-b border-line-soft *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="px-3 py-2.5"><Steps items={steps} /></div></ScrollArea> : null}
+			{steps ? <ScrollArea className="flex max-h-48 min-h-0 flex-none flex-col border-b border-line-soft *:data-[slot=scroll-area-viewport]:scroll-fade"><div className="px-3 py-2.5"><Steps items={steps} live={tab.busy} /></div></ScrollArea> : null}
 			{view === "agent" ? (
 				<AgentView tab={tab} />
 			) : view === "changes" || view === "turn" ? (
@@ -834,7 +709,7 @@ export function CodePanel({ tab }: { tab: Tab }) {
 			) : view === "browser" ? (
 				<BrowserView tab={tab} />
 			) : view === "terminal" ? (
-				store.remote ? <Empty><EmptyHeader><EmptyMedia variant="icon"><SquareTerminalIcon /></EmptyMedia><EmptyTitle>No terminal here</EmptyTitle><EmptyDescription>The terminal is a shell on this computer, and this conversation works on {store.remote}. Open a terminal there with ssh.</EmptyDescription></EmptyHeader></Empty> : <TerminalView tab={tab} />
+				store.remote ? <Empty><EmptyHeader><EmptyMedia variant="icon"><SquareTerminalIcon /></EmptyMedia><EmptyTitle>No terminal here</EmptyTitle><EmptyDescription>The terminal is a shell on this computer, but this conversation works on {store.remote}. Open a terminal there with ssh.</EmptyDescription></EmptyHeader></Empty> : <TerminalView tab={tab} />
 			) : (
 				<Running tab={tab} />
 			)}
