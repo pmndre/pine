@@ -30,7 +30,7 @@ import { Events } from "./Events.tsx";
 import { type Beside, isPick, PANE, paneOf, ROOM, store, type Tab, type UpdatePhase, useModel, useSignal } from "./model.ts";
 import * as dock from "./dock.ts";
 import { ViewAside } from "./View.tsx";
-import { Breakable, MachineList, NewAgent, Settings } from "./Settings.tsx";
+import { Breakable, MachineList, NewAgent, Settings, ThingDialog } from "./Settings.tsx";
 import { Manual } from "./Manual.tsx";
 import { computerWord, firstScreen, isPaired, noMachineSaid } from "./machines.ts";
 import { ApprovalDialog } from "./ApprovalDialog.tsx";
@@ -1767,6 +1767,7 @@ export function App() {
 			{s.picker ? <PickDialog key={s.picker.title} p={s.picker} /> : null}
 			{s.publishing ? <PublishDialog /> : null}
 			{/* A new agent is met in its conversation: once made, that opens in a tab, wherever the dialog was opened from. */}
+			<ThingDialog />
 			{s.newAgent ? <NewAgent close={() => ((s.newAgent = false), s.touch())} made={(id) => ((s.newAgent = false), s.touch(), void s.openTab(id, "main"))} /> : null}
 			{s.palette ? <Palette /> : null}
 			<Asking />

@@ -8,7 +8,8 @@ import { computerWord } from "./machines.ts";
 import { useNamedLine } from "./lists.tsx";
 import { store, useModel } from "./model.ts";
 import { ago, fuzzy, shortcut } from "./text.ts";
-import { goTo, useSettingsIndex } from "./Settings.tsx";
+import { useSettingsIndex } from "./Settings.tsx";
+import { goTo } from "./things.ts";
 import { search } from "./settings-index.ts";
 import { Skeleton } from "@/components/ui/skeleton";
 

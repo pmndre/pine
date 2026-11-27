@@ -4,7 +4,7 @@ import type { AgentDetail, AgentInfo, McpServer, Overview, Route, Schedule, Sett
 import { store } from "./model.ts";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { NewRoute, NewSchedule, Routes, Schedules, Settings, SettingsItem, ThemePicker } from "./Settings.tsx";
+import { NewRoute, NewSchedule, Routes, Schedules, Settings, SettingsItem, ThemePicker, ThingDialog } from "./Settings.tsx";
 import { THEMES } from "../.storybook/themes.ts";
 import type { ThemeEntry } from "./theme.ts";
 
@@ -251,6 +251,8 @@ export const ScheduleList: Story = {
 		return (
 			<div className="flex w-full max-w-250 flex-col gap-6">
 				<Schedules />
+				{/* A row opens in the app's one dialog, which App.tsx holds. */}
+				<ThingDialog />
 			</div>
 		);
 	},
@@ -277,6 +279,8 @@ export const RouteList: Story = {
 		return (
 			<div className="flex w-full max-w-250 flex-col gap-6">
 				<Routes />
+				{/* A row opens in the app's one dialog, which App.tsx holds. */}
+				<ThingDialog />
 			</div>
 		);
 	},

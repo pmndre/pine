@@ -48,6 +48,7 @@ import { ModelNotice } from "@/components/model-notice";
 import { AgentColorPicker, AgentNameInput } from "@/components/agent-identity";
 import { BrowserAccess } from "./BrowserAccess.tsx";
 import { Control, CONTROL, LIST, Page, Section, Wrapped } from "./settings-parts.tsx";
+import { changed, conversationOf, DECIDE_ANSWERS, goTo, LISTS, OPENED, openThing, routeOf, routeSaid, span, subscriber, wakes } from "./things.ts";
 import { type Entry, entries, GROUPS, LABELS, type Lists, type Place, search } from "./settings-index.ts";
 import { providerAbout, providerName, providerWords, SUBSCRIPTIONS } from "./providers.ts";
 import { NearbyComputers, PairLinkField } from "./Pairing.tsx";
@@ -128,9 +129,6 @@ const whom = (agents: Array<{ id: string }>) => [{ value: "", label: "all agents
 // MCP servers and Events, an agent's own (and its conversations') on its page under Agents. A page for all
 // agents ends with the agents that have their own, each a way to its page.
 
-/** Says that one of the lists changed, so that every list on screen asks again: a page and its "Agents' own". */
-const LISTS = new Model();
-const changed = () => LISTS.touch();
 
 /** "For" in a form that adds something on a page for all agents: all agents, or one, whose page then lists it. */
 function ForField({ id, items, value, onChange }: { id: string; items: Array<{ value: string; label: string }>; value: string; onChange: (v: string) => void }) {
@@ -1743,14 +1741,13 @@ function SkillDialog({ draft, close, lockAgent }: { draft: SkillDraft; close: ()
 function SkillList({ agent }: { agent?: string }) {
 	useModel(LISTS);
 	const skills = useLoad(() => api.skills(), [LISTS.v]);
-	const [open, setOpen] = useState<SkillDraft>();
 	const list = skills.data?.filter((x) => (agent ? x.agent === agent : x.scope === "global"));
 	return (
 		<Section
 			title={agent ? "Skills" : "For all agents"}
 			data-find={agent ? "agent-skills" : undefined}
 			about={agent ? `Skills only ${agent} uses.` : undefined}
-			actions={<Button variant="outline" onClick={() => setOpen({ name: "", description: "", instructions: "", agent: agent ?? "" })}><PlusIcon data-icon="inline-start" />New skill</Button>}
+			actions={<Button variant="outline" onClick={() => openThing({ kind: "skill", agent })}><PlusIcon data-icon="inline-start" />New skill</Button>}
 		>
 			{list && !list.length ? (
 				agent ? <FieldDescription>None yet.</FieldDescription> : <Empty><EmptyHeader><EmptyMedia variant="icon"><BookIcon /></EmptyMedia><EmptyTitle>No skills for all agents</EmptyTitle><EmptyDescription>Ask an agent to make one (“make a skill of this”), or add one here.</EmptyDescription></EmptyHeader></Empty>
@@ -1762,7 +1759,7 @@ function SkillList({ agent }: { agent?: string }) {
 								key={x.dir}
 								data-find={`skill:${x.dir}`}
 								render={<button type="button" />}
-								onClick={() => setOpen({ name: x.name, description: x.description, instructions: x.instructions ?? "", agent: x.agent ?? "", was: x })}
+								onClick={() => openThing({ kind: "skill", skill: x })}
 								title={<>
 										{x.name}
 										<OnlyIn session={x.session} />
@@ -1779,7 +1776,6 @@ function SkillList({ agent }: { agent?: string }) {
 					)}
 				</ItemGroup>
 			)}
-			{open ? <SkillDialog draft={open} lockAgent={!!agent} close={() => setOpen(undefined)} /> : null}
 		</Section>
 	);
 }
@@ -2000,11 +1996,6 @@ function NewSource({ types, agent, made }: { types: SourceType[]; agent?: string
 	);
 }
 
-/** A line of a source's subscribers ("books", "books/side", "books (a fresh conversation …)") as the agent and conversation it is. */
-const subscriber = (who: string) => {
-	const agent = who.split(/[/ ]/)[0];
-	return { agent, session: who.includes("/") ? who.slice(agent.length + 1) : who.includes("(") ? "new" : "main" };
-};
 
 /**
  * Sources: those for all agents (no `agent`), or one agent's own and the sources for all agents it listens to.
@@ -2112,23 +2103,6 @@ const WHEN: Record<"cron" | "every" | "at" | "in", { label: string; name: string
 	in: { label: "Once, in", name: "From now", example: "20m", hint: "Once, after this long: 20m, 2h" },
 };
 
-// A time in milliseconds as pine.json writes it: 5m, 30s, 2h.
-const span = (ms: number) => (ms % 3_600_000 === 0 ? `${ms / 3_600_000}h` : ms % 60_000 === 0 ? `${ms / 60_000}m` : ms % 1000 === 0 ? `${ms / 1000}s` : `${ms}ms`);
-
-const conversationOf = (session: string | undefined) => (!session || session === "main" ? "in the main conversation" : session === "new" ? "in a new conversation" : `in the conversation ${session}`);
-
-// The three kinds of answer a decision has (src/ask.ts), and what a filter on each looks like.
-const DECIDE_ANSWERS = {
-	yesno: { label: "Yes or no", said: "yes or no", field: "yes", filter: '{"gte": 0.8}', about: "The answer is how likely a yes is, from 0 to 1." },
-	choice: { label: "One of several", said: "one of", field: "choice", filter: '"invoice"', about: "The answer is the name of the option that fits best." },
-	score: { label: "A level", said: "a level of", field: "score", filter: '{"gte": 1}', about: "The answer is the level that fits and its position, where 0 is the lowest." },
-} as const;
-
-const decideSaid = (questions: Record<string, AskQuestion>) =>
-	Object.entries(questions)
-		.map(([name, q]) => `${name}: “${short(q.question, 80)}” (${DECIDE_ANSWERS[q.type]?.said ?? q.type}${q.options ? ` ${Object.keys(q.options).join(", ")}` : q.levels ? ` ${q.levels.join(", ")}` : ""})`)
-		.join(" and ");
-
 /** The options or levels as the form takes them: one on each line; an option as "name: when it applies". */
 function decideChoices(type: keyof typeof DECIDE_ANSWERS, text: string): { options?: Record<string, string>; levels?: string[] } {
 	const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -2140,25 +2114,6 @@ function decideChoices(type: keyof typeof DECIDE_ANSWERS, text: string): { optio
 			return at > 0 ? [l.slice(0, at).trim(), l.slice(at + 1).trim() || l.slice(0, at).trim()] : [l, l];
 		})),
 	};
-}
-
-/** A route in the words of the form that makes one: when what arrives, then what happens. */
-function routeSaid(r: Route): { when: string; then: string } {
-	const when = [
-		r.on.join(" or "),
-		r.when ? `only if ${JSON.stringify(r.when)}` : "",
-		r.throttleMs ? `at most one per ${span(r.throttleMs)}` : "",
-		r.debounceMs ? `the last of a burst, after ${span(r.debounceMs)} without another` : "",
-	].filter(Boolean).join(", ");
-	const then = [
-		r.set ? `set ${Object.entries(r.set).map(([k, v]) => `${k} to ${JSON.stringify(v)}`).join(" and ")}` : "",
-		r.call ? `ask ${r.call.model ?? "the default model"} once: “${short(r.call.prompt, 80)}”` : "",
-		r.ask ? `decide with ${r.ask.model ?? "the default model"}, ${decideSaid(r.ask.questions)}` : "",
-		r.run ? `run “${short(r.run.command, 80)}”${r.run.agent ? ` as ${r.run.agent}` : ""}` : "",
-		r.publish ? (r.ask && r.publish.payload === undefined ? `publish the answers as ${r.publish.topic}` : r.call && r.publish.payload === undefined ? `publish the answer as ${r.publish.topic}` : `publish ${r.publish.topic}${r.publish.payload !== undefined ? ` with ${short(JSON.stringify(r.publish.payload), 60)}` : ""}`) : "",
-		r.agent ? `wake ${r.agent} ${conversationOf(r.session)}${r.prompt ? `: “${short(r.prompt, 100)}”` : ", with the event"}` : "",
-	].filter(Boolean).join(", then ");
-	return { when, then };
 }
 
 // What a route does when its event arrives: one of five, and the form shows the fields of that one only.
@@ -2274,21 +2229,17 @@ export function ScheduleForm({ schedule: was, agent, made }: { schedule?: Schedu
 /** The form for a new schedule (Storybook and the pages call it so). */
 export const NewSchedule = ({ made, agent }: { made: () => void; agent?: string }) => <ScheduleForm made={made} agent={agent} />;
 
-// Whom a schedule wakes, in the words of the form that makes one.
-const wakes = (scope: string, session?: string) => (scope === "global" ? "all agents, each in its main conversation" : `${scope} ${conversationOf(session)}`);
-
 /** Schedules: those for all agents (no `agent`), or one agent's own. A row opens the schedule to change or remove it. */
 export function Schedules({ agent }: { agent?: string }) {
 	useModel(LISTS);
 	const list = useLoad(() => api.schedules(), [LISTS.v]);
-	const [open, setOpen] = useState<Schedule | "new">();
 	const mine = list.data?.filter((x) => x.scope === (agent ?? "global"));
 	return (
 		<Section
 			title="Schedules"
 			data-find={agent ? "agent-schedules" : "schedules"}
 			about={agent ? `Tasks ${agent} gets at set times, as if you had sent them.` : "Tasks that all agents get at set times. For a single agent, add the schedule on that agent's page, or just ask the agent: “every morning at seven…”."}
-			actions={<Button variant="outline" onClick={() => setOpen("new")}><PlusIcon data-icon="inline-start" />New schedule</Button>}
+			actions={<Button variant="outline" onClick={() => openThing({ kind: "schedule", agent })}><PlusIcon data-icon="inline-start" />New schedule</Button>}
 		>
 			{mine && !mine.length ? (
 				agent ? <FieldDescription>None yet.</FieldDescription> : <Empty><EmptyHeader><EmptyMedia variant="icon"><ClockIcon /></EmptyMedia><EmptyTitle>No schedules for all agents</EmptyTitle><EmptyDescription>Schedules for a single agent are on that agent's page.</EmptyDescription></EmptyHeader></Empty>
@@ -2300,7 +2251,7 @@ export function Schedules({ agent }: { agent?: string }) {
 								key={`${x.scope}:${x.name}`}
 								data-find={`schedule:${x.scope}:${x.name}`}
 								render={<button type="button" />}
-								onClick={() => setOpen(x)}
+								onClick={() => openThing({ kind: "schedule", schedule: x })}
 								title={<>
 										{x.name}
 										<OnlyIn session={x.session} />
@@ -2320,11 +2271,6 @@ export function Schedules({ agent }: { agent?: string }) {
 					)}
 				</ItemGroup>
 			)}
-			<Dialog open={!!open} onOpenChange={(o) => o || setOpen(undefined)}>
-				<DialogContent showCloseButton={false} className="sm:max-w-2xl">
-					{open ? <ScheduleForm key={open === "new" ? "new" : `${open.scope}:${open.name}`} schedule={open === "new" ? undefined : open} agent={agent} made={() => setOpen(undefined)} /> : null}
-				</DialogContent>
-			</Dialog>
 		</Section>
 	);
 }
@@ -2631,9 +2577,6 @@ function RouteAsIs({ route: r, made }: { route: Route; made: () => void }) {
 	);
 }
 
-/** Whether a route concerns an agent: the agent made it, it wakes the agent, or it runs in the agent's sandbox. */
-const routeOf = (r: Route, agent: string) => r.of === agent || r.agent === agent || r.run?.agent === agent;
-
 /**
  * Routes: those of pine (no `agent`), or every route that concerns one agent. A row opens the route to read,
  * change or remove it.
@@ -2641,15 +2584,13 @@ const routeOf = (r: Route, agent: string) => r.of === agent || r.agent === agent
 export function Routes({ agent }: { agent?: string }) {
 	useModel(LISTS);
 	const list = useLoad(() => api.routes(), [LISTS.v]);
-	const [open, setOpen] = useState<Route | "new">();
 	const mine = list.data?.filter((r) => (agent ? routeOf(r, agent) : !r.of));
-	const fields = open && open !== "new" ? routeFields(open) : undefined;
 	return (
 		<Section
 			title="Routes"
 			data-find={agent ? "agent-routes" : "routes"}
 			about={agent ? `Rules that wake ${agent} or act for it when a certain event arrives. They are removed along with ${agent}.` : "Rules for events. When an event arrives, a route does one thing, often without waking an agent. Most setups need none. To react to a source, let an agent listen to it."}
-			actions={<Button variant="outline" onClick={() => setOpen("new")}><PlusIcon data-icon="inline-start" />New route</Button>}
+			actions={<Button variant="outline" onClick={() => openThing({ kind: "route", agent })}><PlusIcon data-icon="inline-start" />New route</Button>}
 		>
 			{mine && !mine.length ? (
 				agent ? <FieldDescription>None yet.</FieldDescription> : <Empty><EmptyHeader><EmptyMedia variant="icon"><GitBranchIcon /></EmptyMedia><EmptyTitle>No routes</EmptyTitle><EmptyDescription>You don’t need any to start.</EmptyDescription></EmptyHeader></Empty>
@@ -2663,7 +2604,7 @@ export function Routes({ agent }: { agent?: string }) {
 									key={r.name}
 									data-find={`route:${r.name}`}
 									render={<button type="button" />}
-									onClick={() => setOpen(r)}
+									onClick={() => openThing({ kind: "route", route: r })}
 									title={<>
 											{r.name}
 											{r.trust === "owner" ? <Badge variant="outline">counts as you</Badge> : null}
@@ -2683,12 +2624,35 @@ export function Routes({ agent }: { agent?: string }) {
 					)}
 				</ItemGroup>
 			)}
-			<Dialog open={!!open} onOpenChange={(o) => o || setOpen(undefined)}>
-				<DialogContent showCloseButton={false} className="sm:max-w-2xl">
-					{open === "new" ? <RouteForm key="new" agent={agent} made={() => setOpen(undefined)} /> : open && fields ? <RouteForm key={open.name} route={open} made={() => setOpen(undefined)} /> : open ? <RouteAsIs route={open} made={() => setOpen(undefined)} /> : null}
-				</DialogContent>
-			</Dialog>
 		</Section>
+	);
+}
+
+/**
+ * The one dialog a route, a schedule or a skill opens in (`openThing`), over whatever is in front: Settings'
+ * lists and the side panel's Agent tab open the same one, so a thing is read and changed the same way from
+ * either. App.tsx holds it.
+ */
+export function ThingDialog() {
+	const { thing } = useModel(OPENED);
+	const close = () => openThing(undefined);
+	if (!thing) return null;
+	if (thing.kind === "skill") {
+		const x = thing.skill;
+		return <SkillDialog key={x?.dir ?? "new"} draft={x ? { name: x.name, description: x.description, instructions: x.instructions ?? "", agent: x.agent ?? "", was: x } : { name: "", description: "", instructions: "", agent: thing.agent ?? "" }} lockAgent={!!thing.agent} close={close} />;
+	}
+	return (
+		<Dialog open onOpenChange={(o) => o || close()}>
+			<DialogContent showCloseButton={false} className="sm:max-w-2xl">
+				{thing.kind === "schedule" ? (
+					<ScheduleForm key={thing.schedule ? `${thing.schedule.scope}:${thing.schedule.name}` : "new"} schedule={thing.schedule} agent={thing.agent} made={close} />
+				) : !thing.route || routeFields(thing.route) ? (
+					<RouteForm key={thing.route?.name ?? "new"} route={thing.route} agent={thing.agent} made={close} />
+				) : (
+					<RouteAsIs route={thing.route} made={close} />
+				)}
+			</DialogContent>
+		</Dialog>
 	);
 }
 
@@ -3345,12 +3309,6 @@ function AppSections({ overview }: { overview?: Awaited<ReturnType<typeof api.ov
 }
 
 // ---- search -----------------------------------------------------------------------------------------
-
-/** Where a thing found in Settings is: its page opens, and the page shows it (see Settings below). */
-export function goTo(place: Place): void {
-	store.settingsFind = place.find || place.filter ? { find: place.find, filter: place.filter } : undefined;
-	store.openSettings(place.section, place.agent);
-}
 
 /**
  * Everything the search of Settings can find, for as long as `on`: the lists are asked for when the search

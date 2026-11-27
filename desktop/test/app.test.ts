@@ -177,7 +177,7 @@ test("the agent's browser is a part of the side panel, shown as a picture, and w
 		await page.mouse.wheel(0, 120);
 		await page.click("[data-slot=browser] [data-slot=tabs-trigger] >> nth=1");
 		// A tab of the owner's own, and one closed.
-		await page.click("[data-slot=browser] button[aria-label='A new tab']");
+		await page.click("[data-slot=browser] button[aria-label='New tab']");
 		// The tabs are drawn again once the new one is asked for: a click before that can land on a button that is gone.
 		await waitFor("a new tab arrived", () => ops().some((o) => o.do === "newtab"));
 		// The button to close a tab that is not in front shows under the pointer only. So the pointer goes to the tab
@@ -1524,7 +1524,7 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await page.click("[role=navigation] [data-sidebar=menu-button] >> text=Models");
 	await page.locator("[data-slot=settings-page]").getByRole("button", { name: "Add a decision model" }).click();
 	const decisionForm = page.locator("[data-slot=dialog-content]");
-	await decisionForm.getByLabel("Where it is").click();
+	await decisionForm.getByLabel("Where it runs").click();
 	await page.getByRole("option", { name: "Another server, by address" }).click();
 	await decisionForm.getByLabel("Address").fill("http://127.0.0.1:9");
 	await decisionForm.getByLabel("Model", { exact: true }).fill("judge-7b");
@@ -1831,6 +1831,18 @@ test("beside a conversation, the panel's Agent view says what the agent has been
 	await sees("[data-slot=code-panel] [role=tab][aria-selected=true] >> text=Agent");
 	await sees("[data-slot=code-panel] [data-slot=item-title] >> text=invoices");
 	await sees("[data-slot=code-panel] [data-slot=item-title] >> text=morning");
-	assert.match(await page.textContent("[data-slot=code-panel]"), /Nothing wakes this agent yet\. It can listen to 1 event source\./);
+	assert.match(await page.textContent("[data-slot=code-panel]"), /Nothing wakes main yet\. It could listen to 1 source/);
+	// A row opens the thing itself, in the dialog Settings opens it in; what is for all agents says so.
+	const morning = page.locator("[data-slot=code-panel] [data-slot=item]", { has: page.locator("[data-slot=item-title]", { hasText: "morning" }) });
+	assert.match((await morning.textContent()) ?? "", /all agents/);
+	await morning.click();
+	await sees("[data-slot=dialog-content] [data-slot=dialog-title] >> text=morning");
+	assert.equal(await page.locator("[data-slot=dialog-content]").getByLabel("Task", { exact: true }).inputValue(), "Say good morning.");
+	await page.keyboard.press("Escape");
+	await page.waitForSelector("[data-slot=dialog-content]", { state: "detached" });
+	// "Manage" leads to that part of the agent's page in Settings.
+	await page.locator("[data-slot=agent-section]", { has: page.locator("h3", { hasText: "Schedules" }) }).getByRole("button", { name: "Manage" }).click();
+	await sees("[data-slot=settings-page] [data-find=agent-schedules][data-found]");
+	await page.click("[data-slot=tab] >> nth=0");
 	await shot("14-agent-view");
 });

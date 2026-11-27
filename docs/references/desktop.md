@@ -365,7 +365,7 @@ else the agent's workspace). Put it beside the conversation to watch files chang
 | Output | The last messages' tool calls with all they printed |
 | Terminal | A shell of your own in the folder (`` ⌃` ``, View > Terminal, `/terminal`; "The terminal") |
 | Browser | The conversation's browser (`⇧⌘B`; "The browser") |
-| Agent | The agent's purpose, model, reasoning and mode (a click changes each), delegates, current work, subscriptions, schedules, skills, MCP servers and `MEMORY.md` |
+| Agent | The agent's purpose, model, reasoning and mode (a click changes each), delegates and current work. Then what this conversation has, in the order of the agent's page in Settings: skills, MCP servers, sources it listens to, schedules, routes (when one concerns the agent), `MEMORY.md` and the workspace. A row says "all agents" or "this conversation" when the thing is not the agent's own. A skill, schedule or route opens from its row in the dialog Settings opens it in; a source or server row goes to its place in Settings; **Manage** goes to that part of the agent's page |
 | Running | What the conversation's commands left running (a dev server): ports as links, last output, Stop. Shown while something runs, or with `/code running` |
 | Board | The conversation's board ("The Board tab"). Shown while there is one, or with `/code board` |
 
