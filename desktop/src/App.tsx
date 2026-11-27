@@ -1676,6 +1676,25 @@ function BrowserAsk() {
 	);
 }
 
+/** Once, at the start, when pine's extension can be had from a store: let agents work in the owner's own browser. */
+function OwnBrowserAsk() {
+	const s = useModel(store);
+	return (
+		<Dialog open onOpenChange={(open) => open || void s.ownBrowserAnswer(false)}>
+			<DialogContent showCloseButton={false} className="sm:max-w-xl" data-dialog="own-browser-ask">
+				<DialogHeader>
+					<DialogTitle>Let your agents use your browser</DialogTitle>
+					<DialogDescription className="select-text">Agents browse in a browser of pine's own, which has none of your logins and which some sites refuse. With the Pine extension they can also work in your Chrome, Brave or Edge: in a tab group of their own, in the tabs they open and the tabs you drag in. You can set this up later under Settings &gt; General.</DialogDescription>
+				</DialogHeader>
+				<DialogFooter>
+					<Button variant="outline" data-action="later" onClick={() => void s.ownBrowserAnswer(false)}>Not now</Button>
+					<Button data-action="get" onClick={() => void s.ownBrowserAnswer(true)}><ExternalLinkIcon data-icon="inline-start" />Get the extension</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
 const SIDE_KEY = "pine.sidebar.width";
 const SIDE_WIDTH = 248;
 
@@ -1760,6 +1779,8 @@ export function App() {
 				</SidebarProvider>
 			)}
 			{s.browserAsk ? <BrowserAsk /> : null}
+			{/* One question at a time: the browser the web tools need comes first. */}
+			{s.ownBrowserAsk && !s.browserAsk ? <OwnBrowserAsk /> : null}
 			{s.updateAsk ? <UpdateAsk /> : null}
 			{s.homeScreen ? <HomeScreenTip /> : null}
 			{s.pairAsk ? <PairConfirm key={s.pairAsk.link} link={s.pairAsk} device={s.device} onPair={() => void s.confirmPair()} onCancel={() => s.dropPair()} /> : null}

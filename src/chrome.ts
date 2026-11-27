@@ -76,6 +76,8 @@ const SOURCE = path.join(import.meta.dirname, "..", "extension");
 // (PINE_CHROME_ACCOUNT is for pine's own tests, which must not write into the owner's browsers.)
 const accountOf = (w: ChromeWhere) => w.account ?? process.env.PINE_CHROME_ACCOUNT ?? os.homedir();
 const platformOf = (w: ChromeWhere) => w.platform ?? process.platform;
+// (PINE_CHROME_STORE is for pine's own tests: the store page there would be once the extension is in a store.)
+const storeOf = () => process.env.PINE_CHROME_STORE || STORE;
 
 /** The browsers of this account, with the folder each looks for hosts in (macOS, Linux) or its registry key (Windows). */
 function found(w: ChromeWhere): Array<{ name: string; dir?: string; key?: string }> {
@@ -192,5 +194,5 @@ export function chromeState(w: ChromeWhere): ChromeState {
 		if (Number(said.until) > Date.now()) connected = { browser: word(said.browser, 40) || "a browser", version: word(said.version, 40) };
 	} catch {}
 	const set = isSet(w);
-	return { set, browsers: found(w).map((b) => ({ name: b.name, registered: set && registered(w, b) })), ...(connected ? { connected } : {}), folder: set ? folderOf(w.home) : SOURCE, ...(STORE ? { store: STORE } : {}) };
+	return { set, browsers: found(w).map((b) => ({ name: b.name, registered: set && registered(w, b) })), ...(connected ? { connected } : {}), folder: set ? folderOf(w.home) : SOURCE, ...(storeOf() ? { store: storeOf() } : {}) };
 }

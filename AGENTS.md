@@ -169,7 +169,8 @@ mcp/                bundled MCP servers (separate processes): web, browser, comm
 extension/          pine's extension for Chrome, Brave and Edge (manifest v3, plain JavaScript, no build): a pair of hands
                     for mcp/chrome.ts. A tab group per conversation, chrome.debugger on the tabs of that group and no
                     other, the agent's pointer drawn into the page. It decides nothing. docs/dev/chrome.md has its
-                    protocol, its id and key, and how it is tried
+                    protocol, its id and key, how it is tried and how it is published (`scripts/extension.mjs` packs
+                    it for a store); PRIVACY.md is the privacy policy its store listing names
 examples/home/      what `pine init` copies
 test/               node:test files; support/harness.ts builds a temp home and a daemon
 baseline/           pi SDK behaviour checks and their results; the mock model server lives here
@@ -1200,6 +1201,9 @@ Publishing needs no stored secret: on npmjs.com the package names this repositor
   the real host started by that browser, and plays the owner's hand on the tab strip through the
   extension's own worker. Run it (`npm run test:live`) when you change `extension/`, `mcp/chrome.ts` or
   upgrade Playwright MCP. A real Chrome or Brave with the extension from a store is tried by hand.
+  The app's tests start it with an account that has no browsers (`launchApp`), so that none finds or asks about
+  the developer's. The app's question at the start, which is only asked once the extension has a store page, is
+  tested with a page the test names (`PINE_CHROME_STORE`, for tests only: `desktop/test/own-browser.test.ts`).
 - The browser in the app's panel is tested without a browser: the relay on its stand-in for
   Playwright's server (`FAKE_BROWSER` in `test/browser.test.ts`, which also plays the owner's
   hand), the control API and the app on a stand-in for the browser's door (a file in the test

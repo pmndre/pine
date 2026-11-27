@@ -93,7 +93,9 @@ export const PATIENCE = Math.max(1, Number(process.env.PINE_TEST_PATIENCE) || 1)
 export const patient = (ms: number) => ms * PATIENCE;
 
 export async function launchApp(env: Record<string, string | undefined>): Promise<ElectronApplication> {
-	const all = { ...env, PINE_DESKTOP_HEADLESS: process.env.PINE_DESKTOP_SHOW ? "" : (env.PINE_DESKTOP_HEADLESS ?? "1") };
+	// The app's pine looks for the owner's browsers in their account ("Your own browser"): in a test, in an account
+	// with none unless the test names one, so that no test finds, asks about or writes into the developer's browsers.
+	const all = { ...env, PINE_CHROME_ACCOUNT: env.PINE_CHROME_ACCOUNT ?? path.join(os.tmpdir(), "pine-test-no-browsers"), PINE_DESKTOP_HEADLESS: process.env.PINE_DESKTOP_SHOW ? "" : (env.PINE_DESKTOP_HEADLESS ?? "1") };
 	// Electron takes only set variables; a spread of process.env may hold unset ones.
 	const set: Record<string, string> = {};
 	for (const [name, value] of Object.entries(all)) if (value !== undefined) set[name] = value;

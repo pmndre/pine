@@ -768,7 +768,7 @@ async function main(): Promise<void> {
 	}
 
 	if (cmd === "chrome") {
-		const { chromeState, connectChrome, disconnectChrome, STORE } = await import("./chrome.ts");
+		const { chromeState, connectChrome, disconnectChrome } = await import("./chrome.ts");
 		if (rest[0] !== undefined && rest[0] !== "install" && rest[0] !== "remove") throw new Error("usage: pine chrome [install | remove]");
 		if (rest[0] === "remove") return disconnectChrome(cfg), out("pine is no longer connected to your browsers. The extension itself you remove in the browser (chrome://extensions).");
 		if (rest[0] === "install") connectChrome(cfg);
@@ -778,7 +778,7 @@ async function main(): Promise<void> {
 		out(known.length ? `pine is connected to: ${known.join(", ")}` : "pine found no browser of Chrome's kind on this account (Chrome, Brave, Edge, Chromium, Vivaldi, Arc).");
 		if (state.connected) return out(`The extension is running in ${state.connected.browser}${state.connected.version ? ` ${state.connected.version}` : ""}. Tell an agent to use your browser, or set it for all conversations: Settings > General > Browser in the Pine app (the setting defaults.browser).`);
 		out("The extension does not answer yet. It needs:");
-		out(STORE ? `  1. the extension, from ${STORE}` : `  1. the extension: open chrome://extensions in the browser, switch on "Developer mode", press "Load unpacked" and pick\n     ${state.folder}`);
+		out(state.store ? `  1. the extension, from ${state.store}` : `  1. the extension: open chrome://extensions in the browser, switch on "Developer mode", press "Load unpacked" and pick\n     ${state.folder}`);
 		out("  2. the browser restarted once, if it ran before pine was connected");
 		return;
 	}

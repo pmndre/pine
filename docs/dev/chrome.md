@@ -42,9 +42,66 @@ keeps the page awake without bringing it to the front.
 
 `extension/manifest.json` has a `key`, so an extension loaded from a folder has the id in
 `EXTENSION_IDS` (`mcp/chrome.ts`). The private half is not in the repository. A store gives the
-extension an id of its own: add it to `EXTENSION_IDS`, set `STORE` in `src/chrome.ts` to the
-store page, and the app's Settings and `pine chrome` offer the store instead of the folder. A
-store may refuse a manifest with a `key`: take it out of the copy that is uploaded.
+extension an id of its own, at the moment the item is made and before any review.
+
+## Publishing
+
+The Chrome Web Store is the one store that matters: Brave, Vivaldi and Arc install from it, Edge
+too once other stores are allowed, and Chrome on macOS and Windows installs an extension from
+nowhere else. The store's own pages cannot be operated by an extension, so the developer console
+is used by hand.
+
+| Step | How |
+|---|---|
+| Pack | `node scripts/extension.mjs` writes `build-extension/pine-extension-<version>.zip`: the folder without the manifest's `key` and without `PRIVACY.md` |
+| First upload | Developer console > New item > the zip. The item's id is in its address |
+| Tell pine | Add that id to `EXTENSION_IDS` (`mcp/chrome.ts`) and set `STORE` (`src/chrome.ts`) to `https://chromewebstore.google.com/detail/<id>`. Release pine: an installed pine registers the new id with the browsers at its next start |
+| Listing | The texts below. The privacy policy is `extension/PRIVACY.md`, by its address on GitHub |
+| Review | Submit. `debugger` and access to all sites get a closer look: days, sometimes weeks |
+| An update | Raise `version` in the manifest (and `PROTOCOL` in both files when a message changes meaning), pack, upload, submit |
+
+Once `STORE` is set, the app's Settings row and `pine chrome` offer the store instead of the
+folder, and the Pine app asks once at the start whether to get the extension (`checkOwnBrowser`
+in `desktop/src/model.ts`), while a browser is there and the extension does not answer.
+`PINE_CHROME_STORE` stands in for `STORE` in a test.
+
+### The listing
+
+| Field | Text |
+|---|---|
+| Name | Pine |
+| Summary | Lets your pine agents work in this browser: in a tab group of their own, with the tabs you put there. |
+| Category | Developer Tools |
+| Language | English |
+| Single purpose | Lets the AI agents of pine, a program the user runs on their own computer, operate browser tabs: the tabs of a tab group the extension makes for them, and the tabs the user drags into that group. |
+| `debugger` | The extension's purpose is to let the user's own agent read and operate web pages. It attaches the debugger only to tabs inside pine's tab groups, and uses the DevTools protocol to read the page, take pictures of it and send clicks and keys, exactly as an automated browser does. |
+| `tabs` | To create the agent's tabs and to know which tabs are in pine's tab groups, so that no other tab is touched. |
+| `tabGroups` | To create and name a tab group for each conversation, and to notice when the user drags a tab into it or out of it. |
+| `nativeMessaging` | To talk to pine, which runs on the user's own computer. This is the extension's only connection: it contacts no server. |
+| `scripting` | To draw a pointer in the page that shows the user where the agent is clicking. |
+| `storage` | To remember, while the browser runs, which tab group belongs to which conversation and which tabs the agent opened. |
+| `alarms` | To look for pine again every half minute when it was not running. |
+| Host permission (all sites) | The user may hand the agent a tab of any site by dragging it into the group, and the pointer is drawn in whichever page the agent works in. |
+| Remote code | No. All code is in the package. |
+| Data usage | Website content: yes (the content of tabs in pine's groups is passed to pine on the user's own computer). Everything else: no. Not sold, not used for anything but the single purpose, not used for creditworthiness or lending. |
+
+Description:
+
+```text
+Pine is a program you run on your own computer: AI agents that work for you, in conversations and on events. This extension lets those agents work in your browser.
+
+An agent normally browses in a browser of pine's own, which has none of your logins and which some sites refuse. With this extension it can work in your browser instead:
+
+• A tab group per conversation. The agent sees and uses the tabs of its group and no other tab.
+• Drag a tab into the group to hand it to the agent. Drag it out to take it back.
+• The agent works in the background, behind the tab you are using. A pointer labelled "pine" shows where it clicks.
+• The browser shows "Pine started debugging this browser" while an agent is attached. Cancel there takes every tab back at once.
+
+The extension talks only to pine on your own computer. It has no server, no analytics and no remote code.
+
+It needs pine: https://github.com/pmndre/pine
+In the Pine app, open Settings > General > Your own browser and press Connect. In a terminal: pine chrome install. Then say to an agent "use my browser".
+```
 
 ## Trying it
 
