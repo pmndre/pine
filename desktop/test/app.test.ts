@@ -15,7 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { before, test } from "node:test";
 import { mockMsg } from "../../baseline/tests/mock.mjs";
 import { httpMcp } from "../../test/support/http-mcp.ts";
-import { activeOption, announced, api, app, browsers, CODE_EDGE, CODE_TOGGLE, confirm, folder, home, menu, mock, named, page, putAwayToasts, releases, root, sees, shot, shots, stillInside, write } from "./support/window.ts";
+import { account, activeOption, mark, announced, api, app, browsers, CODE_EDGE, CODE_TOGGLE, confirm, folder, home, menu, mock, named, page, putAwayToasts, releases, root, sees, shot, shots, stillInside, write } from "./support/window.ts";
 
 // What these tests look for is what the page commits to (TESTS.md): a part by its `data-slot`, a state by
 // its `data-state`, a button by its `data-action`, a field by its id, and words only where the test wrote them.
@@ -302,38 +302,63 @@ test("the agent's browser is a part of the side panel, shown as a picture, and w
 test("a message is answered, with the turn's work folded into a line", async () => {
 	const steps = [{ tools: [{ name: "read", args: { path: "notes.md" } }], text: "Let me look at the notes first." }, { text: "The notes say **first line**.\n\n```ts\nconst a = 1;\n```\n\n<details><summary>Full file</summary>\n\nfirst line\n\n</details>\n\n[the docs](https://example.com/docs)" }];
 	await page.fill("[data-slot=composer] textarea", mockMsg(steps, "What do the notes say? "));
+	mark("step 1");
 	await page.keyboard.press("Enter");
+	mark("step 2");
 	await sees("[data-slot=markdown] strong");
+	mark("step 3");
 	assert.match(await page.textContent("[data-slot=markdown]"), /first line/);
+	mark("step 4");
 	// The work of the turn (what it said on the way, and the tool call) is one line, folded, which names the
 	// tool that was called; a click opens it.
 	const work = "[data-item=work][data-tools='1']";
 	await sees(`${work} [data-slot=trace-collapsible-trigger]:has-text("read")`);
+	mark("step 5");
 	assert.equal(await page.$(`${work} [data-tool]`), null);
+	mark("step 6");
 	await page.click(`${work} [data-slot=trace-collapsible-trigger]`);
+	mark("step 7");
 	await sees(`${work} [data-tool]`);
+	mark("step 8");
 	assert.equal(await page.textContent(`${work} [data-tool]`), "read");
+	mark("step 9");
 	// A link says where it leads, and is not an address the page itself would follow.
 	assert.equal(await page.textContent("[data-slot=markdown] [data-href]"), "the docs");
+	mark("step 10");
 	assert.equal(await page.getAttribute("[data-slot=markdown] [data-href]", "data-href"), "https://example.com/docs");
+	mark("step 11");
 	assert.match(await page.textContent("[data-slot=markdown] [data-target]"), /example\.com\/docs/, "a link's address is written out beside it");
+	mark("step 12");
 	assert.equal(await page.$$eval("[data-slot=markdown] a[href]", (els: Element[]) => els.length), 0);
+	mark("step 13");
 	// It is a link from the keyboard too: it takes the focus, and Enter opens it in the browser.
 	await page.focus("[data-slot=markdown] [data-href]");
+	mark("step 14");
 	assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-href")), "https://example.com/docs");
+	mark("step 15");
 	assert.equal(await page.getAttribute("[data-slot=markdown] [data-href]", "role"), "link");
+	mark("step 16");
 	await page.keyboard.press("Enter");
+	mark("step 17");
 	await until("Enter on the link opened it in the owner's browser", async () => (await app.evaluate(() => ((globalThis as any).opened ?? []) as string[])).includes("https://example.com/docs"));
+	mark("step 18");
 	// A folded part is there and closed.
 	assert.equal(await page.getAttribute("[data-slot=markdown] [data-details] [data-slot=collapsible-trigger]", "aria-expanded"), "false");
+	mark("step 19");
 	// Code is pine's own Code Block, with its lines, its language and a copy button, and nothing to download:
 	// nothing of Streamdown's own block, which has a download button, is drawn.
 	await sees("[data-slot=markdown] [data-slot=code-block] [data-slot=code-block-line]:has-text('const a = 1;')");
+	mark("step 20");
 	assert.match(await page.textContent("[data-slot=markdown] [data-slot=code-block-title]"), /ts/);
+	mark("step 21");
 	assert.ok(await page.$("[data-slot=markdown] [data-slot=code-block] [data-slot=code-block-copy-button]"));
+	mark("step 22");
 	assert.equal(await page.$$eval("[data-slot=markdown] [data-slot=code-block] [data-streamdown]", (els: Element[]) => els.length), 0);
+	mark("step 23");
 	assert.equal(await page.$$eval('[data-slot=markdown] [data-slot=code-block] button[title*="ownload"], [data-slot=markdown] [data-slot=code-block] button[aria-label*="ownload"]', (els: Element[]) => els.length), 0);
+	mark("step 24");
 	await shot("02-answer");
+	mark("step 25");
 });
 
 test("a conversation that is loading shows its shape, and the shape goes once what was said is there", async () => {
@@ -1922,6 +1947,19 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await settingsPage("models");
 	await settingsPage("general");
 	await sees("[data-setting=browser][data-state=here]");
+	// Your own browser: pine is connected to the browsers of the account (here the test's own, with a Chrome in it)
+	// only when the owner says so, and then waits for its extension; Disconnect takes it back.
+	const registered = path.join(account, ...(process.platform === "darwin" ? ["Library", "Application Support", "Google", "Chrome"] : [".config", "google-chrome"]), "NativeMessagingHosts", "dev.pmndre.pine.json");
+	await sees("[data-setting=own-browser][data-state=none]");
+	assert.ok(!fs.existsSync(registered));
+	if (process.platform !== "win32") {
+		await page.click("[data-setting=own-browser] [data-action=connect]");
+		await sees("[data-setting=own-browser][data-state=waiting]");
+		assert.equal(JSON.parse(fs.readFileSync(registered, "utf8")).path, path.join(home, "chrome", "host"));
+		await page.click("[data-setting=own-browser] [data-action=disconnect]");
+		await sees("[data-setting=own-browser][data-state=none]");
+		assert.ok(!fs.existsSync(registered));
+	}
 	await menu("settings");
 });
 

@@ -220,8 +220,18 @@ export const OVER = "[role=dialog], [role=alertdialog], [role=menu]";
 // A file of these that ends without a word (no failed test, no error) leaves nothing to go by on a
 // runner. So on one, which test begins and how the process ends is said on stderr.
 let say: ((line: string) => void) | undefined;
+/** A mark in a runner's log, from inside a test: where it is. Says nothing on a desk. */
+export const mark = (line: string) => say?.(line);
 if (process.env.CI) {
 	say = (line: string) => fs.writeSync(2, `[${path.basename(process.argv[1] ?? "")} ${new Date().toISOString().slice(11, 23)}] ${line}\n`);
+	// Alive, and how much memory: a process that stops saying so is stuck, one that grows is filling up.
+	const began = Date.now();
+	let last = Date.now();
+	setInterval(() => {
+		const late = Date.now() - last - 2000;
+		last = Date.now();
+		say!(`alive at ${Math.round((Date.now() - began) / 1000)}s, ${Math.round(process.memoryUsage().rss / 1e6)} MB${late > 500 ? `, the loop was held for ${late} ms` : ""}`);
+	}, 2000).unref();
 	beforeEach((t) => say!(`begins: ${t.name}`));
 	process.on("exit", (code) => code && say!(`the test process ends with ${code}\n${new Error("ended here").stack}`));
 	for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(signal, () => (say!(`the test process got ${signal}`), process.exit(1)));
