@@ -89,7 +89,7 @@ Everything in the two bars reacts to a click.
 | The model, `reasoning <level>`, the mode | A list to switch: the models you have credentials for, the reasoning levels, the five modes |
 | A `▸` line | Opens a turn's tool calls, a thought or a folded part. A click on it or on `▴ close` closes it |
 | A web address | Opens in your browser (`http` and `https` only) |
-| Beside an open list | Closes the list. Approval dialogs and questions stay until answered or put off with `esc` |
+| Beside an open list | Closes the list. Approval dialogs stay until answered or put off with `esc` |
 
 Lists filter as you type; `enter` or a click picks, `esc` closes. `/agent`, `/sessions`, `/model`,
 `/reasoning`, `/mode` and `/folder` without an argument open the same lists.
@@ -258,7 +258,7 @@ agent, the tool, its arguments and the reason.
 | `a` or `y` | Allow once. Where the yes holds for the whole conversation (a folder, the network, a local address, an app), the button says so |
 | `s` | Always here: no more questions in this conversation for this tool or MCP server, or for this kind of critical action. Not offered where asking every time is configured |
 | `d` or `n` | Deny |
-| `esc` | Later. An approval stays open until `security.approvalTimeout` (5 minutes), then counts as denied; an agent's question stays open until you answer it. `enter` on an empty line reopens it |
+| `esc` | Later. An approval stays open until `security.approvalTimeout` (5 minutes), then counts as denied. `enter` on an empty line reopens it |
 
 A request in a tab behind yours marks it `!`, and the status line names the tab. When the action
 needs a value only you have (a bot's token, a device's password), the dialog has a field for it. A
@@ -269,13 +269,22 @@ the first answer counts, except for a request with a field.
 
 ## When the agent asks you something
 
-Before it goes on, an agent can ask you to choose between options with its `question` tool. The
-dialog lists the options, the recommended one first. Pick one with a digit, `enter` or a click, or type your own answer. Where
-several may be picked, tick the boxes (`[ ]`) by number (`1,3`) or click, then press `enter`. `esc`
-puts it off: `/approve` reopens it, and `/deny` tells the agent there is no answer, so it goes on
-with an assumption it names. A question has no time limit: it waits until you answer it, its run
-stops or pine restarts. With Telegram set up, the question arrives there too. The tool works in
-every mode, `plan` too, but not in a run an outside event started.
+An agent can ask you something with its `question` tool. The question stands in the conversation:
+its text, and the answers it offers, numbered, the recommended one first, each with what it means
+under it. Its turn does not wait for you, and there is no dialog: you answer by a message like any
+other, when you like, and that message starts the agent's next turn.
+
+| You type | Sent |
+|---|---|
+| A digit, such as `2` | That answer's label, while one question with answers is open |
+| Anything else | As you typed it: your own answer, or something else entirely |
+
+To pick several answers, write them in your message (`The mode, Telegram`). A question has no time
+limit and never times out: it is open from the turn that asked it until you write to that
+conversation or the agent starts another turn. When a turn asked several questions, a digit goes as
+typed: answer them in your own words. A reopened conversation shows its questions again, and one that is still open is
+answered the same way. The tool works in every mode, `plan` too, but not in a run an outside event
+started.
 
 ## The agent's list of steps
 
