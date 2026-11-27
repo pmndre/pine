@@ -160,9 +160,11 @@ test("a conversation is opened from the side bar with the keyboard alone, and a 
 	assert.ok((await group.locator("[role=option]").count()) > 0);
 	// The buttons on the agent's line are stops of their own, shown while the keyboard is on the line; its conversations come after the plus:
 	// Tab goes in, the arrows move, Enter opens.
-	for (const label of ["More for scout", "New conversation with scout"]) {
+	for (const action of ["more", "new"]) {
 		await page.keyboard.press("Tab");
-		assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), label);
+		const at = await page.evaluate(() => ({ action: document.activeElement?.getAttribute("data-agent-action"), label: document.activeElement?.getAttribute("aria-label") ?? "" }));
+		// Each has a name a screen reader says, and it names the agent.
+		assert.ok(at.action === action && at.label.includes("scout"), JSON.stringify(at));
 	}
 	await page.keyboard.press("Tab");
 	const at = () => page.evaluate(() => ({ role: document.activeElement?.getAttribute("role"), text: document.activeElement?.textContent ?? "" }));

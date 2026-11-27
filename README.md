@@ -213,7 +213,7 @@ Start at [docs/SKILL.md](docs/SKILL.md), the manual's index. The Pine app shows 
 | --- | --- |
 | Start here | [How pine works](docs/references/overview.md), [Install and run](docs/references/operations.md) |
 | Where you talk to pine | [The Pine app](docs/references/desktop.md), [Views for the Pine app](docs/references/views.md), [The terminal UI](docs/references/tui.md), [The phone app](docs/references/mobile.md), [The web client](docs/references/web.md) |
-| Agents | [Agents](docs/references/agents.md), [Teams of agents: boards and swarms](docs/references/boards.md), [Working on code](docs/references/coding.md), [MCP servers, web search and the browser](docs/references/mcp.md), [Operating apps on the computer](docs/references/computer.md) |
+| Agents | [Agents](docs/references/agents.md), [Extensions](docs/references/extensions.md), [Teams of agents: boards and swarms](docs/references/boards.md), [Working on code](docs/references/coding.md), [MCP servers, web search and the browser](docs/references/mcp.md), [Operating apps on the computer](docs/references/computer.md) |
 | Reacting to the world | [Event sources and subscriptions](docs/references/sources.md), [Source types](docs/references/source-types.md), [Schedules and routes](docs/references/events.md), [Recipe: a page as an agent's control panel](docs/references/interfaces.md) |
 | Setting pine up | [Setup by asking an agent](docs/references/setup.md), [Configuration files](docs/references/configuration.md), [Security and its limits](docs/references/security.md) |
 | Reference | [Commands](docs/references/commands.md), [Control API](docs/references/api.md), [Technology](docs/references/stack.md) |

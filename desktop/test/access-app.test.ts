@@ -122,7 +122,7 @@ test("browser access in the app: off at first, nothing written; on, it waits; a 
 
 	assert.equal(await bridge("removeDevice", now.devices[0].id), true);
 	assert.deepEqual((await bridge("access")).devices, []);
-	await assert.rejects(bridge("removeDevice", "../../etc"), /not a device/);
+	await assert.rejects(bridge("removeDevice", "../../etc"), "what is no device of the list is refused");
 
 	const off = await bridge("setAccess", { enabled: false, openAtLogin: false });
 	assert.equal(off.status, "off");
@@ -169,14 +169,14 @@ test("Settings > Browser access through the window: turned on with open at login
 	await menu("settings");
 	await page.locator("[data-sidebar=menu-button]", { hasText: "Browser access" }).click();
 	await sees(`${section} h1 >> text=Browser access`);
-	await sees(`${section} [data-slot=access-status] >> text=off`);
+	await sees(`${section} [data-slot=access-status][data-state=off]`);
 
 	// Turned on the first time: "Open Pine at login" is offered, checked.
 	await page.locator(`${section} [data-slot=access-switch]`).click();
 	await sees("[data-slot=access-turn-on] [data-slot=checkbox][data-checked]");
 	await page.locator("[data-slot=access-turn-on]").getByRole("button", { name: "Turn on" }).click();
 	await page.waitForSelector("[data-slot=access-turn-on]", { state: "detached" });
-	await sees(`${section} [data-slot=access-status] >> text=waiting`);
+	await sees(`${section} [data-slot=access-status][data-state=waiting]`);
 	assert.equal((await bridge("access")).openAtLogin, true);
 	assert.deepEqual((await noted()).login.at(-1), { openAtLogin: true });
 
@@ -217,7 +217,7 @@ test("Settings > Browser access through the window: turned on with open at login
 
 	// Off again from the switch: no question, the devices kept (none here), the status off.
 	await page.locator(`${section} [data-slot=access-switch]`).click();
-	await sees(`${section} [data-slot=access-status] >> text=off`);
+	await sees(`${section} [data-slot=access-status][data-state=off]`);
 });
 
 test("Settings > Browser access: the open-at-login switch and the service address are changed in the section", async () => {
@@ -254,7 +254,7 @@ test("Settings > Browser access: a relay server is saved from its fields and tri
 
 		// The password field is empty again, and says one is kept; nothing on the page or in the page's state holds it.
 		assert.equal(await page.locator(`${relay} [data-slot=relay-password]`).inputValue(), "");
-		assert.match(await page.locator(`${relay} [data-slot=relay-password]`).getAttribute("placeholder"), /^Kept/);
+		assert.equal(await page.locator(`${relay} [data-slot=relay-password]`).getAttribute("data-kept"), "yes");
 		const state = await bridge("access");
 		assert.deepEqual({ address: state.relay.address, username: state.relay.username, password: state.relay.password }, { address: `turn:127.0.0.1:${turn.port}`, username: TURN_USER, password: true });
 		assert.ok(!JSON.stringify(state).includes(TURN_PASSWORD) && !JSON.stringify(await told()).includes(TURN_PASSWORD), "the page is never told the password");

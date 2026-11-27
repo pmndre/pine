@@ -1,7 +1,7 @@
 // Settings: everything about pine that is otherwise a command in a shell or a sentence to the
 // main agent. Each page asks the daemon what there is and tells it what to change; the daemon
 // checks every change as it checks the main agent's, and nothing here writes a file itself.
-import { AudioLinesIcon, BookIcon, MonitorSmartphoneIcon, LaptopIcon, ServerIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PlugIcon, PlusIcon, RotateCwIcon, SearchIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon, TerminalSquareIcon } from "lucide-react";
+import { AudioLinesIcon, BlocksIcon, BookIcon, MonitorSmartphoneIcon, LaptopIcon, ServerIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, ClockIcon, CpuIcon, ExternalLinkIcon, FolderIcon, GitBranchIcon, InfoIcon, MessageSquareIcon, PlugIcon, PlusIcon, RotateCwIcon, SearchIcon, SlidersHorizontalIcon, Trash2Icon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon, TerminalSquareIcon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -17,9 +17,10 @@ import { Sidebar as SidebarRoot, SidebarContent, SidebarGroup, SidebarGroupConte
 import { Pulse } from "@/components/pulse";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "cn";
 import { type ComponentProps, Fragment, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
-import { type AgentDetail, api, type Decisions, type ModelServer, type Provider, type Route, type Schedule, type Setting, type Skill, type SourceInfo, type SourceType } from "./api.ts";
+import { type AgentDetail, api, type Decisions, type Extension, type ExtensionProposal, type ModelServer, type Provider, type Route, type Schedule, type Setting, type Skill, type SourceInfo, type SourceType } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { AgentFiles, changedFiles, FilesSkeleton, FileTabs, UnsavedBar } from "./AgentFiles.tsx";
 import { Editor } from "./Editor.tsx";
@@ -60,6 +61,7 @@ const SECTIONS: Array<{ id: string; label: string; icon: LucideIcon }> = (
 		["models", CpuIcon],
 		["mcp", PlugIcon],
 		["skills", BookIcon],
+		["extensions", BlocksIcon],
 		["events", ZapIcon],
 		["environments", ServerIcon],
 		["access", MonitorSmartphoneIcon],
@@ -730,6 +732,8 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 			<FieldSeparator />
 			{/* What the agent has of its own, each where it can be opened, added and removed; things for all agents are on their pages. */}
 			<SkillList agent={d.id} />
+			<FieldSeparator />
+			<ExtensionList agent={d.id} />
 			<FieldSeparator />
 			<McpList agent={d.id} />
 			<FieldSeparator />
@@ -1670,6 +1674,242 @@ function Skills() {
 	);
 }
 
+// ---- extensions -------------------------------------------------------------------------------------
+
+/** What an extension brings, in a line. */
+const brings = (x: Extension) => [x.extensions.length ? `${x.extensions.length} extension file${x.extensions.length === 1 ? "" : "s"}` : "", x.skills.length ? `skill${x.skills.length === 1 ? "" : "s"} ${x.skills.join(", ")}` : ""].filter(Boolean).join(", ") || "nothing pine loads";
+/** Where a source comes from, in words. */
+const cameFrom = (x: { kind: string; source: string; from?: string }) => (x.kind === "npm" ? "npm" : x.kind === "git" ? x.source.replace(/^git:/, "").replace(/@[^@/]*$/, "") : x.kind === "file" ? "a file you placed yourself" : (x.from ?? "a file copied into pine"));
+
+/**
+ * Install an extension: a source is looked up first (what it is, pinned to a version), and what was found
+ * is what gets installed. Two steps in one dialog, since an extension is a program inside pine.
+ */
+function InstallExtensionDialog({ agent, source, close }: { agent?: string; source?: string; close: () => void }) {
+	const s = useModel(store);
+	const field = useId();
+	const [edit, setEdit] = useState({ source: source ?? "", agent: agent ?? "", scripts: false });
+	const [found, setFound] = useState<ExtensionProposal>();
+	const [busy, setBusy] = useState(false);
+	const work = async <T,>(what: () => Promise<T>) => {
+		setBusy(true);
+		try {
+			return await store.attempt(what);
+		} finally {
+			setBusy(false);
+		}
+	};
+	const look = async () => setFound((await work(() => api.proposeExtension(edit.source.trim()))) || undefined);
+	const install = async () => {
+		if (!found) return;
+		// A copied file is named again by where it lies: its pinned name says only where pine will keep it.
+		const made = await work(() => api.installExtension({ source: found.kind === "local" ? (found.from ?? edit.source.trim()) : found.source, agent: edit.agent || undefined, scripts: edit.scripts }));
+		if (!made) return;
+		store.flash(`Installed the extension ${made.name}.`, "good");
+		changed();
+		close();
+	};
+	return (
+		<Dialog open onOpenChange={(open) => open || busy || close()}>
+			<DialogContent showCloseButton={false} className="sm:max-w-2xl">
+				<DialogHeader>
+					<DialogTitle>Install an extension</DialogTitle>
+					<DialogDescription>A pi extension, or a pi package that carries some. pine copies it into its own folder and pins it to one version. It never updates by itself.</DialogDescription>
+				</DialogHeader>
+				<FieldGroup className="select-text">
+					<Field>
+						<FieldLabel htmlFor={`${field}-source`}>Source</FieldLabel>
+						<Input
+							id={`${field}-source`}
+							className="font-mono"
+							autoFocus
+							disabled={busy}
+							value={edit.source}
+							placeholder="npm:pi-example"
+							onChange={(e) => (setEdit({ ...edit, source: e.target.value }), setFound(undefined))}
+							onKeyDown={(e) => e.key === "Enter" && edit.source.trim() && !found && void look()}
+						/>
+						<FieldDescription>
+							From npm (<code>npm:name</code> or <code>npm:name@1.2.3</code>), from git (<code>git:github.com/owner/repo</code>), or the path of a file or folder on the computer pine runs on.
+						</FieldDescription>
+					</Field>
+					{agent ? null : <ForField id={`${field}-for`} items={whom(s.agents)} value={edit.agent} onChange={(a) => setEdit({ ...edit, agent: a })} />}
+					{found ? (
+						<>
+							<ItemGroup data-find="extension-found">
+								<SettingsItem title={<>{found.name}{found.version ? <Badge variant="secondary">{found.version}</Badge> : null}</>} description={found.description ?? "It says nothing about itself."} />
+								<SettingsItem title="From" description={cameFrom(found)} />
+							</ItemGroup>
+							{found.kind === "local" ? null : (
+								<Field orientation="horizontal">
+									<FieldContent className="min-w-0">
+										<FieldLabel htmlFor={`${field}-scripts`}>Run its install scripts</FieldLabel>
+										<FieldDescription>Some packages build something while they are installed. That runs a program of theirs right away. Leave it off unless the package says it needs it.</FieldDescription>
+									</FieldContent>
+									<Switch id={`${field}-scripts`} checked={edit.scripts} onCheckedChange={(scripts) => setEdit({ ...edit, scripts })} />
+								</Field>
+							)}
+							<Alert>
+								<TriangleAlertIcon />
+								<AlertDescription>An extension is a program. It runs inside pine with your rights, outside the sandbox, in every conversation of {edit.agent || "all agents"}. Install only what you trust.</AlertDescription>
+							</Alert>
+						</>
+					) : null}
+				</FieldGroup>
+				<DialogFooter>
+					<DialogClose render={<Button variant="outline" disabled={busy} />}>Cancel</DialogClose>
+					{found ? (
+						<Button disabled={busy} onClick={() => void install()}>{busy ? <Spinner data-icon="inline-start" /> : null}{busy ? "Installing" : "Install"}</Button>
+					) : (
+						<Button disabled={busy || !edit.source.trim()} onClick={() => void look()}>{busy ? <Spinner data-icon="inline-start" /> : null}Look it up</Button>
+					)}
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+/** An installed extension, opened: what it is, where it came from, what it brings; update and remove. */
+function ExtensionDialog({ x, close }: { x: Extension; close: () => void }) {
+	const [busy, setBusy] = useState(false);
+	// What an update would bring: not asked yet (undefined), nothing newer (null), or the version.
+	const [next, setNext] = useState<string | null>();
+	const work = async <T,>(what: () => Promise<T>) => {
+		setBusy(true);
+		try {
+			return await store.attempt(what);
+		} finally {
+			setBusy(false);
+		}
+	};
+	const check = async () => {
+		const seen = await work(() => api.updateExtension(x.source, x.agent, true));
+		if (seen) setNext(seen.to);
+	};
+	const update = async () => {
+		const done = await work(() => api.updateExtension(x.source, x.agent));
+		if (!done) return;
+		store.flash(done.updated ? `Updated ${x.name} to ${done.to}.` : `${x.name} is up to date.`, "good");
+		changed();
+		close();
+	};
+	const remove = async () => {
+		if (!(await work(() => api.removeExtension(x.source, x.agent)))) return;
+		store.flash(`Removed the extension ${x.name}.`);
+		changed();
+		close();
+	};
+	const updates = x.managed && x.kind !== "local" && !x.problem;
+	return (
+		<Dialog open onOpenChange={(open) => open || busy || close()}>
+			<DialogContent showCloseButton={false} className="sm:max-w-2xl">
+				<DialogHeader>
+					<DialogTitle>{x.name}</DialogTitle>
+					<DialogDescription>{x.description ?? "This extension says nothing about itself."}</DialogDescription>
+				</DialogHeader>
+				<ScrollArea className="-mx-4 flex max-h-[65vh] min-h-0 min-w-0 flex-col wrap-break-word *:data-[slot=scroll-area-viewport]:scroll-fade">
+					<FieldGroup className="px-4 select-text">
+						{x.problem ? <Alert variant="destructive"><TriangleAlertIcon /><AlertDescription>{x.problem}</AlertDescription></Alert> : null}
+						<ItemGroup>
+							<SettingsItem title="Version" description={x.version ?? "not said"} />
+							<SettingsItem title="For" description={x.agent ?? "all agents"} />
+							<SettingsItem title="From" description={cameFrom(x)} />
+							{x.kind === "npm" || x.kind === "git" ? <SettingsItem title="Source" description={<code>{x.source}</code>} /> : null}
+							<SettingsItem title="Brings" description={brings(x)} />
+							{x.unused.length ? <SettingsItem title="Not used by pine" description={x.unused.join(", ")} /> : null}
+						</ItemGroup>
+						{x.managed ? null : <FieldDescription>You placed this one yourself, in {x.path}. pine loads it and leaves it alone: take it out there.</FieldDescription>}
+						{next === null ? <FieldDescription>This is the newest version.</FieldDescription> : null}
+					</FieldGroup>
+				</ScrollArea>
+				<DialogFooter>
+					{x.managed ? <RemoveButton what={`the extension ${x.name}`} size="default" className="sm:mr-auto" onRemove={remove} /> : null}
+					<DialogClose render={<Button variant="outline" disabled={busy} />}>Close</DialogClose>
+					{updates ? (
+						next ? (
+							<Button disabled={busy} onClick={() => void update()}>{busy ? <Spinner data-icon="inline-start" /> : null}Update to {next}</Button>
+						) : (
+							<Button variant="outline" disabled={busy || next === null} onClick={() => void check()}>{busy ? <Spinner data-icon="inline-start" /> : null}Check for an update</Button>
+						)
+					) : null}
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+/** Extensions: those for all agents (no `agent`), or one agent's own. A row opens the extension. */
+function ExtensionList({ agent }: { agent?: string }) {
+	useModel(LISTS);
+	const all = useLoad(() => api.extensions(), [LISTS.v]);
+	const list = all.data?.filter((x) => (agent ? x.agent === agent : x.scope === "global"));
+	return (
+		<Section
+			title={agent ? "Extensions" : "For all agents"}
+			data-find={agent ? "agent-extensions" : undefined}
+			about={agent ? `Extensions only ${agent} loads.` : undefined}
+			actions={<Button variant="outline" onClick={() => openThing({ kind: "extension", agent })}><PlusIcon data-icon="inline-start" />Install extension</Button>}
+		>
+			<Listed load={all} list={list} bars={agent ? 1 : 3} empty={<NoneYet agent={agent} icon={BlocksIcon} title="No extensions">Install one here, or ask the main agent (“install the extension npm:name”).</NoneYet>}>
+				{(x) => (
+					<SettingsItem
+						key={`${x.agent ?? ""}:${x.source}`}
+						data-find={`extension:${x.agent ?? ""}:${x.source}`}
+						render={<button type="button" />}
+						onClick={() => openThing({ kind: "extension", extension: x })}
+						title={<>
+								{x.name}
+								{x.version ? <Badge variant="secondary">{x.version}</Badge> : null}
+								{x.managed ? null : <Badge variant="secondary">placed by you</Badge>}
+								{x.problem ? <Badge variant="destructive">not installed</Badge> : null}
+							</>}
+						description={short(x.description ?? brings(x), 220)}
+						actions={<ChevronRightIcon />}
+					/>
+				)}
+			</Listed>
+		</Section>
+	);
+}
+
+/** What pi itself has on this computer, to bring over. Shown only while there is something pine does not have. */
+function FromPi() {
+	useModel(LISTS);
+	const pi = useLoad(() => api.piExtensions(), [LISTS.v]);
+	const list = pi.data?.filter((x) => !x.installed);
+	if (!list?.length) return null;
+	return (
+		<>
+			<FieldSeparator />
+			<Section title="In pi" data-find="extensions-pi" about="Extensions that pi has on this computer. pine does not load them from there. Install one to copy it into pine.">
+				<ItemGroup>
+					{list.map((x) => (
+						<SettingsItem
+							key={x.source}
+							title={<>{x.name}{x.version ? <Badge variant="secondary">{x.version}</Badge> : null}</>}
+							description={short(x.description ?? x.source, 220)}
+							actions={<Button variant="outline" size="sm" onClick={() => openThing({ kind: "extension", source: x.source })}>Install</Button>}
+						/>
+					))}
+				</ItemGroup>
+			</Section>
+		</>
+	);
+}
+
+function Extensions() {
+	useModel(LISTS);
+	const all = useLoad(() => api.extensions(), [LISTS.v]);
+	return (
+		<Page title="Extensions" lead="Programs that give agents more tools or change what they are told: pi extensions and the pi packages that carry them. An extension runs inside pine with your rights, outside the sandbox.">
+			<ExtensionList />
+			<AgentsOwn own={ownBy(all.data, (x) => x.agent, (x) => x.name)} find="extensions" about="Extensions that only one agent loads. They are listed on that agent's page." />
+			<FromPi />
+		</Page>
+	);
+}
+
+
 // ---- events: sources, schedules, routes -----------------------------------------------------------------
 
 /** One option of a source type, drawn by what its schema says it is. */
@@ -2416,6 +2656,7 @@ export function ThingDialog() {
 	const { thing } = useModel(OPENED);
 	const close = () => openThing(undefined);
 	if (!thing) return null;
+	if (thing.kind === "extension") return thing.extension ? <ExtensionDialog key={thing.extension.source} x={thing.extension} close={close} /> : <InstallExtensionDialog agent={thing.agent} source={thing.source} close={close} />;
 	if (thing.kind === "skill") {
 		const x = thing.skill;
 		return <SkillDialog key={x?.dir ?? "new"} draft={x ? { name: x.name, description: x.description, instructions: x.instructions ?? "", agent: x.agent ?? "", was: x } : { name: "", description: "", instructions: "", agent: thing.agent ?? "" }} lockAgent={!!thing.agent} close={close} />;
@@ -3105,6 +3346,7 @@ export function useSettingsIndex(on: boolean): Entry[] {
 		ask("modelServers", api.modelServers());
 		ask("mcp", api.mcp());
 		ask("skills", api.skills());
+		ask("extensions", api.extensions());
 		ask("sources", api.sources());
 		ask("schedules", api.schedules());
 		ask("routes", api.routes());
@@ -3233,7 +3475,7 @@ export function Settings() {
 				<ScrollArea className="flex min-h-0 min-w-0 flex-1 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade" key={searching ? "search" : section}>
 					{searching ? (
 						<Found query={query} list={found} pick={pick} back={() => field.current?.focus()} />
-					) : section === "agents" ? <Agents /> : section === "models" ? <Models /> : section === "mcp" ? <Mcp /> : section === "skills" ? <Skills /> : section === "events" ? <EventsPage /> : section === "environments" ? <Environments /> : section === "access" ? <Access /> : <General />}
+					) : section === "agents" ? <Agents /> : section === "models" ? <Models /> : section === "mcp" ? <Mcp /> : section === "skills" ? <Skills /> : section === "extensions" ? <Extensions /> : section === "events" ? <EventsPage /> : section === "environments" ? <Environments /> : section === "access" ? <Access /> : <General />}
 				</ScrollArea>
 			</div>
 		</div>

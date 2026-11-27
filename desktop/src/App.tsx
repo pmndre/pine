@@ -622,7 +622,7 @@ function Group({ a }: { a: AgentInfo }) {
 						)}
 						{/* The agent's other actions, as shadcn's sidebar puts them: a More action that opens a menu. The plus stays one click away. */}
 						<DropdownMenu>
-							<DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="right-7" aria-label={`More actions for ${a.id}`} />}><EllipsisIcon /></DropdownMenuTrigger>
+							<DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="right-7" data-agent-action="more" aria-label={`More actions for ${a.id}`} />}><EllipsisIcon /></DropdownMenuTrigger>
 							<DropdownMenuContent side="right" align="start" className="min-w-56">
 								<DropdownMenuGroup>
 									<DropdownMenuItem onClick={() => void pickFolder()}><FolderIcon />Open a folder with {a.id}…</DropdownMenuItem>
@@ -630,7 +630,7 @@ function Group({ a }: { a: AgentInfo }) {
 								</DropdownMenuGroup>
 							</DropdownMenuContent>
 						</DropdownMenu>
-						<HoverTooltip><TooltipTrigger render={<SidebarMenuAction onClick={() => void s.newConversation(a.id)} aria-label={`New conversation with ${a.id}`} />}><PlusIcon /></TooltipTrigger><TooltipContent>{`New conversation with ${a.id}`}</TooltipContent></HoverTooltip>
+						<HoverTooltip><TooltipTrigger render={<SidebarMenuAction onClick={() => void s.newConversation(a.id)} data-agent-action="new" aria-label={`New conversation with ${a.id}`} />}><PlusIcon /></TooltipTrigger><TooltipContent>{`New conversation with ${a.id}`}</TooltipContent></HoverTooltip>
 					</>
 				)}
 			</SidebarMenuItem>

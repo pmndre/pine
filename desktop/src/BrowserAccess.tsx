@@ -108,7 +108,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 						<FieldContent>
 							<FieldLabel htmlFor={`${field}-on`}>
 								Browser access
-								<Badge data-slot="access-status" variant={status.variant}>{status.text}</Badge>
+								<Badge data-slot="access-status" data-state={state.status} variant={status.variant}>{status.text}</Badge>
 							</FieldLabel>
 							<FieldDescription>
 								{state.status === "unreachable"
@@ -206,7 +206,7 @@ export function BrowserAccessView({ state, now, platform, actions }: { state: Ac
 					</Field>
 					<Field>
 						<FieldLabel htmlFor={`${field}-relay-password`}>Password</FieldLabel>
-						<Input id={`${field}-relay-password`} data-slot="relay-password" type="password" autoComplete="new-password" placeholder={passwordHint} value={relay.password} onChange={(e) => setRelay({ ...relay, password: e.target.value })} onKeyDown={(e) => e.key === "Enter" && relayChanged && void saveRelay()} />
+						<Input id={`${field}-relay-password`} data-slot="relay-password" data-kept={!state.relay?.password ? "no" : relayMoved && relay.address.trim() ? "other" : "yes"} type="password" autoComplete="new-password" placeholder={passwordHint} value={relay.password} onChange={(e) => setRelay({ ...relay, password: e.target.value })} onKeyDown={(e) => e.key === "Enter" && relayChanged && void saveRelay()} />
 					</Field>
 					{/* Save, and beside it how the relay was tried: a failed try is said as an error, like a refused save. */}
 					<Field orientation="horizontal">

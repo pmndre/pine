@@ -49,7 +49,7 @@ export function AgentFiles({ id, files, texts, onText, onSave }: { id: string; f
 export function FileTabs<K extends string>({ files, value, onChange, children }: { files: Array<{ key: K; label: string; about?: string }>; value: K; onChange: (v: K) => void; children: (key: K) => ReactNode }) {
 	return (
 		<Tabs value={value} onValueChange={onChange}>
-			<TabsList activateOnFocus className="gap-1">
+			<TabsList activateOnFocus className="max-w-full justify-start gap-1 overflow-x-auto">
 				{files.map((f) => (
 					<TabsTrigger key={f.key} value={f.key}>
 						{f.label}

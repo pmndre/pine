@@ -5,7 +5,7 @@
 // - liveEntries(): what pine has (its settings, agents, providers, servers, skills, sources, schedules, routes,
 //   machines), built from the lists the pages ask for anyway.
 // No React, no store: the palette and the tests use it too.
-import type { AgentInfo, McpServer, ModelServer, Provider, Route, Schedule, Setting, Skill, SourceInfo } from "./api.ts";
+import type { AgentInfo, Extension, McpServer, ModelServer, Provider, Route, Schedule, Setting, Skill, SourceInfo } from "./api.ts";
 import { providerName, providerWords } from "./providers.ts";
 import { fuzzy } from "./text.ts";
 
@@ -44,6 +44,7 @@ export const LABELS: Record<string, string> = {
 	models: "Models",
 	mcp: "MCP servers",
 	skills: "Skills",
+	extensions: "Extensions",
 	events: "Events",
 	environments: "Environments",
 	access: "Browser access",
@@ -82,6 +83,7 @@ export const PLACES: Static[] = [
 
 	{ id: "add-mcp", section: "mcp", title: "Add an MCP server", words: "tools connect integration plugin" },
 	{ id: "new-skill", section: "skills", title: "New skill", words: "add write recipe how-to" },
+	{ id: "install-extension", section: "extensions", title: "Install an extension", about: "A pi extension or package, from npm, git or a file.", words: "add plugin plugins package pi npm git addon add-on install" },
 
 	{ id: "sources", section: "events", title: "Sources", about: "Sources report when something happens in a folder, a web page, a chat or a device.", words: "subscribe watch trigger telegram mail folder webhook", find: at("sources") },
 	{ id: "schedules", section: "events", title: "Schedules", about: "Tasks for agents at set times.", words: "cron timer reminder every morning later", find: at("schedules") },
@@ -107,6 +109,7 @@ export const AGENT_PLACES: Array<{ id: string; path: string; title: string; word
 	{ id: "delegates", path: "Permissions", title: "Can delegate to", words: "hand tasks other agents" },
 	{ id: "folders", path: "Folders outside the workspace", title: "Folders outside the workspace", words: "read write access directory" },
 	{ id: "skills", path: "Skills", title: "Skills", words: "recipe how-to own" },
+	{ id: "extensions", path: "Extensions", title: "Extensions", words: "plugin plugins package pi addon own" },
 	{ id: "mcp", path: "MCP servers", title: "MCP servers", words: "tools connect integration own" },
 	{ id: "sources", path: "Sources", title: "Sources", words: "events subscribe listen watch trigger own" },
 	{ id: "schedules", path: "Schedules", title: "Schedules", words: "cron timer reminder every morning own" },
@@ -123,6 +126,7 @@ export interface Lists {
 	modelServers?: ModelServer[];
 	mcp?: McpServer[];
 	skills?: Skill[];
+	extensions?: Extension[];
 	sources?: SourceInfo[];
 	schedules?: Schedule[];
 	routes?: Route[];
@@ -155,6 +159,7 @@ export function entries(shown: Shown, lists: Lists): Entry[] {
 	const own = (scope: string) => (scope === "global" ? undefined : scope);
 	for (const x of lists.mcp ?? []) add({ id: `mcp:${x.scope}:${x.name}`, title: x.name, about: where(x.scope, x.session), words: x.target, ...home(own(x.scope), "mcp", "MCP servers", `mcp:${x.scope}:${x.name}`) });
 	for (const x of lists.skills ?? []) add({ id: `skill:${x.dir}`, title: x.name, about: x.description, ...home(x.agent, "skills", "Skills", `skill:${x.dir}`) });
+	for (const x of lists.extensions ?? []) add({ id: `extension:${x.scope}:${x.agent ?? ""}:${x.source}`, title: x.name, about: x.description, words: `extension plugin package ${x.source}`, ...home(x.agent, "extensions", "Extensions", `extension:${x.agent ?? ""}:${x.source}`) });
 	for (const x of lists.sources ?? []) add({ id: `source:${x.scope}:${x.name}`, title: x.name, about: x.description ?? x.type, words: `${x.type} source`, ...home(own(x.scope), "events", "Sources", `source:${x.scope}:${x.name}`) });
 	for (const x of lists.schedules ?? []) add({ id: `schedule:${x.scope}:${x.name}`, title: x.name, about: x.when, words: `schedule ${x.task ?? ""}`, ...home(own(x.scope), "events", "Schedules", `schedule:${x.scope}:${x.name}`) });
 	for (const r of lists.routes ?? []) add({ id: `route:${r.name}`, title: r.name, words: `route ${r.on.join(" ")}`, ...home(r.of, "events", "Routes", `route:${r.name}`) });

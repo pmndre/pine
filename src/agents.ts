@@ -18,6 +18,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { mcpNamespace } from "@earendil-works/pi-mcp";
 import { dropConversationSkills, renameConversationSkills, skillDirs } from "./skills.ts";
+import { loadedFor } from "./extensions.ts";
 import { type AgentConfig, loadConfig, agentSkillsDir, conversationsDir, delegateTargets, effectiveMcp, type Level, mainAgentId, type McpServerConfig, mcpTaints, type Mode, MODES, ownText, PINE_ROOT, type PineConfig, purposeOf, sharedFiles, stricter, toPiMcp, unsandboxed, WORKSPACE_FILES } from "./config.ts";
 import { Limiter, type Slot } from "./limiter.ts";
 import { modelRuntime } from "./models.ts";
@@ -99,7 +100,7 @@ function basePrompt(cfg: PineConfig, agent: AgentConfig, trust: Trust = "owner")
 	const mainId = mainAgentId(cfg);
 	const role =
 		agent.id === mainId
-			? `You are the main agent, and pine's administrator: what your owner wants changed about pine, you change with your tools, and you never tell them to edit pine's files or delete pine's folders by hand. Only you can create, change, rename and remove agents (create_agent, update_agent, rename_agent, remove_agent; agents lists them), change pine's settings (settings, set_setting) and routes (routes, add_route, remove_route), set things up for all agents (scope "global") and bring in a new kind of event source (add_source_type). And you can do for another agent what it can do for itself: each tool for event sources, MCP servers, schedules and skills takes "agent". Your owner confirms what matters. Sub-agents are not agents: every agent starts its own with subagent, and nothing is created for them.`
+			? `You are the main agent, and pine's administrator: what your owner wants changed about pine, you change with your tools, and you never tell them to edit pine's files or delete pine's folders by hand. Only you can create, change, rename and remove agents (create_agent, update_agent, rename_agent, remove_agent; agents lists them), change pine's settings (settings, set_setting) and routes (routes, add_route, remove_route), set things up for all agents (scope "global") bring in a new kind of event source (add_source_type) and install extensions (add_extension; extensions lists them). And you can do for another agent what it can do for itself: each tool for event sources, MCP servers, schedules and skills takes "agent". Your owner confirms what matters. Sub-agents are not agents: every agent starts its own with subagent, and nothing is created for them.`
 			: `Creating, changing and removing agents, pine's settings, and anything that is for all agents, is the main agent's job (the main agent is ${mainId}): you have no tools for it. When your owner wants that, tell them to ask ${mainId}. Sub-agents are not agents: you start them yourself with subagent, also when you are asked to "create" them.`;
 	// What holds for all agents: the main agent is told that it keeps these files and what goes into which,
 	// every other agent that they are in its instructions and whom to tell.
@@ -3109,7 +3110,9 @@ export class AgentManager {
 		const moreSkills = skillDirs(cfg, agent, conversation);
 		// What another conversation of this agent set up for itself lies in the agent's folder too, and is not this one's.
 		const others = realish(conversationsDir(agent));
-		const owned = [realish(agent.dir), ...cfg.skills.map(realish), ...agent.skills.map(realish), ...moreSkills.map(realish), ...(agent.trustWorkspace ? [roots.workspace] : [])];
+		// Extensions installed into pine's home (src/extensions.ts), and the skills their packages bring.
+		const installed = await loadedFor(cfg, agent);
+		const owned = [realish(agent.dir), ...cfg.skills.map(realish), ...agent.skills.map(realish), ...moreSkills.map(realish), ...installed.skills.map(realish), ...(agent.trustWorkspace ? [roots.workspace] : [])];
 		const isOwned = (file: string) => owned.some((r) => isInside(r, file)) && (!isInside(others, file) || moreSkills.some((d) => isInside(realish(d), file)));
 		const createRuntime = async (o: any) => {
 			const settingsManager = SettingsManager.create(o.cwd, agent.dir, { projectTrusted: agent.trustWorkspace });
@@ -3134,8 +3137,8 @@ export class AgentManager {
 					// folder still replaces it.
 					systemPromptOverride: (base: string | undefined) => base ?? basePrompt(this.cfg, agent, trust),
 					extensionFactories,
-					additionalExtensionPaths: [...cfg.extensions, ...agent.extensions],
-					additionalSkillPaths: [...cfg.skills, ...agent.skills, ...moreSkills],
+					additionalExtensionPaths: [...cfg.extensions, ...agent.extensions, ...installed.extensions],
+					additionalSkillPaths: [...cfg.skills, ...agent.skills, ...moreSkills, ...installed.skills],
 					// pi also discovers skills and instruction files in the user's home and in the folders
 					// above the workspace. An agent gets only what its own configuration names.
 					skillsOverride: (base: any) => ({ ...base, skills: base.skills.filter((sk: any) => isOwned(realish(sk.filePath))) }),

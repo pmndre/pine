@@ -23,9 +23,11 @@ Everything pine needs is in its home folder: `~/.pine`, or `$PINE_HOME`, or `--h
     SYSTEM.md          optional: replaces pine's base prompt for this agent
     skills/            skills only this agent has
     conversations/     what was set up for one conversation alone
-    extensions/        pi extensions only this agent loads
+    extensions/        pi extensions you placed for this agent
+    packages/          extensions installed for this agent (extensions.md)
     sessions/          conversation history
   skills/              skills for all agents
+  packages/            extensions installed for all agents (extensions.md)
   sources/             source types the main agent registered (pine's own copies)
   themes/              color themes of the Pine app (ui.theme)
   views/               views of the Pine app's panel (ui.view, views.md)
@@ -132,7 +134,7 @@ settings").
 | `sources` | `{}` | Event sources every agent can subscribe to ([sources.md](sources.md)). |
 | `sourceTypes` | `{}` | Your own source types by name and module, e.g. `{ "doorbell": "./sources/doorbell.ts" }`. `add_source_type` points at pine's copy in `sources/`. |
 | `subscribe` | `[]` | Subscriptions for all agents; each agent that can use the source is woken in its main conversation. |
-| `extensions` | `[]` | pi extensions loaded into every agent's sessions. |
+| `extensions` | `[]` | Paths of pi extensions you placed yourself, loaded into every agent's sessions. Installed ones need no entry ([extensions.md](extensions.md)). |
 | `skills` | `[]` | Further skill folders for every agent, outside pine's home; agents cannot replace or remove them. |
 | `routes` | `[]` | See [events.md](events.md), "Routes". |
 | `decisions` | `{}` | Decision models by name, for routes' typed questions ("Decision models"). |

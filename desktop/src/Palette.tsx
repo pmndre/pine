@@ -38,7 +38,7 @@ export function Palette() {
 		for (const c of COMMANDS) if (!c.chat || chat) rows.push({ id: `c:${c.name}`, group: "Commands", label: c.title, about: c.about, keys: c.keys, run: () => void c.run("", s.active) });
 		if (typeof bridge.newWindow === "function") rows.push({ id: "c:new-window", group: "Commands", label: "New window", about: "Open another Pine window", keys: "⌘N", run: () => void bridge.newWindow?.() });
 		for (const a of s.agents) rows.push({ id: `a:${a.id}`, group: "Agents", label: `New conversation with ${a.id}`, about: a.description, run: () => void s.newConversation(a.id) });
-		for (const [id, label] of [["general", "General"], ["agents", "Agents"], ["models", "Models"], ["mcp", "MCP servers"], ["skills", "Skills"], ["events", "Events"], ["environments", "Environments"]]) rows.push({ id: `p:${id}`, group: "Settings", label: `Settings: ${label}`, run: () => void s.command(`settings:${id}`) });
+		for (const [id, label] of [["general", "General"], ["agents", "Agents"], ["models", "Models"], ["mcp", "MCP servers"], ["skills", "Skills"], ["extensions", "Extensions"], ["events", "Events"], ["environments", "Environments"]]) rows.push({ id: `p:${id}`, group: "Settings", label: `Settings: ${label}`, run: () => void s.command(`settings:${id}`) });
 		// The machines whose pine the app can use (Settings > Environments), but the one it uses; this computer only where there is one.
 		for (const host of [...(s.local ? [undefined] : []), ...s.prefs.hosts]) if (host !== s.service.host) rows.push({ id: `e:${host ?? ""}`, group: "Environments", label: `Use the pine on ${host ? s.nameOf(host) : `this ${computerWord(s.platform)}`}`, run: () => void s.useMachine(host) });
 		return rows;
