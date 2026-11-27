@@ -27,6 +27,8 @@ export let far: string;
 export let folder: string;
 /** Where the browser of the web tools would lie (Playwright's own variable for it): a folder of the test's, empty at the start. */
 export let browsers: string;
+/** The account whose browsers "Your own browser" registers pine with: the test's own, with a Chrome in it, never the developer's. */
+export let account: string;
 /** A stand-in for GitHub, which the app asks for pine's last release: what it answers, and how often it was asked. */
 export let github: http.Server;
 export const releases = { status: 200, tag: "v9.9.9", asked: 0 };
@@ -107,6 +109,8 @@ async function open(): Promise<void> {
 	write(path.join(home, "agents", "scout", "workspace", "AGENTS.md"), "Looks things up on the web.\n\nYou are scout.\n");
 	browsers = path.join(home, "browsers");
 	fs.mkdirSync(browsers, { recursive: true });
+	account = path.join(home, "account");
+	fs.mkdirSync(path.join(account, ...(process.platform === "darwin" ? ["Library", "Application Support", "Google", "Chrome"] : process.platform === "win32" ? ["AppData", "Local", "Nothing"] : [".config", "google-chrome"])), { recursive: true });
 	// A folder of the owner's, with a git history, to open for a conversation.
 	folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-desktop-folder-")));
 	write(path.join(folder, "README.md"), "# Okapi\n\nA small project.\n");
@@ -180,7 +184,7 @@ if (args.includes("-O")) {
 `);
 	fs.chmodSync(ssh, 0o755);
 
-	app = await launchApp({ ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsers, PINE_HOME: home, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_SKIP_DOWNLOADS: "1", PINE_DESKTOP_DEV_URL: "", PINE_DESKTOP_VOICE: voice, PINE_DESKTOP_SHELL: "/bin/bash", PINE_DESKTOP_RELEASES: `http://127.0.0.1:${(github.address() as any).port}/repos/pmndre/pine/releases/latest`, PINE_DESKTOP_SSH: ssh });
+	app = await launchApp({ ...process.env, PLAYWRIGHT_BROWSERS_PATH: browsers, PINE_HOME: home, PINE_CHROME_ACCOUNT: account, PINE_DESKTOP_DATA: path.join(home, "desktop-data"), PINE_SKIP_DOWNLOADS: "1", PINE_DESKTOP_DEV_URL: "", PINE_DESKTOP_VOICE: voice, PINE_DESKTOP_SHELL: "/bin/bash", PINE_DESKTOP_RELEASES: `http://127.0.0.1:${(github.address() as any).port}/repos/pmndre/pine/releases/latest`, PINE_DESKTOP_SSH: ssh });
 	page = await app.firstWindow();
 	page.on("pageerror", (e: Error) => pageErrors.push(String(e.stack ?? e.message).slice(0, 600)));
 	page.on("console", (m: any) => m.type() === "error" && pageErrors.push(m.text().slice(0, 600)));

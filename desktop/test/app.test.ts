@@ -15,7 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { before, test } from "node:test";
 import { mockMsg } from "../../baseline/tests/mock.mjs";
 import { httpMcp } from "../../test/support/http-mcp.ts";
-import { activeOption, announced, api, app, browsers, CODE_EDGE, CODE_TOGGLE, confirm, folder, home, menu, mock, named, page, putAwayToasts, releases, root, sees, shot, shots, stillInside, write } from "./support/window.ts";
+import { account, activeOption, announced, api, app, browsers, CODE_EDGE, CODE_TOGGLE, confirm, folder, home, menu, mock, named, page, putAwayToasts, releases, root, sees, shot, shots, stillInside, write } from "./support/window.ts";
 
 // What these tests look for is what the page commits to (TESTS.md): a part by its `data-slot`, a state by
 // its `data-state`, a button by its `data-action`, a field by its id, and words only where the test wrote them.
@@ -1961,6 +1961,19 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await settingsPage("models");
 	await settingsPage("general");
 	await sees("[data-setting=browser][data-state=here]");
+	// Your own browser: pine is connected to the browsers of the account (here the test's own, with a Chrome in it)
+	// only when the owner says so, and then waits for its extension; Disconnect takes it back.
+	const registered = path.join(account, ...(process.platform === "darwin" ? ["Library", "Application Support", "Google", "Chrome"] : [".config", "google-chrome"]), "NativeMessagingHosts", "dev.pmndre.pine.json");
+	await sees("[data-setting=own-browser][data-state=none]");
+	assert.ok(!fs.existsSync(registered));
+	if (process.platform !== "win32") {
+		await page.click("[data-setting=own-browser] [data-action=connect]");
+		await sees("[data-setting=own-browser][data-state=waiting]");
+		assert.equal(JSON.parse(fs.readFileSync(registered, "utf8")).path, path.join(home, "chrome", "host"));
+		await page.click("[data-setting=own-browser] [data-action=disconnect]");
+		await sees("[data-setting=own-browser][data-state=none]");
+		assert.ok(!fs.existsSync(registered));
+	}
 	await menu("settings");
 });
 
