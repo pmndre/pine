@@ -6,7 +6,7 @@
 // its part on the agent's page in Settings, one way there ("Manage"), and rows that open the thing itself,
 // in the same dialog Settings opens (`openThing`) or at its place in Settings. A row says whom the thing is
 // for only when that is not this agent: "all agents" or "this conversation".
-import { BookIcon, CheckIcon, ChevronRightIcon, ClockIcon, FolderIcon, GitBranchIcon, PlugIcon, SettingsIcon, TriangleAlertIcon, ZapIcon } from "lucide-react";
+import { BlocksIcon, BookIcon, CheckIcon, ChevronRightIcon, ClockIcon, FolderIcon, GitBranchIcon, PlugIcon, SettingsIcon, TriangleAlertIcon, ZapIcon } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { AgentFacts } from "@/components/agent-facts";
@@ -108,6 +108,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 	const schedules = useLoad(() => api.schedules(), [id, ...again]);
 	const routes = useLoad(() => api.routes(), [id, ...again]);
 	const skills = useLoad(() => api.skills(), [id, ...again]);
+	const extensions = useLoad(() => api.extensions(), [id, ...again]);
 	const servers = useLoad(() => api.mcp(), [id, ...again]);
 	const [texts, setTexts] = useState<Partial<Record<AgentFileKey, string>>>({});
 	const [busy, setBusy] = useState(false);
@@ -119,6 +120,7 @@ export function AgentView({ tab }: { tab: Tab }) {
 	const timed = (schedules.data ?? []).filter((x) => x.scope === id || (x.scope === "global" && x.task));
 	const ruled = (routes.data ?? []).filter((r) => routeOf(r, id));
 	const knows = (skills.data ?? []).filter((x) => x.scope === "global" || (x.agent === id && (x.scope === "agent" || x.session === tab.session)));
+	const loads = (extensions.data ?? []).filter((x) => x.scope === "global" || x.agent === id);
 	const tools = (servers.data ?? []).filter((x) => x.enabled && x.agents.includes(id) && (!x.session || x.session === tab.session));
 	const helpers = [...tab.children].reverse().slice(0, 8);
 	const elsewhere = [...s.busy].filter(([key, tasks]) => tasks.size && key.startsWith(`${id}:`) && key !== tab.key).map(([key]) => key.slice(id.length + 1));
@@ -175,6 +177,15 @@ export function AgentView({ tab }: { tab: Tab }) {
 						{knows.map((x) => <AgentRow key={x.dir} media={<BookIcon />} title={x.name} about={x.description || undefined} tag={forWhom(x.scope === "global" ? "global" : id, x.session)} onOpen={() => openThing({ kind: "skill", skill: x })} />)}
 					</ItemGroup>
 				</AgentSection>
+
+				{/* Shown only when there is one: most agents have none, and a row that says so every time is noise. */}
+				{loads.length ? (
+					<AgentSection title="Extensions" manage={manage("extensions")}>
+						<ItemGroup>
+							{loads.map((x) => <AgentRow key={`${x.agent ?? ""}:${x.source}`} media={<BlocksIcon />} title={x.name} about={x.description || x.version || undefined} tag={forWhom(x.scope === "global" ? "global" : id)} onOpen={() => openThing({ kind: "extension", extension: x })} />)}
+						</ItemGroup>
+					</AgentSection>
+				) : null}
 
 				<AgentSection title="MCP servers" manage={manage("mcp")} {...state(servers)} empty={tools.length ? undefined : "No MCP servers."}>
 					<ItemGroup>

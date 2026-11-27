@@ -353,6 +353,42 @@ export interface AgentDetail {
 	files: { instructions?: string; soul?: string; tooling?: string; memory?: string; rules?: string };
 }
 
+/** An extension installed in pine: a pi extension or a pi package that carries some. */
+export interface Extension {
+	source: string;
+	kind: "npm" | "git" | "local" | "file";
+	name: string;
+	version?: string;
+	description?: string;
+	scope: "global" | "agent";
+	agent?: string;
+	path: string;
+	/** False: you put it there by hand; pine lists it and leaves it alone. */
+	managed: boolean;
+	extensions: string[];
+	skills: string[];
+	unused: string[];
+	problem?: string;
+}
+/** What a source turned out to be, pinned to a version: what an installation would install. */
+export interface ExtensionProposal {
+	source: string;
+	kind: "npm" | "git" | "local";
+	name: string;
+	version?: string;
+	description?: string;
+	from?: string;
+}
+/** An extension pi itself has on this computer, to bring over. */
+export interface PiExtension {
+	source: string;
+	name: string;
+	version?: string;
+	description?: string;
+	kind: "npm" | "git" | "local";
+	installed: boolean;
+}
+
 export interface Skill {
 	name: string;
 	description: string;
@@ -657,6 +693,12 @@ export const api = {
 	eraseAgent: (agent: string, keepFiles: boolean) => post<{ kept?: string; problem?: string }>(`${a(agent)}/erase`, { agent, keepFiles }),
 	shared: () => get<Array<{ name: string; about: string; text: string }>>("/shared"),
 	setShared: (name: string, text: string) => post<{ ok: boolean }>("/shared", { name, text }),
+	extensions: () => get<Extension[]>("/extensions"),
+	piExtensions: () => get<PiExtension[]>("/extensions/pi"),
+	proposeExtension: (source: string) => post<ExtensionProposal>("/extensions/propose", { source }),
+	installExtension: (body: { source: string; agent?: string; scripts?: boolean }) => post<Extension>("/extensions", body),
+	removeExtension: (source: string, agent?: string) => post<{ removed: boolean }>("/extensions/remove", { source, agent }),
+	updateExtension: (source: string, agent?: string, check?: boolean) => post<{ from: string | null; to: string | null; source: string | null; updated: boolean }>("/extensions/update", { source, agent, check }),
 	skills: () => get<Skill[]>("/skills"),
 	addSkill: (body: { name: string; description: string; instructions: string; agent?: string }) => post<{ name: string; dir: string; replaced: boolean }>("/skills", body),
 	removeSkill: (name: string, agent?: string, session?: string) => post<{ removed: boolean }>("/skills/remove", { name, agent, session }),

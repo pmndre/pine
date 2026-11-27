@@ -71,6 +71,9 @@ src/
   sources.ts        event sources and subscriptions: starts a source on its first subscriber, turns a subscription into a route
   manual.ts         pine's manual made searchable: docs/ cut into parts, BM25 over them, synonyms; the `manual` tool and `pine manual`
   skills.ts         skills by tool call: where one lies says whom it is for (all agents, an agent, a conversation)
+  extensions.ts     pi extensions and packages installed into pine's home (<home>/packages, agents/<id>/packages) with
+                    pi's package manager: a source looked up and pinned (`propose`), installed, updated, removed, listed;
+                    what a session loads of them (`loadedFor`); what pi has in ~/.pi, looked at and never loaded (`inPi`)
   source-types.ts   what a source type module declares: summary, options schema, plan()
   sources/          the built-in source types (`SOURCE_TYPES` in config.ts). That look: http, command, feed, calendar,
                     modbus, presence. That are told: folder, mqtt, webhook, ftp, telegram, stream, mail, slack, matrix,
@@ -532,6 +535,18 @@ These are invariants. A change that breaks one needs a test that shows why it is
    A new type is a program inside the daemon: `add_source_type` is the main agent's, refuses in
    a tainted conversation, asks the owner in every mode, and runs the copy pine took, not the
    agent's file. Keep all four.
+   An extension (`src/extensions.ts`) is a program inside the daemon in the same way, and
+   `add_extension`, `update_extension` and `remove_extension` keep the same four: the main
+   agent's alone, refused in a tainted conversation without asking, put to the owner in every
+   mode with what `propose` found (the pinned version; that it is a program), and what runs is
+   what pine installed into its own home (`<home>/packages`, `agents/<id>/packages`), which no
+   agent writes. A file an agent names has to lie in its workspace and is copied as files, a link
+   in it refused. A source is `npm:`, a git address on `https` or a path, checked to be nothing
+   git or npm could take for an option (`kindOf`, `GIT`). npm runs a package's install scripts
+   only when the owner's dialog said so (`scripts`). Nothing updates by itself, and looking at
+   the list never fetches anything. pi's own folder (`~/.pi`) is looked at for the owner's
+   Settings (`inPi`) and never loaded from: other programs write there. `test/extensions.test.ts`
+   fails without each of these.
 8. **Web access never reaches the local network.** The `http` source does only for an address
    the owner confirmed as local; a public one goes through `publicOnlyAgent`. `mcp/web.ts` checks addresses when it
    connects; `mcp/browser.ts` sends all browser traffic through its guard proxy and withholds the

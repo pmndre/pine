@@ -20,6 +20,7 @@ import { addDecision, checkDecision, removeDecision, signInTypesafe, signOutType
 import { addModelServer, checkServerName, listModelServers, lookAround, lookAt, modelKeys, modelRuntime, modelServerUsers, removeModelServer, serverUrl } from "./models.ts";
 import type { Router } from "./router.ts";
 import { audit, isInside, realish, sandboxAvailable } from "./security.ts";
+import { inPi, install as installExtension, listExtensions, newer as newerExtension, propose as proposeExtension, uninstall as uninstallExtension } from "./extensions.ts";
 import { allSkills, checkSkill, deleteSkill, skillDir, skillsBeside, writeSkill } from "./skills.ts";
 import type { SourceHost } from "./sources.ts";
 import { localTime, type Scheduler } from "./timers.ts";
@@ -351,6 +352,12 @@ export class OwnerApi {
 		if (parts[0] === "views" && parts.length === 2) return viewCode(cfg.home, parts[1]);
 		if (at === "shared") return SHARED_FILES.map((name) => ({ name, about: SHARED_ABOUT[name] ?? "", text: ownText(textOf(path.join(cfg.home, name)) ?? "") }));
 		if (at === "skills") return allSkills(cfg).map((s) => ({ ...s, instructions: skillBody(s.dir) }));
+		// Extensions installed into pine's home, and what pi itself has for the owner to bring over (never loaded from there).
+		if (at === "extensions") return (await listExtensions(cfg)).map(({ load: _load, ...x }) => x);
+		if (at === "extensions/pi") {
+			const have = new Set((await listExtensions(cfg)).filter((x) => x.scope === "global").map((x) => x.name));
+			return inPi().map((x) => ({ ...x, installed: have.has(x.name) }));
+		}
 		if (at === "schedules") return this.need(this.schedules, "a scheduler").list();
 		if (at === "routes") return cfg.routes.map((r) => ({ name: r.name, on: r.on, when: r.when, throttleMs: r.throttleMs, debounceMs: r.debounceMs, agent: r.agent, prompt: r.prompt, session: r.session, set: r.set, publish: r.publish, call: r.call, ask: r.ask, run: r.run, trust: r.trust, of: r.of }));
 		if (at === "sources/types") return this.need(this.sources, "event sources").typeList().map((t) => ({ name: t.name, summary: t.summary, options: t.options, own: t.name in cfg.sourceTypes }));
@@ -385,7 +392,7 @@ export class OwnerApi {
 	/** A POST request. Undefined: not one of these. `long` is called by a request that takes as long as a person does. */
 	async post(parts: string[], body: any, long: () => void = () => {}): Promise<unknown | undefined> {
 		const at = parts.join("/");
-		const mine = ["settings", "shared", "skills", "skills/remove", "schedules", "schedules/remove", "routes", "routes/remove", "decisions", "decisions/remove", "decisions/typesafe", "decisions/typesafe/remove", "sources", "sources/propose", "sources/remove", "models/servers", "models/servers/remove", "models/servers/limit", "models/model", "models/model/set", "models/model/remove", "models/login", "models/logout", "mcp/login"].includes(at) || (parts[0] === "models" && parts[1] === "login" && parts.length === 3) || (parts[0] === "agents" && parts[2] === "view" && (parts[3] === "write" || parts[3] === "files") && parts.length === 4);
+		const mine = ["settings", "shared", "skills", "skills/remove", "extensions", "extensions/propose", "extensions/remove", "extensions/update", "schedules", "schedules/remove", "routes", "routes/remove", "decisions", "decisions/remove", "decisions/typesafe", "decisions/typesafe/remove", "sources", "sources/propose", "sources/remove", "models/servers", "models/servers/remove", "models/servers/limit", "models/model", "models/model/set", "models/model/remove", "models/login", "models/logout", "mcp/login"].includes(at) || (parts[0] === "models" && parts[1] === "login" && parts.length === 3) || (parts[0] === "agents" && parts[2] === "view" && (parts[3] === "write" || parts[3] === "files") && parts.length === 4);
 		if (!mine) return undefined;
 		try {
 			return await this.change(at, parts, body ?? {}, long);
@@ -446,6 +453,44 @@ export class OwnerApi {
 			deleteSkill(found.dir, agent ? agent.dir : cfg.home);
 			await manager.refreshSessions(agent ? [agent.id] : undefined);
 			return { removed: true };
+		}
+
+		// An extension is a program inside the daemon. Here it is the owner who installs it: the page shows
+		// what `propose` found, and what is posted back is installed as it was shown.
+		if (at === "extensions/propose") return proposeExtension(String(body.source ?? ""));
+		if (at === "extensions") {
+			const agent = this.maybeAgent(body.agent);
+			long();
+			const proposal = await proposeExtension(String(body.source ?? ""));
+			const made = await installExtension(cfg, proposal, agent, body.scripts === true);
+			await manager.refreshSessions(agent ? [agent.id] : undefined);
+			this.log.info(`extension ${made.source} installed ${agent ? `for ${agent.id}` : "for all agents"} through the control API`);
+			const { load: _load, ...shown } = made;
+			return shown;
+		}
+		if (at === "extensions/remove") {
+			const agent = this.maybeAgent(body.agent);
+			const found = (await listExtensions(cfg)).find((x) => x.source === body.source && (agent ? x.agent === agent.id : x.scope === "global"));
+			if (!found) throw new Refusal(404, `there is no extension "${String(body.source)}" ${agent ? `of ${agent.id}` : "for all agents"}`);
+			if (!found.managed) throw new Refusal(409, `"${found.name}" lies where you put it yourself (${found.path}), and stays yours: take it out there`);
+			long();
+			await uninstallExtension(cfg, found.source, agent);
+			await manager.refreshSessions(agent ? [agent.id] : undefined);
+			this.log.info(`extension ${found.source} removed through the control API`);
+			return { removed: true };
+		}
+		if (at === "extensions/update") {
+			const agent = this.maybeAgent(body.agent);
+			const found = (await listExtensions(cfg)).find((x) => x.source === body.source && x.managed && (agent ? x.agent === agent.id : x.scope === "global"));
+			if (!found) throw new Refusal(404, `there is no extension "${String(body.source)}" ${agent ? `of ${agent.id}` : "for all agents"}`);
+			long();
+			const next = await newerExtension(found.source);
+			// `check`: only say what it would become.
+			if (body.check === true || !next) return { from: found.version ?? null, to: next?.version ?? null, source: next?.source ?? null, updated: false };
+			const made = await installExtension(cfg, next, agent, body.scripts === true);
+			await manager.refreshSessions(agent ? [agent.id] : undefined);
+			this.log.info(`extension ${found.source} updated to ${made.source} through the control API`);
+			return { from: found.version ?? null, to: made.version ?? null, source: made.source, updated: true };
 		}
 
 		if (at === "schedules") {

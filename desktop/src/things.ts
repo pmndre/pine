@@ -2,7 +2,7 @@
 // schedules, routes, skills, MCP servers): how one is said in words, whom it concerns, the sign that a list
 // changed, and the one dialog a route, a schedule or a skill opens in, wherever its row was clicked.
 // No React and no page: Settings.tsx draws the dialog (`ThingDialog`), App.tsx holds it over whatever is in front.
-import type { AskQuestion, Route, Schedule, Skill } from "./api.ts";
+import type { AskQuestion, Route, Schedule, Skill, Extension } from "./api.ts";
 import { Model, store } from "./model.ts";
 import type { Place } from "./settings-index.ts";
 import { short } from "./text.ts";
@@ -11,7 +11,9 @@ import { short } from "./text.ts";
 export type Thing =
 	| { kind: "route"; route?: Route; agent?: string }
 	| { kind: "schedule"; schedule?: Schedule; agent?: string }
-	| { kind: "skill"; skill?: Skill; agent?: string };
+	| { kind: "skill"; skill?: Skill; agent?: string }
+	/** An installed extension, or (without one) a new one to install: from `source` when it is known already. */
+	| { kind: "extension"; extension?: Extension; agent?: string; source?: string };
 
 class Opened extends Model {
 	thing?: Thing;

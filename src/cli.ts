@@ -81,6 +81,7 @@ Event sources
 Schedules, skills, the manual
   pine schedules                  what is scheduled: for whom, when, and the task
   pine skills                     every skill: whom it is for and where it lies
+  pine extensions                 every installed extension: whom it is for and where it came from
   pine manual <words>             search pine's manual, as the agents do; --read <id> shows a part in full
 
 Agents (the main agent does the same when you ask it: create_agent, update_agent, rename_agent, remove_agent)
@@ -388,7 +389,7 @@ async function installBrowser(): Promise<number> {
 	return spawnSync(process.execPath, [cli, "install", "chromium"], { stdio: "inherit" }).status ?? 1;
 }
 
-const COMMANDS = new Set(["agent", "agents", "approvals", "approve", "browser-install", "cancel", "check", "deny", "dev-model", "emit", "events", "help", "init", "kill", "killall", "list", "login", "logout", "manual", "mcp", "mode", "model", "reset", "schedules", "send", "service", "skills", "sources", "start", "state", "status", "subscribe", "task", "tasks", "tui", "unsubscribe", "update", "version"]);
+const COMMANDS = new Set(["agent", "agents", "approvals", "approve", "browser-install", "cancel", "check", "deny", "dev-model", "emit", "events", "extensions", "help", "init", "kill", "killall", "list", "login", "logout", "manual", "mcp", "mode", "model", "reset", "schedules", "send", "service", "skills", "sources", "start", "state", "status", "subscribe", "task", "tasks", "tui", "unsubscribe", "update", "version"]);
 
 /** Whether a first argument means a folder to open: something written as a path, or the name of a folder here that is not a command. */
 function folderArgument(word: string | undefined, cwd = process.cwd()): string | undefined {
@@ -748,6 +749,18 @@ async function main(): Promise<void> {
 			out(`${s.name}  ${s.scope === "global" ? "all agents" : s.scope === "agent" ? `agent ${s.agent}` : `conversation ${s.session} of ${s.agent}`}${s.managed ? "" : "  [yours, from the configuration]"}`);
 			out(`    ${s.description}`);
 			out(`    ${s.dir}`);
+		}
+		return;
+	}
+
+	if (cmd === "extensions") {
+		const { listExtensions } = await import("./extensions.ts");
+		const list = await listExtensions(cfg);
+		if (!list.length) return out("no extensions. Install one in the Pine app (Settings > Extensions) or ask the main agent (\"install the extension npm:name\"); see docs/references/extensions.md");
+		for (const x of list) {
+			out(`${x.name}${x.version ? ` ${x.version}` : ""}  ${x.scope === "global" ? "all agents" : `agent ${x.agent}`}${x.managed ? "" : "  [yours, put there by hand]"}${x.problem ? `  [${x.problem}]` : ""}`);
+			if (x.description) out(`    ${x.description}`);
+			out(`    ${x.source}`);
 		}
 		return;
 	}

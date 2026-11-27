@@ -281,6 +281,8 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["what counts as outside content", /^security#|^sources#trust|^configuration#pine-json\/security-taint/],
 		["approval dialog always allow in this conversation", /^(security#4|tui#approvals)/],
 		["write down how to do something as a skill", /^agents#(skills|ask-the-agent)/],
+		["install a plugin from npm that gives agents more tools", /^extensions#/],
+		["which plugins are installed", /^extensions#/],
 		["sub-agents in parallel", /^agents#sub-agents/],
 		["run a helper on a different model than my own", /^agents#sub-agents/],
 		["give a sub task to a bigger model with more reasoning", /^agents#sub-agents/],

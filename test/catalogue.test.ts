@@ -31,7 +31,7 @@ test("families: a group of tools is one declared tool, and a call is carried out
 	assert.deepEqual(fam.parameters.properties.action.enum, ["add_schedule", "remove_schedule"]);
 	// The lists are a tool of their own, which takes several at once.
 	const lists = tool(first, "pine_list");
-	assert.deepEqual([...lists.parameters.properties.what.items.enum].sort(), ["agents", "boards", "conversations", "mcp_servers", "models", "routes", "schedules", "settings", "skills", "sources"]);
+	assert.deepEqual([...lists.parameters.properties.what.items.enum].sort(), ["agents", "boards", "conversations", "extensions", "mcp_servers", "models", "routes", "schedules", "settings", "skills", "sources"]);
 	assert.match(lists.description, /- schedules: what is scheduled for you/);
 	assert.deepEqual(fam.parameters.properties.scope.enum, ["local", "agent", "global"]);
 	assert.deepEqual(tool(first, "pine_sources").parameters.properties.type.enum, SOURCE_TYPES);

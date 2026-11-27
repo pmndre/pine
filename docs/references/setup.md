@@ -63,7 +63,8 @@ After a conversation has read outside content (a web page, somebody else's messa
 
 - pine refuses, without asking: `update_agent`, `rename_agent`, `remove_agent`, `set_setting`,
   `set_conversation`, `remove_conversation`, `rename_group`, `remove_group`, `sign_in`,
-  `sign_out`, `sign_in_mcp_server`, `add_source_type`, `add_model_server`, `add_model`,
+  `sign_out`, `sign_in_mcp_server`, `add_source_type`, `add_extension`, `update_extension`,
+  `remove_extension`, `add_model_server`, `add_model`,
   `configure_model`, and a route with `trust: "owner"`. Use a new conversation or `/reset`;
 - pine asks about `add_route`, `remove_route`, `add_decision_model` and `remove_decision_model`,
   naming the outside content;
@@ -296,6 +297,9 @@ and conversations are in the sections above.
 | `read_source` `source` [`data`] | Reads earlier messages through a source that can be asked (a Slack channel or thread: `data` is `{"channel": "C0123", "thread": "..."}`). Not asked about; the result is outside content |
 | `remove_source` `name` | Stops and deletes a source, with its subscriptions and folder access |
 | `add_source_type` `name` `file`, `remove_source_type` `name` | Main agent only. Registers a module as a new source type, or removes one ([sources.md](sources.md)) |
+| **Extensions** | |
+| `extensions` | Main agent only. Lists the installed extensions |
+| `add_extension` `source` [`agent`] [`scripts`], `update_extension` `source` [`agent`], `remove_extension` `source` [`agent`] | Main agent only. Installs, updates or removes a pi extension or package; you confirm each ([extensions.md](extensions.md)) |
 | **Schedules** | |
 | `schedules` | Lists the agent's schedules and when each is next due |
 | `add_schedule` `name` `task` + one of `cron`, `every`, `at`, `in` [`scope`] | Runs the task at set times, repeatedly, or once ([events.md](events.md), "Schedules") |

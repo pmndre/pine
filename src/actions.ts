@@ -22,11 +22,11 @@ export type ActionClass = "look" | "local" | "reach" | "send" | "tell" | "own" |
 /** Tools that only look. */
 /** Tools that carry a call out as a nested call of another tool (src/catalogue.ts). */
 export const ROUTERS = new Set<string>();
-export const LOOK_TOOLS = ["read", "grep", "find", "ls", "state_get", "sources", "read_source", "tool_search", "manual", "schedules", "mcp_servers", "skills", "models", "stop_program", "question", "todo", "agents", "settings", "routes", "find_tools", "conversations", "read_conversation", "boards", "board_read"];
+export const LOOK_TOOLS = ["read", "grep", "find", "ls", "state_get", "sources", "read_source", "tool_search", "manual", "schedules", "mcp_servers", "skills", "models", "stop_program", "question", "todo", "agents", "settings", "routes", "find_tools", "conversations", "read_conversation", "boards", "board_read", "extensions"];
 /** The tools that write on a board (src/boards.ts). */
 const BOARD_WRITES = ["board_post", "board_claim", "board_done", "board_answer"];
 /** Tools that change pine's setup or ask for access. Each asks the owner where it matters, so the gate does not ask again. */
-export const SETUP_TOOLS = ["request_access", "add_mcp_server", "remove_mcp_server", "add_source", "remove_source", "add_source_type", "remove_source_type", "add_skill", "remove_skill", "add_schedule", "remove_schedule", "create_agent", "update_agent", "rename_agent", "remove_agent", "set_setting", "add_route", "remove_route", "add_decision_model", "remove_decision_model", "add_model_server", "remove_model_server", "add_model", "configure_model", "remove_model", "sign_in", "sign_out", "sign_in_mcp_server", "set_conversation", "remove_conversation", "rename_group", "remove_group"];
+export const SETUP_TOOLS = ["request_access", "add_mcp_server", "remove_mcp_server", "add_source", "remove_source", "add_source_type", "remove_source_type", "add_extension", "update_extension", "remove_extension", "add_skill", "remove_skill", "add_schedule", "remove_schedule", "create_agent", "update_agent", "rename_agent", "remove_agent", "set_setting", "add_route", "remove_route", "add_decision_model", "remove_decision_model", "add_model_server", "remove_model_server", "add_model", "configure_model", "remove_model", "sign_in", "sign_out", "sign_in_mcp_server", "set_conversation", "remove_conversation", "rename_group", "remove_group"];
 
 /**
  * Files and folders in the owner's home that make other programs run, or that are the keys to

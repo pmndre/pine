@@ -557,7 +557,7 @@ default every agent can ask the others for their files.
 | A model server reads what it is sent | Its operator sees the conversations, and over plain `http` anyone on the path. Use `https` beyond your own network |
 | Worktrees without a sandbox | Kept apart only by where their tools start |
 | Bad answers and approval fatigue | An injected page can make an agent tell you something false, and an approval shows the action, not honest reasoning. Approving without reading makes the questions worthless |
-| Your own MCP servers, extensions and source types | They run unsandboxed: a server that can delete mail does so when asked. Mark it `"approve": "tainted"` or `"always"` |
+| Your own MCP servers, extensions and source types | They run unsandboxed: a server that can delete mail does so when asked. Mark it `"approve": "tainted"` or `"always"`. An extension runs inside pine itself and can read everything pine reads, your keys included: nobody at pine has read the ones you install ([extensions.md](extensions.md)) |
 | Shell with network | `sandbox.network: true` reaches the internet and your local network, an unauthenticated model server and any port on this machine, and on Linux socket files in temp. Prefer the `web` server or a `commands` tool |
 | App control is outside the sandbox | What an app can open, the agent can: a terminal or the Finder reaches pine's home, a mail app sends as you. Allow such apps only for a watched task |
 | A signed-in browser | With a persistent `profile`, or after you log in in a window the agent opened or the Pine app's browser, the agent acts as you on that site ([mcp.md](mcp.md)) |
