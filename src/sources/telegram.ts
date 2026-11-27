@@ -329,45 +329,39 @@ export default async function telegram(source: SourceApi): Promise<void> {
 	});
 	source.onStop(() => typing.forEach((h) => clearInterval(h)));
 
-	// ---- approval requests, to answer from the phone ---------------------------------------------------
+	// ---- approval requests and questions, to answer from the phone ------------------------------------
 	/**
-	 * Questions with several answers that were sent here, oldest first, with the id of the message that
-	 * asked and how many options it numbered. A reply to that message answers it, and so does a message
-	 * of nothing but its numbers for the last one; anything else the owner writes is a message as usual.
+	 * The agents' questions sent here, by the id of the message that asked: the owner's reply to that
+	 * message is their answer. Kept in the source's storage, so that a reply after a restart still
+	 * finds its question; the latest few only.
 	 */
-	const typed: Array<{ id: string; message?: number; count: number }> = [];
+	const relayed = () => source.kv.get<Array<{ message: number; task: number; at: number }>>("questions") ?? [];
+	const questionOf = (message: number | undefined) => (message === undefined ? undefined : relayed().find((q) => q.message === message));
 	if (o.approvals !== false) {
 		const asked = new Map<string, number>();
-		source.on("approval/requested", async (e) => {
-			const r = e.payload as any;
+		// A question of a run started from outside (a schedule, an event): the owner may be away from pine's
+		// UIs. A question of the owner's own conversation in a UI stays there.
+		source.on("question/asked", async (e) => {
+			const q = e.payload as any;
+			if (q?.outside !== true) return;
 			// An agent's own bot carries that agent's questions; a bot for all agents carries every agent's.
-			if (source.agent !== undefined && r.agent !== source.agent && r.of !== source.agent) return;
+			if (source.agent !== undefined && q.agent !== source.agent) return;
 			const chat = ownerChat();
 			if (chat === undefined) return;
-			// A question of the agent's with answers to pick from. One answer: a button for each. Several:
-			// the options numbered, and the owner's reply to it is the answer ("1,3", or words of their own).
-			const options: Array<{ label: string; description?: string }> = r.tool !== "question" ? [] : Array.isArray(r.options) && r.options.length ? r.options : Array.isArray(r.choices) ? r.choices.map((label: string) => ({ label })) : [];
-			if (options.length) {
-				const shown = options.slice(0, 6);
-				const head = `${r.agent} asks${r.header ? ` (${truncate(String(r.header), 12)})` : ""}:\n${truncate(String(r.summary), 1200)}`;
-				const line = (x: { label: string; description?: string }) => `${truncate(String(x.label), 80)}${x.description ? `: ${truncate(String(x.description), 200)}` : ""}`;
-				const noAnswer = [{ text: "No answer", callback_data: `ap:${r.id}:0` }];
-				if (r.multiSelect === true) {
-					const list = shown.map((x, i) => `${i + 1}. ${line(x)}`).join("\n");
-					const waiting: (typeof typed)[number] = { id: r.id, count: shown.length };
-					typed.push(waiting);
-					const msg = await send(chat, `${head}\n\n${list}\n\nSeveral answers: reply to this message with their numbers, such as 1,3, or your own words.`, { reply_markup: { inline_keyboard: [noAnswer] } });
-					if (msg?.message_id) asked.set(r.id, (waiting.message = msg.message_id));
-					return;
-				}
-				const described = shown.some((x) => x.description) ? `\n\n${shown.map(line).join("\n")}` : "";
-				const rows = shown.map((x, i) => [{ text: truncate(String(x.label), 60), callback_data: `ap:${r.id}:c${i}` }]);
-				const msg = await send(chat, `${head}${described}`, { reply_markup: { inline_keyboard: [...rows, noAnswer] } });
-				if (msg?.message_id) asked.set(r.id, msg.message_id);
-				return;
-			}
-			// A question the owner answers by typing a secret belongs on their own machine, not in a chat.
-			if (r.inputs?.length) return;
+			const options: Array<{ label: string; description?: string }> = Array.isArray(q.options) ? q.options.slice(0, 6) : [];
+			const head = `${q.agent} asks${q.header ? ` (${truncate(String(q.header), 12)})` : ""}:\n${truncate(String(q.question), 1200)}`;
+			const list = options.map((x, i) => `${i + 1}. ${truncate(String(x.label), 80)}${x.description ? `: ${truncate(String(x.description), 200)}` : ""}`).join("\n");
+			const how = options.length ? "Reply to this message to answer: with a number for an option, or in your own words." : "Reply to this message to answer.";
+			const msg = await send(chat, `${head}\n\n${list ? `${list}\n\n` : ""}${how}`);
+			if (msg?.message_id) source.kv.set("questions", [...relayed(), { message: msg.message_id, task: Number(q.task), at: Number(q.at) }].slice(-50));
+		});
+		source.on("approval/requested", async (e) => {
+			const r = e.payload as any;
+			if (source.agent !== undefined && r.agent !== source.agent && r.of !== source.agent) return;
+			// A question the owner answers by typing (a secret, a sign-in's choice) belongs on their own machine, not in a chat.
+			if (r.inputs?.length || r.tool === "question") return;
+			const chat = ownerChat();
+			if (chat === undefined) return;
 			const always = r.remember ? [{ text: `Always: ${truncate(String(r.remember), 30)}`, callback_data: `ap:${r.id}:2` }] : [];
 			const msg = await send(chat, `Approval needed\nAgent: ${r.agent}${r.task ? ` (task #${r.task})` : ""}\nAction: ${truncate(String(r.summary), 1200)}\nWhy you are asked: ${r.why}`, { reply_markup: { inline_keyboard: [[{ text: "Allow", callback_data: `ap:${r.id}:1` }, ...always, { text: "Deny", callback_data: `ap:${r.id}:0` }]] } });
 			if (msg?.message_id) asked.set(r.id, msg.message_id);
@@ -376,9 +370,7 @@ export default async function telegram(source: SourceApi): Promise<void> {
 			const d = e.payload as any;
 			const messageId = asked.get(d.id);
 			asked.delete(d.id);
-			const done = typed.findIndex((q) => q.id === d.id);
-			if (done >= 0) typed.splice(done, 1);
-			if (messageId) await api("editMessageReplyMarkup", { chat_id: ownerChat(), message_id: messageId, reply_markup: { inline_keyboard: [[{ text: d.tool === "question" ? (d.allow ? `Answered (${d.by})` : `No answer (${d.by})`) : d.allow ? `Allowed (${d.by})` : `Denied (${d.by})`, callback_data: "noop" }]] } }).catch(() => {});
+			if (messageId) await api("editMessageReplyMarkup", { chat_id: ownerChat(), message_id: messageId, reply_markup: { inline_keyboard: [[{ text: d.allow ? `Allowed (${d.by})` : `Denied (${d.by})`, callback_data: "noop" }]] } }).catch(() => {});
 		});
 	}
 
@@ -452,17 +444,17 @@ export default async function telegram(source: SourceApi): Promise<void> {
 			const ok = id ? source.approvals.decide(id, verdict[1] === "allow", `telegram:${userId}`) : false;
 			return void send(chatId, ok ? "Noted." : "No such open request.").catch(() => {});
 		}
+		// A reply to the very message that asked is the answer, in the conversation that asked. Nothing
+		// else is: an ordinary message, or a reply to anything else, goes where the owner's messages go.
+		const question = text ? questionOf(Number(m.reply_to_message?.message_id)) : undefined;
+		if (question && source.answerQuestion(question, text, { chatId })) return;
 		source.emit("message", { text: text || "(a picture)", name, username: m.from?.username, chatId, messageId: m.message_id, images: images.length ? images : undefined }, { reply: { chatId } });
 	};
 
 	const onCallback = async (c: any) => {
 		const userId = Number(c.from?.id);
-		const m = String(c.data ?? "").match(/^ap:(\w+):([012]|c\d)$/);
+		const m = String(c.data ?? "").match(/^ap:(\w+):([012])$/);
 		if (!heard(userId) || !m) return void api("answerCallbackQuery", { callback_query_id: c.id }).catch(() => {});
-		if (m[2].startsWith("c")) {
-			const chosen = source.approvals.choose(m[1], Number(m[2].slice(1)), `telegram:${userId}`);
-			return void api("answerCallbackQuery", { callback_query_id: c.id, text: chosen ? "Answered" : "Already answered or expired" }).catch(() => {});
-		}
 		const ok = source.approvals.decide(m[1], m[2] !== "0", `telegram:${userId}`, m[2] === "2");
 		await api("answerCallbackQuery", { callback_query_id: c.id, text: ok ? (m[2] === "0" ? "Denied" : m[2] === "2" ? "Allowed for this conversation" : "Allowed") : "Already answered or expired" }).catch(() => {});
 	};
