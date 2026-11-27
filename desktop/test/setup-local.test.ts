@@ -1,4 +1,4 @@
-// "Setup Pine", a model on this computer (src/setup/local.tsx): the daemon asks the usual local
+// "Onboarding", a model on this computer (src/setup/local.tsx): the daemon asks the usual local
 // ports what they serve (`GET /models/local`), and the owner picks what answered, unlocks it with
 // its key, or types an address. The usual ports are moved to stand-ins on port 0 for the daemon of
 // this test (`PINE_LOCAL_PORTS`, for tests only): a llama.cpp server with Pinecone's MCP server

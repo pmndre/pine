@@ -70,14 +70,14 @@ pine says that the app updates itself.
 |---|---|
 | No pine home | Runs `pine init` without asking: copies the example home and fetches the browser (about 600 MB, once), and shows what it prints. If the browser cannot be fetched (offline), the app opens all the same and offers it again later. On Linux the sandbox needs an administrator (bubblewrap, sometimes an AppArmor rule): the app shows the commands, then **Try again**. Until then pine runs without the sandbox |
 | The welcome | The main agent's own conversation opens with pine's welcome: the main agent is the administrator to ask; make one agent per purpose (coding, work, automation, chat); the first conversation is kept, others are cleared after a while unless pinned; what pine is for; a prompt to try (watching the Downloads folder); where pine keeps everything. pine wrote it and no model sees it |
-| Nothing to answer with | While the main agent has no model that answers, the app opens **Setup Pine**. Conversations show **Connect a model first** with **Set up a model…**, and Settings > Models lists each agent that cannot answer, and why. A message you send meanwhile says it was not answered. Send it again once a model is there |
+| Nothing to answer with | While the main agent has no model that answers, the app opens **Onboarding**. Conversations show **Connect a model first** with **Set up a model…**, and Settings > Models lists each agent that cannot answer, and why. A message you send meanwhile says it was not answered. Send it again once a model is there |
 | A sign-in in Settings > Models | Sign in to a Claude, ChatGPT or Copilot subscription in the browser, or any provider with an API key. If the current model cannot answer, pine switches to the provider's usual one and says which (**Another one…**); else it offers **Choose the model your agents run on**. The choice is `defaults.model` |
 | The first message | No agent writes first. Each introduces itself once, in its answer to your first message; `defaults.introduce` turns this off ([agents.md](agents.md), "Meeting an agent") |
 | The browser of the web tools is missing | Each pine version drives its own browser build. When it is not on this computer, the app asks once per version to fetch it (**Fetch it** in Settings > General, `pine browser-install`). Until then the browser tools fail; web search and reading a page work |
 
-### Setup Pine: getting started
+### Onboarding: getting started
 
-**Setup Pine** is where you set pine up and the one place to connect a model: the main agent's
+**Onboarding** is where you set pine up and the one place to connect a model: the main agent's
 conversation `setup`, pinned in the side bar. The app brings it to the front after pine is set up
 and whenever the main agent has no model that answers (a new home, a sign-out, a removed model
 server). It works the same in the Pine app, the mobile app and the web client.
@@ -97,8 +97,8 @@ nor keeps what you type: paste the key into the field.
 | The sign-in | The provider's page opens in your browser (**Open the sign-in page again**), with a code and **Copy** when there is one. **Cancel** goes back. Nothing typed reaches a model |
 | Which provider? | Anthropic, OpenAI, Google Gemini, OpenRouter, xAI, or **Another…** (a search of every provider) |
 | Your API key for … | A hidden field. **Save** stores the key in `auth.json` in pine's home, where no agent reads it; the conversation says only **Key saved for …**. A refused key says why, with **Try again** |
-| Your agents run on … | The model now in use: **Go on** or **Choose another model** |
-| What would you like to set up now? | Optional items: **The mode**, **A working folder**, **Telegram**, **A first agent**, **The theme**, on a Mac **Pinecone**. **Send** hands them to the main agent one by one. **Nothing for now** opens the main conversation; the card returns at each start until you say something in Setup Pine |
+| Which default model should your agents run on? | The model every agent without its own runs on (`defaults.model`). First pine's choice (recommended: Enter or **1** keeps it), then up to four other models of the same provider, then **Another…** (a search of every model) |
+| After that | pine sends one fixed message as yours: look at what is set up, then ask about the few things most worth setting up first, with a way to leave it for later. The main agent answers there, introduces itself, and asks with a card where you tick, answer in words, or press **Later** |
 
 ### `pine` in a terminal
 

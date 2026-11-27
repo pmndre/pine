@@ -291,7 +291,7 @@ const STOP_GRACE = 3000;
 /** What the gate says of a pine that answered with no agent at all, until one is made there. */
 const NO_AGENTS = "This pine has no agents.";
 
-/** The main agent's conversation that sets pine up ("Setup Pine", src/setup/). */
+/** The main agent's conversation that sets pine up ("Onboarding", src/setup/). */
 export const SETUP = "setup";
 /** Kept once the home-screen suggestion was made, so that it is never made again. */
 const HOME_SCREEN_KEY = "pine.homeScreen";
@@ -1369,7 +1369,7 @@ export class Store extends Model {
 	 */
 	titleOf(agent: string, session: string): string {
 		if (session === "main") return "main conversation";
-		if (session === SETUP && this.agent(agent)?.main) return "Setup Pine";
+		if (session === SETUP && this.agent(agent)?.main) return "Onboarding";
 		// A branch of a conversation that has no name of its own is called after that one's title.
 		const branch = /^(s[0-9a-z]{6,10})-branch(?:-(\d+))?$/.exec(session);
 		if (branch) return `${this.titleOf(agent, branch[1])} · branch${branch[2] ? ` ${branch[2]}` : ""}`;
@@ -1561,7 +1561,7 @@ export class Store extends Model {
 	}
 
 	/**
-	 * Open "Setup Pine", the main agent's conversation that sets pine up, in front and pinned. The
+	 * Open "Onboarding", the main agent's conversation that sets pine up, in front and pinned. The
 	 * pin is the daemon's like any other; a conversation with nothing said in it is not in its list,
 	 * so the page marks it here too.
 	 */
@@ -1583,7 +1583,7 @@ export class Store extends Model {
 	 * Say once, in a toast that stays (the stock Toaster, no timeout), that the main agent has no model
 	 * that answers, with the way to the setup conversation. Shown from `main`'s welcome card; gone when
 	 * a model answers, and not shown again for this page once the owner closed it. Kept back while
-	 * "Setup Pine" is in front, which it points to and would only cover (`placeNoModelNotice`).
+	 * "Onboarding" is in front, which it points to and would only cover (`placeNoModelNotice`).
 	 */
 	noModelNotice(text: { title: string; description: string }): void {
 		if (this.hasModel || this.noModel.closed) return;
@@ -1603,7 +1603,7 @@ export class Store extends Model {
 		});
 	}
 
-	/** The toast goes away when "Setup Pine" comes to the front, not as closed by the owner, and comes back on any other tab. */
+	/** The toast goes away when "Onboarding" comes to the front, not as closed by the owner, and comes back on any other tab. */
 	private placeNoModelNotice(tab: Tab): void {
 		if (!this.isSetup(tab)) {
 			if (this.noModel.text) this.noModelNotice(this.noModel.text);
@@ -1636,9 +1636,10 @@ export class Store extends Model {
 	/**
 	 * Choose the model of every agent that has none of its own (`defaults.model`), from `among` or
 	 * from all that can be used now. Offered where a model was just made available, and where an
-	 * agent's model cannot answer.
+	 * agent's model cannot answer. Gives the model picked (the one there was, too), nothing when the
+	 * picker was closed or the change failed.
 	 */
-	async chooseDefaultModel(among?: string[]): Promise<void> {
+	async chooseDefaultModel(among?: string[]): Promise<string | undefined> {
 		const title = "Model for all agents without a model of their own";
 		// Settings that cannot be read only leave the picker without the current value.
 		const loaded = await this.loadPick(title, async () => {
@@ -1647,13 +1648,23 @@ export class Store extends Model {
 		});
 		if (!loaded) return;
 		const { models } = loaded;
-		if (!models.length) return this.connectModel();
+		if (!models.length) {
+			await this.connectModel();
+			return;
+		}
 		const now = loaded.settings.find((x) => x.key === "defaults.model")?.now;
 		const model = await this.pick({ title, items: models.map((m) => ({ value: m, label: m })), current: now, placeholder: "Search models" });
-		if (!model || model === now) return;
-		if (!(await this.attempt(() => api.setSetting("defaults.model", model)))) return;
+		if (!model) return;
+		if (model === now) return model;
+		return (await this.setDefaultModel(model)) ? model : undefined;
+	}
+
+	/** Set the model of every agent that has none of its own (`defaults.model`): true when the daemon took it. */
+	async setDefaultModel(model: string): Promise<boolean> {
+		if (!(await this.attempt(() => api.setSetting("defaults.model", model)))) return false;
 		await this.refreshAgents();
 		this.flash(`Your agents now run on ${model}. Agents with a model of their own keep it.`, "good", 6000);
+		return true;
 	}
 
 	/** Open or close the form that publishes an event as the owner. What waits for an answer is asked once it is closed. */
@@ -2768,7 +2779,7 @@ export class Store extends Model {
 		if (!info) return;
 		const models = await this.loadPick(`Model for ${tab.agent}`, () => api.models());
 		if (!models) return;
-		if (!models.length) return this.connectModel();
+		if (!models.length) return void (await this.connectModel());
 		const model = await this.pick({ title: `Model for ${tab.agent}`, items: models.map((m) => ({ value: m, label: m })), current: info.model, placeholder: "Search models" });
 		if (!model || model === info.model) return;
 		if (!(await this.attempt(() => api.setModel(tab.agent, model)))) return;
@@ -3015,14 +3026,14 @@ export class Store extends Model {
 		return [...tab.approvals.values()].find((a) => isPick(a.req) && !this.later.has(a.req.id) && this.ownAsk(tab, a.req));
 	}
 
-	/** "Setup Pine": the main agent's conversation `setup`. */
+	/** "Onboarding": the main agent's conversation `setup`. */
 	isSetup(tab: Tab): boolean {
 		return tab.kind === "chat" && tab.session === SETUP && Boolean(this.agent(tab.agent)?.main);
 	}
 
 	/**
 	 * Which card stands above a conversation's composer: its own open question first, else pine's own
-	 * step in "Setup Pine". The one place that decides it.
+	 * step in "Onboarding". The one place that decides it.
 	 */
 	cardAbove(tab: Tab): "question" | "setup" | undefined {
 		if (tab.kind !== "chat") return undefined;

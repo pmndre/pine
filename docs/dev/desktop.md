@@ -223,9 +223,9 @@ desktop/
     Settings.tsx   the settings pages; settings-index.ts what their search finds
     Manual.tsx     the Manual tab: pine's manual from the daemon (`GET /manual`), its parts, chapters, a chapter, its search
     sign-in.ts     a provider sign-in as the page follows it; components/sign-in-card.tsx its card
-    setup/         Setup Pine's steps: engine.tsx walks them, types.ts, branches.ts (`BRANCHES`: one
-                   module per way to a model, subscription.tsx, api-key.tsx, local.tsx; `AFTER`:
-                   handoff.tsx, the card "Next"). A new way is a module and one line there
+    setup/         Onboarding's steps: engine.tsx walks them (and asks the default model), types.ts,
+                   branches.ts (`BRANCHES`: one module per way to a model, subscription.tsx,
+                   api-key.tsx, local.tsx). A new way is a module and one line there
     BrowserAccess.tsx, machines.ts, DevicePairing.tsx, Pairing.tsx  browser access and pairing
     commands.ts    one list of commands for the palette, the menus and the slash
     components/ui/ shadcn's components, as its CLI added them

@@ -699,7 +699,7 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 			live = false;
 		};
 	}, [tab.agent]);
-	// The main agent without a model that answers: said once in a toast that stays, with the way to "Setup Pine".
+	// The main agent without a model that answers: said once in a toast that stays, with the way to "Onboarding".
 	const problem = info?.main ? info.modelProblem : undefined;
 	useEffect(() => {
 		if (!problem) return;
@@ -1282,7 +1282,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 										</MessageScrollerItem>
 									</>
 								) : null}
-								{/* "Setup Pine" begins with pine's own steps, above everything said in it. */}
+								{/* "Onboarding" begins with pine's own steps, above everything said in it. */}
 								{setupTab ? (
 									<MessageScrollerItem>
 										<SetupScript tab={tab} />
@@ -1290,7 +1290,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 								) : null}
 								{!tab.items.length && chat ? (
 									store.agent(tab.agent)?.main && tab.session === "main" ? null : (
-										// "Setup Pine" has its agent above pine's steps, as main has it above its letter.
+										// "Onboarding" has its agent above pine's steps, as main has it above its letter.
 										<MessageScrollerItem className={setupTab ? "order-first" : "my-auto"}>
 											<Welcome tab={tab} />
 										</MessageScrollerItem>
@@ -1317,7 +1317,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 			)}
 			<div className="flex min-h-0 flex-col px-4 pb-4">
 				<div className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-col gap-2">
-					{/* An agent's question comes first; pine's own step in "Setup Pine" is there when none is open. */}
+					{/* An agent's question comes first; pine's own step in "Onboarding" is there when none is open. */}
 					<QuestionCardHost.Provider value={slot}>
 						{above === "question" ? <ComposerQuestion tab={tab} /> : above === "setup" ? <SetupCard tab={tab} /> : null}
 					</QuestionCardHost.Provider>

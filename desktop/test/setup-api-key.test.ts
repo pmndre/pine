@@ -1,4 +1,4 @@
-// "Setup Pine" with an API key: which provider (the most common ones, and "Another…", the pick
+// "Onboarding" with an API key: which provider (the most common ones, and "Another…", the pick
 // dialog with its search), then a card with a secret field of its own, whose key goes straight to
 // pi's sign-in for that provider. The conversation says only that a key was saved: the key is in
 // nothing the window shows and in nothing of the conversation's history, only in auth.json.

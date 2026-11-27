@@ -191,7 +191,7 @@ The name cannot be a provider's (`anthropic`, `openai`, ...). From a shell:
 
 ### A model server on this computer
 
-**Setup Pine** in the Pine app offers **A model on this computer** ([desktop.md](desktop.md)). pine
+**Onboarding** in the Pine app offers **A model on this computer** ([desktop.md](desktop.md)). pine
 looks for model servers running on this computer and offers what it finds, so you type no address.
 It asks only these ports on `127.0.0.1`, never another address:
 

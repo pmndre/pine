@@ -48,14 +48,28 @@ export const WithBack: Story = {
 	},
 };
 
+/** pine's card for the default model in Onboarding: its choice first and recommended, a few others of the provider, and a search of all. */
+export const DefaultModel: Story = {
+	args: {
+		header: "Default model",
+		from: "pine asks",
+		recommended: true,
+		onNoAnswer: undefined,
+		onLater: undefined,
+		question: "Which default model should your agents run on?",
+		options: [
+			{ label: "anthropic/claude-sonnet-4-5", description: "pine's choice. Keep it and go on." },
+			{ label: "anthropic/claude-opus-4-1" },
+			{ label: "anthropic/claude-haiku-4-5" },
+			{ label: "Another…", description: "Search every model your agents can use now." },
+		],
+	},
+};
+
 /** Several may be ticked, and are sent together. */
 export const Multiple: Story = {
 	args: {
-		header: "Next",
-		from: "pine asks",
-		actions: <Button size="sm" variant="ghost">Nothing for now</Button>,
-		onNoAnswer: undefined,
-		onLater: undefined,
+		header: "Set up",
 		question: "What do you want to set up now?",
 		multiple: true,
 		options: [{ label: "The mode", description: "How much your agents ask before they act" }, { label: "A working folder" }, { label: "Telegram", description: "Talk to your agents from your phone" }, { label: "A first agent" }],

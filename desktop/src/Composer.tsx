@@ -233,7 +233,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 			return runSlash(value.slice(1), tab);
 		}
 		// The card above takes what is typed (an agent's question, in the owner's own words; pine's own
-		// step in "Setup Pine" before a model answers): it does not wait behind the work, and is the card's.
+		// step in "Onboarding" before a model answers): it does not wait behind the work, and is the card's.
 		if (value && above?.type?.(value)) return set("");
 		await store.submit(tab, value, whenBusy);
 	};

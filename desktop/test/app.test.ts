@@ -33,7 +33,7 @@ test("starts a daemon of its own and shows the main agent", async () => {
 	assert.ok(fs.existsSync(path.join(home, "data", "http-token")));
 	await shot("01-welcome");
 	// Its agents have a model: the setup conversation is not opened.
-	assert.equal(await page.$("[data-slot=tab]:has-text('Setup Pine')"), null);
+	assert.equal(await page.$("[data-slot=tab]:has-text('Onboarding')"), null);
 });
 
 test("a newer app is said at the start and when asked, with a link to its page on GitHub and nothing fetched", async () => {
@@ -1565,13 +1565,13 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	await noModel.waitFor({ timeout: 20_000 });
 	assert.equal(await page.$("[data-slot=empty] [data-slot=model-notice]"), null);
 	await shot("09-no-model");
-	// The toast leads to the one way to connect a model, the setup conversation ("Setup Pine", which
+	// The toast leads to the one way to connect a model, the setup conversation ("Onboarding", which
 	// came in front by itself too when the model was lost); back to Settings from there.
 	await noModel.getByRole("button", { name: "Set up a model…" }).click();
-	await sees("[data-slot=conversation-head] >> text=Setup Pine");
+	await sees("[data-slot=conversation-head] >> text=Onboarding");
 	await sees("[data-slot=composer-question] [data-slot=questionnaire-title] >> text=How should your agents run?");
 	await menu("close");
-	await page.waitForSelector("[data-slot=tab]:has-text('Setup Pine')", { state: "detached" });
+	await page.waitForSelector("[data-slot=tab]:has-text('Onboarding')", { state: "detached" });
 	await menu("settings");
 	await sees("[data-slot=settings-page] h1 >> text=Models");
 	// "Change" offers every model that can be used now.

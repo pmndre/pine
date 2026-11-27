@@ -141,7 +141,7 @@ forms are refused.
 | A pine home there | `pine init` first |
 | A pine with `pine service` | Older ones are not reached: `pine update` |
 | A way from the phone to the machine | "Making a machine reachable". On an iPhone, allow Pine on the local network (Settings > Privacy & Security > Local Network), or machines on your Wi-Fi are not reached |
-| A model | Else **Setup Pine** opens ([desktop.md](desktop.md#setup-pine-getting-started)), looking on that machine |
+| A model | Else **Onboarding** opens ([desktop.md](desktop.md#onboarding-getting-started)), looking on that machine |
 
 The app runs `pine service` there, which attaches to the running pine or starts one. Switch
 machines at the foot of the side bar. Forget removes one with its host key. When a machine is not
