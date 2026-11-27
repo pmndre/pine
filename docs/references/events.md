@@ -111,8 +111,10 @@ A route is an entry in `routes` in `pine.json`. It does a small job without waki
 decides first whether to wake one. Most setups don't need one: subscribe the agent to a source,
 and use a schedule for set times. Examples are in "The cheapest handler that is enough".
 
-Write a route yourself, or ask the main agent (`routes`, `add_route`, `remove_route`), which
-checks it and needs no restart ([setup.md](setup.md), "Routes"). In the Pine app, Settings >
+Write a route yourself, or ask an agent (`routes`, `add_route`, `remove_route`). The tools check
+the route, and it works without a restart ([setup.md](setup.md), "Routes"). Every agent can add
+routes on its own sources and its own state ("An agent's own routes"). Any other route is the
+main agent's to add. In the Pine app, Settings >
 Events > Routes has a form: When (topic, `when`, throttle or debounce) and Then (Wake an agent,
 Set shared state, Publish an event, Ask a model, Make a decision).
 
