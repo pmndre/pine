@@ -159,3 +159,19 @@ test("a source that was removed leaves the view, also one that had reported some
 	assert.equal(w.sourceInfo.has("source:camera"), false);
 	assert.equal(w.stations.has("you"), true, "the other ways in stay");
 });
+
+test("a source of a single agent, which its events name with the agent, is one card and leaves the view when removed", () => {
+	const w = new World();
+	w.setPlaces([{ id: "main", main: true, mode: "auto", description: "" }]);
+	w.setSources([
+		{ name: "pr-102", type: "http", topic: "source/pr-102@main", events: 0, subscribers: ["main:main-branch"] },
+		{ name: "inbox", type: "mail", topic: "source/inbox", events: 0, subscribers: ["main"] },
+	]);
+	w.take([ev("source/pr-102@main/changed", { values: {} }, { source: "source:pr-102@main", trust: "untrusted" })]);
+	const sources = () => w.inputs().filter((s) => s.kind === "source").map((s) => [s.id, s.name, s.count]);
+	assert.deepEqual(sources(), [["source:inbox", "inbox", 0], ["source:pr-102@main", "pr-102", 1]], "the source and its events are one card");
+
+	w.setSources([{ name: "inbox", type: "mail", topic: "source/inbox", events: 0, subscribers: ["main"] }]);
+	assert.deepEqual(sources(), [["source:inbox", "inbox", 0]]);
+	assert.equal(w.sourceInfo.has("source:pr-102@main"), false);
+});

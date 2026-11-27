@@ -295,12 +295,13 @@ export class World {
 	}
 
 	/** The event sources there are, also those that have reported nothing yet; a source that is not in the list was removed. */
-	setSources(list: Array<{ name: string; type: string; last?: { ts: number }; events: number; subscribers?: string[]; running?: boolean; error?: string }>): void {
-		const there = new Set(list.map((s) => `source:${s.name}`));
+	setSources(list: Array<{ name: string; type: string; topic?: string; last?: { ts: number }; events: number; subscribers?: string[]; running?: boolean; error?: string }>): void {
+		const idOf = (s: { name: string; topic?: string }) => `source:${s.topic?.startsWith("source/") ? s.topic.slice("source/".length) : s.name}`;
+		const there = new Set(list.map(idOf));
 		for (const [id, st] of this.stations) if (st.kind === "source" && !there.has(id)) this.stations.delete(id);
 		for (const id of this.sourceInfo.keys()) if (!there.has(id)) this.sourceInfo.delete(id);
 		for (const s of list) {
-			const id = `source:${s.name}`;
+			const id = idOf(s);
 			// A subscriber is an agent, or one conversation of it ("agent:session"): the agent is what a view is told.
 			const agents = [...new Set((s.subscribers ?? []).map((x) => String(x).split(":")[0]).filter((a) => this.places.has(a)))];
 			this.sourceInfo.set(id, { agents, failing: Boolean(s.error) });
