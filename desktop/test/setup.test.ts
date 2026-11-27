@@ -1,4 +1,4 @@
-// The first start: no pine home yet, and "Set up pine" runs `pine init`. On Linux that sets up the
+// The first start: no pine home yet, and the app runs `pine init` without a question. On Linux that sets up the
 // sandbox, which needs an administrator: the app lets pine say what it would run and runs none of
 // it, and the setup screen leaves it to the owner (electron/main.ts, Gate in src/App.tsx).
 import assert from "node:assert/strict";
@@ -42,13 +42,14 @@ if (args[0] === "init") {
 process.exit(0);
 `);
 
-test("Set up pine runs nothing as administrator on Linux: what needs one is shown for a terminal, and the screen waits for Try again", async () => {
+test("Without a home the app runs pine init by itself, and nothing as administrator on Linux: what needs one is shown for a terminal, and the screen waits for Try again", async () => {
 	app = await launchApp({ ...process.env, PINE_CLI: standIn, PINE_HOME: path.join(dir, "home"), PINE_DESKTOP_DATA: path.join(dir, "desktop-data"), PINE_DESKTOP_DEV_URL: "", PINE_DESKTOP_RELEASES: "" });
 	const page = await app.firstWindow();
 	const calls = () => fs.readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse(l) as string[]);
 	const services = () => calls().filter((c) => c[0] === "service").length;
-	await page.getByRole("button", { name: "Set up pine" }).click({ timeout: 30_000 });
-	await page.waitForFunction(() => !document.body.textContent?.includes("Setting up…"), undefined, { timeout: 30_000 });
+	// Nobody presses anything: pine init is run once the app heard there is no home.
+	for (let i = 0; i < 300 && !(fs.existsSync(log) && calls().some((c) => c[0] === "init")); i++) await new Promise((r) => setTimeout(r, 100));
+	await page.waitForFunction(() => !document.body.textContent?.includes("Setting up pine"), undefined, { timeout: 30_000 });
 	const init = calls().find((c) => c[0] === "init")!;
 	if (process.platform === "linux") {
 		assert.ok(!init.includes("--yes"), `pine init was told to run what needs an administrator: ${init.join(" ")}`);

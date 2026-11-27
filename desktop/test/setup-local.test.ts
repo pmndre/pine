@@ -1,4 +1,4 @@
-// "Setup Pine", a model on this computer (src/setup/local.tsx): the daemon asks the usual local
+// "Onboarding", a model on this computer (src/setup/local.tsx): the daemon asks the usual local
 // ports what they serve (`GET /models/local`), and the owner picks what answered, unlocks it with
 // its key, or types an address. The usual ports are moved to stand-ins on port 0 for the daemon of
 // this test (`PINE_LOCAL_PORTS`, for tests only): a llama.cpp server with Pinecone's MCP server
@@ -41,7 +41,11 @@ const shot = async (name: string) => {
 };
 const card = "[data-slot=composer-question] [data-slot=questionnaire]";
 const question = (text: string) => sees(`${card} [data-slot=questionnaire-title] >> text=${text}`);
-const pick = (label: string) => page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
+/** Picks the option that says `label`, then sends it: a pick alone only selects. */
+const pick = async (label: string) => {
+	await page.locator(`${card} [data-slot=questionnaire-choice]`, { hasText: label }).click();
+	await page.locator(card).getByRole("button", { name: "Send" }).click();
+};
 const options = () => page.$$eval(`${card} [data-slot=questionnaire-choice] [data-slot=question-card-label]`, (els: Element[]) => els.map((e) => e.textContent));
 const local = "[data-card=setup-local]";
 const fill = async (field: string, text: string, button: string) => {

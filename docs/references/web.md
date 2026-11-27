@@ -23,7 +23,7 @@ and the meeting service, and is the Pine app's default ("Deploying it" for your 
 | The host key | Before anything of yours is sent, the client shows the host key fingerprint (`SHA256:...`). Compare it with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server and trust it. A changed key is refused, showing both, until you forget and add the machine again |
 | Disconnect | Lets go of the machine but keeps it and its host key. Forget removes both. Both are on the machine's line in Settings > Environments, Disconnect also in the title bar's machines menu |
 | What is remembered | Kept in this browser only: its key, machines, host keys, the one in use, and the page's preferences. Clearing the site's data forgets all of it: add the new key to the server again |
-| A pine with no model | **Setup Pine** opens ([desktop.md](desktop.md#setup-pine-getting-started)), looking on pine's machine |
+| A pine with no model | **Onboarding** opens ([desktop.md](desktop.md#onboarding-getting-started)), looking on pine's machine |
 | Links in answers | Open in a new tab, their address shown. The page never navigates away. Pictures, video and sound play as in the desktop app |
 | A dropped connection | Reconnects by itself, waiting a little longer each time, and at once when the network or the tab comes back |
 | What it cannot do | What needs a pine on the computer in front of you: this computer's pine, the terminal, voice input, picking a local folder, starting or updating pine |

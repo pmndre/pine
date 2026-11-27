@@ -8,7 +8,7 @@ not indexed by the `manual` tool.
 | File | What it does |
 |---|---|
 | `src/tui/run.ts` | `runTui` (this home's daemon through `ensureDaemon`, which starts one in-process when none answers) and `runRemoteTui` (`pine --ssh`, through `src/remote.ts`) |
-| `src/tui/app.ts` | `PineTui`: tabs, the slash commands (`this.commands`), keys (`handleInput`), the bottom bar (`renderFooter`), the status line, the approval and question dialogs, the conversation list (`ConversationList`), turn folding (`TAIL` = 6 lines while working, `KINDS` = 3 tools named), thoughts (`PEEK` = 4 lines) |
+| `src/tui/app.ts` | `PineTui`: tabs, the slash commands (`this.commands`), keys (`handleInput`), the bottom bar (`renderFooter`), the status line, the approval dialog, and an agent's questions in the thread (`showAsked`), the conversation list (`ConversationList`), turn folding (`TAIL` = 6 lines while working, `KINDS` = 3 tools named), thoughts (`PEEK` = 4 lines) |
 | `src/tui/code-pane.ts` | The code pane. Side by side from `SIDE_BY_SIDE` = 100 columns, the pane half the width, 44 to 96 |
 | `src/tui/picture.ts`, `src/tui/levels.ts` | Pictures, video (`FPS` = 10) and sound; the bars (`BANDS` = 24, `FEWEST_BARS` = 8) |
 | `src/tui/voice.ts`, `voice.swift`, `voice.cs`, `voice-linux.ts`, `voice-whisper.ts` | Dictation helpers per system |

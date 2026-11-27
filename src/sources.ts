@@ -11,6 +11,7 @@ import { parseEnv } from "node:util";
 import { secretName, setEnv, unsetEnv } from "./env-file.ts";
 import { editJson } from "./mcp-config.ts";
 import type { SourcePlan, SourceType } from "./source-types.ts";
+import type { AgentManager } from "./agents.ts";
 import type { Router } from "./router.ts";
 import { type Approvals, realish, type Redactor, bin, rootsFor, sandboxArgv, sandboxAvailable, sandboxGuard, sandboxKind, shellEnv } from "./security.ts";
 import type { Bus, Kv } from "./store.ts";
@@ -89,14 +90,15 @@ export interface SourceApi {
 		request(summary: string, why: string, inputs: Array<{ name: string; label: string; secret?: boolean }>): Promise<{ allow: boolean; by: string; values?: Record<string, string> }>;
 		pending(): Array<{ id: string; agent: string; tool: string; summary: string; why: string; remember?: string; task: number; choices?: string[] }>;
 		decide(id: string, allow: boolean, by: string, always?: boolean): boolean;
-		/** Answer an agent's question with one of the answers it offered (by its place in `choices`). */
-		choose(id: string, choice: number, by: string): boolean;
-		/**
-		 * Answer an agent's question with the owner's text: their own words, or the numbers of the
-		 * answers it offered ("1,3"), which the agent is told as those answers.
-		 */
-		answer(id: string, text: string, by: string): boolean;
 	};
+	/**
+	 * The owner's reply to an agent's question that this source relayed (`question/asked`): posted as
+	 * the owner's message in the conversation that asked, found by the question's task, and answered
+	 * through this source to `reply` as a message of theirs would be. A bare number picks that option.
+	 * Only for a source that hears the owner alone, with the reply to that exact question; an agent's
+	 * own source answers that agent's questions and no other's. False when there is no such question.
+	 */
+	answerQuestion(question: { task: number; at: number }, text: string, reply: Record<string, unknown>): boolean;
 	/**
 	 * Look at something again and again, for what cannot report by itself: a web address, a
 	 * command, a mailbox. `look` runs once right away and then every `every` ("30s", "5m"), never
@@ -228,14 +230,17 @@ export class SourceHost {
 	private off?: () => void;
 	private offOut?: () => void;
 	private approvals?: Approvals;
+	/** Where the owner's reply to a relayed question goes: the conversation that asked. */
+	private questions?: Pick<AgentManager, "answerQuestion">;
 	private globalRoutes: string[] = [];
 	/** Where each running source keeps the files it received (`media`), by the source's key. */
 	private media = new Map<string, string[]>();
 	/** Every source type there is: pine's own and the ones pine.json registers. `type` is what the module says about itself. */
 	private types = new Map<string, { file: string; type?: SourceType }>();
 
-	constructor(deps: { cfg: PineConfig; bus: Bus; kv: Kv; redactor: Redactor; router: Router; log: Logger; http: boolean; approvals?: Approvals }) {
+	constructor(deps: { cfg: PineConfig; bus: Bus; kv: Kv; redactor: Redactor; router: Router; log: Logger; http: boolean; approvals?: Approvals; questions?: Pick<AgentManager, "answerQuestion"> }) {
 		this.approvals = deps.approvals;
+		this.questions = deps.questions;
 		this.cfg = deps.cfg;
 		this.bus = deps.bus;
 		this.kv = deps.kv;
@@ -622,14 +627,18 @@ export class SourceHost {
 				request: async (summary, why, inputs) => (this.approvals ? this.approvals.request({ agent: `${name} (event source)`, of: owner, task: 0, tool: source.type ?? name, summary, why, inputs }) : { allow: false, by: "nobody" }),
 				pending: open,
 				decide: (id, allow, by, always) => open().some((r) => r.id === id) && (this.approvals?.decide(id, allow, by, always) ?? false),
-				choose: (id, choice, by) => {
-					const answer = open().find((r) => r.id === id)?.choices?.[choice];
-					return answer !== undefined && (this.approvals?.decide(id, true, by, false, { answer }) ?? false);
-				},
-				answer: (id, text, by) => {
-					const answer = String(text ?? "").trim();
-					return !!answer && open().some((r) => r.id === id && r.tool === "question") && (this.approvals?.decide(id, true, by, false, { answer }) ?? false);
-				},
+			},
+			answerQuestion: (question, text, reply) => {
+				const what = `${source.type ?? "custom"}${source.description ? `: ${source.description}` : ""}`;
+				// As a message through a subscription: in the owner's conversation, and what a source that is not the owner's says marks it.
+				return (
+					this.questions?.answerQuestion(question, String(text ?? ""), {
+						of: owner,
+						via: `"${name}" (${what})`,
+						reply: { topic: outTopic(key), payload: reply },
+						tainted: source.trust === "owner" ? undefined : `a reply through the source "${name}"`,
+					}) ?? false
+				);
 			},
 			poll: (every, look) => {
 				const ms = parseDuration(every);

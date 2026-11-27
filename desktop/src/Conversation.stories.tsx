@@ -8,9 +8,11 @@ import { type Item, Tab } from "./model.ts";
 // The items are made by hand, as the model would make them from what the daemon says.
 type Made = Item extends infer I ? (I extends Item ? Omit<I, "id" | "v"> : never) : never;
 
-function Items({ items, running }: { items: Made[]; /** Tasks at work in the conversation. */ running?: number[] }) {
+function Items({ items, running, turns, folded }: { items: Made[]; /** Tasks at work in the conversation. */ running?: number[]; /** The conversation's turns, the latest last. */ turns?: number[]; /** The turn whose questions' card the owner folded away. */ folded?: number }) {
 	const tab = new Tab("chat", "main", "main");
 	for (const id of running ?? []) tab.running.add(id);
+	for (const id of turns ?? []) tab.roots.add(id);
+	tab.folded = folded;
 	for (const item of items) tab.add(item as never);
 	return (
 		<div className="flex h-160 w-full max-w-160 flex-col">
@@ -71,6 +73,16 @@ export const Conversation: Story = { args: { items: conversation } };
 
 /** What the agent asks: an approval open, then an approval and a question as they were answered. (An open question is a card above the input: components/question-card.) */
 export const Ask: Story = { args: { items: asks } };
+
+/** The questions a turn asked, by where they stand: open (one line: the card above the input shows them), folded away (in full), answered (one line, and the owner's message). */
+const asked: Made[] = [
+	{ t: "user", text: "Set up the project.", task: 1 },
+	{ t: "questions", task: 1, agent: "main", asked: [{ question: "Which database?", header: "Database", options: [{ label: "the old one", description: "Nothing to move" }, { label: "the new one", description: "Faster, after a migration" }] }, { question: "What should it be called?" }] },
+	{ t: "answer", task: 1, agent: "main", live: false, text: "Two things first, above." },
+];
+export const QuestionsOpen: Story = { args: { items: asked, turns: [1] } };
+export const QuestionsFolded: Story = { args: { items: asked, turns: [1], folded: 1 } };
+export const QuestionsAnswered: Story = { args: { items: [...asked, { t: "user", text: "Which database? the new one", task: 2 }], turns: [1, 2] } };
 
 /** A turn at work: its last lines under the head, the call that runs and the thought that goes on. */
 const working: Made[] = [

@@ -40,7 +40,7 @@ import { sandboxedFileTools, sandboxExec, sniffImage } from "./sandbox-fs.ts";
 import type { SourceHost } from "./sources.ts";
 import { describeOptions } from "./sources.ts";
 import type { Scheduler } from "./timers.ts";
-import { pineTools } from "./tools.ts";
+import { askedOf, pineTools } from "./tools.ts";
 import { type Program, Programs } from "./programs.ts";
 import { type BrowserState, BrowserViews, keptAddress, VISITED } from "./browser-view.ts";
 import { Goals } from "./goals.ts";
@@ -53,7 +53,7 @@ import { branchFile, onBranch, ownerMessage, redoMessage, sessionFile, standingB
 import { maybeSilent, silent } from "./silent.ts";
 import { classify, LOOK_TOOLS, pineOwn, pineOwnRefusal, PLAN_REFUSAL, SETUP_TOOLS, ROUTERS } from "./actions.ts";
 import { Type } from "typebox";
-import type { ContextUse, ImageRef, PineEvent, ReplyTarget, Task, TaskKind, TaskResult, TaskStatus, Todo, TranscriptEntry, Trust } from "./types.ts";
+import type { AskedQuestion, ContextUse, ImageRef, PineEvent, ReplyTarget, Task, TaskKind, TaskResult, TaskStatus, Todo, TranscriptEntry, Trust } from "./types.ts";
 import { callTiming, errText, expandHome, type Logger, onPath, programName, safeName, since, sleep, speedOf, speedText, truncate } from "./util.ts";
 
 const BUILTIN_TOOLS = ["read", "bash", "edit", "write", "grep", "find", "ls"];
@@ -854,7 +854,7 @@ export class AgentManager {
 		// A message of the owner's own in a conversation that works on a goal: the goal waits for their word (src/goals.ts).
 		if (trust === "owner" && !ephemeral && !o.parent) this.goals.incoming(agent.id, session, o.kind ?? (o.event ? "event" : "prompt"), Boolean(o.reply));
 		// And one in a conversation whose swarm waits for their answer: the swarm goes on with it (src/swarm.ts).
-		if (trust === "owner" && !ephemeral && !o.parent) this.swarms.incoming(agent.id, session, o.kind ?? (o.event ? "event" : "prompt"), Boolean(o.reply), o.event ? "" : String(written ?? ""));
+		if (trust === "owner" && !ephemeral && !o.parent) this.swarms.incoming(agent.id, session, o.kind ?? (o.event ? "event" : "prompt"), Boolean(o.reply), o.event ? "" : String(o.shown ?? written ?? ""));
 		let prompt = truncate(written, limit);
 		let images = o.images;
 		if (o.attachments?.length) {
@@ -2513,8 +2513,15 @@ export class AgentManager {
 					stats.tools.push(e.toolName);
 					// Where the agent sends its browser, in the owner's conversation: kept once the page came (below).
 					if (live!.trust === "owner" && this.browserTool(agent, live!, String(e.toolName)) === "browser_navigate") going.set(String(e.toolCallId), e.args?.url);
-					this.bus.publish(`agent/${agent.id}/tool`, { ...ids, call: e.toolCallId, phase: "start", tool: e.toolName, subject: truncate(toolSubject(e.toolName, e.args), 300) }, live_);
+					// A question is said when it was asked, not when the model began the call (which may never run: its
+					// arguments cut off, or refused): its start goes out with its end, below, carrying what was asked.
+					if (e.toolName !== "question") this.bus.publish(`agent/${agent.id}/tool`, { ...ids, call: e.toolCallId, phase: "start", tool: e.toolName, subject: truncate(toolSubject(e.toolName, e.args), 300) }, live_);
 				} else if (e.type === "tool_execution_end") {
+					if (e.toolName === "question") {
+						const asked = this.askedBy.get(String(e.toolCallId));
+						this.askedBy.delete(String(e.toolCallId));
+						this.bus.publish(`agent/${agent.id}/tool`, { ...ids, call: e.toolCallId, phase: "start", tool: e.toolName, subject: truncate(toolSubject(e.toolName, e.args), 300), ...(asked ? { asked } : {}) }, live_);
+					}
 					const out = (e.result?.content ?? []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n");
 					// The agent put its browser on the owner's screen, or took it off: it is told so with the next message.
 					const shown = e.isError ? undefined : this.browserTool(agent, live!, String(e.toolName));
@@ -2636,6 +2643,80 @@ export class AgentManager {
 
 	private resultOf(t: Task): TaskResult {
 		return { id: t.id, agent: t.agent, status: t.status, text: t.result ?? "", error: t.error, tainted: this.taints.get(t.id) ?? (t.meta.trust === "untrusted" ? "an untrusted event" : t.meta.tainted) };
+	}
+
+	/** What a `question` call recorded, by its call, until its tool event goes out at the call's end. */
+	private askedBy = new Map<string, AskedQuestion & { at: number }>();
+
+	/**
+	 * A `question` call runs (from the tool's `execute`, after the gate and pi's check of its arguments,
+	 * and in the order the model made the calls, which pi starts one after the other): the question goes
+	 * into the turn's record (`TaskMeta.asked`) at once, so that a conversation opened while the turn
+	 * still works shows it too, and `question/asked` says so. Nothing waits for an answer: the owner's
+	 * answer is their next message. Undefined, and nothing recorded, where nobody would see the question
+	 * or could answer it: a run handed its task by another run (`delegate`, whose answer goes back to
+	 * that run), or a conversation the owner does not write in.
+	 */
+	noteQuestion(task: Task, args: unknown, call: string): (AskedQuestion & { at: number }) | undefined {
+		const cleaned = askedOf(args);
+		if (!cleaned || task.parent !== undefined || !ownerWrites(task.session)) return undefined;
+		const q: AskedQuestion = { ...cleaned, when: Date.now() };
+		const at = (task.meta.asked ??= []).push(q) - 1;
+		this.tasks.update(task.id, { meta: task.meta });
+		// Started from outside: the turn's work began with an event (a schedule, a source, a message on Telegram), not the owner in a UI.
+		const top = task.meta.root !== undefined && task.meta.root !== task.id ? this.tasks.get(task.meta.root) : task;
+		this.bus.publish("question/asked", { agent: task.agent, session: task.session, task: task.id, at, ...q, outside: (top ?? task).kind === "event" }, { source: `agent:${task.agent}` });
+		this.askedBy.set(call, { ...q, at });
+		return { ...q, at };
+	}
+
+	/**
+	 * The open questions: those of a conversation's latest turn that no message of the owner's has come
+	 * after. The owner's next message is a turn of its own, or one steered into the turn: that answers
+	 * what was asked before it, not what the turn asks after it. The one rule every reader goes by; with
+	 * `agent` and `session`, of that conversation alone.
+	 */
+	openQuestions(agent?: string, session?: string): Array<{ agent: string; session: string; task: number; asked: AskedQuestion[] }> {
+		return this.tasks
+			.latestTurns(agent, session)
+			.filter((t) => t.meta.asked?.length && ownerWrites(t.session))
+			.map((t) => {
+				const told = this.tasks.lastSteered(t.id);
+				// A record made before questions had a time: asked when the turn began.
+				const asked = told === undefined ? t.meta.asked! : t.meta.asked!.filter((q) => (q.when ?? t.started ?? t.created) > told);
+				return { agent: t.agent, session: t.session, task: t.id, asked };
+			})
+			.filter((q) => q.asked.length);
+	}
+
+	/**
+	 * The owner's reply to a question that a source relayed (Telegram's reply to that message): the
+	 * owner's message in the conversation that asked, found by the question's task, whether the
+	 * question is still open or not. A bare number 1..n is that option's label; anything else goes as
+	 * written. `of` is the agent whose own source it came through: it answers that agent's questions
+	 * alone. False when there is no such question there.
+	 */
+	answerQuestion(question: { task: number; at: number }, text: string, o: { of?: string; via: string; reply: ReplyTarget; tainted?: string }): boolean {
+		const t = Number.isInteger(question.task) ? this.tasks.get(question.task) : undefined;
+		const asked = t?.meta.asked?.[question.at];
+		if (!t || !asked || !ownerWrites(t.session) || (o.of !== undefined && t.agent !== o.of)) return false;
+		const said = text.trim();
+		if (!said) return false;
+		const n = /^\d+$/.test(said) ? Number(said) : 0;
+		const answer = asked.options && n >= 1 && n <= asked.options.length ? asked.options[n - 1].label : said;
+		this.submit({
+			agent: t.agent,
+			session: t.session,
+			prompt: `[Your owner answers your question "${truncate(asked.question, 200)}" through ${o.via}. Your answer is sent back there, so write it for that reader.]\n\n${answer}`,
+			shown: answer,
+			kind: "event",
+			trust: "owner",
+			tainted: o.tainted,
+			reply: o.reply,
+			label: `answer: ${truncate(asked.question, 60)}`,
+			whenBusy: "steer",
+		});
+		return true;
 	}
 
 	private finish(task: Task, status: TaskStatus, text: string, error: string | undefined, stats: Task["meta"]["stats"]): void {
@@ -4819,6 +4900,14 @@ export class AgentManager {
 const STEPS_STALE = 6;
 
 /** Added to a tool's answer when the list of steps has stood still over the work (see the tool_result handler). */
+/**
+ * A conversation the owner writes in: never a run from outside's own (`~u`), a one-off (`_t<task id>`)
+ * or one held to another level (`~safe`). Only there is a question recorded, shown and answered.
+ */
+export function ownerWrites(session: string): boolean {
+	return !/[~]|^_/.test(session);
+}
+
 function stepsReminder(list: Todo[]): string {
 	const done = list.filter((t) => t.status === "done").length;
 	const doing = list.find((t) => t.status === "in_progress");

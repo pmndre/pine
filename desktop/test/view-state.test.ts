@@ -188,3 +188,64 @@ test("what a view asks the panel to show or open is checked against what the pan
 	assert.deepEqual(knownTarget(w, { board: 3, task: 99 }), { board: 3 }, "a task it does not have is left out");
 	assert.equal(knownTarget(w, { board: 9 }), undefined);
 });
+
+test("a turn's questions are asking until the conversation is written to again, after the turn ended too, and say none of their words", () => {
+	const w = new World();
+	w.setPlaces([{ id: "main", main: true, mode: "safe", description: "" }]);
+	const talk = { agent: "main", session: "main", root: 1, depth: 0 };
+	const batch = [
+		ev("agent/main/started", { ...talk, task: 1, kind: "prompt", prompt: "set it up" }),
+		ev("agent/main/tool", { ...talk, task: 1, phase: "start", tool: "question", subject: "", asked: { at: 0, question: `Which ${SECRET}?`, options: [{ label: "a" }, { label: "b" }] } }),
+		ev("question/asked", { agent: "main", session: "main", task: 1, at: 0, question: `Which ${SECRET}?`, outside: false }),
+		ev("agent/main/done", { ...talk, task: 1, status: "done" }),
+	];
+	w.take(batch);
+	const state = () => viewStateOf(w, { colorOf: () => "#336699", holdings: new Map(), dark: false });
+	assert.equal(state().work.find((x) => x.id === 1)?.asking, true, "the turn ended, and its question waits");
+	const happened = happeningsOf(batch, w, new Map());
+	assert.ok(happened.some((h) => h.k === "asked" && h.work === 1));
+	assert.ok(!JSON.stringify({ happened, state: state() }).includes(SECRET), "nothing of what was asked");
+	// The owner's next message is a turn of its own: the question is answered.
+	w.take([ev("agent/main/started", { agent: "main", session: "main", root: 2, depth: 0, task: 2, kind: "prompt", prompt: "a" })]);
+	assert.equal(state().work.find((x) => x.id === 1)?.asking, false);
+});
+
+test("a message steered into a turn before it asked leaves its question asking; one after it answers it, live and from the record alike", () => {
+	const talk = { agent: "main", session: "main", root: 1, depth: 0 };
+	const asking = (w: World) => viewStateOf(w, { colorOf: () => "#336699", holdings: new Map(), dark: false }).work.find((x) => x.id === 1)?.asking;
+	const live = new World();
+	live.setPlaces([{ id: "main", main: true, mode: "safe", description: "" }]);
+	live.take([
+		ev("agent/main/started", { ...talk, task: 1, kind: "prompt", prompt: "set it up" }),
+		ev("agent/main/steered", { ...talk, task: 1, by: 2, kind: "prompt", prompt: "quickly" }),
+		ev("agent/main/tool", { ...talk, task: 1, phase: "start", tool: "question", subject: "", asked: { at: 0, question: "Which?" } }),
+		ev("agent/main/done", { ...talk, task: 1, status: "done" }),
+	]);
+	assert.equal(asking(live), true, "steered in before it asked");
+	live.take([ev("agent/main/steered", { ...talk, task: 1, by: 3, kind: "prompt", prompt: "the first" })]);
+	assert.equal(asking(live), false, "steered in after it asked");
+	const task = (id: number, created: number, meta: object) => ({ id, agent: "main", session: "main", kind: "prompt", prompt: "", status: "done", created, depth: 0, meta });
+	const seeded = (steeredAt: number) => {
+		const w = new World();
+		w.setPlaces([{ id: "main", main: true, mode: "safe", description: "" }]);
+		w.seed([task(2, steeredAt, { steered: 1 }), task(1, 1000, { asked: [{ question: "Which?", when: 2000 }] })]);
+		return w;
+	};
+	assert.equal(asking(seeded(1500)), true, "the record: steered in before it asked");
+	assert.equal(asking(seeded(2500)), false, "the record: steered in after it asked");
+});
+
+test("what a question asked counts whether the daemon says it with the call's start or with its end", () => {
+	const talk = { agent: "main", session: "main", root: 1, depth: 0 };
+	for (const phase of ["start", "end"]) {
+		const w = new World();
+		w.setPlaces([{ id: "main", main: true, mode: "safe", description: "" }]);
+		w.take([
+			ev("agent/main/started", { ...talk, task: 1, kind: "prompt", prompt: "set it up" }),
+			ev("agent/main/tool", { ...talk, task: 1, call: "c1", phase: "start", tool: "question", subject: "", ...(phase === "start" ? { asked: { at: 0, question: "Which?" } } : {}) }),
+			ev("agent/main/tool", { ...talk, task: 1, call: "c1", phase: "end", tool: "question", ok: true, ...(phase === "end" ? { asked: { at: 0, question: "Which?" } } : {}) }),
+			ev("agent/main/done", { ...talk, task: 1, status: "done" }),
+		]);
+		assert.equal(viewStateOf(w, { colorOf: () => "#336699", holdings: new Map(), dark: false }).work.find((x) => x.id === 1)?.asking, true, `asked on ${phase}`);
+	}
+});

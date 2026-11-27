@@ -188,7 +188,7 @@ Each time the lead ends a turn, pine looks at the board:
 | pine finds | What it does |
 |---|---|
 | Tasks not done | Calls the lead again with their numbers. |
-| A task waits for an answer and the lead asked you | Waits for your answer. |
+| The lead asked you with `question`, or a task waits for an answer and the lead asked you | Waits for your answer: your next message in the conversation. The check is told it beside the question. |
 | All done, and the lead answered | Posts a check of the answer (your job, what you said meanwhile, the answer) and starts a sub-agent that did none of the work. |
 | The check passed | The swarm is done. |
 | The check failed | Calls the lead, which corrects and answers in full again. If the second check fails too, the swarm ends and names what was still found. |

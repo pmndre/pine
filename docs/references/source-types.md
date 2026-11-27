@@ -183,12 +183,16 @@ again.
 |---|---|---|
 | `token` | | From @BotFather (`/newbot`). Kept in `.env`. |
 | `allow` | pairing | Telegram user ids that may talk to it, instead of pairing. Unasked messages and approvals go to the first. |
-| `approvals` | `true` | Approval requests also go there, with Allow, Deny and (where it can be kept) Always buttons, or `/allow` and `/deny`. An agent's own bot carries only its requests, a bot for all agents everyone's. Never a request that needs a secret typed. |
+| `approvals` | `true` | Approval requests, and questions of runs started outside a UI, also go there. Approvals come with Allow, Deny and (where it can be kept) Always buttons, or `/allow` and `/deny`. An agent's own bot carries only its requests, a bot for all agents everyone's. Never a request that needs a secret typed. |
 | `apiBase` | Telegram's | A Bot API server of your own: https, or on this machine. |
 
-A `question` arrives with a button per answer (and "No answer"), or with numbered answers when
-several may be picked: reply with numbers ("1,3") or your own words. Answer a question without
-choices, or one answer in your own words, in the terminal UI or the Pine app.
+An agent's `question` from a run that started outside a UI (a schedule, an event, a Telegram
+message) arrives too, with its options numbered: reply to that message to answer. A number picks
+that option; anything else goes as you wrote it. Your reply is your message in the conversation
+that asked, and its answer comes back to the chat. A message that is not a reply to the question
+goes where your Telegram messages always go. A question asked in a conversation you started in the
+terminal UI or the Pine app stays there. Like approvals, questions come with `approvals` on, and an agent's own bot carries
+only its own.
 
 Event `message`: `{ text, name, username, chatId, messageId, images? }`. A photo up to 10 MB is
 shown to the model. Only the private chat counts; groups reach no agent.

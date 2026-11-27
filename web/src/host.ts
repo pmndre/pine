@@ -105,7 +105,7 @@ function fileName(name: string): string {
 }
 
 /** The page's own preferences, as the bridge keeps them. */
-type PagePrefs = { notify: boolean; updates: boolean; keepRunning: boolean; look?: Look; storage?: PageStorage };
+type PagePrefs = { notify: boolean; updates: boolean; keepRunning: boolean; questionCards: boolean; look?: Look; storage?: PageStorage };
 
 /**
  * What the page keeps in its Web Storage (the side panel's widths, what is folded), which its
@@ -126,7 +126,7 @@ function cleanStorage(value: unknown): PageStorage | undefined {
 }
 type Kept = { prefs: PagePrefs; hosts: string[]; use?: string; names: Record<string, string> };
 
-const DEFAULTS: PagePrefs = { notify: false, updates: false, keepRunning: false };
+const DEFAULTS: PagePrefs = { notify: false, updates: false, keepRunning: false, questionCards: true };
 const MAX_HOSTS = 20;
 const KEY_COMMENT = "pine-web";
 
@@ -531,8 +531,8 @@ export function webBridge(deps: WebBridgeDeps) {
 		/** Checked as main.ts checks the owner's change; the machines change by their own methods only. */
 		async prefs(change: Record<string, unknown>) {
 			await load();
-			const flag = (k: "notify" | "updates" | "keepRunning") => (typeof change[k] === "boolean" ? (change[k] as boolean) : kept.prefs[k]);
-			const next: PagePrefs = { notify: flag("notify"), updates: flag("updates"), keepRunning: flag("keepRunning") };
+			const flag = (k: "notify" | "updates" | "keepRunning" | "questionCards") => (typeof change[k] === "boolean" ? (change[k] as boolean) : kept.prefs[k]);
+			const next: PagePrefs = { notify: flag("notify"), updates: flag("updates"), keepRunning: flag("keepRunning"), questionCards: flag("questionCards") };
 			const look = "look" in change ? cleanLook(change.look) : kept.prefs.look;
 			if (look) next.look = look;
 			const storage = "storage" in change ? cleanStorage(change.storage) : kept.prefs.storage;

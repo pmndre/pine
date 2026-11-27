@@ -1,9 +1,11 @@
-// "Setup Pine": the main agent's conversation `setup`, which leads a new owner to a model, and on
-// from there. Until a model answers, the steps are pine's own: a few lines and question cards,
+// "Onboarding": the main agent's conversation `setup`, which leads a new owner to a model, and on
+// from there. Until a model answers and the owner chose the default model, the steps are pine's own: a few lines and question cards,
 // derived from the daemon's state (the main agent's `modelProblem`, the providers signed in to, the
 // model servers) and written into no history, so that a reload draws them again and steps that are
 // done show as done. What the owner picked on this page (a branch, an answer) is kept only while
-// the page lives. The ways to a model, and the steps after one, are listed in branches.ts. Until a
+// the page lives. The ways to a model are listed in branches.ts. Once the default model is chosen,
+// pine posts one fixed message of the owner's (`GO_ON`) and the main agent goes on with its own
+// questions. Until a
 // model answers, what the owner types in the composer here is matched against the card on screen
 // (`Setup.type`), and nothing is sent: there is nobody to send it to.
 import { CpuIcon } from "lucide-react";
@@ -16,11 +18,15 @@ import { Message, MessageContent } from "@/components/ui/message";
 import type { ModelServer, Provider } from "../api.ts";
 import { api } from "../api.ts";
 import { Model, store, type Tab, useModel } from "../model.ts";
-import { AFTER, BRANCHES } from "./branches.ts";
+import { BRANCHES } from "./branches.ts";
 import type { SetupAnswer, SetupContext, SetupFacts } from "./types.ts";
 
 const FIRST = "How should your agents run?";
-const KEEP = "Keep this model?";
+const DEFAULT = "Which default model should your agents run on?";
+/** How many models of the provider pine chose from the card offers besides pine's choice: with "Another…", six options at most. */
+const OTHERS = 4;
+/** The owner's message once the default model is chosen, as theirs: the main agent takes over from it. */
+export const GO_ON = "My agents have a model now. I am new to pine, so do not give me too much at once. Look at what is already set up, then ask me, with one question where I can tick several, about the few things most worth setting up first, and give me a way to leave it for later.";
 /** pine's one line for what the owner typed that names no option, while no model can answer it. */
 export const NO_MODEL_LINE = "There is no model yet to answer that. Pick one of the options, or type an option's name. Each description explains what the option means.";
 
@@ -31,14 +37,14 @@ const plain = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
 class Setup extends Model {
 	providers: Provider[] = [];
 	servers: ModelServer[] = [];
+	/** The models that can be used now, for the card of the default model. */
+	models: string[] = [];
 	/** The branch picked on the first card, while no model answers. */
 	picked?: string;
 	/** What the owner answered here, in order. */
 	answers: SetupAnswer[] = [];
-	/** "Go on" was answered on the model that was chosen. */
-	kept = false;
-	/** The steps after the model that the owner finished here. */
-	finished = new Set<string>();
+	/** The default model the owner answered with here. */
+	chose?: string;
 	/** What the owner typed that named no option, each after the answers given before it. Kept as `answers` are. */
 	typed: Array<{ text: string; after: number }> = [];
 	/** The card a step drew above the composer, as it registered with the steps' host: what typed text is matched against. */
@@ -83,7 +89,7 @@ class Setup extends Model {
 	}
 
 	/**
-	 * What the owner typed in the composer of "Setup Pine" while no model answers: it picks the option
+	 * What the owner typed in the composer of "Onboarding" while no model answers: it picks the option
 	 * of the card on screen that it names, or gets pine's one line. Nothing is sent: there is nobody to
 	 * send it to. Offered to the composer only while no model answers (`SetupCard`).
 	 */
@@ -103,9 +109,10 @@ class Setup extends Model {
 	}
 
 	async refresh(): Promise<void> {
-		const [providers, servers] = await Promise.all([api.providers().catch(() => undefined), api.modelServers().catch(() => undefined)]);
+		const [providers, servers, models] = await Promise.all([api.providers().catch(() => undefined), api.modelServers().catch(() => undefined), api.models().catch(() => undefined)]);
 		if (providers) this.providers = providers;
 		if (servers) this.servers = servers;
+		if (models) this.models = models;
 		this.touch();
 	}
 
@@ -142,12 +149,24 @@ class Setup extends Model {
 export const setup = new Setup();
 
 /**
- * Whether the model the agents run on was kept ("Keep this model?"): answered on this page, or
- * derived, so that it is not asked again on every reload once the setup went on from there (the steps
- * after it are done, or something was said in "Setup Pine").
+ * Whether the default model was chosen: answered on this page, or derived, so that it is not asked
+ * again on every reload once the setup went on from there (something was said in "Onboarding").
  */
-function keptNow(facts: SetupFacts, tab: Tab): boolean {
-	return setup.kept || tab.items.length > 0 || AFTER.every((s) => setup.finished.has(s.id) || s.done(facts));
+function chosenNow(tab: Tab): boolean {
+	return setup.chose !== undefined || tab.items.length > 0;
+}
+
+/** The models the card of the default model lists: pine's choice first, then a few others of the same provider. */
+function listed(now: string): string[] {
+	const provider = now.split("/")[0];
+	return [now, ...setup.models.filter((m) => m !== now && m.startsWith(`${provider}/`)).slice(0, OTHERS)];
+}
+
+/** The default model is chosen: noted, and the owner's fixed message is posted, which the main agent answers. */
+function chosen(tab: Tab, model: string): void {
+	setup.chose = model;
+	setup.touch();
+	void store.submit(tab, GO_ON);
 }
 
 /** The answers that led to the model the agents run on: given here, or derived from the daemon's state after a reload. */
@@ -182,7 +201,7 @@ function Typed({ after }: { after: number }) {
 		));
 }
 
-/** pine's own lines at the top of "Setup Pine": its welcome, what was answered, and the model the agents run on once there is one. */
+/** pine's own lines at the top of "Onboarding": its welcome, what was answered, and the model the agents run on once there is one. */
 export function SetupScript({ tab }: { tab: Tab }) {
 	useModel(setup);
 	useModel(store);
@@ -219,12 +238,12 @@ export function SetupScript({ tab }: { tab: Tab }) {
 					</Marker>
 				</div>
 			)}
-			{!problem && keptNow(facts, tab) ? <QuestionTrace data-item="setup-answer" question={KEEP} answer="Go on" answered by="you" /> : null}
+			{!problem && chosenNow(tab) ? <QuestionTrace data-item="setup-answer" question={DEFAULT} answer={setup.chose ?? facts.main.model} answered by="you" /> : null}
 		</div>
 	);
 }
 
-/** The step that is open, as a card above the composer of "Setup Pine": nothing once every step is done. */
+/** The step that is open, as a card above the composer of "Onboarding": nothing once every step is done. */
 export function SetupCard({ tab }: { tab: Tab }) {
 	useModel(setup);
 	useModel(store);
@@ -273,38 +292,30 @@ export function SetupCard({ tab }: { tab: Tab }) {
 				}}
 			/>
 		);
-	} else if (!keptNow(facts, tab)) {
+	} else if (!chosenNow(tab)) {
+		const now = facts.main.model;
+		const models = listed(now);
 		card = (
 			<QuestionCard
-				key="keep"
-				question={KEEP}
-				header="Model"
+				key="default"
+				question={DEFAULT}
+				recommended
+				header="Default model"
 				from="pine asks"
 				options={[
-					{ label: "Go on", description: "Keep it. You can change it at any time in Settings › Models." },
-					{ label: "Choose another model", description: "Pick among the models your agents can use now." },
+					...models.map((m, i) => ({ label: m, description: i === 0 ? "pine's choice. Keep it and go on." : undefined })),
+					{ label: "Another…", description: "Search every model your agents can use now." },
 				]}
 				autoFocus={free}
 				onAnswer={([n]) => {
-					if (n === 2) return void store.chooseDefaultModel().then(() => setup.refresh());
-					setup.kept = true;
-					setup.touch();
+					if (n > models.length) return void store.chooseDefaultModel().then((m) => m && chosen(tab, m));
+					const model = models[n - 1];
+					if (model === now) return chosen(tab, model);
+					void store.setDefaultModel(model).then((ok) => ok && chosen(tab, model));
 				}}
 			/>
 		);
-	} else {
-		const next = AFTER.find((s) => !setup.finished.has(s.id) && !s.done(facts));
-		if (!next) return null;
-		card = (
-			<next.Card
-				ctx={ctx}
-				finish={() => {
-					setup.finished.add(next.id);
-					setup.touch();
-				}}
-			/>
-		);
-	}
+	} else return null;
 	return (
 		<ScrollArea data-slot="composer-question" className={COMPOSER_QUESTION}>
 			{/* Whichever step drew the card, what the owner types is matched against it (`setup.type`) while no model answers. */}

@@ -283,6 +283,8 @@ export class Goals {
 		if (task.status === "cancelled" || (stopping && task.status === "failed")) return void this.halt(goal, "paused", stopping ? "paused: pine was stopped while it was working. /goal resume goes on" : "paused: you stopped the agent. /goal resume goes on");
 		if (task.id !== goal.task) return;
 		if (task.status !== "done") return void this.halt(goal, "paused", `paused: round ${goal.round} failed (${String(task.error ?? task.status).slice(0, 200)}). /goal resume tries again`);
+		// The agent asked its owner with `question`: it waits for their answer, which no judge can give.
+		if (task.meta.asked?.length) return void this.halt(goal, "blocked", `stopped after ${goal.round} round${goal.round === 1 ? "" : "s"}: ${goal.agent} asked you something. Answer it, then /goal resume`, task.meta.asked.map((a) => a.question).join(" / ").slice(0, 400));
 		void this.judge(goal, task).catch((e) => this.log.warn(`goal of ${goal.agent}/${goal.session}: could not go on`, errText(e)));
 	}
 

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
  * What pine says wherever an agent cannot answer for want of a model that answers: on its card at the top of a
  * conversation, after a message of yours that failed for it, and in Settings > Models. One notice, worded one way.
  * With no model at all it says what to do; with a model that cannot answer, why first. Its button leads to the
- * one way to connect a model, the setup conversation ("Setup Pine").
+ * one way to connect a model, the setup conversation ("Onboarding").
  */
 export function ModelNotice({ agent, model, problem, retry, onSetup }: {
 	agent: string;

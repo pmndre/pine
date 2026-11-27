@@ -49,6 +49,14 @@ export interface Job {
 	calls: Array<{ tool: string; at: number; ms?: number; ok?: boolean }>;
 	/** What the owner is asked on its behalf, while it waits for the answer. */
 	ask?: { id: string; tool: string; summary: string };
+	/** How many questions this turn asked the owner (its `question` calls): open until the conversation is written to again (`asksOpen`). */
+	questions?: number;
+	/** When it last asked (the daemon's clock), where its record says. */
+	askedAt?: number;
+	/** The owner wrote to this work after it asked: what it asked is answered. */
+	told?: boolean;
+	/** A message of the owner's given to work that was running: no turn of its own. */
+	steered?: boolean;
 	error?: string;
 }
 
@@ -425,7 +433,7 @@ export class World {
 	 * Recent tasks, as `/tasks` lists them, newest first: the work that was there before the view
 	 * opened. What the live events already said about a task is kept.
 	 */
-	seed(tasks: Array<{ id: number; agent: string; session: string; kind: string; prompt: string; status: string; created: number; started?: number; finished?: number; parent?: number; depth: number; error?: string; event?: number; meta: { label?: string; chain?: string[]; root?: number; stats?: { tools: string[] } } }>): void {
+	seed(tasks: Array<{ id: number; agent: string; session: string; kind: string; prompt: string; status: string; created: number; started?: number; finished?: number; parent?: number; depth: number; error?: string; event?: number; meta: { label?: string; chain?: string[]; root?: number; stats?: { tools: string[] }; asked?: Array<{ when?: number }>; steered?: number } }>): void {
 		for (const t of [...tasks].sort((a, b) => a.id - b.id)) {
 			if (this.jobs.has(t.id) || t.status === "pending") continue;
 			const parent = t.parent !== undefined ? this.jobs.get(t.parent) : undefined;
@@ -447,9 +455,14 @@ export class World {
 				heard: Date.now() + this.skew,
 				finished: doing === "thinking" ? undefined : (t.finished ?? t.started ?? t.created),
 				tools: t.meta.stats?.tools.length ?? 0,
+				...(t.depth === 0 && t.meta.asked?.length ? { questions: t.meta.asked.length, askedAt: Math.max(0, ...t.meta.asked.map((q) => q?.when ?? 0)) } : {}),
+				...(t.meta.steered !== undefined ? { steered: true } : {}),
 				error: t.error,
 			});
 			this.now = Math.max(this.now, t.finished ?? t.started ?? t.created);
+			// A message steered into a turn answers what the turn had asked before it came, not what it asked after.
+			const into = t.meta.steered !== undefined ? this.jobs.get(t.meta.steered) : undefined;
+			if (into?.questions && t.created >= (into.askedAt ?? 0)) into.told = true;
 		}
 		for (const j of this.jobs.values()) {
 			const p = j.parent !== undefined ? this.jobs.get(j.parent) : undefined;
@@ -629,6 +642,7 @@ export class World {
 		if (!job) return false;
 		job.heard = at;
 		if (kind === "steered") {
+			job.told = true;
 			this.pulse("you", `agent:${agent}`, "said", at, job.id);
 			return true;
 		}
@@ -657,6 +671,16 @@ export class World {
 			} else {
 				const call = [...job.calls].reverse().find((c) => c.ms === undefined && c.tool === String(p.tool ?? c.tool));
 				if (call) Object.assign(call, { ms: Math.max(0, job.heard - call.at), ok: p.ok !== false });
+			}
+			// What a question asked comes with the call's start or its end, whichever the daemon says it on.
+			if (p.asked && job.depth === 0) {
+				job.questions = (job.questions ?? 0) + 1;
+				// Asked after what the owner wrote into the work: that does not answer it.
+				job.told = false;
+				if (job.questions === 1) {
+					this.pulse(`agent:${agent}`, "you", "ask", at, job.id);
+					this.say(at, `${agent} asks you something`, { agent, job: job.id, tone: "ask" });
+				}
 			}
 			if (p.phase !== "start" && job.doing !== "asking") {
 				job.doing = job.waitingOn.some((c) => !ENDED.includes(this.jobs.get(c)?.doing ?? "done")) ? "waiting" : "thinking";
@@ -747,6 +771,22 @@ export class World {
 	/** Everything the owner is asked right now. */
 	asks(): Job[] {
 		return this.working().filter((j) => j.ask);
+	}
+
+	/**
+	 * Whether the questions a turn asked are open, by the rule the daemon and the conversation go by: it
+	 * is the latest turn of its conversation, and the owner has not written to it since it asked (a
+	 * message steered into the turn before that leaves it open).
+	 */
+	asksOpen(job: Job): boolean {
+		if (!job.questions || job.depth !== 0 || job.told) return false;
+		for (const j of this.jobs.values()) if (j.depth === 0 && !j.steered && j.id > job.id && j.agent === job.agent && j.session === job.session) return false;
+		return true;
+	}
+
+	/** The turns whose questions are open, oldest first. */
+	questionsOpen(): Job[] {
+		return [...this.jobs.values()].filter((j) => this.asksOpen(j)).sort((a, b) => a.started - b.started);
 	}
 
 	/** The stations work came in from, the owner first, then the clock, then the sources. */

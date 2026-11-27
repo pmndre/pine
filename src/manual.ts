@@ -39,7 +39,7 @@ const SYNONYMS: string[][] = [
 	["subscribe", "subscription", "listen", "follow", "wake", "notify", "notification"],
 	["unsubscribe", "stop", "mute", "silence"],
 	["introduce", "introduction", "hello", "hatch", "greet", "greeting", "welcome", "onboarding", "meet"],
-	// Setup Pine: what a newcomer says who has just installed pine.
+	// Onboarding: what a newcomer says who has just installed pine.
 	["setup", "onboarding", "newcomer", "beginner", "installed", "install"],
 	// The manual: what somebody calls the text they want to read about pine themselves.
 	["manual", "documentation", "docs", "doc", "handbook", "guide", "reference", "help", "readme"],
@@ -183,8 +183,8 @@ const SYNONYMS: string[][] = [
  * as what they mean in the manual's words. Only the question is read this way, not the manual.
  */
 const PHRASES: Array<[RegExp, string]> = [
-	// "how do I get started", "getting started": what a newcomer asks, which Setup Pine answers.
-	[/\bget(?:ting)?\s+started\b/gi, "setup pine getting started"],
+	// "how do I get started", "getting started": what a newcomer asks, which Onboarding answers.
+	[/\bget(?:ting)?\s+started\b/gi, "onboarding getting started"],
 	// "set up", "set pine up", "setting up". Not "set something up": the setup tools answer that.
 	[/\bset(?:ting)?\s+(pine\s+)?up\b/gi, "setup $1"],
 ];

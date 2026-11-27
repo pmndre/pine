@@ -165,7 +165,7 @@ The keys `set_setting` takes (`settings` lists them with current values):
 | `limits.maxPoolTasks` | Largest batch of sub-agent tasks in one pool; 100 |
 | `limits.maxDownloadMb` | Largest download, in megabytes |
 | `security.askAccess` | Whether pine asks you when a sandboxed agent needs a path outside or the network |
-| `security.approvalTimeout` | How long a question waits before it counts as no (from the next start) |
+| `security.approvalTimeout` | How long an approval waits before it counts as no (from the next start). An agent's question is no approval: it is answered by your next message |
 | `security.taint` | How long pine asks before sending out after outside content: `session`, `run`, `off` |
 | `security.bypassWhenTainted` | Whether bypass mode stays after outside content |
 | `ui.theme` | The Pine app's theme, by name (`dracula`) |
@@ -192,7 +192,7 @@ The name cannot be a provider's (`anthropic`, `openai`, ...). From a shell:
 
 ### A model server on this computer
 
-**Setup Pine** in the Pine app offers **A model on this computer** ([desktop.md](desktop.md)). pine
+**Onboarding** in the Pine app offers **A model on this computer** ([desktop.md](desktop.md)). pine
 looks for model servers running on this computer and offers what it finds, so you type no address.
 It asks only these ports on `127.0.0.1`, never another address:
 
@@ -326,7 +326,7 @@ and conversations are in the sections above.
 | `sign_out` `provider` | Main agent only. Removes a sign-in and names the agents that use it |
 | `sign_in_mcp_server` `name` [`agent`] | Main agent only. After you confirm, signs in to a remote MCP server in the browser of pine's computer; pine keeps the token. Same as `pine mcp login <name>` |
 | **Asking, and keeping track** | |
-| `question` `question` [`header`] [`options`] [`multiSelect`] | Asks the owner one question the agent cannot go on without: two to six `options` (`{ label, description? }`, best first), a `header` of up to 12 characters, `multiSelect` for several. Works in plan mode, not in a run the owner did not start |
+| `question` `question` [`header`] [`options`] [`multiSelect`] | Asks the owner one question the agent cannot go on without: two to six `options` (`{ label, description? }`, best first), a `header` of up to 12 characters, `multiSelect` for several. One question per call, several calls for several questions. It returns at once ("Asked"); the agent then ends its turn unless it can go on without the answer. The owner answers with their next message, which may be about other things too. Works in plan mode and in every run started in the owner's name (schedules, Telegram, trusted events). Not in an untrusted run, never for a sub-agent, not in a `delegate` task or a one-off conversation (`session: "new"`): there the agent says what it needs in its answer |
 | `todo` `items` | The agent's list of steps, sent whole: each `pending`, `in_progress` (one) or `done`, up to 30. The owner sees it; pine reminds the agent after six tool calls without a change, and drops a list with open steps that an answer to the owner's next message left as it was. Not in a run the owner did not start |
 | **Other tools** | |
 | `stop_program` [`id`] | Stops a program the conversation's commands left running or started with `background: true`; without `id`, lists them. Never asks. Only with `bash` ([coding.md](coding.md)) |

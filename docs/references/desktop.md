@@ -68,16 +68,16 @@ pine says that the app updates itself.
 
 | What the app finds | What it does |
 |---|---|
-| No pine home | Offers `pine init`: copies the example home and fetches the browser (about 600 MB, once). On Linux the sandbox needs an administrator (bubblewrap, sometimes an AppArmor rule): the app shows the commands, then **Try again**. Until then pine runs without the sandbox |
+| No pine home | Runs `pine init` without asking: copies the example home and fetches the browser (about 600 MB, once), and shows what it prints. If the browser cannot be fetched (offline), the app opens all the same and offers it again later. On Linux the sandbox needs an administrator (bubblewrap, sometimes an AppArmor rule): the app shows the commands, then **Try again**. Until then pine runs without the sandbox |
 | The welcome | The main agent's own conversation opens with pine's welcome: the main agent is the administrator to ask; make one agent per purpose (coding, work, automation, chat); the first conversation is kept, others are cleared after a while unless pinned; what pine is for; a prompt to try (watching the Downloads folder); where pine keeps everything. pine wrote it and no model sees it |
-| Nothing to answer with | While the main agent has no model that answers, the app opens **Setup Pine**. Conversations show **Connect a model first** with **Set up a model…**, and Settings > Models lists each agent that cannot answer, and why. A message you send meanwhile says it was not answered. Send it again once a model is there |
+| Nothing to answer with | While the main agent has no model that answers, the app opens **Onboarding**. Conversations show **Connect a model first** with **Set up a model…**, and Settings > Models lists each agent that cannot answer, and why. A message you send meanwhile says it was not answered. Send it again once a model is there |
 | A sign-in in Settings > Models | Sign in to a Claude, ChatGPT or Copilot subscription in the browser, or any provider with an API key. If the current model cannot answer, pine switches to the provider's usual one and says which (**Another one…**); else it offers **Choose the model your agents run on**. The choice is `defaults.model` |
 | The first message | No agent writes first. Each introduces itself once, in its answer to your first message; `defaults.introduce` turns this off ([agents.md](agents.md), "Meeting an agent") |
 | The browser of the web tools is missing | Each pine version drives its own browser build. When it is not on this computer, the app asks once per version to fetch it (**Download** in Settings > General, `pine browser-install`). Until then the browser tools fail; web search and reading a page work |
 
-### Setup Pine: getting started
+### Onboarding: getting started
 
-**Setup Pine** is where you set pine up and the one place to connect a model: the main agent's
+**Onboarding** is where you set pine up and the one place to connect a model: the main agent's
 conversation `setup`, pinned in the side bar. The app brings it to the front after pine is set up
 and whenever the main agent has no model that answers (a new home, a sign-out, a removed model
 server). It works the same in the Pine app, the mobile app and the web client.
@@ -97,8 +97,8 @@ nor keeps what you type: paste the key into the field.
 | The sign-in | The provider's page opens in your browser (**Open the sign-in page again**), with a code and **Copy** when there is one. **Cancel** goes back. Nothing typed reaches a model |
 | Which provider? | Anthropic, OpenAI, Google Gemini, OpenRouter, xAI, or **Another…** (a search of every provider) |
 | Your API key for … | A hidden field. **Save** stores the key in `auth.json` in pine's home, where no agent reads it; the conversation says only **Key saved for …**. A refused key says why, with **Try again** |
-| Your agents now run on … | The model now in use: **Go on** or **Choose another model** |
-| What would you like to set up now? | Optional items: **The mode**, **A working folder**, **Telegram**, **A first agent**, **The theme**, on a Mac **Pinecone**. **Send** hands them to the main agent one by one. **Nothing for now** opens the main conversation; the card returns at each start until you say something in Setup Pine |
+| Which default model should your agents run on? | The model every agent without its own runs on (`defaults.model`). First pine's choice (recommended: Enter or **1** keeps it), then up to four other models of the same provider, then **Another…** (a search of every model) |
+| After that | pine sends one fixed message as yours: look at what is set up, then ask about the few things most worth setting up first, with a way to leave it for later. The main agent answers there, introduces itself, and asks its questions; answer with a pick on the card or in your own words |
 
 ### `pine` in a terminal
 
@@ -136,6 +136,7 @@ In Settings > General:
 | Keep pine running after the app quits | Schedules fire, sources report and Telegram answers after you close the app; the next start attaches again |
 | Home folder | A pine home other than `~/.pine` (another home is another pine) |
 | Notifications | When an agent is done, fails, needs your approval or asks you something while the window is not in front. Always in pine's own words ("main is done"), never the agent's |
+| Answer questions with a card | On by default. Off: an agent's questions get no card above the input; the conversation shows them in full and you answer by typing. Kept by the app (`prefs.json`), not a setting of pine's |
 
 On a Mac, closing the window doesn't quit the app or a daemon it started (`⌘Q` does). On Linux and
 Windows, closing the last window quits. If the app is newer than the attached pine, a page that
@@ -309,22 +310,27 @@ Everything is also in the menus with its key. `⌘F` finds text in the conversat
 
 ### When the agent asks you something
 
-An agent's `question` tool ([setup.md](setup.md)) shows a card above the input, never a dialog that
-opens by itself. It lists the answers with their numbers and meanings; the agent's pick is marked
-`recommended`. A click, a digit or Space answers (arrows and `↩` work too); for `multiSelect`, tick
-and **Send**. The card takes the keyboard only while the input is empty.
+An agent's `question` tool ([setup.md](setup.md)) holds nothing up: you answer the agent's question
+with your next message. While its latest turn holds questions you have not answered, a card above
+the input shows them, never a dialog. It lists the answers with their numbers and meanings; the
+agent's pick is marked `recommended`. A click, a digit, Space or the arrows pick an answer, which you
+can still change; **Send** or `↩` sends it as your message. For `multiSelect`, tick and **Send**.
+The card takes the keyboard only while the input is empty.
 
 | | |
 |---|---|
-| **No answer** | The agent goes on with an assumption it names |
-| **Later** | Hides the card; **Open** (or `/approve`) above the input brings it back |
-| Typing instead | A message typed instead of picking an answer answers in your own words, also to ask back ("what is the difference?"). A `/command` stays a command. If someone answered elsewhere meanwhile, it goes as an ordinary message |
-| Another conversation's question | Never answered from here; the line above the input offers **Go there** |
+| Several at once | The questions of one turn are one card: **Next**, **Previous**, **Skip**, and where you are ("1 / 2"). **Send** sends one message, a line per question answered ("Which database? sqlite") |
+| Typed instead of picking | A message typed instead of picking an answer is an ordinary message: your answer in your own words, a question back, or something else |
+| When it goes | At your next message, and when the agent's next turn begins; until then it comes back when you open the conversation again |
+| Fold | A small button on the input's top edge folds the card away (chevron down) and brings it back (chevron up); the conversation then shows the questions in full |
+| No card at all | Settings > General > **Answer questions with a card**, off: no card and no button; the conversation shows each open question in full, read only, until your next message answers it. On again, an open question has its card back |
+| Outside content | When the conversation has read outside content, the card says so |
 
-An answered card folds into one line. An approval (a permission) opens a dialog. A sign-in that
-asks you to choose (the main agent's `sign_in`, such as Amazon Bedrock's "Bearer token" or "AWS
-profile") uses the same card, without `recommended` or own words; **No answer** stops it, and a key
-it needs is typed in the approval dialog.
+In the conversation a question whose card is shown is one line ("Asked · Which database?");
+folded away or without a card, it shows in full. An approval (a
+permission) opens a dialog. A sign-in that asks you to choose (the main agent's `sign_in`, such as
+Amazon Bedrock's "Bearer token" or "AWS profile") uses the same card, without `recommended`; **No
+answer** stops it, and a key it needs is entered in the approval dialog.
 
 ### Dictating a message
 
@@ -483,7 +489,7 @@ client have no view.
 
 | | |
 |---|---|
-| On top | Each question an agent asks you now, with **Answer** |
+| On top | Each approval an agent waits for, and each conversation whose questions are open, with **Answer** |
 | The view | A click shows an agent or a piece of work below; a double click opens it |
 | Activity | Newest first, in plain words: what woke whom, what was handed on, who answered, what you were asked and said. Drag its top edge to resize |
 | Looking closer | The chosen agent (mode, work, conversations, recent work), piece of work (origin, mode, outside content, hand-offs, questions, steps with tokens; **Open**), board or task (text, state, result, notes) |

@@ -239,21 +239,35 @@ test("swarm: the answer is checked on the model the owner set for it (defaults.c
 	await none.close();
 });
 
-test("swarm: what the owner answers to a question of the lead's is in the check of its answer, with the question; outside a swarm nothing is kept", async () => {
-	const { h, job } = await swarm(() => [{ tools: [call("question", { question: "Which rate do I count a dollar at?" })] }, { text: "ANSWER at the rate you gave me" }]);
-	h.pine.bus.subscribe("approval/requested", (e: any) => void (e.payload.tool === "question" && h.pine.approvals.decide(e.payload.id, true, "test", false, { answer: "0.90 EUR" })));
+test("swarm: a lead's turn that asked with question makes the swarm wait; the owner's next message resumes it, and the check has it with the question; outside a swarm nothing is kept", async () => {
+	const { h, job } = await swarm((round) => (round === 1 ? [{ tools: [call("question", { question: "Which rate do I count a dollar at?" })] }, { text: "I asked for the rate." }] : [{ text: "ANSWER at the rate you gave me" }]));
 	h.pine.agents.swarms.set("main", "main", job);
 	await settled(h);
-	assert.deepEqual([swarmOf(h)!.status, swarmOf(h)!.told], ["done", [{ asked: "Which rate do I count a dollar at?", said: "0.90 EUR" }]]);
+	assert.equal(swarmOf(h)!.status, "waiting", "the lead asked: pine does not call it again before the owner answered");
+	assert.equal(turns(h).length, 1);
+	await h.pine.agents.run({ agent: "main", prompt: "0.90 EUR @@REF:lead@@", ...owner });
+	await settled(h);
+	assert.deepEqual([swarmOf(h)!.status, swarmOf(h)!.told], ["done", [{ asked: "Which rate do I count a dollar at?", said: "0.90 EUR @@REF:lead@@" }]]);
 	const check = h.pine.agents.boards.items(1, { kind: "task" })[0];
-	assert.equal(check.text, checkTask(job, "ANSWER at the rate you gave me", [{ asked: "Which rate do I count a dollar at?", said: "0.90 EUR" }]));
-	assert.match(check.text, /\n- Asked: Which rate do I count a dollar at\?\n  The owner answered: 0\.90 EUR\n\nThe answer:\n/);
+	assert.equal(check.text, checkTask(job, "ANSWER at the rate you gave me", [{ asked: "Which rate do I count a dollar at?", said: "0.90 EUR @@REF:lead@@" }]));
+	assert.match(check.text, /\n- Asked: Which rate do I count a dollar at\?\n  The owner answered: 0\.90 EUR /);
 	// Without anything said, the check has no such part.
 	assert.ok(!checkTask(job, "x").includes("What the owner said"));
 	// A question in a conversation without a swarm is answered and kept nowhere.
 	h.mock.state.scripts.plain = [{ tools: [call("question", { question: "Blue or green?" })] }, { text: "ok" }];
 	await h.pine.agents.run({ agent: "main", session: "other", prompt: "pick @@REF:plain@@", ...owner });
 	assert.equal(h.pine.agents.swarms.get("main", "other"), undefined);
+	await h.close();
+});
+
+test("swarm: an answer relayed from a source (a Telegram reply) is told to the check as the owner's words alone, without pine's note in front of it", async () => {
+	const { h, job } = await swarm((round) => (round === 1 ? [{ tools: [call("question", { question: "Which rate do I count a dollar at?" })] }, { text: "I asked for the rate." }] : [{ text: "ANSWER at the rate you gave me" }]));
+	h.pine.agents.swarms.set("main", "main", job);
+	await settled(h);
+	assert.equal(swarmOf(h)!.status, "waiting");
+	assert.ok(h.pine.agents.answerQuestion({ task: turns(h)[0].id, at: 0 }, "0.90 EUR @@REF:lead@@", { via: '"phone" (telegram)', reply: { topic: "out/test" } }));
+	await settled(h);
+	assert.deepEqual([swarmOf(h)!.status, swarmOf(h)!.told], ["done", [{ asked: "Which rate do I count a dollar at?", said: "0.90 EUR @@REF:lead@@" }]]);
 	await h.close();
 });
 

@@ -23,7 +23,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { Item as Card, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { COMPOSER_QUESTION, ComposerCardSlot, QuestionCard, QuestionCardHost, QuestionTrace } from "@/components/question-card";
+import { AskedInFull, AskedLines, COMPOSER_QUESTION, ComposerCardSlot, QuestionCard, QuestionCardHost, QuestionsCard, QuestionTrace } from "@/components/question-card";
 import { Kbd } from "@/components/ui/kbd";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
@@ -380,8 +380,8 @@ export function Entry({ entry, agent }: { entry: TranscriptEntry; agent: string 
 /**
  * A request of the agent's, in the conversation (Confirmation): while it is open, an Item with
  * what it wants and why and its buttons; once answered, a line again. What needs typing (a secret)
- * opens the dialog. A question (or a sign-in's choice, `isPick`) is not drawn here while it is open: its card is above the composer
- * (`ComposerQuestion`), and it folds into a line here once answered.
+ * opens the dialog. A sign-in's choice (`isPick`) is not drawn here while it is open: its card is above the composer
+ * (`ComposerChoice`), and it folds into a line here once answered.
  */
 function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
 	const { req, state } = item;
@@ -438,37 +438,80 @@ function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
 }
 
 /**
- * The question that is open in a conversation, as a card inline above its composer: never a dialog
- * that opens by itself. One the owner put off ("Later") is not shown; the line under the
- * conversation brings it back. It takes the keyboard as it comes only when the composer is empty,
- * so that it never takes what the owner is typing.
+ * A turn's questions in the conversation, by the rule of open questions (`openQuestions`): one line
+ * each while their card above the composer shows them; in full, read only, while the owner folded the
+ * card away or turned it off (Settings > General); one line each again once the owner's next message (which follows) or the agent's next
+ * turn closed them.
  */
-function ComposerQuestion({ tab }: { tab: Tab }) {
-	const item = store.openQuestion(tab);
+function Questions({ item, tab }: { item: Extract<Item, { t: "questions" }>; tab: Tab }) {
+	useModel(tab);
+	// The card turned on or off in Settings (`questionCards`) changes how they show.
+	useModel(store);
+	const all = item.asked.filter(Boolean);
+	// The turn's open questions; those it asked before a message the owner steered into it are answered by it.
+	const open = store.openQuestions(tab);
+	const asking = open?.task === item.task ? open.asked : [];
+	const answered = all.filter((q) => !asking.includes(q));
+	const state = !asking.length ? "closed" : store.shownQuestions(tab)?.task === item.task ? "open" : "folded";
+	if (state === "closed") return <AskedLines data-item="questions" data-state={state} questions={all} />;
+	return (
+		<>
+			{answered.length > 0 && <AskedLines data-item="questions" data-state="closed" questions={answered} />}
+			{state === "folded" ? <AskedInFull data-item="questions" data-state={state} questions={asking} from={`${item.agent} asks`} /> : <AskedLines data-item="questions" data-state={state} questions={asking} />}
+		</>
+	);
+}
+
+/**
+ * Whether the keyboard is free for a card that comes: nothing has it, or the composer has it with
+ * nothing typed. A card takes it only then, so that it never takes what the owner is typing.
+ */
+function keyboardFree(): boolean {
+	const field = document.activeElement;
+	return !field || field === document.body || (field instanceof HTMLTextAreaElement && Boolean(field.closest("[data-slot=composer]")) && !field.value.trim());
+}
+
+/**
+ * The open questions of a conversation's latest turn, as a card inline above its composer: never a
+ * dialog that opens by itself. What the card sends is the owner's message, as typed.
+ */
+function ComposerQuestions({ tab }: { tab: Tab }) {
+	const item = store.shownQuestions(tab);
+	if (!item) return null;
+	const questions = item.asked.filter(Boolean);
+	return (
+		<ScrollArea data-slot="composer-question" className={COMPOSER_QUESTION}>
+			<QuestionsCard
+				key={item.task}
+				questions={questions}
+				from={`${item.agent} asks`}
+				outside={store.taints.has(`${tab.agent}:${tab.session}`)}
+				autoFocus={keyboardFree() && Boolean(questions[0]?.options?.length)}
+				onSend={(text) => void store.answerQuestions(tab, text)}
+			/>
+		</ScrollArea>
+	);
+}
+
+/**
+ * A sign-in's choice that is open in a conversation, as a card inline above its composer. What is
+ * typed below goes as an ordinary message: words of the owner's would mean nothing to its flow.
+ */
+function ComposerChoice({ tab }: { tab: Tab }) {
+	const item = store.openChoice(tab);
 	if (!item) return null;
 	const { req } = item;
-	const options = req.options ?? (req.choices ?? []).map((label) => ({ label }));
-	const field = document.activeElement;
-	const free = !field || field === document.body || (field instanceof HTMLTextAreaElement && Boolean(field.closest("[data-slot=composer]")) && !field.value.trim());
-	// An agent's question takes what is typed below as the owner's own words; a sign-in's choice does
-	// not: words of the owner's would mean nothing to its flow, and go as an ordinary message.
-	const words = req.tool === "question";
+	const options = (req.choices ?? []).map((label) => ({ label }));
 	return (
 		<ScrollArea data-slot="composer-question" className={COMPOSER_QUESTION}>
 			<QuestionCard
 				key={req.id}
 				question={req.summary}
-				header={req.header}
 				from={`${req.agent} asks`}
 				options={options}
-				multiple={req.multiSelect}
-				recommended={words}
-				type={words ? (text) => (void store.answerInWords(tab, item, text), true) : undefined}
-				placeholder={words ? `Answer ${req.agent}'s question in your own words…` : undefined}
-				autoFocus={free && options.length > 0}
+				autoFocus={keyboardFree() && options.length > 0}
 				onAnswer={(picked) => void store.answer(req, picked)}
 				onNoAnswer={() => void store.decide(req.id, false)}
-				onLater={() => store.putOff(req.id)}
 			/>
 		</ScrollArea>
 	);
@@ -563,6 +606,8 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 			);
 		case "approval":
 			return <ApprovalCard item={item} />;
+		case "questions":
+			return <Questions item={item} tab={tab} />;
 		case "steps":
 			return <Steps items={item.items} live={item === tab.steps && tab.busy} />;
 		case "media":
@@ -702,7 +747,7 @@ function WelcomeCard({ tab }: { tab: Tab }) {
 			live = false;
 		};
 	}, [tab.agent]);
-	// The main agent without a model that answers: said once in a toast that stays, with the way to "Setup Pine".
+	// The main agent without a model that answers: said once in a toast that stays, with the way to "Onboarding".
 	const problem = info?.main ? info.modelProblem : undefined;
 	useEffect(() => {
 		if (!problem) return;
@@ -830,6 +875,8 @@ function StatusLine({ tab }: { tab: Tab }) {
 	// What this conversation was asked. A question of another conversation this tab holds (that one has no
 	// tab of its own) is said as waiting there, and never answered from here.
 	const waiting = [...tab.approvals.values()].filter((a) => !isPick(a.req) || store.ownAsk(tab, a.req));
+	// Open brings back an approval whose dialog was closed; a question has the button on the composer's edge instead.
+	const approval = waiting.find((a) => !isPick(a.req));
 	const held = [...tab.approvals.values()].find((a) => isPick(a.req) && !store.ownAsk(tab, a.req));
 	const elsewhere = store.tabs.find((t) => t !== tab && t.approvals.size > 0);
 	const goal = tab.goal?.status === "active" ? tab.goal : undefined;
@@ -843,11 +890,8 @@ function StatusLine({ tab }: { tab: Tab }) {
 			{action}
 		</Marker>
 	);
-	// A question put off ("Later"), with no other card above the composer: this line brings it back, while the agent waits too.
-	const putOff = waiting.find((a) => isPick(a.req) && store.later.has(a.req.id));
-	if (putOff && !store.openQuestion(tab)) return line(<TriangleAlertIcon />, "A question is waiting for your answer.", <Button variant="outline" size="xs" onClick={() => store.ask(putOff.req.id)}>Open</Button>, true);
 	if (!tab.busy) {
-		if (waiting.length) return line(<TriangleAlertIcon />, isPick(waiting[0].req) ? "A question is waiting for your answer." : "A request is waiting for your approval.", <Button variant="outline" size="xs" onClick={() => store.ask(waiting[0].req.id)}>Open</Button>, true);
+		if (waiting.length) return line(<TriangleAlertIcon />, isPick(waiting[0].req) ? "A question is waiting for your answer." : "A request is waiting for your approval.", approval ? <Button variant="outline" size="xs" onClick={() => store.ask(approval.req.id)}>Open</Button> : null, true);
 		if (swarm) return line(<UsersIcon />, `swarm · round ${swarm.round} of ${swarm.until} · ${swarm.checking ? "checking the answer" : "looking at the board"}`, <Button variant="outline" size="xs" onClick={() => void store.setSwarm(tab, "pause")}>Pause</Button>);
 		if (goal) return line(<TargetIcon />, `goal · round ${goal.round} of ${goal.until} · checking whether it is met`, <Button variant="outline" size="xs" onClick={() => void store.setGoal(tab, "pause")}>Pause</Button>);
 		if (held) return line(<TriangleAlertIcon />, `${held.req.agent} has a question for you in another conversation.`, <Button variant="outline" size="xs" onClick={() => void store.goToAsk(held.req)}>Go there</Button>, true);
@@ -871,7 +915,7 @@ function StatusLine({ tab }: { tab: Tab }) {
 		tab.tokens.output ? `${count(total)}↑${tab.tokens.cached ? ` (${Math.round((100 * tab.tokens.cached) / Math.max(1, total))}% cached)` : ""} ${count(tab.tokens.output)}↓` : "",
 		speedText(tab.speed),
 	].filter(Boolean);
-	return line(<Pulse />, parts.join(" · "), waiting.length ? <Button variant="outline" size="xs" onClick={() => store.ask(waiting[0].req.id)}>Open</Button> : null, waiting.length > 0);
+	return line(<Pulse />, parts.join(" · "), approval ? <Button variant="outline" size="xs" onClick={() => store.ask(approval.req.id)}>Open</Button> : null, waiting.length > 0);
 }
 
 /** How full the conversation's context window is (Context): the share in the head, the rest on hover. */
@@ -1281,7 +1325,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 										</MessageScrollerItem>
 									</>
 								) : null}
-								{/* "Setup Pine" begins with pine's own steps, above everything said in it. */}
+								{/* "Onboarding" begins with pine's own steps, above everything said in it. */}
 								{setupTab ? (
 									<MessageScrollerItem>
 										<SetupScript tab={tab} />
@@ -1289,7 +1333,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 								) : null}
 								{!tab.items.length && chat ? (
 									store.agent(tab.agent)?.main && tab.session === "main" ? null : (
-										// "Setup Pine" has its agent above pine's steps, as main has it above its letter.
+										// "Onboarding" has its agent above pine's steps, as main has it above its letter.
 										<MessageScrollerItem className={setupTab ? "order-first" : "my-auto"}>
 											<Welcome tab={tab} />
 										</MessageScrollerItem>
@@ -1316,9 +1360,9 @@ export function Conversation({ tab }: { tab: Tab }) {
 			)}
 			<div className="flex min-h-0 flex-col px-4 pb-4">
 				<div className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-col gap-2">
-					{/* An agent's question comes first; pine's own step in "Setup Pine" is there when none is open. */}
+					{/* What is asked comes first (a sign-in's choice, then the agent's questions); pine's own step in "Onboarding" is there when nothing is. */}
 					<QuestionCardHost.Provider value={slot}>
-						{above === "question" ? <ComposerQuestion tab={tab} /> : above === "setup" ? <SetupCard tab={tab} /> : null}
+						{above === "choice" ? <ComposerChoice tab={tab} /> : above === "questions" ? <ComposerQuestions tab={tab} /> : above === "setup" ? <SetupCard tab={tab} /> : null}
 					</QuestionCardHost.Provider>
 					<StatusLine tab={tab} />
 					{chat ? (
