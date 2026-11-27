@@ -254,15 +254,28 @@ const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
 const aboutOf = (q: AskedQuestion, from: string) => [q.header, from].filter(Boolean).join(" · ");
 
 /**
- * What the questions' card sends, as the owner's message: for a question alone, the label picked (the
- * ticks joined by ", "); for several, one line per question answered, "<question> <answer>". A
- * question skipped, or one without options, adds nothing. `picked` holds the numbers of the options
- * picked for each question, counted from 1.
+ * The number each of `shown` has in its turn, counted from 1 in the order the turn asked them: its
+ * place in the turn's record (`all`, which may have gaps while the turn still asks). The thread says
+ * it ("Q2 · ..."), the card's answer names it ("Q2: ..."), and the agent was told it ("Asked as Q2").
  */
-export function answerText(questions: AskedQuestion[], picked: number[][]): string {
+export function questionNumbers(all: ReadonlyArray<AskedQuestion | undefined>, shown: AskedQuestion[]): number[] {
+	return shown.map((q, i) => all.indexOf(q) + 1 || i + 1);
+}
+
+/** A question's label in the thread: its number in its turn. */
+const label = (n: number) => `Q${n}`;
+
+/**
+ * What the questions' card sends, as the owner's message: for a question alone, the label picked (the
+ * ticks joined by ", "); for several, one line per question answered, "Q<n>: <answer>", by the number
+ * the agent was told for it (`numbers`, by default their order here). A question skipped, or one
+ * without options, adds nothing. `picked` holds the numbers of the options picked for each question,
+ * counted from 1.
+ */
+export function answerText(questions: AskedQuestion[], picked: number[][], numbers?: number[]): string {
 	const answers = questions.map((q, i) => (picked[i] ?? []).map((n) => q.options?.[n - 1]?.label).filter(Boolean).join(", "));
 	if (questions.length === 1) return answers[0] ?? "";
-	return questions.flatMap((q, i) => (answers[i] ? [`${oneLine(q.question)} ${answers[i]}`] : [])).join("\n");
+	return questions.flatMap((_, i) => (answers[i] ? [`${label(numbers?.[i] ?? i + 1)}: ${answers[i]}`] : [])).join("\n");
 }
 
 /**
@@ -278,8 +291,10 @@ export function answerText(questions: AskedQuestion[], picked: number[][]): stri
  * question without options says to answer by typing. With `outside`, a quiet line says that the
  * conversation has read outside content, which the questions may come from.
  */
-export function QuestionsCard({ questions, from, outside, autoFocus, fold, onSend }: {
+export function QuestionsCard({ questions, numbers, from, outside, autoFocus, fold, onSend }: {
 	questions: AskedQuestion[];
+	/** Each question's number in its turn (`questionNumbers`), which the answer names; by default their order here. */
+	numbers?: number[];
 	/** Who asks, such as "main asks". */
 	from: string;
 	/** The conversation carries the outside-content mark. */
@@ -311,7 +326,7 @@ export function QuestionsCard({ questions, from, outside, autoFocus, fold, onSen
 			onSubmit={(e) => {
 				e.preventDefault();
 				const form = new FormData(e.currentTarget);
-				const text = answerText(questions, questions.map((_, i) => form.getAll(`q${i}`).map(Number).sort((a, b) => a - b)));
+				const text = answerText(questions, questions.map((_, i) => form.getAll(`q${i}`).map(Number).sort((a, b) => a - b)), numbers);
 				if (text) onSend(text);
 			}}
 		>
@@ -372,17 +387,18 @@ export function QuestionsCard({ questions, from, outside, autoFocus, fold, onSen
 }
 
 /**
- * A turn's questions in the conversation, one line each, "Asked · <question>": while their card is
- * open above the composer (which shows them in full), and once the owner's next message answered
+ * A turn's questions in the conversation, one line each, "Q<n> · <question>" by its number in the
+ * turn (`numbers`, by default their order here), so that the owner can refer to it: while their card
+ * is open above the composer (which shows them in full), and once the owner's next message answered
  * them or the agent's next turn left them behind (that message follows in the thread).
  */
-export function AskedLines({ questions, ...props }: React.ComponentProps<typeof Trace> & { questions: AskedQuestion[] }) {
+export function AskedLines({ questions, numbers, ...props }: React.ComponentProps<typeof Trace> & { questions: AskedQuestion[]; numbers?: number[] }) {
 	return (
 		<Trace {...props}>
 			{questions.map((q, i) => (
-				<TraceLine key={i}>
+				<TraceLine key={i} data-question-number={numbers?.[i] ?? i + 1}>
 					<TraceIcon><MessageCircleQuestionIcon /></TraceIcon>
-					<TraceTitle className="select-text" title={q.question}>Asked · {oneLine(q.question)}</TraceTitle>
+					<TraceTitle className="select-text" title={q.question}>{label(numbers?.[i] ?? i + 1)} · {oneLine(q.question)}</TraceTitle>
 				</TraceLine>
 			))}
 		</Trace>
@@ -391,16 +407,17 @@ export function AskedLines({ questions, ...props }: React.ComponentProps<typeof 
 
 /**
  * A turn's questions in full, read only, in the conversation while their card is folded away: each
- * an Item with the question, its few words and who asks, and its options with what each means.
+ * an Item with its number and the question ("Q<n> · ...", as `AskedLines` numbers it), its few words
+ * and who asks, and its options with what each means.
  */
-export function AskedInFull({ questions, from, ...props }: React.ComponentProps<typeof ItemGroup> & { questions: AskedQuestion[]; from: string }) {
+export function AskedInFull({ questions, numbers, from, ...props }: React.ComponentProps<typeof ItemGroup> & { questions: AskedQuestion[]; numbers?: number[]; from: string }) {
 	return (
 		<ItemGroup {...props}>
 			{questions.map((q, i) => (
-				<Item key={i} variant="outline" size="sm">
+				<Item key={i} variant="outline" size="sm" data-question-number={numbers?.[i] ?? i + 1}>
 					<ItemMedia variant="icon"><MessageCircleQuestionIcon /></ItemMedia>
 					<ItemContent>
-						<ItemTitle className="whitespace-pre-wrap select-text">{q.question}</ItemTitle>
+						<ItemTitle className="whitespace-pre-wrap select-text">{label(numbers?.[i] ?? i + 1)} · {q.question}</ItemTitle>
 						<ItemDescription>{aboutOf(q, from)}</ItemDescription>
 						{q.options?.length ? (
 							<ol className="flex flex-col gap-1 select-text">

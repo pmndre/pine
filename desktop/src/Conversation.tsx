@@ -23,7 +23,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { Item as Card, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { AskedInFull, AskedLines, COMPOSER_QUESTION, ComposerCardSlot, QuestionCard, QuestionCardHost, QuestionsCard, QuestionTrace } from "@/components/question-card";
+import { AskedInFull, AskedLines, COMPOSER_QUESTION, ComposerCardSlot, QuestionCard, QuestionCardHost, questionNumbers, QuestionsCard, QuestionTrace } from "@/components/question-card";
 import { Kbd } from "@/components/ui/kbd";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
@@ -39,7 +39,7 @@ import { SelectionToolbar, SelectionToolbarButton, useTextSelection } from "@/co
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
 import { cn } from "@/lib/utils";
-import { type AgentDetail, api, media, type TranscriptEntry } from "./api.ts";
+import { type AgentDetail, api, type AskedQuestion, media, type TranscriptEntry } from "./api.ts";
 import { bridge } from "./bridge.ts";
 import { Composer } from "./Composer.tsx";
 import { WelcomeLetter } from "./WelcomeLetter.tsx";
@@ -49,7 +49,7 @@ import { type Bookmark, isPick, type Item, type Part, type QuoteSource, quoteId,
 import { SetupCard, SetupScript } from "./setup/engine.tsx";
 import { childKind, clock, count, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
-import { sameSource } from "../../src/quotes.ts";
+import { isQuotePart, sameSource } from "../../src/quotes.ts";
 
 /** A note's tone is information (a warning, a failure), so it colors the note's icon. */
 const NOTE_TONE: Record<string, string | undefined> = { warn: "text-warn", bad: "text-destructive", good: "text-primary", accent: "text-primary" };
@@ -441,7 +441,8 @@ function ApprovalCard({ item }: { item: Extract<Item, { t: "approval" }> }) {
  * A turn's questions in the conversation, by the rule of open questions (`openQuestions`): one line
  * each while their card above the composer shows them; in full, read only, while the owner folded the
  * card away or turned it off (Settings > General); one line each again once the owner's next message (which follows) or the agent's next
- * turn closed them.
+ * turn closed them. Each is numbered in its turn ("Q2"), whichever of those it is in, and the text
+ * is quoted as an answer's is (`data-quote-part="questions"`).
  */
 function Questions({ item, tab }: { item: Extract<Item, { t: "questions" }>; tab: Tab }) {
 	useModel(tab);
@@ -453,11 +454,13 @@ function Questions({ item, tab }: { item: Extract<Item, { t: "questions" }>; tab
 	const asking = open?.task === item.task ? open.asked : [];
 	const answered = all.filter((q) => !asking.includes(q));
 	const state = !asking.length ? "closed" : store.shownQuestions(tab)?.task === item.task ? "open" : "folded";
-	if (state === "closed") return <AskedLines data-item="questions" data-state={state} questions={all} />;
+	const quote = { "data-quote-task": item.task, "data-quote-part": "questions" };
+	const lines = (questions: AskedQuestion[], state: string) => <AskedLines data-item="questions" data-state={state} {...quote} questions={questions} numbers={questionNumbers(item.asked, questions)} />;
+	if (state === "closed") return lines(all, state);
 	return (
 		<>
-			{answered.length > 0 && <AskedLines data-item="questions" data-state="closed" questions={answered} />}
-			{state === "folded" ? <AskedInFull data-item="questions" data-state={state} questions={asking} from={`${item.agent} asks`} /> : <AskedLines data-item="questions" data-state={state} questions={asking} />}
+			{answered.length > 0 && lines(answered, "closed")}
+			{state === "folded" ? <AskedInFull data-item="questions" data-state={state} {...quote} questions={asking} numbers={questionNumbers(item.asked, asking)} from={`${item.agent} asks`} /> : lines(asking, state)}
 		</>
 	);
 }
@@ -479,11 +482,14 @@ function ComposerQuestions({ tab }: { tab: Tab }) {
 	const item = store.shownQuestions(tab);
 	if (!item) return null;
 	const questions = item.asked.filter(Boolean);
+	// Numbered by the turn's whole record, as the thread numbers them: some may be answered already.
+	const turn = tab.items.findLast((it) => it.t === "questions" && it.task === item.task);
 	return (
 		<ScrollArea data-slot="composer-question" className={COMPOSER_QUESTION}>
 			<QuestionsCard
 				key={item.task}
 				questions={questions}
+				numbers={questionNumbers(turn?.t === "questions" ? turn.asked : item.asked, questions)}
 				from={`${item.agent} asks`}
 				outside={store.taints.has(`${tab.agent}:${tab.session}`)}
 				autoFocus={keyboardFree() && Boolean(questions[0]?.options?.length)}
@@ -1107,7 +1113,7 @@ function selectionSource(root: HTMLElement | null): QuoteSource | undefined {
 	if (msg) {
 		const task = Number(msg.dataset.quoteTask);
 		const part = msg.dataset.quotePart;
-		return Number.isSafeInteger(task) && (part === "prompt" || part === "answer") ? { task, part } : undefined;
+		return Number.isSafeInteger(task) && isQuotePart(part) ? { task, part } : undefined;
 	}
 	const place = el.closest<HTMLElement>("[data-quote-source]")?.dataset.quoteSource;
 	return place === "letter" || place === "welcome" ? place : undefined;
@@ -1282,8 +1288,11 @@ export function Conversation({ tab }: { tab: Tab }) {
 		store.ask_(reply ? "focus-reply" : "focus-input");
 	};
 	const streaming = Boolean(source && typeof source !== "string" && source.part === "answer" && tab.items.some((it) => it.t === "answer" && it.task === source.task && it.live));
+	// A turn's questions change form (one line each, in full, split by a steered message) as they are folded
+	// and answered: a bookmark's place in them would not be found again. They are quoted, not bookmarked.
+	const bookmarkable = !(source && typeof source !== "string" && source.part === "questions");
 	const bookmark = () => {
-		if (!selected || !source || streaming) return;
+		if (!selected || !source || streaming || !bookmarkable) return;
 		const el = quoteTarget(scroller.current, source);
 		const mark = el ? selectionMark(el) : undefined;
 		if (!mark) return;
@@ -1335,7 +1344,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 				<SelectionToolbar rect={selected.rect}>
 					<SelectionToolbarButton icon={QuoteIcon} label="Quote" data-action="quote" onClick={() => quote(false)} />
 					<SelectionToolbarButton icon={ReplyIcon} label="Reply" data-action="reply" hint="Quote the selected text and reply to it" onClick={() => quote(true)} />
-					<SelectionToolbarButton icon={BookmarkIcon} label="Bookmark" hint={streaming ? "Bookmark it once the answer is done" : undefined} disabled={streaming} onClick={bookmark} />
+					{bookmarkable ? <SelectionToolbarButton icon={BookmarkIcon} label="Bookmark" data-action="bookmark" hint={streaming ? "Bookmark it once the answer is done" : undefined} disabled={streaming} onClick={bookmark} /> : null}
 				</SelectionToolbar>
 			) : null}
 			{finding && loaded ? <FindBar key={looked ?? ""} initial={looked} root={() => scroller.current} close={() => (setFinding(false), setLooked(undefined))} /> : null}

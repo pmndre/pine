@@ -264,7 +264,7 @@ Select text, a sentence of an answer for example, and a small bar offers **Quote
 place, `×` removes it); quote several pieces, with or without text of your own. **Reply** adds a
 field under the badge for your reply to that quote (`↩` or `esc` closes it). The agent reads each
 quote as markdown (`> `) before your text, followed by its reply. Long quotes are cut (`…`), never
-your own text. `/undo` gives quotes back.
+your own text. `/undo` gives quotes back. A question's line ("Q1 · ...") is quoted the same way, but has no **Bookmark**: the lines change as the questions are folded and answered.
 
 ### Bookmarks
 
@@ -319,14 +319,14 @@ The card takes the keyboard only while the input is empty.
 
 | | |
 |---|---|
-| Several at once | The questions of one turn are one card: **Next**, **Previous**, **Skip**, and where you are ("1 / 2"). **Send** sends one message, a line per question answered ("Which database? sqlite") |
+| Several at once | The questions of one turn are one card: **Next**, **Previous**, **Skip**, and where you are ("1 / 2"). **Send** sends one message, a line per question answered ("Q1: sqlite") |
 | Typed instead of picking | A message typed instead of picking an answer is an ordinary message: your answer in your own words, a question back, or something else |
 | When it goes | At your next message, and when the agent's next turn begins; until then it comes back when you open the conversation again |
 | Fold | The chevron in the card's top right corner folds it away; a line in its place ("main asks you 3 questions") brings it back. The conversation then shows the questions in full |
 | No card at all | Settings > General > **Answer questions with a card**, off: no card and no button; the conversation shows each open question in full, read only, until your next message answers it. On again, an open question has its card back |
 | Outside content | When the conversation has read outside content, the card says so |
 
-In the conversation a question whose card is shown is one line ("Asked · Which database?");
+In the conversation a question whose card is shown is one line ("Q1 · Which database?");
 folded away or without a card, it shows in full. An approval (a
 permission) opens a dialog. A sign-in that asks you to choose (the main agent's `sign_in`, such as
 Amazon Bedrock's "Bearer token" or "AWS profile") uses the same card, without `recommended`; **No

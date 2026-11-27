@@ -961,7 +961,7 @@ test("an approval is asked in a dialog and answered from it; a question is a car
 	await sees('[data-item="user"] >> text=the new one');
 	// The question returned at once, and the turn ended without the answer; the answer is the next turn's message.
 	await sees("[data-slot=markdown] >> text=done");
-	assert.ok(mock.state.requests.some((q: any) => q.body.messages.some((m: any) => m.role === "tool" && String(m.content).startsWith("Asked."))), "the question returned at once");
+	assert.ok(mock.state.requests.some((q: any) => q.body.messages.some((m: any) => m.role === "tool" && String(m.content).startsWith("Asked as Q1."))), "the question returned at once, with its number");
 	for (let i = 0; i < 100 && !mock.state.requests.some((q: any) => q.body.messages.at(-1)?.role === "user" && JSON.stringify(q.body.messages.at(-1)).includes("the new one")); i++) await new Promise((r) => setTimeout(r, 100));
 	assert.ok(mock.state.requests.some((q: any) => q.body.messages.at(-1)?.role === "user" && JSON.stringify(q.body.messages.at(-1)).includes("the new one")), "the answer starts a turn of its own");
 	await page.waitForFunction(() => !document.querySelector("[aria-busy=true]"), null, { timeout: 10_000 });
@@ -1046,6 +1046,8 @@ test("the questions of a turn are one card: Next, Previous and Skip, and where i
 	assert.equal(await progress.getAttribute("aria-valuemax"), "3");
 	// The thread says each in one line while the card shows them.
 	assert.equal(await page.locator(`${asked("open")} [data-slot=trace-line]`).count(), 3);
+	// Numbered in the order the turn asked them, so that the owner can name one.
+	assert.deepEqual(await page.$$eval(`${asked("open")} [data-slot=trace-line]`, (els: Element[]) => els.map((e) => e.getAttribute("data-question-number"))), ["1", "2", "3"]);
 	await shot("03-questions");
 	await page.locator(QUESTIONS).getByRole("radio", { name: /yes/ }).click();
 	await button("next").click();
@@ -1062,8 +1064,9 @@ test("the questions of a turn are one card: Next, Previous and Skip, and where i
 	assert.equal(await page.locator(`${QUESTIONS} [data-slot=questionnaire-item]:not([hidden]) [data-slot=questionnaire-choice]`).count(), 0);
 	await button("skip").click();
 	await page.waitForSelector(QUESTIONS, { state: "detached" });
-	assert.equal(await lastOwner(), "Which side? yes\nWhich end? bottom");
-	await hears("Which side? yes\nWhich end? bottom");
+	// Each line names its question by its number in the turn, as the agent was told it.
+	assert.equal(await lastOwner(), "Q1: yes\nQ2: bottom");
+	await hears("Q1: yes\nQ2: bottom");
 	// Answered, the questions are one line each, followed by the owner's message.
 	await sees(asked("closed"));
 	const order = await page.$$eval('[data-item="questions"], [data-item="user"]', (els: Element[]) => els.slice(-2).map((e) => e.getAttribute("data-item")));
@@ -1079,6 +1082,35 @@ test("the questions of a turn are one card: Next, Previous and Skip, and where i
 	await page.waitForSelector(QUESTIONS, { state: "detached" });
 	assert.equal(await lastOwner(), "not this");
 	await hears("not this");
+});
+
+test("text selected in a question's line in the thread is quoted as an answer's is: Quote, Reply, no Bookmark, and the quote goes to the agent", async () => {
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ tools: [asks("QUOTE-Q-ONE?"), asks("QUOTE-Q-TWO?", ["top", "bottom"])] }, { text: "asked to quote" }], "ask to quote "));
+	await page.keyboard.press("Enter");
+	await sees("[data-slot=markdown] >> text=asked to quote");
+	await sees(QUESTIONS);
+	await settled();
+	// The words of the second question's line, as the owner drags over them.
+	const line = `${asked("open")} [data-slot=trace-line][data-question-number="2"]`;
+	await sees(line);
+	await page.$eval(line, (el: Element) => {
+		const range = document.createRange();
+		range.selectNodeContents(el.querySelector("[data-slot=trace-title]")!);
+		window.getSelection()!.removeAllRanges();
+		window.getSelection()!.addRange(range);
+	});
+	await sees("[data-slot=selection-toolbar] [data-action=quote]");
+	assert.equal(await page.locator("[data-slot=selection-toolbar] [data-action=reply]").count(), 1);
+	assert.equal(await page.locator("[data-slot=selection-toolbar] [data-action=bookmark]").count(), 0, "the lines change as they are answered: no bookmark");
+	await page.click("[data-slot=selection-toolbar] [data-action=quote]");
+	await sees("[data-slot=composer] [data-slot=quote-chip] >> text=QUOTE-Q-TWO?");
+	// Sent, the quote reaches the agent before the owner's words, and names the question by its number.
+	await page.fill("[data-slot=composer] textarea", "the top one");
+	await page.press("[data-slot=composer] textarea", "Enter");
+	await hears("the top one");
+	const said = JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "user").at(-1) ?? "");
+	assert.match(said, /> Q2 · QUOTE-Q-TWO\?\\n\\nthe top one/);
+	assert.equal(await page.$("[data-slot=composer] [data-slot=quote-chip]"), null);
 });
 
 test("a question is answered by a pick, a digit or the arrows, sent with Send or Enter; ticks go as one message", async () => {

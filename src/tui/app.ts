@@ -93,7 +93,7 @@ interface Tab {
 	 * The questions of the conversation's latest turn, while the owner has written nothing since it
 	 * began: the turn, and each question with its block in the conversation. What a digit sends goes by it.
 	 */
-	asks?: { task: number; questions: Array<{ q: AskedQuestion; block: Text }> };
+	asks?: { task: number; questions: Array<{ q: AskedQuestion; n: number; block: Text }> };
 	unread: boolean;
 	startedAt: number;
 	toolCalls: number;
@@ -1162,9 +1162,9 @@ class ApprovalDialog implements Component {
  * answers by a message like any other. `hint` says how, and is given only while the question is
  * open: what a digit does depends on that.
  */
-function questionText(q: AskedQuestion, hint?: string): string {
+function questionText(q: AskedQuestion, n: number, hint?: string): string {
 	const header = String(q.header ?? "").trim();
-	const lines = [`${c.accent("?")} ${header ? `${c.inverse(` ${asText(header)} `)} ` : ""}${c.bold(asText(q.question))}`];
+	const lines = [`${c.accent("?")} ${c.accent(`Q${n}`)} ${header ? `${c.inverse(` ${asText(header)} `)} ` : ""}${c.bold(asText(q.question))}`];
 	(q.options ?? []).forEach((option, i) => {
 		lines.push(`   ${i + 1}  ${asText(option.label)}`);
 		if (option.description) lines.push(c.gray(`      ${asText(option.description)}`));
@@ -2040,12 +2040,15 @@ export class PineTui {
 	}
 
 	/** A question the agent asked in its turn `task`, shown in the conversation and open until the owner writes or a new turn begins. */
-	private showAsked(tab: Tab, task: number, q: AskedQuestion): void {
+	private showAsked(tab: Tab, task: number, asked: AskedQuestion & { at?: number }): void {
 		if (tab.asks?.task !== task) {
 			this.closeAsks(tab);
 			tab.asks = { task, questions: [] };
 		}
-		tab.asks.questions.push({ q, block: this.say(tab, questionText(q)) });
+		const { at, ...q } = asked;
+		// Numbered in its turn, in call order (`at`), as the agent was told and as the Pine app shows it.
+		const n = (at ?? tab.asks.questions.length) + 1;
+		tab.asks.questions.push({ q, n, block: this.say(tab, questionText(q, n)) });
 		this.hintAsks(tab);
 		this.attention(`pine: ${tab.agent} has a question for you`);
 	}
@@ -2053,16 +2056,16 @@ export class PineTui {
 	/** What the open questions say about answering them: a number only where one question with answers is open. */
 	private hintAsks(tab: Tab): void {
 		const open = tab.asks?.questions ?? [];
-		for (const { q, block } of open) {
-			const hint = open.length > 1 ? "answer in a message of your own" : q.options?.length ? "type a number to answer, or answer in your own words" : "answer in a message of your own";
-			block.setText(asText(questionText(q, hint), true));
+		for (const { q, n, block } of open) {
+			const hint = open.length > 1 ? `answer in a message of your own, naming it Q${n}` : q.options?.length ? "type a number to answer, or answer in your own words" : "answer in a message of your own";
+			block.setText(asText(questionText(q, n, hint), true));
 		}
 		this.tui.requestRender();
 	}
 
 	/** The questions are no longer open: their blocks stay, without the hint. */
 	private closeAsks(tab: Tab): void {
-		for (const { q, block } of tab.asks?.questions ?? []) block.setText(asText(questionText(q), true));
+		for (const { q, n, block } of tab.asks?.questions ?? []) block.setText(asText(questionText(q, n), true));
 		tab.asks = undefined;
 	}
 
@@ -2076,7 +2079,7 @@ export class PineTui {
 
 	/** Each question a past turn asked, shown as it was asked. */
 	private pastAsked(tab: Tab, t: Task): void {
-		const questions = (t.meta?.asked ?? []).map((q) => ({ q, block: this.say(tab, questionText(q)) }));
+		const questions = (t.meta?.asked ?? []).map((q, i) => ({ q, n: i + 1, block: this.say(tab, questionText(q, i + 1)) }));
 		if (questions.length) tab.asks = { task: t.id, questions };
 	}
 

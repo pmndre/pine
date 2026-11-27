@@ -16,10 +16,12 @@ test("quotes: what comes in is checked piece by piece", () => {
 	const ok = readQuotes([
 		{ text: "an answer's words", source: { task: 3, part: "answer" }, extra: "dropped" },
 		{ text: "the letter's", source: "letter" },
+		{ text: "Q2 · Which end?", source: { task: 3, part: "questions" } },
 	]);
 	assert.deepEqual(ok, [
 		{ text: "an answer's words", source: { task: 3, part: "answer" } },
 		{ text: "the letter's", source: "letter" },
+		{ text: "Q2 · Which end?", source: { task: 3, part: "questions" } },
 	]);
 	assert.equal(typeof readQuotes("nope"), "string");
 	assert.equal(typeof readQuotes([{ text: "", source: "letter" }]), "string");

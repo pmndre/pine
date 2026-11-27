@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { askedAs } from "../src/tools.ts";
 import { harness, mockMsg, textOf, until, type Harness } from "./support/harness.ts";
 
 const owner = { trust: "owner" as const };
 const call = (name: string, args: any) => ({ name, args });
-const ASKED = "Asked. Your owner answers in a message, maybe about other things too.";
 
 /** The control API, as a UI calls it. */
 function api(h: Harness) {
@@ -27,7 +27,7 @@ test("question: the tool returns at once and asks for no approval; the run ends,
 	const approvals = heard(h, "approval/requested");
 	const first = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("question", { question: "Which database?", options: [{ label: "sqlite" }, { label: "postgres" }] })] }, { text: "I asked which database." }]), ...owner });
 	assert.equal(first.status, "done");
-	assert.equal(h.toolResults().at(-1), ASKED);
+	assert.equal(h.toolResults().at(-1), askedAs(1));
 	assert.equal(approvals.length, 0, "a question is no approval");
 	assert.deepEqual(h.pine.approvals.pending(), []);
 	await h.pine.agents.run({ agent: "main", prompt: "sqlite", ...owner });
@@ -75,6 +75,8 @@ test("question: the turn keeps what it asked, in call order, in its record and i
 		],
 	);
 	assert.deepEqual(asked[1].options, want[1].options);
+	// Each call is told its number in the turn, in call order: the number the owner's answer names it by.
+	assert.deepEqual(h.toolResults(), [askedAs(1), askedAs(2)]);
 	await h.close();
 });
 
