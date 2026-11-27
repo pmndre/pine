@@ -1412,16 +1412,9 @@ export function Conversation({ tab }: { tab: Tab }) {
 				<div className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-col gap-2">
 					{/* What is asked comes first (a sign-in's choice, then the agent's questions); pine's own step in "Onboarding" is there when nothing is. */}
 					<QuestionCardHost.Provider value={slot}>
-						{above === "choice" ? (
-							<ComposerChoice tab={tab} />
-						) : above === "questions" ? (
-							<ComposerQuestions tab={tab} />
-						) : (
-							<>
-								<FoldedCard tab={tab} />
-								{above === "setup" ? <SetupCard tab={tab} /> : null}
-							</>
-						)}
+						{/* A folded card's line is there whatever card is shown: a folded sign-in's choice waits behind the agent's questions too. */}
+						<FoldedCard tab={tab} />
+						{above === "choice" ? <ComposerChoice tab={tab} /> : above === "questions" ? <ComposerQuestions tab={tab} /> : above === "setup" ? <SetupCard tab={tab} /> : null}
 					</QuestionCardHost.Provider>
 					<StatusLine tab={tab} />
 					{chat ? (
