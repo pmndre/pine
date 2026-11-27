@@ -326,7 +326,8 @@ The card takes the keyboard only while the input is empty.
 | No card at all | Settings > General > **Answer questions with a card**, off: no card and no button; the conversation shows each open question in full, read only, until your next message answers it. On again, an open question has its card back |
 | Outside content | When the conversation has read outside content, the card says so |
 
-In the conversation each question is one line ("Asked · Which database?"). An approval (a
+In the conversation a question whose card is shown is one line ("Asked · Which database?");
+folded away or without a card, it shows in full. An approval (a
 permission) opens a dialog. A sign-in that asks you to choose (the main agent's `sign_in`, such as
 Amazon Bedrock's "Bearer token" or "AWS profile") uses the same card, without `recommended`; **No
 answer** stops it, and a key it needs is entered in the approval dialog.

@@ -139,3 +139,45 @@ test("question: a message the owner steered into the work before the agent asked
 	assert.deepEqual(open(), [], "a message that came after the question answers it");
 	await h.close();
 });
+
+test("question: a run handed its task by another agent asks nobody: it is told to say what it needs in its answer, and nothing is recorded or published", async () => {
+	const h = await harness({ agents: { main: { agent: { delegates: ["gonzo"] } }, gonzo: {} } });
+	const asked = heard(h, "question/asked");
+	h.mock.state.scripts.gonzo = [{ tools: [call("question", { question: "Which one?", options: [{ label: "A" }, { label: "B" }] })] }, { text: "I need to know which one." }];
+	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("delegate", { agent: "gonzo", task: "@@REF:gonzo@@" })] }, { text: "done" }]), ...owner });
+	const told = h.mock.state.requests.filter((q: any) => JSON.stringify(q.body.messages).includes("Which one?")).at(-1);
+	assert.match(h.toolResults(told)[0], /^Your owner is not asked from this run: nobody waits for an answer on your behalf\. .*your answer goes back to whoever handed you the task\.$/);
+	assert.equal(asked.length, 0);
+	assert.ok(h.pine.tasks.list({ limit: 20 }).every((t) => !t.meta.asked), "nothing is recorded for a delegated run");
+	assert.deepEqual(h.pine.agents.openQuestions(), []);
+	await h.close();
+});
+
+test("question: a one-off run (no conversation the owner writes in) asks nobody, and its question is neither recorded nor published", async () => {
+	const h = await harness({ agents: { main: {} } });
+	const asked = heard(h, "question/asked");
+	const run = await h.pine.agents.run({ agent: "main", session: "new", kind: "event", prompt: mockMsg([{ tools: [call("question", { question: "Shall I go on?" })] }, { text: "went on" }]), ...owner });
+	assert.match(h.pine.tasks.get(run.id)!.session, /^_/);
+	assert.match(h.toolResults().at(-1) ?? "", /^Your owner is not asked from this run/);
+	assert.equal(asked.length, 0);
+	assert.equal(h.pine.tasks.get(run.id)!.meta.asked, undefined);
+	await h.close();
+});
+
+test("question: a call that never runs (refused at the gate) records nothing, and its tool event carries no question", async () => {
+	const h = await harness({ agents: { main: { agent: { approve: ["question"] } } } });
+	const asked = heard(h, "question/asked");
+	const tools = heard(h, "agent/main/tool");
+	h.pine.bus.subscribe("approval/requested", (e: any) => void h.pine.approvals.decide(e.payload.id, false, "test"));
+	const run = await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("question", { question: "Which database?" })] }, { text: "not asked" }]), ...owner });
+	assert.equal(asked.length, 0);
+	assert.equal(h.pine.tasks.get(run.id)!.meta.asked, undefined);
+	assert.deepEqual(
+		tools.filter((e) => e.tool === "question").map((e) => [e.phase, "asked" in e]),
+		[
+			["start", false],
+			["end", false],
+		],
+	);
+	await h.close();
+});

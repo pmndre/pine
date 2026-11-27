@@ -234,3 +234,18 @@ test("a message steered into a turn before it asked leaves its question asking; 
 	assert.equal(asking(seeded(1500)), true, "the record: steered in before it asked");
 	assert.equal(asking(seeded(2500)), false, "the record: steered in after it asked");
 });
+
+test("what a question asked counts whether the daemon says it with the call's start or with its end", () => {
+	const talk = { agent: "main", session: "main", root: 1, depth: 0 };
+	for (const phase of ["start", "end"]) {
+		const w = new World();
+		w.setPlaces([{ id: "main", main: true, mode: "safe", description: "" }]);
+		w.take([
+			ev("agent/main/started", { ...talk, task: 1, kind: "prompt", prompt: "set it up" }),
+			ev("agent/main/tool", { ...talk, task: 1, call: "c1", phase: "start", tool: "question", subject: "", ...(phase === "start" ? { asked: { at: 0, question: "Which?" } } : {}) }),
+			ev("agent/main/tool", { ...talk, task: 1, call: "c1", phase: "end", tool: "question", ok: true, ...(phase === "end" ? { asked: { at: 0, question: "Which?" } } : {}) }),
+			ev("agent/main/done", { ...talk, task: 1, status: "done" }),
+		]);
+		assert.equal(viewStateOf(w, { colorOf: () => "#336699", holdings: new Map(), dark: false }).work.find((x) => x.id === 1)?.asking, true, `asked on ${phase}`);
+	}
+});

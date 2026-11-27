@@ -108,6 +108,9 @@ export function askedOf(p: any): AskedQuestion | undefined {
 /** What the agent is told when it has asked: the answer is no tool result, but the owner's next message. */
 export const ASKED = "Asked. Your owner answers in a message, maybe about other things too.";
 
+/** What a run that nobody answers is told when it asks: go on, and say in its answer what it needs. */
+const NOT_ASKED = "Go on with the most reasonable assumption and say in your answer which one you made, or say there what you need to know: your answer goes back to whoever handed you the task.";
+
 export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live, profile: Profile, behalf?: { asker: string }): any[] {
 	const { cfg, bus, state } = manager;
 	const tools: any[] = [];
@@ -714,17 +717,20 @@ export function pineTools(manager: AgentManager, agent: AgentConfig, live: Live,
 					question: Type.String({ description: "The question, in one or two sentences" }),
 					header: Type.Optional(Type.String({ description: 'A few words over the question, 12 characters at most, such as "Database"' })),
 					options: Type.Optional(
-						Type.Array(Type.Object({ label: Type.String({ description: "The answer, in a few words" }), description: Type.Optional(Type.String({ description: "What it means or costs, in one line" })) }), { description: "Two to six answers to pick from. The one you recommend first." }),
+						// A plain label is taken too (`questionOptions`): a small model often gives one, and the call then still runs.
+						Type.Array(Type.Union([Type.Object({ label: Type.String({ description: "The answer, in a few words" }), description: Type.Optional(Type.String({ description: "What it means or costs, in one line" })) }), Type.String()]), { description: "Two to six answers to pick from. The one you recommend first." }),
 					),
 					multiSelect: Type.Optional(Type.Boolean({ description: "true: several options may be picked" })),
 					choices: Type.Optional(Type.Array(Type.String(), { description: "Answers as plain labels, instead of options" })),
 				}),
-				execute: async (_id, p) => {
-					run();
+				execute: async (id, p) => {
+					const r = run();
 					// A sub-agent works by itself: nobody waits for an answer on its behalf.
-					if (profile.leaf) return ok("You are a sub-agent: your owner is not asked on your behalf. Go on with the most reasonable assumption and say in your answer which one you made, or say there what you need to know.");
-					// (The question was recorded with the turn when the call started: `AgentManager`, at `tool_execution_start`, in call order.)
+					if (profile.leaf) return ok(`You are a sub-agent: your owner is not asked on your behalf. ${NOT_ASKED}`);
 					if (!askedOf(p)) throw new Error("give the question");
+					// Recorded with the turn now that the call runs. Nothing is recorded for a run that another
+					// run handed its task (its answer goes back there) or outside a conversation the owner writes in.
+					if (!manager.noteQuestion(r.task, p, id)) return ok(`Your owner is not asked from this run: nobody waits for an answer on your behalf. ${NOT_ASKED}`);
 					return ok(ASKED);
 				},
 			}),

@@ -668,18 +668,19 @@ export class World {
 				job.subject = p.subject ? label(String(p.subject), 80) : undefined;
 				job.skill = job.tool === "read" ? /\/([a-z0-9]+(?:-[a-z0-9]+)*)\/SKILL\.md$/.exec(String(p.subject ?? ""))?.[1] : undefined;
 				if (job.doing !== "asking") job.doing = /(^|_)(delegate|subagent)$/.test(job.tool) ? "waiting" : "tool";
-				if (p.asked && job.depth === 0) {
-					job.questions = (job.questions ?? 0) + 1;
-					// Asked after what the owner wrote into the work: that does not answer it.
-					job.told = false;
-					if (job.questions === 1) {
-						this.pulse(`agent:${agent}`, "you", "ask", at, job.id);
-						this.say(at, `${agent} asks you something`, { agent, job: job.id, tone: "ask" });
-					}
-				}
 			} else {
 				const call = [...job.calls].reverse().find((c) => c.ms === undefined && c.tool === String(p.tool ?? c.tool));
 				if (call) Object.assign(call, { ms: Math.max(0, job.heard - call.at), ok: p.ok !== false });
+			}
+			// What a question asked comes with the call's start or its end, whichever the daemon says it on.
+			if (p.asked && job.depth === 0) {
+				job.questions = (job.questions ?? 0) + 1;
+				// Asked after what the owner wrote into the work: that does not answer it.
+				job.told = false;
+				if (job.questions === 1) {
+					this.pulse(`agent:${agent}`, "you", "ask", at, job.id);
+					this.say(at, `${agent} asks you something`, { agent, job: job.id, tone: "ask" });
+				}
 			}
 			if (p.phase !== "start" && job.doing !== "asking") {
 				job.doing = job.waitingOn.some((c) => !ENDED.includes(this.jobs.get(c)?.doing ?? "done")) ? "waiting" : "thinking";

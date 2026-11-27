@@ -156,10 +156,11 @@ export class ComposerCardSlot implements QuestionCardHostValue {
  * and Enter, which sends what is picked. As stock, a pick is only a pick until Send, so that the owner
  * can change their mind ("2" then Enter is the quick way). What is pine's: "recommended" on the first
  * option of a single answer where the asker orders its options so (`recommended`). There is no field
- * for the owner's own words: the composer below is that (`type`, through the host). The card for what
- * pine asks itself (its setup steps, a sign-in's choice); an agent's questions are `QuestionsCard`.
+ * for the owner's own words: the composer below is that, and a host that answers a card from typed
+ * text does it through `HostedCard.type`. The card for what pine asks itself (its setup steps, a
+ * sign-in's choice); an agent's questions are `QuestionsCard`.
  */
-export function QuestionCard({ question, header, from, options, multiple, recommended, autoFocus, actions, type, placeholder, onAnswer, onNoAnswer }: {
+export function QuestionCard({ question, header, from, options, multiple, recommended, autoFocus, actions, onAnswer, onNoAnswer }: {
 	question: string;
 	/** A few words about the question, such as "Database", said with who asks. */
 	header?: string;
@@ -177,10 +178,6 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 	autoFocus?: boolean;
 	/** Ways out other than an answer, before Later and No answer: "Back" in pine's own steps, "Cancel" in a sign-in. */
 	actions?: React.ReactNode;
-	/** What the owner typed in the composer below answers this card: true when it was taken (`HostedCard.type`). */
-	type?: (text: string) => boolean;
-	/** What the composer says while `type` takes what is typed. */
-	placeholder?: string;
 	/** The answer: the numbers of the options picked, counted from 1, in the order shown. */
 	onAnswer: (picked: number[]) => void;
 	onNoAnswer?: () => void;
@@ -188,7 +185,7 @@ export function QuestionCard({ question, header, from, options, multiple, recomm
 	const title = useId();
 	const item = useRef<HTMLFieldSetElement>(null);
 	const [ticked, setTicked] = useState(false);
-	useHostedCard({ options, multiple, answer: onAnswer, type, placeholder });
+	useHostedCard({ options, multiple, answer: onAnswer });
 	useEffect(() => {
 		// The questionnaire's own place for the keyboard: its item, from which the arrows reach the options.
 		// Without scrolling: in a short pane the card's slot would otherwise start scrolled, its top cut and faded.

@@ -336,6 +336,9 @@ test("telegram: a question of a run started from outside is sent with its option
 	await sleep(150);
 	assert.equal(questions().length, 0, "a question of the owner's own UI conversation is not sent to Telegram");
 
+	// A one-off run (a conversation nobody writes in, where no reply could land) asks nobody: nothing is sent.
+	await h.pine.agents.run({ agent: "main", session: "new", kind: "event", prompt: mockMsg([{ tools: [call("question", { question: "Which database? (one-off)" })] }, { text: "went on" }]), ...owner });
+
 	// A run started from outside (a schedule, an event): the question is sent, without buttons, and says how to answer.
 	const run = await h.pine.agents.run({ agent: "main", prompt: asking, kind: "event", ...owner });
 	await until(() => questions().length === 1, 5000, "the question on Telegram");
@@ -347,6 +350,7 @@ test("telegram: a question of a run started from outside is sent with its option
 	tg.message(2002, "2", { reply_to_message: { message_id: question.id } });
 	await sleep(150);
 	assert.equal(replies().length, 0, "a stranger's reply does nothing");
+	assert.equal(questions().length, 1, "the one-off run's question was not sent");
 
 	// The owner's reply "2" is option 2, as the owner's message in the conversation that asked, and the answer comes back to the chat.
 	const sentBefore = tg.sent().length;

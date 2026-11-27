@@ -190,8 +190,8 @@ An agent's `question` from a run that started outside a UI (a schedule, an event
 message) arrives too, with its options numbered: reply to that message to answer. A number picks
 that option; anything else goes as you wrote it. Your reply is your message in the conversation
 that asked, and its answer comes back to the chat. A message that is not a reply to the question
-goes where your Telegram messages always go. A question you ask in the terminal UI or the Pine app
-stays there. Like approvals, questions come with `approvals` on, and an agent's own bot carries
+goes where your Telegram messages always go. A question asked in a conversation you started in the
+terminal UI or the Pine app stays there. Like approvals, questions come with `approvals` on, and an agent's own bot carries
 only its own.
 
 Event `message`: `{ text, name, username, chatId, messageId, images? }`. A photo up to 10 MB is

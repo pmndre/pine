@@ -283,8 +283,10 @@ To pick several answers, write them in your message (`The mode, Telegram`). A qu
 limit and never times out: it is open from the turn that asked it until you write to that
 conversation or the agent starts another turn. When a turn asked several questions, a digit goes as
 typed: answer them in your own words. A reopened conversation shows its questions again, and one that is still open is
-answered the same way. The tool works in every mode, `plan` too, but not in a run an outside event
-started.
+answered the same way. The tool works in every mode, `plan` too, in every run started in your name (a schedule,
+Telegram, a trusted event). Not in an untrusted run, a sub-agent, a task one agent hands another
+(`delegate`) or a one-off conversation (`session: "new"`): there the agent says what it needs in
+its answer.
 
 ## The agent's list of steps
 

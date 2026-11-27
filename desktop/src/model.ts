@@ -2689,7 +2689,8 @@ export class Store extends Model {
 			if (aside) void this.decide(aside.req.id, false, false, undefined, true);
 			if (steered === undefined) (mine.task = task), mine.v++;
 			if (steered !== undefined) {
-				mine.steer ??= { task, into: steered };
+				// When it came, until the daemon's event says it on its own clock.
+				mine.steer ??= { task, into: steered, at: Date.now() };
 				mine.v++;
 				tab.awaiting = tab.awaiting.filter((p) => p !== text);
 				this.flash(`Sent to the agent while it works. Use ${shortcut("⌥↩")} to queue a message until the agent is done instead.`, "muted", 3000);
@@ -3047,11 +3048,11 @@ export class Store extends Model {
 
 	/**
 	 * The questions of a conversation that are open, by the one rule the daemon goes by too
-	 * (`openQuestions` in src/agents.ts): those its latest turn asked, while no message of the owner's
-	 * has come after them (by the card or typed, steered into the turn or a turn of its own), and the
-	 * agent's next turn has not begun. A message steered into the turn before it asked does not answer
-	 * it. The card, the button on the composer's edge, the thread, the tab's mark and the app's icon
-	 * all ask this, so that they always agree.
+	 * (`openQuestions` in src/agents.ts): those its latest turn asked after the last message of the
+	 * owner's that was steered into it, while no other message of the owner's has come after them (a
+	 * turn of its own, or one on its way), and the agent's next turn has not begun. What comes back is
+	 * the turn's questions with only the open ones in `asked`. The card, the button on the composer's
+	 * edge, the thread, the tab's mark and the app's icon all ask this, so that they always agree.
 	 */
 	openQuestions(tab: Tab): Of<"questions"> | undefined {
 		if (tab.kind !== "chat" || !tab.roots.size) return undefined;
@@ -3061,11 +3062,15 @@ export class Store extends Model {
 		// The latest turn: a message steered into running work is no turn of its own.
 		const steered = new Set(tab.items.flatMap((it) => (it.t === "user" && it.steer ? [it.steer.task] : [])));
 		if (item.task !== Math.max(...[...tab.roots].filter((id) => !steered.has(id)))) return undefined;
-		// A message after it answers it: one on its way too (not a task yet). The history puts a message steered into the
-		// turn after the turn's questions; the time it came says whether it came before the last of them.
-		const asked = Math.max(0, ...item.asked.map((q) => q?.when ?? 0));
-		const before = (it: Item) => it.t === "user" && it.steer?.into === item.task && it.steer.at !== undefined && it.steer.at < asked;
-		return tab.items.slice(at + 1).some((it) => it.t === "user" && !before(it)) ? undefined : item;
+		// A message after them that is not steered into the turn answers them all: one on its way too (not a task yet).
+		const into = (it: Item): it is Of<"user"> & { steer: Steer } => it.t === "user" && it.steer?.into === item.task;
+		if (tab.items.slice(at + 1).some((it) => it.t === "user" && !into(it))) return undefined;
+		// One steered into the turn answers what the turn asked before it came, not what it asks after (both clocks the
+		// daemon's). Where its time is not known, one placed after the questions answers them all.
+		const told = Math.max(-Infinity, ...tab.items.map((it, i) => (into(it) ? (it.steer.at ?? (i > at ? Infinity : -Infinity)) : -Infinity)));
+		const open = item.asked.filter((q) => q && (q.when ?? 0) > told);
+		if (!open.length) return undefined;
+		return open.length === item.asked.filter(Boolean).length ? item : { ...item, asked: open };
 	}
 
 	/** Whether an agent's open questions get their card above the composer (Settings > General); off, the thread shows them in full. */
@@ -3583,10 +3588,18 @@ export class Store extends Model {
 		if (kind === "steered") {
 			// A message that went into running work: ours is on screen already, somebody else's is shown.
 			const tab = this.tabs.find((t) => t.kind === "chat" && t.agent === p.agent && t.session === p.session);
-			if (!tab || tab.roots.has(p.by)) return;
+			if (!tab) return;
+			// When it came, on the daemon's clock as a question's `when` is: what the turn asked before it, it answers.
+			const at = Number(e.ts) || Date.now();
+			if (tab.roots.has(p.by)) {
+				// Ours, whose request came back first: it had only the page's clock until now.
+				const it = tab.items.findLast((x): x is Of<"user"> => x.t === "user" && x.steer?.task === Number(p.by));
+				if (it?.steer) ((it.steer.at = at), it.v++, this.dirty.add(tab));
+				return;
+			}
 			tab.roots.add(p.by);
 			const i = tab.awaiting.findIndex((x) => ownMessage(p.prompt, x));
-			const steer = { task: Number(p.by), into: Number(p.task) };
+			const steer: Steer = { task: Number(p.by), into: Number(p.task), at };
 			if (i >= 0) {
 				// Ours: the bubble on screen gets its line now, before the answer to the request comes.
 				const text = tab.awaiting.splice(i, 1)[0];
@@ -3867,9 +3880,10 @@ export class Store extends Model {
 					if (/(^|_)browser_show$/.test(String(p.tool)) && tab === this.active && depth === 0) ((this.codeView = "browser"), this.open("code"));
 					tab.toolCalls++;
 					if (depth === 0) this.foldWords(tab, p.task);
-					// A question to the owner is not work: it stands in the thread as what was asked.
-					if (p.tool === "question" && depth === 0 && typeof p.asked?.question === "string") {
-						this.noteAsked(tab, p.task, p.asked);
+					// A question to the owner is not work: it stands in the thread as what was asked. What it asked comes with
+					// the call's start or its end, whichever the daemon says it on; a call that failed gets its line at its end.
+					if (p.tool === "question" && depth === 0) {
+						if (typeof p.asked?.question === "string") this.noteAsked(tab, p.task, p.asked);
 						break;
 					}
 					const part: Extract<Part, { p: "tool" }> = { p: "tool", key, tool: p.tool, subject: p.subject ? short(oneLine(String(p.subject)), 200) : undefined, status: "run", depth };
@@ -3878,7 +3892,10 @@ export class Store extends Model {
 				} else {
 					let part = tab.tools.get(key);
 					// A question has no line of its own (above); one asked before this tab was opened is in the turn's record.
-					if (!part && p.tool === "question" && depth === 0) break;
+					if (!part && p.tool === "question" && depth === 0) {
+						if (typeof p.asked?.question === "string") this.noteAsked(tab, p.task, p.asked);
+						if (p.asked || p.ok !== false) break;
+					}
 					// A call that began before this tab was opened has no line of its own yet.
 					if (!part) {
 						part = { p: "tool", key, tool: p.tool, subject: p.subject ? short(oneLine(String(p.subject)), 200) : undefined, status: "run", depth };

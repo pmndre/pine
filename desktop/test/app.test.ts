@@ -1134,6 +1134,37 @@ test("a message steered into the work before the agent asks leaves the card open
 	assert.equal(await page.locator(QUESTIONS).count(), 0, "a message that came after the question answered it");
 });
 
+test("a question asked after a message was steered into the turn is open alone: the one asked before the message is answered, live and when the conversation is opened again", async () => {
+	const field = "[data-slot=composer] textarea";
+	let go = false;
+	mock.state.scripts.paint = [{ tools: [asks("Which colour?", ["red", "blue"])] }, { tools: [asks("Which size?", ["small", "large"])], until: () => go }, { text: "paint asked" }];
+	await page.fill(field, "@@REF:paint@@ paint the shed ");
+	await page.keyboard.press("Enter");
+	await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which colour?"), QUESTIONS, { timeout: 10_000 });
+	// The owner writes into the running turn, which then asks again.
+	await page.click(field);
+	await page.keyboard.type("any colour will do");
+	await page.keyboard.press("Enter");
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	await sees("[data-item=user] >> text=/not read yet|read \\d/");
+	go = true;
+	const alone = async () => {
+		await page.waitForFunction((c: string) => document.querySelector(c)?.textContent?.includes("Which size?"), QUESTIONS, { timeout: 20_000 });
+		assert.ok(!(await page.textContent(QUESTIONS))?.includes("Which colour?"), "the question asked before the message is not in the card");
+		assert.equal(await page.locator(`${QUESTIONS} [data-slot=questionnaire-progress]`).count(), 0, "one question");
+	};
+	await alone();
+	await page.waitForFunction(() => !document.querySelector("[aria-busy=true]"), null, { timeout: 10_000 });
+	await alone();
+	await page.reload();
+	await alone();
+	await page.click(field);
+	await page.keyboard.type("large");
+	await page.keyboard.press("Enter");
+	await page.waitForSelector(QUESTIONS, { state: "detached" });
+	await hears("large");
+});
+
 test("with the questions' card turned off in Settings > General, a question shows in full in the thread, with no card and no button; turned on again, its card is back", async () => {
 	const field = "[data-slot=composer] textarea";
 	const toggle = "[data-question-toggle]";

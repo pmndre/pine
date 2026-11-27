@@ -722,20 +722,8 @@ export interface ApprovalRequest {
 	 * owner types them where the question is shown. A yes without them is not a yes.
 	 */
 	inputs?: Array<{ name: string; label: string; secret?: boolean }>;
-	/**
-	 * A question of the agent's rather than a permission: answers to pick from. The one that is
-	 * picked, or the owner's own words, comes back as the input `answer`.
-	 */
+	/** A choice of a sign-in's (`sign_in`) rather than a permission: the one picked comes back as the input `answer`. */
 	choices?: string[];
-	/**
-	 * An agent's `question`: the answers it offers, each with a line that says what it means, the
-	 * recommended one first. `choices` holds their labels too, for what reads only those.
-	 */
-	options?: QuestionOption[];
-	/** Several of `options` may be picked: the answer is their labels, or their numbers, joined by ", ". */
-	multiSelect?: boolean;
-	/** A few words over a question (12 characters at most), such as "Database". */
-	header?: string;
 }
 
 /** One answer an agent offers to its question. */
@@ -758,7 +746,7 @@ export class Approvals {
 	private bus: Bus;
 	private log: Logger;
 	private timeoutMs: number;
-	private open = new Map<string, { req: ApprovalRequest; resolve: (r: ApprovalDecision) => void; timer?: NodeJS.Timeout }>();
+	private open = new Map<string, { req: ApprovalRequest; resolve: (r: ApprovalDecision) => void; timer: NodeJS.Timeout }>();
 
 	constructor(bus: Bus, log: Logger, timeoutMs: number) {
 		this.bus = bus;

@@ -260,6 +260,17 @@ test("swarm: a lead's turn that asked with question makes the swarm wait; the ow
 	await h.close();
 });
 
+test("swarm: an answer relayed from a source (a Telegram reply) is told to the check as the owner's words alone, without pine's note in front of it", async () => {
+	const { h, job } = await swarm((round) => (round === 1 ? [{ tools: [call("question", { question: "Which rate do I count a dollar at?" })] }, { text: "I asked for the rate." }] : [{ text: "ANSWER at the rate you gave me" }]));
+	h.pine.agents.swarms.set("main", "main", job);
+	await settled(h);
+	assert.equal(swarmOf(h)!.status, "waiting");
+	assert.ok(h.pine.agents.answerQuestion({ task: turns(h)[0].id, at: 0 }, "0.90 EUR @@REF:lead@@", { via: '"phone" (telegram)', reply: { topic: "out/test" } }));
+	await settled(h);
+	assert.deepEqual([swarmOf(h)!.status, swarmOf(h)!.told], ["done", [{ asked: "Which rate do I count a dollar at?", said: "0.90 EUR @@REF:lead@@" }]]);
+	await h.close();
+});
+
 test("swarm: a check that the model server refuses for now is started again by pine after a pause; one that cannot be done pauses the swarm, and does not count as a check", async () => {
 	// (pi asks again by itself a few times, with seconds in between: switched off here.)
 	const { h, events, job, checks } = await swarm(() => [{ text: "THE-ANSWER" }], { agents: { main: { agent: { subagents: { maxParallel: 2 }, settings: { retry: { enabled: false } } } } } });

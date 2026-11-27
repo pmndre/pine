@@ -447,11 +447,19 @@ function Questions({ item, tab }: { item: Extract<Item, { t: "questions" }>; tab
 	useModel(tab);
 	// The card turned on or off in Settings (`questionCards`) changes how they show.
 	useModel(store);
-	const open = store.openQuestions(tab) === item;
-	const state = !open ? "closed" : store.shownQuestions(tab) === item ? "open" : "folded";
-	const questions = item.asked.filter(Boolean);
-	if (state === "folded") return <AskedInFull data-item="questions" data-state={state} questions={questions} from={`${item.agent} asks`} />;
-	return <AskedLines data-item="questions" data-state={state} questions={questions} />;
+	const all = item.asked.filter(Boolean);
+	// The turn's open questions; those it asked before a message the owner steered into it are answered by it.
+	const open = store.openQuestions(tab);
+	const asking = open?.task === item.task ? open.asked : [];
+	const answered = all.filter((q) => !asking.includes(q));
+	const state = !asking.length ? "closed" : store.shownQuestions(tab)?.task === item.task ? "open" : "folded";
+	if (state === "closed") return <AskedLines data-item="questions" data-state={state} questions={all} />;
+	return (
+		<>
+			{answered.length > 0 && <AskedLines data-item="questions" data-state="closed" questions={answered} />}
+			{state === "folded" ? <AskedInFull data-item="questions" data-state={state} questions={asking} from={`${item.agent} asks`} /> : <AskedLines data-item="questions" data-state={state} questions={asking} />}
+		</>
+	);
 }
 
 /**

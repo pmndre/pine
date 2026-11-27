@@ -63,7 +63,7 @@ export const type: SourceType = {
 				ids.length ? `listen only to the Telegram user${ids.length === 1 ? "" : "s"} ${ids.join(", ")}` : "listen to nobody until you have paired your own account: the bot sends a code to the account that writes to it, and you type that code into pine",
 				"take what that account writes as coming from you, with everything your agents may do for you",
 				"send answers back to that chat, and nowhere else",
-				...(o.approvals === false ? [] : ["send approval requests there too, with buttons"]),
+				...(o.approvals === false ? [] : ["send approval requests there too, with buttons, and agents' questions from runs started outside a UI"]),
 			],
 			tell: ids.length ? "Your owner can write to the bot now." : "Tell your owner to open the bot in Telegram and write anything to it. The bot answers with a six-digit code, and pine asks for that code here. Once they have typed it, that account is the only one the bot listens to.",
 		};
@@ -359,7 +359,7 @@ export default async function telegram(source: SourceApi): Promise<void> {
 			const r = e.payload as any;
 			if (source.agent !== undefined && r.agent !== source.agent && r.of !== source.agent) return;
 			// A question the owner answers by typing (a secret, a sign-in's choice) belongs on their own machine, not in a chat.
-			if (r.inputs?.length || r.tool === "question") return;
+			if (r.inputs?.length) return;
 			const chat = ownerChat();
 			if (chat === undefined) return;
 			const always = r.remember ? [{ text: `Always: ${truncate(String(r.remember), 30)}`, callback_data: `ap:${r.id}:2` }] : [];
