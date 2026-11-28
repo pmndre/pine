@@ -17,6 +17,7 @@ import type { Bookmark, NewBookmark } from "../../src/bookmarks.ts";
 import { computerWord, deviceWord, homeScreenKeeps, httpService, isPaired, machineName, machinesView, pairingEnded, readPairLink, type MachinesViewName, type NearbyComputer, type PairLink } from "./machines.ts";
 import { applyLook, cleanLook, type ThemeEntry } from "./theme.ts";
 import * as dock from "./dock.ts";
+import type { Standing } from "@/components/status-mark";
 
 /** The reasoning levels, each with what it means for the answer. */
 export const REASONING_ABOUT: Record<string, string> = { off: "answers at once", minimal: "a moment of thought", low: "thinks briefly", medium: "thinks it through", high: "thinks long", xhigh: "thinks very long", max: "as long as the model can" };
@@ -405,8 +406,13 @@ export class Store extends Model {
 	settingsFind?: { find?: string; filter?: string };
 	/** Where the Manual tab stands: a chapter, the section in it to show (its top without one), the row of a table in it; `n` rises with each move. */
 	manualAt: { chapter: string; section?: string; row?: string; n: number } = { chapter: "pine", n: 0 };
-	/** Whether the dialog that makes a new agent is open: over whatever is in front, from the side bar's + and from Settings > Agents. */
+	/** Whether the dialog that makes a new agent is open: over whatever is in front, from the side bar's agent switcher and from Settings > Agents. */
 	newAgent = false;
+	/**
+	 * The agent whose conversations the side bar shows. It follows the conversation in front (`activate`), and the
+	 * switcher sets it with that agent's conversation in front (`showAgent`), so the two never disagree.
+	 */
+	sidebarAgent?: string;
 	/** Conversations in which an agent is at work right now, whether a tab shows them or not: "agent:session". */
 	busy = new Map<string, Set<number>>();
 	/** What was said lately, in every conversation: for finding one by its words, and for naming one that has no name of its own. */
@@ -418,7 +424,7 @@ export class Store extends Model {
 	private saidLater?: number;
 	/** A conversation that is to open with something looked for in it. */
 	pendingFind?: { key: string; query: string };
-	/** Agents whose list of conversations is folded away in the side bar. */
+	/** Groups of conversations folded away in the side bar ("agent:group:name"). */
 	folded = new Set<string>(JSON.parse(localStorage.getItem("pine.folded") ?? "[]"));
 	/** Whether the side bar shows as a column in a wide window. Kept like its width, so that it is after a restart as it was left. */
 	sidebar = localStorage.getItem("pine.sidebar") !== "hidden";
@@ -664,7 +670,7 @@ export class Store extends Model {
 
 	/**
 	 * Remove an agent, after asking how: with everything it has, or with its folder kept. The
-	 * settings page and the side bar's menu both come here. Says whether it is gone.
+	 * settings page and the side bar's agent switcher both come here. Says whether it is gone.
 	 */
 	async removeAgent(id: string): Promise<boolean> {
 		const d = await this.attempt(() => api.agentDetail(id));
@@ -686,6 +692,8 @@ export class Store extends Model {
 		this.agents = await this.askAgents().catch(() => this.agents);
 		this.tabs = this.tabs.filter((t) => t.agent !== id || t.kind === "events");
 		if (this.active?.agent === id) this.active = this.tabs[0];
+		// The side bar showed it: it shows the agent of the conversation now in front, else the main agent.
+		if (this.sidebarAgent === id) this.sidebarAgent = this.active?.kind === "chat" ? this.active.agent : this.agents.find((a) => a.main)?.id;
 		this.syncDock();
 		if (!this.tabs.length && this.agents[0]) await this.openTab((this.agents.find((a) => a.main) ?? this.agents[0]).id, "main", false);
 		this.conversations.delete(id);
@@ -694,7 +702,7 @@ export class Store extends Model {
 	}
 
 	/**
-	 * Give an agent another id (its name on its settings page, or Rename in the side bar's menu).
+	 * Give an agent another id (its name on its settings page, or Rename in the side bar's agent switcher).
 	 * The daemon moves everything that carries its name; here its tabs, its folded group and what
 	 * is known about its conversations follow it. Says whether it is renamed.
 	 */
@@ -715,6 +723,7 @@ export class Store extends Model {
 		for (const set of [this.pins, this.folded]) for (const key of [...set]) if (moved(key) !== key) set.delete(key), set.add(moved(key));
 		if (typeof bridge.windowLayout !== "function") localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
 		if (this.settingsAgent === from) this.settingsAgent = to;
+		if (this.sidebarAgent === from) this.sidebarAgent = to;
 		this.saveTabs();
 		this.agents = await this.askAgents().catch(() => this.agents);
 		void this.refreshConversations(to);
@@ -1036,6 +1045,7 @@ export class Store extends Model {
 		this.dock = dock.group();
 		this.focus = undefined;
 		this.chatLast = undefined;
+		this.sidebarAgent = undefined;
 		this.conversations = new Map();
 		// What was typed in that pine's tabs was for its conversations: another pine's of the same name never gets it.
 		this.drafts.clear();
@@ -1428,12 +1438,42 @@ export class Store extends Model {
 		this.ask_("find");
 	}
 
-	toggleFold(agent: string): void {
-		if (this.folded.has(agent)) this.folded.delete(agent);
-		else this.folded.add(agent);
+	private toggleFold(key: string): void {
+		if (this.folded.has(key)) this.folded.delete(key);
+		else this.folded.add(key);
 		if (typeof bridge.windowLayout !== "function") localStorage.setItem("pine.folded", JSON.stringify([...this.folded]));
 		this.reportLayout();
 		this.touch();
+	}
+
+	/**
+	 * What an agent's conversations (all of them, or those named) call for, the weightiest first: one waits for the
+	 * owner (`!`), one is at work, one has something new. The one rule for a row, a group and the agent switcher.
+	 */
+	standing(agent: string, sessions?: string[]): Standing | undefined {
+		const tabs = this.tabs.filter((t) => t.kind === "chat" && t.agent === agent && (!sessions || sessions.includes(t.session)));
+		if (tabs.some((t) => this.waits(t))) return "waits";
+		if (tabs.some((t) => t.busy) || (sessions ? sessions.some((session) => this.isBusy(agent, session)) : this.isBusy(agent))) return "working";
+		if (tabs.some((t) => t.unread)) return "unread";
+		return undefined;
+	}
+
+	/** The agent the side bar shows: the one it was set to while it is there, else the agent of the conversation in front, else the main agent. */
+	get scopedAgent(): AgentInfo | undefined {
+		return (this.sidebarAgent ? this.agent(this.sidebarAgent) : undefined) ?? (this.active?.kind === "chat" ? this.agent(this.active.agent) : undefined) ?? this.agents.find((a) => a.main) ?? this.agents[0];
+	}
+
+	/** The side bar lists that agent's conversations, and nothing else changes: the conversation in front stays. */
+	listAgent(id: string): void {
+		this.sidebarAgent = id;
+		this.touch();
+	}
+
+	/** The switcher's pick: the side bar shows that agent, with the conversation of its used last in front (its main one when none was). */
+	async showAgent(id: string): Promise<void> {
+		this.listAgent(id);
+		const last = (this.conversations.get(id) ?? []).filter((c) => c.tasks && !c.session.endsWith("~u")).sort((x, y) => y.last - x.last)[0];
+		await this.openTab(id, last?.session ?? "main");
 	}
 
 	/** Whether an agent is at work in a conversation, open in a tab or not. */
@@ -1815,7 +1855,7 @@ export class Store extends Model {
 		if (!tab) return;
 		this.active = tab;
 		tab.unread = false;
-		if (tab.kind === "chat") this.chatLast = tab;
+		if (tab.kind === "chat") ((this.chatLast = tab), (this.sidebarAgent = tab.agent));
 		this.placeNoModelNotice(tab);
 		this.place(tab);
 		this.dock = dock.setFront(this.dock, tab.item);
@@ -2526,7 +2566,7 @@ export class Store extends Model {
 		if (await this.attempt(() => api.sortConversations(agent, order))) await this.refreshConversations(agent);
 	}
 
-	/** Fold or unfold a group in the side bar; kept like a folded agent, in this window's storage. */
+	/** Fold or unfold a group in the side bar; kept in this window's storage. */
 	toggleGroupFold(agent: string, name: string): void {
 		this.toggleFold(`${agent}:group:${name}`);
 	}

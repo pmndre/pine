@@ -46,6 +46,18 @@ const until = async (what: string, test: () => unknown) => {
 	assert.ok(await test(), what);
 };
 
+/** The switcher at the top of the side bar, and the agents its menu lists (opened and closed again). */
+const SWITCHER = "[data-slot=sidebar] [data-slot=agent-switcher]";
+const OPTION = "[data-slot=dropdown-menu-content] [data-slot=agent-option]";
+const agentsListed = async (): Promise<string[]> => {
+	await page.click(SWITCHER);
+	await sees(OPTION);
+	const ids = await page.$$eval(OPTION, (els: Element[]) => els.map((e) => e.getAttribute("data-agent") ?? ""));
+	await page.keyboard.press("Escape");
+	await page.waitForSelector(OPTION, { state: "detached" });
+	return ids;
+};
+
 test("starts a daemon of its own and shows the main agent", async () => {
 	// The main agent's own conversation is in front, with its welcome.
 	await sees("[data-slot=empty] [data-slot=welcome-name]");
@@ -59,8 +71,9 @@ test("starts a daemon of its own and shows the main agent", async () => {
 	await page.waitForSelector(DIALOG, { state: "detached" });
 	// The app started this pine itself, and says so.
 	await sees("[data-slot=service-status][data-origin=started]");
-	const agents = await page.$$eval("[data-slot=agent-label] [data-slot=agent-name]", (els: Element[]) => els.map((e) => e.textContent?.trim()));
-	assert.deepEqual(agents, ["main", "scout"]);
+	// The side bar shows the agent of the conversation in front, and its switcher lists them all.
+	await sees(`${SWITCHER}[data-agent=main]`);
+	assert.deepEqual(await agentsListed(), ["main", "scout"]);
 	// The daemon it started is the one of this home, on a port of its own.
 	assert.ok(fs.existsSync(path.join(home, "data", "http-token")));
 	await shot("01-welcome");
@@ -354,10 +367,10 @@ test("a conversation that is loading shows its shape, and the shape goes once wh
 			for (const go of g.held.splice(0)) go();
 		};
 	});
-	// A conversation opened anew, here scout's from the side bar, asks for its history.
-	const scout = page.locator("[data-slot=sidebar-menu-item]:has([data-slot=agent-label])", { has: page.locator("[data-slot=agent-name]", { hasText: /^scout$/ }) });
+	// A conversation opened anew, here scout's from the side bar's switcher, asks for its history.
 	try {
-		await scout.locator("[data-slot=agent-label]").click();
+		await page.click(SWITCHER);
+		await page.click(`${OPTION}[data-agent=scout]`);
 		await sees(`${TAB("scout")}[data-active]`);
 		await sees("[data-slot=conversation-skeleton] [data-slot=skeleton]");
 		assert.equal(await page.locator("[data-slot=conversation] [data-slot=pulse]").count(), 0, "a loading conversation shows its shape, not the Pulse");
@@ -1780,8 +1793,8 @@ test("settings: a setting is changed, an agent made, a schedule added, a provide
 	// What it is for is the first paragraph of its instructions, and nothing else keeps it.
 	assert.equal("description" in read("agents", "books", "agent.json"), false);
 	await sees("[data-slot=sidebar-menu-item] >> text=You are books. You keep the books.");
-	// It is in the side bar at once, with the others.
-	assert.deepEqual(await page.$$eval("[data-slot=agent-label] [data-slot=agent-name]", (els: Element[]) => els.map((e) => e.textContent?.trim())), ["main", "scout", "books"]);
+	// It is in the side bar's switcher at once, with the others.
+	assert.deepEqual(await agentsListed(), ["main", "scout", "books"]);
 	await shot("07-settings-agent");
 	// Events: a schedule.
 	await settingsPage("events");

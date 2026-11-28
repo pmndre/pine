@@ -85,10 +85,11 @@ const prefsOnDisk = (): any => {
 		return undefined;
 	}
 };
-/** An agent's main conversation, opened from the side bar by the agent's name. */
+/** An agent's conversation, opened by picking the agent in the side bar's switcher. */
 const openAgent = async (p: Page, agent: string) => {
-	await p.locator("[data-slot=sidebar] [data-slot=agent-label]").getByText(agent, { exact: true }).first().click();
-	await p.locator("[data-slot=tab][data-active] [data-slot=tab-name]", { hasText: agent }).waitFor();
+	await p.click("[data-slot=sidebar] [data-slot=agent-switcher]");
+	await p.click(`[data-slot=dropdown-menu-content] [data-slot=agent-option][data-agent="${agent}"]`);
+	await p.locator(`[data-slot=tab][data-active][data-agent="${agent}"]`).waitFor();
 };
 const FIRST = "[data-slot=no-tab], [data-slot=tab][data-active]";
 

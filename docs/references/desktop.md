@@ -144,7 +144,7 @@ needs something new says so: update pine and restart it.
 
 ## The window
 
-The side bar at the left lists agents and conversations, with the event log, Settings, the Manual
+The side bar at the left shows one agent and its conversations, with the event log, Settings, the Manual
 and whether pine answers at its foot. Tabs hold conversations, Settings, the event log, the side
 panel (a conversation's files, terminal and browser) and the view.
 
@@ -153,23 +153,30 @@ On Linux and Windows the menu button (☰) at the right of the tab bar replaces 
 type `Pine <folder>` in a terminal, for a conversation that works in it. The icon's badge counts
 conversations that wait for you.
 
-**The side bar.** An agent with several conversations is a group. It lists the agent's groups, its
-own conversation (`main conversation`), pinned ones, then the rest by last use or name. Drag the edge to resize;
-`⌘B` hides it.
+**The side bar.** It shows one agent at a time: the agent of the conversation in front. Under the
+agent switcher at its top are that agent's own conversation (`main conversation`), in no group, then its groups,
+pinned ones, then the rest by last use or name. Conversations of other agents stay in their tabs.
+Drag the edge to resize; `⌘B` hides it.
 
-| On an agent's line | What it does |
+| In the agent switcher | What it does |
 |---|---|
-| A click | Opens its one conversation, or folds its list. A pulsing grey dot: it works; `!`: it waits for you; a dot: something new |
-| `+`, the folder, the gear | A new conversation; one in a folder you pick; the agent's page in Settings |
-| A right click | New conversation, a folder, New Group…, sorting, **Rename**, **Color**, settings, and **Remove** (not the main agent; asks whether to keep its folder) |
-| `+` beside "Agents" | A new agent (name, instructions, model); its conversation opens in a tab |
+| The switcher | The agent shown, with what it is for. A pulsing grey dot, `!` or a dot on it: another agent works, waits for you, or has something new |
+| An agent | Shows it, and brings its conversation used last to the front (its own when none was). Each agent has the same marks. In a phone-wide window the side bar stays open on its conversations, for you to pick one |
+| **Rename…**, **Color…**, Agent settings… | Its name, turned into a field; its color, over its avatar; its page in Settings |
+| **Remove…** | Not the main agent; asks whether to keep its folder |
+| New agent… | Name, instructions, model; its conversation opens in a tab |
+
+| At the head of the conversations (Conversations) | What it does |
+|---|---|
+| `+` New conversation, Open a folder…, New Group… | For the agent shown: a new conversation; one in a folder you pick; an empty group |
+| `+` Sort by Last Used, Name | The order of its conversations and groups |
 
 A conversation's right click: Open, Pin, Rename, Branch, Move to Group…, Open in New Window, Remove
 (Start over for an agent's own). Agents made or removed elsewhere (by the main agent, `pine agent add`, the terminal UI) show up or
 go within seconds.
 
 **Groups of conversations** ([agents.md](agents.md#groups-of-conversations)): New Group… is in the
-agent's right click. Drag a conversation onto a group, or onto the agent's line to take it out; its
+`+` menu at the head of the conversations. Drag a conversation onto a group, or among the conversations in no group to take it out; its
 branches go along. Without a mouse: Move to Group…, or `Move conversation to group` in the palette
 (`/group`). A group's Remove Group… asks, then removes the group and all its conversations for good.
 

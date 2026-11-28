@@ -1,7 +1,7 @@
 // The window: the list of agents and conversations at the side, the tabs along the top, one
 // conversation in the middle with its panel, and whatever lies over them for a moment (a list
 // to pick from, a question, the palette).
-import { ArrowUpIcon, AudioLinesIcon, BookOpenIcon, DownloadIcon, HourglassIcon, RotateCwIcon, CheckIcon, RadarIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronsUpDownIcon, EllipsisIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, GitBranchIcon, ListIcon, MenuIcon, MessageSquareIcon, PanelRightIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, TerminalSquareIcon, Trash2Icon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, AudioLinesIcon, BookOpenIcon, DownloadIcon, HourglassIcon, RotateCwIcon, CheckIcon, RadarIcon, ChevronDownIcon, ChevronLeftIcon, ChevronsUpDownIcon, LaptopIcon, ServerIcon, ExternalLinkIcon, FolderClosedIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, GitBranchIcon, ListIcon, MenuIcon, MessageSquareIcon, PaletteIcon, PanelRightIcon, PencilLineIcon, PlusIcon, SearchIcon, SettingsIcon, StarIcon, TerminalSquareIcon, Trash2Icon, TriangleAlertIcon, UnplugIcon, XIcon } from "lucide-react";
 import { useMediaQuery } from "usehooks-ts";
 import { Toggle } from "@/components/ui/toggle";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -46,21 +46,17 @@ import { HoverTooltip } from "@/components/hover-tooltip";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AgentAvatar } from "@/components/agent-avatar";
 import { AgentColorPicker, AgentNameInput } from "@/components/agent-identity";
+import { AgentSwitcher } from "@/components/agent-switcher";
+import { StatusMark } from "@/components/status-mark";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
-import { Sidebar as SidebarRoot, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupAction, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuAction, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import { Sidebar as SidebarRoot, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupAction, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuAction, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Pulse } from "@/components/pulse";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Printed } from "@/components/printed";
-
-/**
- * How long a line that slides to show its end takes (tw-animate-css's `animate-out` on an agent's row): long enough
- * to read at the pace one reads, about ten characters a second, and never less than the five seconds a short line takes.
- */
-const slideFor = (text: string) => `${Math.max(5, Math.round(text.length / 10))}s`;
 
 // Pieces of the frame drawn the same in several places.
 const DOT = "size-2 flex-none rounded-full";
@@ -260,22 +256,19 @@ export function Gate() {
 }
 
 // ---- the side ----------------------------------------------------------------------------------------
-// The side bar is the agents. One with a single conversation is one line that opens it. One with
-// more is a group of its own: who it is, how many conversations it has, whether it is at work, and
-// under it its conversations. What starts something new stands on the agent's own line, so it
-// is never a question whom a new conversation or a folder is for.
+// The side bar shows one agent at a time, the agent of the conversation in front (`store.scopedAgent`): at its
+// top the switcher, with who it is, the way to another agent and what this one can do (so it is never a question
+// whom a new conversation or a folder is for), then its groups of conversations, then its other conversations.
 
-/** How far a conversation's row stands in: a branch under the one it was made from, four steps at most. */
-// A conversation's icon lies in a slot as wide as the agent's avatar, where the avatar lies (the button's padding, the chevron, the gap):
-// the icons are on one line with the avatars, and the titles begin where the agents' names do. A branch or a group goes one step further in.
-const INDENT = ["pl-8", "pl-12", "pl-16", "pl-20", "pl-24"];
+/** How far a conversation's row stands in: a branch one step under the one it was made from (its icon under that one's title), four steps at most. */
+const INDENT = ["pl-2", "pl-8", "pl-14", "pl-20", "pl-26"];
 
 /** The conversation being dragged in the side bar. One window, one drag: nothing of it rides on the event, which other pages could read. */
 let dragging: { agent: string; session: string; group?: string } | undefined;
 
 /**
  * A place in the side bar that a conversation of the agent's is dropped on: a group, or with null the
- * agent's own line and the conversations in no group. Shown as a target while one is held over it.
+ * conversations in no group. Shown as a target while one is held over it.
  */
 function useDrop(agent: string, group: string | null) {
 	const [over, setOver] = useState(false);
@@ -304,7 +297,7 @@ function useDrop(agent: string, group: string | null) {
 	};
 }
 
-/** What a conversation's right click offers. An agent with one conversation offers the same on its own line. */
+/** What a conversation's right click offers. */
 function conversationItems(c: Conv, movable: boolean) {
 	const main = c.session === "main";
 	return [
@@ -367,7 +360,7 @@ function RowSkeleton({ width, className }: { width: string; className?: string }
 	);
 }
 
-/** A conversation's row in the side bar; with `skeleton`, a row of its shape while the conversations load. */
+/** A conversation's row in the side bar; with `skeleton`, a row of its shape while the conversations load. `inset` is the steps in of a group's rows. */
 export function ConversationRow(props: ConversationRowProps) {
 	if (props.skeleton) return <SidebarMenuItem role="none"><RowSkeleton width={(props.depth ?? 0) % 2 ? "60%" : "75%"} className={INDENT[Math.min((props.depth ?? 0) + (props.inset ?? 0), INDENT.length - 1)]} /></SidebarMenuItem>;
 	return <Row {...props} />;
@@ -375,14 +368,15 @@ export function ConversationRow(props: ConversationRowProps) {
 
 function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth?: number; inset?: number }) {
 	const s = store;
-	// A conversation is moved with its branches: a branch shown under its original is not moved by itself.
-	const movable = depth === 0 && !c.session.endsWith("~u");
+	// A conversation is moved with its branches: a branch shown under its original is not moved by itself. The agent's
+	// own conversation stays at the top of the list, in no group.
+	const movable = depth === 0 && c.session !== "main" && !c.session.endsWith("~u");
 	const tab = s.tabs.find((t) => t.kind === "chat" && t.agent === agent && t.session === c.session);
 	const main = c.session === "main";
 	const { setOpenMobile } = useSidebar();
 	const menu = async () => conversationPicked(agent, c, await contextMenu(conversationItems(c, movable)));
 	const kept = main ? "the agent's main conversation, always kept" : c.pinned ? "pinned" : c.group ? `kept in the group ${c.group}` : c.open ? "open in a tab" : c.expires ? `removed ${until(c.expires)}` : "kept";
-	const working = tab?.busy || s.isBusy(agent, c.session);
+	const standing = s.standing(agent, [c.session]);
 	const on = Boolean(tab && tab === s.active);
 	return (
 		// The row is the stock menu button drawn as the list's option, so the list keeps its one tab stop and its arrows.
@@ -398,7 +392,7 @@ function Row({ agent, c, depth = 0, inset = 0 }: { agent: string; c: Conv; depth
 			onDragEnd={() => (dragging = undefined)}
 		>
 			<SidebarMenuButton isActive={on} data-agent={agent} data-session={c.session} data-pinned={c.pinned || undefined} onClick={() => setOpenMobile(false)} className={cn(INDENT[Math.min(depth + inset, INDENT.length - 1)], c.tasks && "pr-16 group-has-data-[sidebar=menu-action]/menu-item:pr-16")} render={<ListboxItem value={c.session} label={s.titleOf(agent, c.session)} title={`${agent} · ${c.session} · ${kept}${c.branch ? ` · a branch of ${c.branch.from}` : ""}${c.worktree ? ` · in the worktree ${c.worktree.branch} of ${c.worktree.repo}` : c.folder ? ` · works in ${c.folder}` : ""}`} />}>
-				<span className="grid h-4 w-6 flex-none place-items-center">{tab && s.waits(tab) ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Pulse /> : tab?.unread ? <Badge className="size-2 p-0" /> : main || c.pinned ? <StarIcon className="text-faint" /> : depth || c.worktree ? <GitBranchIcon className="text-faint" /> : c.folder ? <FolderIcon className="text-faint" /> : <MessageSquareIcon className="text-faint" />}</span>
+				<span className="grid size-4 flex-none place-items-center">{standing ? <StatusMark standing={standing} /> : main || c.pinned ? <StarIcon className="text-faint" /> : depth || c.worktree ? <GitBranchIcon className="text-faint" /> : c.folder ? <FolderIcon className="text-faint" /> : <MessageSquareIcon className="text-faint" />}</span>
 				<span className="min-w-0 flex-1"><Title agent={agent} session={c.session} /></span>
 			</SidebarMenuButton>
 			{/* The badge is drawn over the button, so the button keeps the room for the time (stock pr-8 fits an action alone; the same selector as stock, so it takes the place of its pr-8). */}
@@ -446,17 +440,15 @@ function threaded(rows: Conv[]): Array<{ c: Conv; depth: number }> {
 
 /**
  * A group of an agent's conversations: its line folds it (Enter or Space where the keyboard is on it)
- * and is where conversations are dropped, and under it its conversations, each with its branches.
- * The same as an agent's group one step in: its own line, then its own list with its one tab stop.
+ * and is where conversations are dropped, and under it its conversations, one step in, each with its branches.
+ * Folded, its line shows what its conversations call for; open, only that one waits, since its rows show the rest.
  */
 function ConversationGroup({ agent, name, rows }: { agent: string; name: string; rows: Conv[] }) {
 	const s = store;
 	const folded = s.folded.has(`${agent}:group:${name}`);
 	const drop = useDrop(agent, name);
-	const tabs = s.tabs.filter((t) => t.kind === "chat" && t.agent === agent && rows.some((c) => c.session === t.session));
-	const waits = tabs.some((t) => s.waits(t));
-	const working = rows.some((c) => s.isBusy(agent, c.session)) || tabs.some((t) => t.busy);
-	const unread = tabs.some((t) => t.unread);
+	const all = s.standing(agent, rows.map((c) => c.session));
+	const standing = folded || all === "waits" ? all : undefined;
 	const count = rows.filter((c) => c.session !== "main" || c.tasks).length;
 	const menu = async () => {
 		const picked = await contextMenu([
@@ -470,12 +462,12 @@ function ConversationGroup({ agent, name, rows }: { agent: string; name: string;
 		if (picked === "remove") await s.removeGroup(agent, name);
 	};
 	return (
-		<div data-slot="conversation-group" {...drop} className="rounded-md data-[drop]:bg-accent">
+		<div data-slot="conversation-group" data-state={folded ? "closed" : "open"} {...drop} className="rounded-md data-[drop]:bg-accent">
 			<Collapsible open={!folded} onOpenChange={() => s.toggleGroupFold(agent, name)}>
 				<SidebarMenu>
 					<SidebarMenuItem className="[-webkit-app-region:no-drag]" onContextMenu={(e) => (e.preventDefault(), void menu())}>
-						<CollapsibleTrigger render={<SidebarMenuButton className="pl-8" title={`${name}: ${count === 1 ? "1 conversation" : `${count} conversations`}, kept even when unused`} />}>
-							<span className="grid h-4 w-6 flex-none place-items-center">{waits ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working && folded ? <Pulse /> : unread && folded ? <Badge className="size-2 p-0" /> : folded ? <FolderClosedIcon className="text-faint" /> : <FolderOpenIcon className="text-faint" />}</span>
+						<CollapsibleTrigger render={<SidebarMenuButton title={`${name}: ${count === 1 ? "1 conversation" : `${count} conversations`}, kept even when unused`} />}>
+							<span className="grid size-4 flex-none place-items-center">{standing ? <StatusMark standing={standing} /> : folded ? <FolderClosedIcon className="text-faint" /> : <FolderOpenIcon className="text-faint" />}</span>
 							<span data-slot="group-label" className="min-w-0 flex-1 truncate">{name}</span>
 						</CollapsibleTrigger>
 						<SidebarMenuBadge className={UNDER_ACTIONS}>{count}</SidebarMenuBadge>
@@ -492,154 +484,151 @@ function ConversationGroup({ agent, name, rows }: { agent: string; name: string;
 	);
 }
 
-/** An agent's line in the side bar with its conversations; with `skeleton`, its shape while they load. */
-export function AgentGroup(props: { skeleton?: false; a: AgentInfo } | { skeleton: true; a?: AgentInfo }) {
+/** The conversations of the agent the side bar shows: its groups, then the others; with `skeleton`, their shape while they load. */
+export function AgentConversations(props: { skeleton?: false; a: AgentInfo } | { skeleton: true; a?: AgentInfo }) {
 	if (props.skeleton)
 		return (
-			<SidebarMenu data-slot="agent-group-skeleton">
-				<SidebarMenuItem><RowSkeleton width="50%" /></SidebarMenuItem>
+			<SidebarMenu data-slot="agent-conversations-skeleton">
+				<ConversationRow skeleton />
 				<ConversationRow skeleton depth={1} />
-				<ConversationRow skeleton depth={1} />
+				<ConversationRow skeleton />
 			</SidebarMenu>
 		);
-	return <Group a={props.a} />;
+	return <Conversations a={props.a} />;
 }
 
-function Group({ a }: { a: AgentInfo }) {
+function Conversations({ a }: { a: AgentInfo }) {
 	const s = store;
-	const folded = s.folded.has(a.id);
 	const list = s.conversations.get(a.id) ?? [];
 	const grouping = s.groups.get(a.id) ?? { order: "recent" as const, groups: [] };
 	const rows: Conv[] = list.some((c) => c.session === "main") ? [...list] : [{ session: "main", tasks: 0, last: 0, pinned: false, open: false }, ...list];
 	// A conversation that is open in a tab and has not been said anything in yet is not in the daemon's list.
 	for (const t of s.tabs) if (t.kind === "chat" && t.agent === a.id && !rows.some((c) => c.session === t.session)) rows.push({ session: t.session, tasks: 0, last: Date.now(), pinned: s.pins.has(t.key), open: true, group: s.placed.get(`${a.id}:${t.session}`) });
 	const names = grouping.groups.map((g) => g.name);
-	const groupOf = (c: Conv) => (c.group && names.includes(c.group) ? c.group : undefined);
+	// The agent's own conversation is in no group: it heads the list, whatever group it was given.
+	const groupOf = (c: Conv) => (c.session !== "main" && c.group && names.includes(c.group) ? c.group : undefined);
 	// In every list the agent's own conversation first, then what is pinned, then by the agent's order.
 	const byName = grouping.order === "name";
 	const sort = (cs: Conv[]) => [...cs].sort((x, y) => Number(y.session === "main") - Number(x.session === "main") || Number(y.pinned) - Number(x.pinned) || (byName ? s.titleOf(a.id, x.session).localeCompare(s.titleOf(a.id, y.session)) : y.last - x.last));
 	const members = (n: string) => sort(rows.filter((c) => groupOf(c) === n));
 	const newest = (n: string) => Math.max(-1, ...rows.filter((c) => groupOf(c) === n).map((c) => c.last));
 	const groups = byName ? [...names].sort((x, y) => x.localeCompare(y)) : [...names].sort((x, y) => newest(y) - newest(x));
-	const loose = sort(rows.filter((c) => !groupOf(c)));
-	// One conversation and no group to put one into: the agent's line is that conversation, with nothing to fold.
-	// It is the agent's own (there always is one), so the line is called by the agent and needs no second name.
-	const only = rows.length === 1 && !names.length ? rows[0] : undefined;
-	const onlyTab = only && s.tabs.find((t) => t.kind === "chat" && t.agent === a.id && t.session === only.session);
-	const { setOpenMobile } = useSidebar();
-	// A fold from when it had more is forgotten, so that its conversations show when it has more again.
-	useEffect(() => {
-		if (only && folded) s.toggleFold(a.id);
-	}, [only, folded, s, a.id]);
-	const lineDrop = useDrop(a.id, null);
+	const loose = threaded(sort(rows.filter((c) => !groupOf(c))));
+	// The agent's own conversation, first in that order, and its branches head the list, above the groups.
+	const next = loose.findIndex((r, i) => i > 0 && r.depth === 0);
+	const own = loose[0]?.c.session !== "main" ? 0 : next < 0 ? loose.length : next;
+	const head = loose.slice(0, own);
+	const rest = loose.slice(own);
+	// Dropped among the conversations in no group, the agent's own one included, a conversation leaves its group.
 	const looseDrop = useDrop(a.id, null);
-	const tabs = s.tabs.filter((t) => t.agent === a.id && t.kind === "chat");
-	const waits = tabs.some((t) => s.waits(t));
-	const working = s.isBusy(a.id) || tabs.some((t) => t.busy);
-	const unread = tabs.some((t) => t.unread);
+	const ownDrop = useDrop(a.id, null);
+	const value = s.active?.kind === "chat" && s.active.agent === a.id ? s.active.session : null;
+	const open = onPick((session) => void s.openTab(a.id, session));
+	return (
+		<>
+			{head.length ? (
+				<div data-slot="own-conversation" {...ownDrop} className="rounded-md data-[drop]:bg-accent">
+					<Listbox aria-label={`${a.id}'s own conversation`} className="outline-none" {...LISTBOX} value={value} onValueChange={open} render={<SidebarMenu />}>
+						{head.map(({ c, depth }) => <ConversationRow key={c.session} agent={a.id} c={c} depth={depth} />)}
+					</Listbox>
+				</div>
+			) : null}
+			{groups.map((n) => <ConversationGroup key={n} agent={a.id} name={n} rows={members(n)} />)}
+			<div data-slot="loose-conversations" {...looseDrop} className="rounded-md data-[drop]:bg-accent">
+				<Listbox aria-label={`Conversations with ${a.id}`} className="outline-none" {...LISTBOX} value={value} onValueChange={open} render={<SidebarMenu />}>
+					{rest.map(({ c, depth }) => <ConversationRow key={c.session} agent={a.id} c={c} depth={depth} />)}
+				</Listbox>
+			</div>
+		</>
+	);
+}
+
+/**
+ * The head of the list of conversations, as shadcn labels a group of its sidebar and gives it an action: its label,
+ * and a `+` whose menu starts a conversation, one in a folder or a group, and sorts the list.
+ */
+function ConversationsHead({ a }: { a: AgentInfo }) {
+	const s = store;
+	const byName = s.groups.get(a.id)?.order === "name";
+	const label = `Conversations with ${a.id}: new, folder, group, sort`;
 	const pickFolder = async () => {
 		const dir = await s.chooseFolder(`Choose a folder for a conversation with ${a.id}`);
 		if (dir) await s.openFolder(dir, a.id);
 	};
-	// Its name and its color are changed where they are shown: the name turns into a field, the color opens over the avatar.
+	return (
+		<>
+			<SidebarGroupLabel>Conversations</SidebarGroupLabel>
+			<DropdownMenu>
+				<HoverTooltip>
+					<TooltipTrigger render={<DropdownMenuTrigger render={<SidebarGroupAction data-slot="conversations-actions" className="[-webkit-app-region:no-drag] aria-expanded:bg-sidebar-accent" aria-label={label} />} />}><PlusIcon /></TooltipTrigger>
+					<TooltipContent>{label}</TooltipContent>
+				</HoverTooltip>
+				<DropdownMenuContent align="end" className="w-fit min-w-56">
+					<DropdownMenuGroup>
+						<DropdownMenuItem data-agent-action="new" onClick={() => void s.newConversation(a.id)}><PlusIcon />New conversation with {a.id}</DropdownMenuItem>
+						<DropdownMenuItem data-agent-action="folder" onClick={() => void pickFolder()}><FolderIcon />Open a folder with {a.id}…</DropdownMenuItem>
+						<DropdownMenuItem data-agent-action="group" onClick={() => void s.newGroup(a.id)}><FolderPlusIcon />New Group…</DropdownMenuItem>
+					</DropdownMenuGroup>
+					<DropdownMenuSeparator />
+					<DropdownMenuGroup>
+						<DropdownMenuLabel>Sort by</DropdownMenuLabel>
+						<DropdownMenuRadioGroup value={byName ? "name" : "recent"} onValueChange={(order: string) => void s.sortConversations(a.id, order === "name" ? "name" : "recent")}>
+							<DropdownMenuRadioItem value="recent" closeOnClick data-agent-action="recent">Last Used</DropdownMenuRadioItem>
+							<DropdownMenuRadioItem value="name" closeOnClick data-agent-action="name">Name</DropdownMenuRadioItem>
+						</DropdownMenuRadioGroup>
+					</DropdownMenuGroup>
+				</DropdownMenuContent>
+			</DropdownMenu>
+		</>
+	);
+}
+
+/**
+ * The switcher at the top of the side bar, with what can be done with the agent it shows. Its name and its color are
+ * changed where they are shown: the name turns into a field, the color opens over the avatar, once the menu is closed.
+ * On a phone-wide window an agent picked only changes what the side bar lists: the sheet stays, for one of its
+ * conversations to be picked, instead of going with the conversation the agent used last brought to the front.
+ */
+function SidebarAgent({ a }: { a: AgentInfo }) {
+	const s = store;
+	const { isMobile } = useSidebar();
 	const [renaming, setRenaming] = useState(false);
 	const [coloring, setColoring] = useState(false);
-	const menu = async () => {
-		// On a line that is a conversation too, what that conversation's own row would offer comes first. One conversation is not sorted.
-		const own = only ? conversationItems(only, true).filter((i) => !("separator" in i)) : [];
-		const picked = await contextMenu([
-			...(own.length ? [...own, { id: "sep-own", label: "", separator: true }] : []),
-			{ id: "new", label: `New conversation with ${a.id}` },
-			{ id: "folder", label: `Open a folder with ${a.id}…` },
-			{ id: "group", label: "New Group…" },
-			...(only ? [] : [{ id: "sep0", label: "", separator: true }, { id: "recent", label: "Sort by Last Used", checked: !byName }, { id: "name", label: "Sort by Name", checked: byName }]),
-			{ id: "sep", label: "", separator: true },
-			{ id: "rename", label: "Rename…" },
-			{ id: "color", label: "Color…" },
-			{ id: "settings", label: "Agent settings…" },
-			// The main agent administers pine and stays.
-			...(a.main ? [] : [{ id: "sep2", label: "", separator: true }, { id: "remove", label: `Remove ${a.id}…` }]),
-		]);
-		if (only && own.some((i) => i.id === picked)) return conversationPicked(a.id, only, picked);
-		if (picked === "new") await s.newConversation(a.id);
-		if (picked === "folder") await pickFolder();
-		if (picked === "group") await s.newGroup(a.id);
-		if ((picked === "recent" && byName) || (picked === "name" && !byName)) await s.sortConversations(a.id, picked);
-		if (picked === "rename") setRenaming(true);
-		if (picked === "color") setColoring(true);
-		if (picked === "settings") s.openSettings("agents", a.id);
-		if (picked === "remove") await s.removeAgent(a.id);
+	// Rename and Color wait for the menu to be closed, and the menu gives no focus back for them: the switcher's trigger
+	// is gone by then, and what had the focus before would take it from the field and end it at once.
+	const [next, setNext] = useState<"rename" | "color">();
+	const closed = () => {
+		if (next === "rename") setRenaming(true);
+		if (next === "color") setColoring(true);
+		setNext(undefined);
 	};
-	const count = rows.length === 1 ? "1 conversation" : `${rows.length} conversations`;
-	const what = a.description || a.model;
-	// An agent's name and, beside it on the same line, what it is for; a group says first how many conversations it holds. The name is whole;
-	// the rest takes the room that is left and is cut off where that ends. With the pointer on the line, what was cut off slides through to its end and back.
-	const label = (
-		<span data-slot="agent-label" data-agent={a.id} className="flex min-w-0 flex-1 items-baseline gap-2 font-semibold text-foreground">
-			<span data-slot="agent-name" className="min-w-0 flex-initial truncate">{a.id}</span>
-			<span className="@container min-w-0 flex-1 truncate text-xs font-normal text-faint group-hover/menu-item:text-clip"><span className="group-hover/menu-item:inline-block group-hover/menu-item:animate-out group-hover/menu-item:slide-out-to-left-[max(0px,100%_-_100cqw)] group-hover/menu-item:ease-linear group-hover/menu-item:delay-500 group-hover/menu-item:repeat-infinite group-hover/menu-item:direction-alternate motion-reduce:animate-none" style={{ animationDuration: slideFor(only ? what : `${count} · ${what}`) }}>{only ? null : <><span data-slot="agent-count">{count}</span>{" · "}</>}{what}</span></span>
-		</span>
-	);
-	const line = (
-		<SidebarMenu>
-			{/* Dropped on the agent's line, a conversation leaves its group. */}
-			<SidebarMenuItem {...lineDrop} className="[-webkit-app-region:no-drag] rounded-md data-[drop]:bg-accent" title={`${a.id}: ${a.description || "no description"}\n${a.model} · ${a.mode}${only ? "" : `\n${count}`}`} onContextMenu={(e) => (e.preventDefault(), void menu())}>
-				<AgentColorPicker agent={a} open={coloring} onOpenChange={setColoring} onChange={(c) => void s.colorAgent(a.id, c)} nativeButton={false} trigger={<span aria-hidden tabIndex={-1} className="pointer-events-none absolute top-1 left-8 size-6" />} />
-				{renaming ? (
-					<div className="flex h-8 items-center gap-2 px-2">
-						<AgentAvatar agent={a} size="sm" />
-						<AgentNameInput id={a.id} className="h-7" onDone={(to) => (setRenaming(false), to && void s.renameAgent(a.id, to))} />
-					</div>
-				) : (
-					<>
-						{/* Where its buttons show (UNDER_ACTIONS) the line makes room for both, More and the plus: `!`, since the stock button's room for one action (pr-8) comes later in the stylesheet and would win. */}
-						{only ? (
-							// The line is its one conversation: a click opens it, and it shows what that conversation's row would (it waits, works, has something new, when it was last used).
-							// Nothing folds, and the avatar stays where the avatars of the groups are.
-							<SidebarMenuButton data-slot="agent-conversation" isActive={Boolean(onlyTab && onlyTab === s.active)} className="group-hover/menu-item:pr-14! group-focus-within/menu-item:pr-14! max-md:pr-14!" onClick={() => (setOpenMobile(false), void s.openTab(a.id, only.session))}>
-								<span aria-hidden className="size-4 flex-none" />
-								<AgentAvatar agent={a} size="sm" />
-								{label}
-								{waits ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Pulse /> : unread ? <Badge className="size-2 p-0" /> : only.tasks ? <span className={cn("flex-none text-xs font-normal text-faint tabular-nums", UNDER_ACTIONS)}>{ago(only.last).replace(" ago", "")}</span> : null}
-							</SidebarMenuButton>
-						) : (
-							// What folds the group is the agent's line but its buttons.
-							<CollapsibleTrigger render={<SidebarMenuButton className="group-hover/menu-item:pr-14! group-focus-within/menu-item:pr-14! max-md:pr-14!" />}>
-								{folded ? <ChevronRightIcon className="text-faint" /> : <ChevronDownIcon className="text-faint" />}
-								<AgentAvatar agent={a} size="sm" />
-								{label}
-								{waits ? <Badge variant="destructive" className="size-4 p-0">!</Badge> : working ? <Pulse /> : unread && folded ? <Badge className="size-2 p-0" /> : null}
-							</CollapsibleTrigger>
-						)}
-						{/* The agent's other actions, as shadcn's sidebar puts them: a More action that opens a menu. The plus stays one click away. */}
-						<DropdownMenu>
-							<DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="right-7" data-agent-action="more" aria-label={`More actions for ${a.id}`} />}><EllipsisIcon /></DropdownMenuTrigger>
-							<DropdownMenuContent side="right" align="start" className="min-w-56">
-								<DropdownMenuGroup>
-									<DropdownMenuItem onClick={() => void pickFolder()}><FolderIcon />Open a folder with {a.id}…</DropdownMenuItem>
-									<DropdownMenuItem onClick={() => s.openSettings("agents", a.id)}><SettingsIcon />Agent settings…</DropdownMenuItem>
-								</DropdownMenuGroup>
-							</DropdownMenuContent>
-						</DropdownMenu>
-						<HoverTooltip><TooltipTrigger render={<SidebarMenuAction onClick={() => void s.newConversation(a.id)} data-agent-action="new" aria-label={`New conversation with ${a.id}`} />}><PlusIcon /></TooltipTrigger><TooltipContent>{`New conversation with ${a.id}`}</TooltipContent></HoverTooltip>
-					</>
-				)}
-			</SidebarMenuItem>
-		</SidebarMenu>
-	);
-	if (only) return line;
 	return (
-		<Collapsible open={!folded} onOpenChange={() => s.toggleFold(a.id)}>
-			{line}
-			<CollapsibleContent>
-				{groups.map((n) => <ConversationGroup key={n} agent={a.id} name={n} rows={members(n)} />)}
-				<div {...looseDrop} className="rounded-md data-[drop]:bg-accent">
-					<Listbox aria-label={`Conversations with ${a.id}`} className="outline-none" {...LISTBOX} value={s.active?.kind === "chat" && s.active.agent === a.id ? s.active.session : null} onValueChange={onPick((session) => void s.openTab(a.id, session))} render={<SidebarMenu />}>
-						{threaded(loose).map(({ c, depth }) => <ConversationRow key={c.session} agent={a.id} c={c} depth={depth} />)}
-					</Listbox>
+		<SidebarMenuItem className="[-webkit-app-region:no-drag]">
+			<AgentColorPicker agent={a} open={coloring} onOpenChange={setColoring} onChange={(c) => void s.colorAgent(a.id, c)} nativeButton={false} trigger={<span aria-hidden tabIndex={-1} className="pointer-events-none absolute top-2 left-2 size-8" />} />
+			{renaming ? (
+				<div className="flex h-12 items-center gap-2 p-2">
+					<AgentAvatar agent={a} />
+					<AgentNameInput id={a.id} className="h-8" onDone={(to) => (setRenaming(false), to && void s.renameAgent(a.id, to))} />
 				</div>
-			</CollapsibleContent>
-		</Collapsible>
+			) : (
+				<AgentSwitcher agents={s.agents} current={a} standing={(id) => s.standing(id)} onSelect={(id) => (isMobile ? s.listAgent(id) : void s.showAgent(id))} onNewAgent={() => ((s.newAgent = true), s.touch())} onClosed={closed} returnFocus={!next}>
+					<DropdownMenuGroup>
+						<DropdownMenuItem data-agent-action="rename" onClick={() => setNext("rename")}><PencilLineIcon />Rename…</DropdownMenuItem>
+						<DropdownMenuItem data-agent-action="color" onClick={() => setNext("color")}><PaletteIcon />Color…</DropdownMenuItem>
+						<DropdownMenuItem data-agent-action="settings" onClick={() => s.openSettings("agents", a.id)}><SettingsIcon />Agent settings…</DropdownMenuItem>
+					</DropdownMenuGroup>
+					{/* The main agent administers pine and stays. */}
+					{a.main ? null : (
+						<>
+							<DropdownMenuSeparator />
+							<DropdownMenuGroup>
+								<DropdownMenuItem variant="destructive" data-agent-action="remove" onClick={() => void s.removeAgent(a.id)}><Trash2Icon />Remove {a.id}…</DropdownMenuItem>
+							</DropdownMenuGroup>
+						</>
+					)}
+				</AgentSwitcher>
+			)}
+		</SidebarMenuItem>
 	);
 }
 
@@ -648,6 +637,7 @@ export function Sidebar() {
 	const front = s.active;
 	const update = s.updatePhase;
 	const older = s.service.status === "ready" && s.service.olderThan ? s.service : undefined;
+	const scoped = s.scopedAgent;
 	const { isMobile } = useSidebar();
 	// shadcn's stock Sidebar. In a wide window it is fixed in its place (the panel around it sets its width),
 	// its background left to the window behind it, which is the system's material on a Mac, and where nothing
@@ -658,6 +648,10 @@ export function Sidebar() {
 			<SidebarHeader className="h-11 flex-none flex-row items-center justify-end gap-0.5 py-0 pr-2 pl-window-buttons [-webkit-app-region:drag]">
 				<HoverTooltip><TooltipTrigger render={<SidebarTrigger size="icon" className="[-webkit-app-region:no-drag]" aria-label="Hide the sidebar" />} /><TooltipContent>Hide the sidebar<Kbd>{shortcut("⌘B")}</Kbd></TooltipContent></HoverTooltip>
 			</SidebarHeader>
+			{/* Which agent the side bar shows, and the way to another: above what scrolls, as shadcn's sidebar switches teams. */}
+			<SidebarHeader className="pt-0">
+				<SidebarMenu>{scoped ? <SidebarAgent key={scoped.id} a={scoped} /> : <SidebarMenuItem><RowSkeleton width="50%" className="h-12" /></SidebarMenuItem>}</SidebarMenu>
+			</SidebarHeader>
 			<SidebarContent>
 				<ScrollArea className="flex min-h-0 flex-col *:data-[slot=scroll-area-viewport]:scroll-fade flex-1">
 					<SidebarGroup className="pt-1 pb-0">
@@ -667,11 +661,7 @@ export function Sidebar() {
 							</SidebarMenuItem>
 						</SidebarMenu>
 					</SidebarGroup>
-					<SidebarGroup>
-						<SidebarGroupLabel>Agents</SidebarGroupLabel>
-						<HoverTooltip><TooltipTrigger render={<SidebarGroupAction className="[-webkit-app-region:no-drag]" onClick={() => ((s.newAgent = true), s.touch())} aria-label="New agent" />}><PlusIcon /></TooltipTrigger><TooltipContent>New agent</TooltipContent></HoverTooltip>
-						<SidebarGroupContent className="flex flex-col gap-1">{s.agents.map((a) => (s.conversations.has(a.id) ? <AgentGroup key={a.id} a={a} /> : <AgentGroup key={a.id} skeleton />))}</SidebarGroupContent>
-					</SidebarGroup>
+					{scoped ? <SidebarGroup className="gap-1" data-slot="sidebar-agent-conversations" data-agent={scoped.id}><ConversationsHead a={scoped} />{s.conversations.has(scoped.id) ? <AgentConversations a={scoped} /> : <AgentConversations skeleton />}</SidebarGroup> : null}
 				</ScrollArea>
 			</SidebarContent>
 			<SidebarFooter className="gap-0">

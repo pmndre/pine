@@ -26,10 +26,68 @@ const CLOSE = "[data-action=close]";
 const closeFront = () => page.click(`${FRONT} ${CLOSE}`);
 /** The tab in front is called by this (a text the test supplied: what it typed, a name it gave). */
 const frontNamed = (text: string, timeout?: number) => sees(`${FRONT} [data-slot=tab-name] >> text=${text}`, timeout);
-/** An agent's line in the side bar, and the group it is once it has several conversations. */
-const agentLine = (id: string) => page.locator(`[data-slot=sidebar-menu-item]:has([data-slot=agent-label][data-agent="${id}"])`);
-const agentGroup = (id: string) => page.locator(`[data-slot=collapsible]:has([data-slot=agent-label][data-agent="${id}"])`);
-const agentIds = (): Promise<string[]> => page.$$eval("[data-slot=agent-label]", (els: Element[]) => els.map((e) => e.getAttribute("data-agent") ?? ""));
+/** The switcher at the top of the side bar: it names the agent whose conversations the side bar lists. */
+const SWITCHER = "[data-slot=sidebar] [data-slot=agent-switcher]";
+/** The switcher's menu, once open. */
+const SWITCHER_MENU = "[data-slot=dropdown-menu-content]:has([data-slot=agent-option])";
+/** The conversations the side bar lists while it shows this agent. */
+const shownConversations = (id: string) => page.locator(`[data-slot=sidebar-agent-conversations][data-agent="${id}"]`);
+const openSwitcher = async () => {
+	await page.click(SWITCHER);
+	await sees(`${SWITCHER_MENU} [data-slot=agent-option]`);
+};
+const closeSwitcher = async () => {
+	await page.keyboard.press("Escape");
+	await page.waitForSelector(SWITCHER_MENU, { state: "detached" });
+};
+/** Picks one of the shown agent's actions from the switcher's menu. */
+const agentAction = async (action: string) => {
+	await openSwitcher();
+	await page.click(`${SWITCHER_MENU} [data-agent-action=${action}]`);
+};
+/** What can be done with the conversations the side bar lists, from the menu of the `+` at the head of their list. */
+const CONVERSATIONS_MENU = "[data-slot=dropdown-menu-content]:has([data-agent-action=recent])";
+const conversationsAction = async (action: string) => {
+	await page.click("[data-slot=sidebar] [data-slot=conversations-actions]");
+	await page.click(`${CONVERSATIONS_MENU} [data-agent-action=${action}]`);
+};
+/** The actions the menu at the head of the list of conversations offers, opened and closed again. */
+const conversationsActions = async (): Promise<string[]> => {
+	await page.click("[data-slot=sidebar] [data-slot=conversations-actions]");
+	await sees(`${CONVERSATIONS_MENU} [data-agent-action]`);
+	const all = await page.$$eval(`${CONVERSATIONS_MENU} [data-agent-action]`, (els: Element[]) => els.map((e) => `${e.getAttribute("data-agent-action")}${e.getAttribute("aria-checked") === "true" ? " ✓" : ""}`));
+	await page.keyboard.press("Escape");
+	await page.waitForSelector(CONVERSATIONS_MENU, { state: "detached" });
+	return all;
+};
+/** The actions the switcher's menu offers for the agent it shows. */
+const agentActions = async (): Promise<string[]> => {
+	await openSwitcher();
+	const all = await page.$$eval(`${SWITCHER_MENU} [data-agent-action]`, (els: Element[]) => els.map((e) => `${e.getAttribute("data-agent-action")}${e.getAttribute("aria-checked") === "true" ? " ✓" : ""}`));
+	await closeSwitcher();
+	return all;
+};
+/** Shows an agent with the switcher: the side bar lists its conversations, one of them in front. Says which, for the test to close it after. */
+const showAgent = async (id: string): Promise<string> => {
+	await openSwitcher();
+	await page.click(`${SWITCHER_MENU} [data-slot=agent-option][data-agent="${id}"]`);
+	await sees(`${SWITCHER}[data-agent="${id}"]`);
+	await sees(`${FRONT}[data-agent="${id}"]`);
+	return (await page.getAttribute(FRONT, "data-session"))!;
+};
+/** The agents the switcher lists, its menu opened and closed again; none while there is no switcher to open. */
+const agentIds = async (): Promise<string[]> => {
+	try {
+		await page.click(SWITCHER, { timeout: 2000 });
+		await page.waitForSelector(`${SWITCHER_MENU} [data-slot=agent-option]`, { timeout: 2000 });
+		const ids = await page.$$eval(`${SWITCHER_MENU} [data-slot=agent-option]`, (els: Element[]) => els.map((e) => e.getAttribute("data-agent") ?? ""));
+		await closeSwitcher();
+		return ids;
+	} catch {
+		await page.keyboard.press("Escape").catch(() => {});
+		return [];
+	}
+};
 /** A conversation's line in the side bar. */
 const lineOf = (session: string) => `[data-slot=sidebar-menu-item][data-session="${session}"]`;
 /** What the main process holds for this window: the machine, the preferences, the layout the page reported. */
@@ -84,13 +142,15 @@ const calledInPalette = async (id: string): Promise<string> => {
 	return ((await page.locator(`[data-slot=command-item][data-value="${id}"] > :first-child`).textContent()) ?? "").trim();
 };
 
-test("the side bar is the agents: one made elsewhere appears, a group folds away, and what is new says for whom", async () => {
+test("the side bar shows one agent, picked in its switcher or by the tab in front: one made elsewhere appears, and what is new says for whom", async () => {
 	// An agent that another hand makes (the main agent, a `pine agent add`): asked of the daemon directly, not through the app.
 	const made = await ask(home, "POST", "/agents", { id: "test", description: "Made outside the app", instructions: "You are test." });
 	assert.equal(made.status, 200);
 	await visit();
-	await sees("[data-slot=agent-label][data-agent=test]", 20_000);
-	assert.match((await agentLine("test").textContent()) ?? "", /Made outside the app/, "its line says what the test described it as");
+	await until(agentIds, (ids) => ids.includes("test"), "the switcher does not list the agent made elsewhere", patient(20_000));
+	const opened = await showAgent("test");
+	assert.match((await page.textContent(SWITCHER)) ?? "", /Made outside the app/, "the switcher says what the test described it as");
+	await page.click(`${TAB}[data-agent=test][data-session="${opened}"] ${CLOSE}`);
 	// Beside a conversation, the panel's Agent view. (What it says an agent was given is app.test.ts's, after its settings.)
 	await page.click(`${TAB} >> nth=0`);
 	// The menu's item opens the side panel on its Agent view whatever state the panel is in (a toggle could close it).
@@ -122,44 +182,41 @@ test("the side bar is the agents: one made elsewhere appears, a group folds away
 	await sees("#sidebar-panel [data-slot=sidebar]");
 	await widerThan(first);
 	await page.reload();
-	await sees("#sidebar-panel [data-slot=agent-label]");
-	// An agent with one conversation is one line: nothing folds, no conversation is listed under it, and a click opens that conversation.
-	const scoutLine = agentLine("scout");
-	const group = agentGroup("scout");
-	await scoutLine.locator("[data-slot=agent-conversation]").waitFor();
-	assert.equal(await group.count(), 0);
-	assert.equal(await scoutLine.locator("[data-slot=agent-count]").count(), 0);
-	await scoutLine.locator("[data-slot=agent-label]").click();
+	await sees(`#sidebar-panel ${SWITCHER}`);
+	// Picked in the switcher, an agent is the one the side bar shows, with its conversation in front: scout's one, its main one.
+	const scout = shownConversations("scout");
+	await showAgent("scout");
 	await sees(`${FRONT}[data-agent=scout][data-session=main]`);
-	await scoutLine.locator("[data-slot=agent-conversation][data-active]").waitFor();
-	await closeFront();
-	// The plus on an agent's own line starts a conversation with that agent, and with a second conversation the line is a group that says how many it holds.
-	await scoutLine.locator("[data-agent-action=new]").click();
+	await scout.locator("[role=option][data-active]").waitFor();
+	assert.equal(await scout.locator("[role=option]").count(), 1);
+	// A tab of another agent's brought to the front, the side bar shows that agent; back on scout's tab, scout again.
+	await page.click(`${TAB}[data-kind=chat]:not([data-agent=scout]) >> nth=0`);
+	await sees(`${SWITCHER}:not([data-agent=scout])`);
+	assert.equal(await scout.count(), 0);
+	await page.click(`${TAB}[data-agent=scout][data-session=main]`);
+	await sees(`${SWITCHER}[data-agent=scout]`);
+	// New conversation, in the menu at the head of the list, starts a conversation with the agent the side bar shows.
+	await conversationsAction("new");
 	await sees(`${FRONT}[data-agent=scout]:not([data-session=main])`);
+	await page.click(`${TAB}[data-agent=scout][data-session=main] ${CLOSE}`);
 	// The empty conversation says with whom it is, and what the agent is for (its description, which the home of this test gave it).
 	await sees("[data-slot=empty] [data-slot=empty-title] >> text=scout");
 	await sees("[data-slot=empty] >> text=Looks things up on the web");
-	await group.locator("[data-slot=agent-count]", { hasText: /\b2\b/ }).waitFor();
-	assert.equal(await scoutLine.locator("[data-slot=agent-conversation]").count(), 0);
-	assert.equal(await group.locator("[role=option]").count(), 2);
-	// A group folds away on a click on its agent, and comes back.
-	await group.locator("[data-slot=agent-label]").click();
-	assert.equal(await group.locator("[role=option]").count(), 0);
-	await group.locator("[data-slot=agent-label]").click();
-	assert.equal(await group.locator("[role=option]").count(), 2);
-	// A new conversation that is closed before anything was said in it is gone, and with one conversation left the agent is one line again.
+	await until(() => scout.locator("[role=option]").count(), (n) => n === 2, "scout's new conversation is not listed");
+	// A new conversation that is closed before anything was said in it is gone.
 	await closeFront();
-	await scoutLine.locator("[data-slot=agent-conversation]").waitFor();
-	assert.equal(await group.count(), 0);
-	await scoutLine.locator("[data-agent-action=new]").click();
+	await showAgent("scout");
+	await until(() => scout.locator("[role=option]").count(), (n) => n === 1, "the closed empty conversation is still listed");
+	await conversationsAction("new");
 	await sees(`${FRONT}[data-agent=scout]:not([data-session=main])`);
+	await page.click(`${TAB}[data-agent=scout][data-session=main] ${CLOSE}`);
 	await shot("14-agents");
 	// A conversation is called by the first thing said in it, in the side bar and on its tab.
 	await page.fill("[data-slot=composer] textarea", "where is the okapi invoice");
 	await page.keyboard.press("Enter");
 	await sees("[data-slot=markdown] >> text=ECHO[where is the okapi invoice]");
 	await frontNamed("where is the okapi invoice", 15_000);
-	assert.equal(await group.locator("[role=option] >> text=where is the okapi invoice").count(), 1);
+	assert.equal(await scout.locator("[role=option] >> text=where is the okapi invoice").count(), 1);
 	await closeFront();
 	// Search finds a conversation by what was said in it, and opens it with the words marked.
 	await menu("palette");
@@ -216,41 +273,40 @@ test("the window shows before the tabs are filled, with skeletons in the side ba
 		});
 	}
 	await page.waitForSelector("[data-slot=sidebar] [data-slot=skeleton]", { state: "detached", timeout: patient(20_000) });
-	await sees("[data-slot=agent-label][data-agent=main]");
+	await sees(SWITCHER);
 });
 
-test("a conversation is opened from the side bar with the keyboard alone, and a group folds from it", async () => {
-	const group = agentGroup("scout");
-	const fold = group.locator("[data-slot=collapsible-trigger]");
-	await fold.focus();
-	assert.equal(await fold.getAttribute("aria-expanded"), "true");
+test("a conversation is opened from the side bar with the keyboard alone, and so is another agent in its switcher", async () => {
+	const opened = await showAgent("scout");
+	// The switcher opens with the keyboard and names the agent it shows; Escape gives the keyboard back to it.
+	await page.focus(SWITCHER);
+	assert.match((await page.getAttribute(SWITCHER, "aria-label")) ?? "", /scout/);
 	await page.keyboard.press("Enter");
-	await page.waitForFunction(() => document.activeElement?.getAttribute("aria-expanded") === "false");
-	assert.equal(await group.locator("[role=option]").count(), 0);
-	await page.keyboard.press("Space");
-	await page.waitForFunction(() => document.activeElement?.getAttribute("aria-expanded") === "true");
-	assert.ok((await group.locator("[role=option]").count()) > 0);
-	// The buttons on the agent's line are stops of their own, shown while the keyboard is on the line; its conversations come after the plus:
+	await sees(`${SWITCHER_MENU} [data-slot=agent-option][data-agent=scout][aria-checked=true]`);
+	await closeSwitcher();
+	await page.waitForFunction(() => document.activeElement?.getAttribute("data-slot") === "agent-switcher");
+	// Its conversations come after it, the search and the action at the head of their list, named for the agent:
 	// Tab goes in, the arrows move, Enter opens.
-	for (const action of ["more", "new"]) {
+	const at = () => page.evaluate(() => ({ role: document.activeElement?.getAttribute("role"), session: document.activeElement?.getAttribute("data-session"), slot: document.activeElement?.getAttribute("data-slot"), label: document.activeElement?.getAttribute("aria-label") ?? "" }));
+	const passed: Array<{ slot?: string | null; label: string }> = [];
+	for (let i = 0; i < 8 && (await at()).role !== "option"; i++) {
 		await page.keyboard.press("Tab");
-		const at = await page.evaluate(() => ({ action: document.activeElement?.getAttribute("data-agent-action"), label: document.activeElement?.getAttribute("aria-label") ?? "" }));
-		// Each has a name a screen reader says, and it names the agent.
-		assert.ok(at.action === action && at.label.includes("scout"), JSON.stringify(at));
+		passed.push(await at());
 	}
-	await page.keyboard.press("Tab");
-	const at = () => page.evaluate(() => ({ role: document.activeElement?.getAttribute("role"), text: document.activeElement?.textContent ?? "" }));
 	assert.equal((await at()).role, "option");
-	for (let i = 0; i < 6 && !/where is the okapi invoice/.test((await at()).text); i++) await page.keyboard.press("ArrowDown");
-	assert.match((await at()).text, /where is the okapi invoice/);
+	assert.ok(passed.some((p) => p.slot === "conversations-actions" && p.label.includes("scout")), JSON.stringify(passed));
+	for (let i = 0; i < 6 && (await at()).session !== "main"; i++) await page.keyboard.press("ArrowDown");
+	assert.equal((await at()).session, "main");
 	await page.keyboard.press("Enter");
-	await frontNamed("where is the okapi invoice");
+	await sees(`${FRONT}[data-agent=scout][data-session=main]`);
 	await closeFront();
+	if (opened !== "main") await page.click(`${TAB}[data-agent=scout][data-session="${opened}"] ${CLOSE}`);
 });
 
 test("a conversation is removed by its row's own button, which the keyboard reaches too, after a yes in a dialog that then closes", async () => {
-	const group = agentGroup("scout");
-	await group.locator("[data-agent-action=new]").click();
+	const opened = await showAgent("scout");
+	const group = shownConversations("scout");
+	await conversationsAction("new");
 	await sees(`${FRONT}[data-agent=scout]:not([data-session=main])`);
 	await page.fill("[data-slot=composer] textarea", "a conversation to remove");
 	await page.keyboard.press("Enter");
@@ -272,6 +328,7 @@ test("a conversation is removed by its row's own button, which the keyboard reac
 	await option.waitFor({ state: "detached" });
 	// The daemon no longer has it.
 	await until(async () => ((await api("GET", "/agents/scout/sessions")).data as any[]).map((c) => c.session), (all) => !all.includes(session), "the conversation is still one of scout's");
+	await page.click(`${TAB}[data-agent=scout][data-session="${opened}"] ${CLOSE}`);
 });
 
 test("the tabs are reached with the keyboard: the arrows go from one to the next, and Enter brings it to the front", async () => {
@@ -304,36 +361,40 @@ test("the search after the tabs lists every tab of the row, the one in front che
 	await page.click(`${TAB}[data-kind=events] ${CLOSE}`);
 });
 
-test("a right click on an agent renames it in place, colors it, and offers to remove it, and never the main agent", async () => {
+test("the switcher's menu renames the agent it shows in place, colors it, and offers to remove it, and never the main agent", async () => {
 	const made = await ask(home, "POST", "/agents", { id: "spare", description: "Not needed for long", instructions: "You are spare." });
 	assert.equal(made.status, 200);
 	await visit();
-	await sees("[data-slot=agent-label][data-agent=spare]", 20_000);
-	await noteMenus();
+	await until(agentIds, (ids) => ids.includes("spare"), "the switcher does not list the new agent", patient(20_000));
 	// The main agent can be renamed and colored like any other, and has nothing to remove it with.
-	const ofMain = await offered(agentLine("main"));
+	await showAgent("main");
+	const ofMain = await agentActions();
 	assert.ok(ofMain.includes("rename") && ofMain.includes("color") && !ofMain.includes("remove"), ofMain.join());
-	// Rename turns its name in the side bar into a field: Escape keeps the name, Enter gives it the new one, and everything follows it.
-	const ofSpare = await offered(agentLine("spare"), "rename");
+	// Rename turns its name in the switcher into a field: Escape keeps the name, Enter gives it the new one, and everything follows it.
+	await showAgent("spare");
+	const ofSpare = await agentActions();
 	assert.ok(ofSpare.includes("rename") && ofSpare.includes("color") && ofSpare.includes("remove"), ofSpare.join());
+	await agentAction("rename");
 	const field = page.locator("[data-slot=sidebar] [data-field=rename]");
+	await field.waitFor();
 	await field.press("Escape");
 	await field.waitFor({ state: "detached" });
-	await sees("[data-slot=agent-label][data-agent=spare]");
-	await offered(agentLine("spare"), "rename");
+	await sees(`${SWITCHER}[data-agent=spare]`);
+	await agentAction("rename");
 	await field.fill("Spare Hands");
 	await field.press("Enter");
-	await sees("[data-slot=agent-label][data-agent=spare-hands]");
+	await sees(`${SWITCHER}[data-agent=spare-hands]`);
 	const kept = path.join(home, "agents", "spare-hands", "agent.json");
 	await until(() => fs.existsSync(kept) && !fs.existsSync(path.join(home, "agents", "spare")), Boolean, "the agent's folder did not follow its new name");
 	// Color opens the color over its avatar, and a pick is kept at once.
-	await offered(agentLine("spare-hands"), "color");
+	await agentAction("color");
 	const swatch = page.locator("[data-slot=agent-color][data-open] [data-color]:not([data-color=none])").first();
 	const color = await swatch.getAttribute("data-color");
 	await swatch.click();
 	assert.equal(await until(() => json(kept)?.color, Boolean, "no color was kept for the agent"), color);
 	await page.keyboard.press("Escape");
-	await offered(agentLine("spare-hands"), "remove");
+	await page.waitForSelector("[data-slot=agent-color][data-open]", { state: "detached" });
+	await agentAction("remove");
 	// It asks first, and how: nothing is removed by the menu alone.
 	// It is an alert dialog, which names the agent and does not go away with a stray click beside it.
 	await sees("[role=alertdialog] >> text=spare-hands");
@@ -342,23 +403,25 @@ test("a right click on an agent renames it in place, colors it, and offers to re
 	await sees("[role=alertdialog]");
 	assert.ok(fs.existsSync(kept));
 	await page.click("[role=alertdialog] [data-slot=command-item][data-value=erase]");
-	await page.waitForSelector("[data-slot=agent-label][data-agent=spare-hands]", { state: "detached" });
+	// Removed, the side bar shows another agent: the one of the conversation in front.
+	await sees(`${SWITCHER}:not([data-agent=spare-hands])`);
+	assert.ok(!(await agentIds()).includes("spare-hands"));
 	await until(() => fs.existsSync(path.join(home, "agents", "spare-hands")), (there) => !there, "the removed agent's folder is still there");
 	// Asked for the main agent all the same (the palette, another road), the app says no and asks the daemon for nothing.
 	await page.evaluate(() => (window as any).pine.call("POST", "/agents/main/erase", { agent: "main", keepFiles: false })).then((r: any) => assert.equal(r.ok, false));
 	assert.ok(fs.existsSync(path.join(home, "agents", "main", "agent.json")));
 });
 
-test("conversations are kept in groups: one made from the agent's menu is filled by dragging and from the palette, sorted, renamed, and removed with what is in it", async () => {
+test("conversations are kept in groups: one made from the head of the list is filled by dragging and from the palette, sorted, renamed, and removed with what is in it", async () => {
+	const opened = await showAgent("scout");
 	for (const session of ["okapi-api", "okapi-web", "llama"]) assert.ok((await api("POST", "/agents/scout/prompt", { prompt: `work on ${session}`, session })).ok);
 	assert.ok((await api("POST", "/agents/scout/branch", { session: "okapi-api", to: "okapi-try" })).ok);
-	const scout = agentGroup("scout");
+	const scout = shownConversations("scout");
 	const row = (session: string) => scout.locator(lineOf(session));
 	const group = (name: string) => scout.locator("[data-slot=conversation-group]", { has: page.locator("[data-slot=group-label]", { hasText: new RegExp(`^${name}$`) }) });
 	const groupOf = async (session: string) => ((await api("GET", "/agents/scout/sessions")).data as any[]).find((c) => c.session === session)?.group;
 	const order = async () => (await api("GET", "/agents/scout/groups")).data.order;
 	await noteMenus();
-	const line = agentLine("scout");
 	// A drag as the side bar is told of it: the events of the row and of the place it is dropped on, one
 	// after the other. Playwright's dragTo moves the mouse, and a list that redraws as the daemon tells it
 	// something (it does, live) can take the row away mid-drag, which drops nothing: a test of Chromium's
@@ -376,9 +439,10 @@ test("conversations are kept in groups: one made from the agent's menu is filled
 		await data.dispose();
 	};
 
-	// A group is made from the agent's menu, empty, with a name the owner types. The list is sorted by when a conversation was last used, as it was.
-	const ofLine = await offered(line, "group");
-	assert.ok(ofLine.includes("recent ✓") && ofLine.includes("name"), ofLine.join());
+	// A group is made from the menu at the head of the list, empty, with a name the owner types. The list is sorted by when a conversation was last used, as it was.
+	const ofAgent = await conversationsActions();
+	assert.ok(ofAgent.includes("recent ✓") && ofAgent.includes("name"), ofAgent.join());
+	await conversationsAction("group");
 	await page.fill("[data-slot=dialog-content] [data-slot=command-input]", "Okapi");
 	await page.keyboard.press("Enter");
 	await group("Okapi").waitFor();
@@ -392,6 +456,9 @@ test("conversations are kept in groups: one made from the agent's menu is filled
 	await drag(row("okapi-api"), group("Okapi").locator("[data-slot=group-label]"));
 	await group("Okapi").locator(lineOf("okapi-try")).waitFor();
 	assert.deepEqual([await groupOf("okapi-api"), await groupOf("okapi-try")], ["Okapi", "Okapi"]);
+	// The agent's own conversation heads the list, above the groups, and is not dragged into one.
+	assert.equal(await scout.locator("[data-slot=sidebar-menu-item][data-session]").first().getAttribute("data-session"), "main");
+	assert.equal(await row("main").getAttribute("draggable"), "false");
 
 	// With the keyboard: the palette's command moves the conversation in front into a group it picks.
 	await row("okapi-web").locator("[role=option]").click();
@@ -405,15 +472,15 @@ test("conversations are kept in groups: one made from the agent's menu is filled
 	await group("Okapi").locator(lineOf("okapi-web")).waitFor();
 	assert.equal(await groupOf("okapi-web"), "Okapi");
 
-	// Dragged onto the agent's line, a conversation leaves its group; a move made by another hand (here the control API) is followed.
-	await drag(group("Okapi").locator(lineOf("okapi-web")), line);
+	// Dragged among the conversations in no group, a conversation leaves its group; a move made by another hand (here the control API) is followed.
+	await drag(group("Okapi").locator(lineOf("okapi-web")), scout.locator("[data-slot=loose-conversations]"));
 	await page.waitForSelector(`[data-slot=conversation-group] ${lineOf("okapi-web")}`, { state: "detached" });
 	assert.equal(await groupOf("okapi-web"), undefined);
 	assert.ok((await api("POST", "/agents/scout/group", { session: "llama", group: "Okapi" })).ok);
 	await group("Okapi").locator(lineOf("llama")).waitFor();
 
-	// Sorted by name, from the agent's menu: the daemon keeps the order, and the group's conversations stand in it.
-	await offered(line, "name");
+	// Sorted by name, from the same menu: the daemon keeps the order, and the group's conversations stand in it.
+	await conversationsAction("name");
 	await until(order, (o) => o === "name", "the order the daemon keeps for scout's conversations");
 	await page.waitForFunction(() => [...document.querySelectorAll("[data-slot=conversation-group] [data-slot=sidebar-menu-item][data-session]")].map((e) => e.getAttribute("data-session")).join() === "llama,okapi-api,okapi-try");
 	// Renamed from the group's own menu, which also removes it.
@@ -433,12 +500,13 @@ test("conversations are kept in groups: one made from the agent's menu is filled
 	await until(async () => ((await api("GET", "/agents/scout/sessions")).data as any[]).map((c) => c.session), (all) => !all.includes("okapi-api") && !all.includes("okapi-try") && !all.includes("llama") && all.includes("okapi-web"), "what was in the group is gone, and what was taken out before stays");
 	await row("okapi-api").waitFor({ state: "detached" });
 	assert.deepEqual([await row("okapi-api").count(), await row("llama").count(), await row("okapi-web").count()], [0, 0, 1]);
-	await offered(line, "recent");
+	await conversationsAction("recent");
 	await until(order, (o) => o === "recent", "the order the daemon keeps for scout's conversations");
 	// As it was before: the tab this test opened closed, its conversation gone.
 	await page.click(`${TAB}[data-session=okapi-web] ${CLOSE}`);
 	await page.waitForSelector(`${TAB}[data-session=okapi-web]`, { state: "detached" });
 	assert.ok((await api("POST", "/agents/scout/remove", { session: "okapi-web" })).ok);
+	await page.click(`${TAB}[data-agent=scout][data-session="${opened}"] ${CLOSE}`);
 });
 
 test("a conversation is opened from the palette with the keyboard alone", async () => {
@@ -872,7 +940,18 @@ test("a phone-wide window lays the side bar and the panel over the conversation,
 		await page.waitForSelector("#sidebar-panel", { state: "detached" });
 		assert.equal(await page.locator(sheet).count(), 0);
 		await page.locator("[data-sidebar=trigger]").first().click();
-		await sees(`${sheet} [data-slot=agent-label]`);
+		await sees(`${sheet} [data-slot=agent-switcher]`);
+		// Another agent picked in its switcher: the menu goes, the sheet stays and lists that agent's conversations, the one in front unchanged.
+		const inFront = () => page.$eval(FRONT, (el: Element) => `${el.getAttribute("data-agent")}:${el.getAttribute("data-session")}`);
+		const front = await inFront();
+		const other = (await page.getAttribute(`${sheet} [data-slot=agent-switcher]`, "data-agent")) === "scout" ? "main" : "scout";
+		await page.click(`${sheet} [data-slot=agent-switcher]`);
+		await page.click(`${SWITCHER_MENU} [data-slot=agent-option][data-agent=${other}]`);
+		await page.waitForSelector(SWITCHER_MENU, { state: "detached" });
+		await sees(`${sheet} [data-slot=sidebar-agent-conversations][data-agent=${other}]`);
+		await drawn();
+		assert.equal(await page.locator(sheet).count(), 1, "the sheet stays open after an agent is picked");
+		assert.equal(await inFront(), front);
 		// Picking a conversation in it puts it away again.
 		await page.locator(`${sheet} [role=option]`).first().click();
 		await page.waitForSelector(sheet, { state: "detached" });

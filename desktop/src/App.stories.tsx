@@ -3,7 +3,7 @@ import { expect, fn, waitFor, within } from "storybook/test";
 import { useEffect } from "react";
 import { SidebarFooter, SidebarMenu, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import type { AgentInfo, Conversation } from "./api.ts";
-import { AgentGroup, ConversationRow, Machines, Sidebar, TitleBar } from "./App.tsx";
+import { AgentConversations, ConversationRow, Machines, Sidebar, TitleBar } from "./App.tsx";
 import { store, Tab } from "./model.ts";
 
 // The foot of the side bar, open on its list of machines, without a daemon: the store is set as
@@ -31,8 +31,8 @@ const meta = {
 	parameters: { layout: "padded" },
 	// What a story sets on the store is put back after it: the next story starts from the store as it was.
 	beforeEach: () => {
-		const { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled, openHosts, sidebar } = store;
-		return () => void Object.assign(store, { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled, openHosts, sidebar });
+		const { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled, openHosts, sidebar, sidebarAgent } = store;
+		return () => void Object.assign(store, { local, service, prefs, connected, agents, conversations, groups, busy, folded, titled, openHosts, sidebar, sidebarAgent });
 	},
 	// Opened, so that the snapshot shows the list of machines.
 	play: async ({ canvas, userEvent }) => await userEvent.click(canvas.getByRole("button", { name: /The pine this app uses/ })),
@@ -185,8 +185,8 @@ export const TitleBarWithTabs: Story = {
 	},
 };
 
-// The side bar itself, with agents as the daemon would list them. An agent with one conversation is one
-// line that opens it; one with more is a group that says how many it holds.
+// The side bar itself, with agents as the daemon would list them. It shows one agent at a time, the one its
+// switcher names, with that agent's groups and conversations under it.
 
 const agent = (id: string, description: string, main = false): AgentInfo => ({ id, main, description, workspace: `/home/agents/${id}`, model: "claude-sonnet", mode: "safe", thinking: "medium", delegates: [] });
 const AGENTS = [agent("main", "Administers pine and is the one to ask", true), agent("scout", "Looks things up on the web"), agent("books", "Keeps the books")];
@@ -200,7 +200,7 @@ function Opened() {
 	return null;
 }
 
-function Side({ conversations, working = [] }: { conversations: Record<string, Conversation[]>; working?: string[] }) {
+function Side({ conversations, working = [], shown = "main" }: { conversations: Record<string, Conversation[]>; working?: string[]; shown?: string }) {
 	store.local = true;
 	store.service = { status: "ready", mode: "started here", started: true, home: "~/.pine", version: "0.23.0" } as typeof store.service;
 	store.connected = true;
@@ -211,6 +211,7 @@ function Side({ conversations, working = [] }: { conversations: Record<string, C
 	store.groups = new Map([["books", { order: "recent", groups: conversations.books?.some((c) => c.group) ? [{ name: "Taxes", conversations: 2 }] : [] }]]);
 	store.busy = new Map(working.map((key) => [key, new Set([1])]));
 	store.folded = new Set();
+	store.sidebarAgent = shown;
 	return (
 		<SidebarProvider className="h-140 min-h-0 w-72 rounded-lg border bg-sidebar">
 			<Opened />
@@ -221,37 +222,58 @@ function Side({ conversations, working = [] }: { conversations: Record<string, C
 
 const side = { args: { local: true }, parameters: { layout: "centered" } } as const;
 
-/** Every agent has one conversation: each is one line, with nothing to fold. The first was used two hours ago, the second is at work, the third was never said anything to. */
-export const OneConversationEach: Story = {
+/** The main agent, with one conversation: the switcher names it, and says that another agent is at work. */
+export const OneAgentShown: Story = {
 	...side,
 	render: () => <Side conversations={{ main: [said("main", 2)], scout: [said("main", 0)] }} working={["scout:main"]} />,
 	play: async () => {
-		const page = within(document.body);
-		await page.findByText("Keeps the books");
-		await expect(document.querySelectorAll("[data-slot=agent-conversation]")).toHaveLength(3);
-		await expect(document.querySelector("[data-slot=collapsible]:has([data-slot=agent-label])")).toBeNull();
-		await expect(page.queryByText(/conversations?$/)).toBeNull();
+		await waitFor(() => expect(document.querySelector("[data-slot=agent-switcher]")).toHaveAttribute("data-agent", "main"));
+		await expect(document.querySelector("[data-slot=agent-switcher]")).toHaveAttribute("data-standing", "working");
+		await expect(document.querySelectorAll("[data-slot=sidebar-agent-conversations] [data-slot=sidebar-menu-item][data-session]")).toHaveLength(1);
 	},
 };
 
-/** An agent with more than one conversation is a group that says how many it holds; so is one with a group of conversations. The agent with one stays one line. */
-export const SomeWithSeveral: Story = {
+/** An agent with a group of conversations and others in none, one of them at work: only that agent's conversations are listed. */
+export const AgentWithGroups: Story = {
 	...side,
 	render: () => (
 		<Side
+			shown="books"
 			conversations={{
 				main: [said("main", 2), said("release notes", 5), said("the okapi invoice", 30, { pinned: true })],
 				scout: [said("main", 1)],
-				books: [said("main", 50), said("vat 2026", 3, { group: "Taxes" }), said("receipts", 26, { group: "Taxes" })],
+				books: [said("main", 50), said("vat 2026", 3, { group: "Taxes" }), said("receipts", 26, { group: "Taxes" }), said("payroll", 8)],
 			}}
 			working={["books:vat 2026"]}
 		/>
 	),
 	play: async () => {
-		const page = within(document.body);
-		await expect((await page.findAllByText("3 conversations")).length).toBe(2);
-		await expect(document.querySelectorAll("[data-slot=collapsible]:has(> ul [data-slot=agent-label])")).toHaveLength(2);
-		await expect(document.querySelectorAll("[data-slot=agent-conversation]")).toHaveLength(1);
+		await waitFor(() => expect(document.querySelector("[data-slot=agent-switcher]")).toHaveAttribute("data-agent", "books"));
+		await expect(document.querySelectorAll("[data-slot=conversation-group]")).toHaveLength(1);
+		await expect(document.querySelectorAll("[data-slot=sidebar-menu-button][data-agent]:not([data-agent=books])")).toHaveLength(0);
+	},
+};
+
+/** The switcher open: every agent with what it calls for, the shown one's actions, and New agent. */
+export const SwitcherOpen: Story = {
+	...side,
+	render: () => <Side conversations={{ main: [said("main", 2)], scout: [said("main", 0)], books: [said("main", 50)] }} working={["scout:main"]} />,
+	play: async ({ userEvent }) => {
+		await userEvent.click(await within(document.body).findByRole("button", { name: /switch to another agent/ }));
+		await waitFor(() => expect(document.querySelectorAll("[data-slot=agent-option]")).toHaveLength(3));
+		await expect(document.querySelector("[data-slot=agent-option][data-agent=scout]")).toHaveAttribute("data-standing", "working");
+		await expect(document.querySelector("[data-agent-action=remove]")).toBeNull();
+	},
+};
+
+/** The head of the list of conversations, its `+` open: a new conversation, one in a folder, a group, and the order. */
+export const ConversationsActionsOpen: Story = {
+	...side,
+	render: () => <Side shown="books" conversations={{ main: [said("main", 2)], books: [said("main", 50), said("vat 2026", 3, { group: "Taxes" }), said("payroll", 8)] }} />,
+	play: async ({ userEvent }) => {
+		await userEvent.click(await within(document.body).findByRole("button", { name: /Conversations with books/ }));
+		await waitFor(() => expect(document.querySelector("[data-agent-action=recent]")).toHaveAttribute("aria-checked", "true"));
+		await expect(document.querySelectorAll("[data-agent-action=new], [data-agent-action=folder], [data-agent-action=group]")).toHaveLength(3);
 	},
 };
 
@@ -268,13 +290,13 @@ export const ConversationRowSkeleton: Story = {
 	),
 };
 
-/** An agent's line and its conversations in the side bar while they load. */
-export const AgentGroupSkeleton: Story = {
+/** The shown agent's conversations in the side bar while they load. */
+export const AgentConversationsSkeleton: Story = {
 	args: { local: true },
 	play: async () => {},
 	render: () => (
 		<SidebarProvider className="min-h-0 w-64">
-			<AgentGroup skeleton />
+			<AgentConversations skeleton />
 		</SidebarProvider>
 	),
 };
