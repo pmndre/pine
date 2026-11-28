@@ -984,6 +984,9 @@ the package carries the subjects of its last releases (`scripts/changes.mjs` wri
 `changes.json` when it is built). Write it as a sentence that says what is different for them.
 To pick a version by hand, set it in `package.json`: it is used as it is while it is ahead of
 what the commits call for. A commit message that contains `[skip release]` publishes nothing.
+Put it on a commit that changes a file under `.github/workflows/`: the workflow's token may not mark a
+release at such a commit, so the package would reach npm and the tag would be missing, and the next
+release would work out the same version again and be refused by npm.
 
 A push to `next` is published as `<the release it would be>-next.<N>` under npm's tag `next`
 (`previewOf`), and as a pre-release on GitHub: `npm install -g @pmndre/pine` never gets one,
