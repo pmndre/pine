@@ -290,7 +290,8 @@ export class HttpServer {
 			if (parts[0] === "agents" && parts[2] === "prompt" && parts.length === 3) {
 				const quotes = body.quotes === undefined ? undefined : readQuotes(body.quotes);
 				if (typeof quotes === "string") throw new HttpError(400, quotes);
-				if (typeof body.prompt !== "string" || (!body.prompt && !quotes?.length)) throw new HttpError(400, "prompt required");
+				// A message may be files alone: a picture with nothing to say about it.
+				if (typeof body.prompt !== "string" || (!body.prompt && !quotes?.length && !(Array.isArray(body.attachments) && body.attachments.length))) throw new HttpError(400, "prompt required");
 				// "steer": if the conversation is working, the message goes into that work instead of waiting behind it.
 				const task = this.manager.submit({ agent: parts[1], prompt: body.prompt, session: body.session, trust: "owner", kind: "prompt", priority: 10, attachments: Array.isArray(body.attachments) ? body.attachments : undefined, whenBusy: body.whenBusy === "steer" ? "steer" : undefined, mentions: Array.isArray(body.mentions) ? body.mentions : undefined, quotes: quotes?.length ? quotes : undefined, via: body.via === "app" ? "app" : undefined });
 				if (body.wait === false) return send(202, { task: task.id, steered: task.meta.steered });

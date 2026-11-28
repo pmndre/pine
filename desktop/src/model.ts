@@ -2702,7 +2702,7 @@ export class Store extends Model {
 	 */
 	async submit(tab: Tab, raw: string, whenBusy: "steer" | "queue" = "steer", alone = false): Promise<void> {
 		const typed = raw.trim();
-		if ((!typed && (alone || !tab.quotes.length)) || tab.kind !== "chat") return;
+		if ((!typed && (alone || (!tab.quotes.length && !tab.attachments.length))) || tab.kind !== "chat") return;
 		if (typed) tab.inputs.push(typed);
 		const quotes = alone ? [] : tab.quotes.splice(0);
 		if (!alone) tab.replying = undefined;

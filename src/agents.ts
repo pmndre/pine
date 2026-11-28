@@ -874,7 +874,7 @@ export class AgentManager {
 			const saved = this.saveAttachments(agent, o.attachments);
 			const seen = saved.images.length && this.canSee(agent);
 			if (seen) images = [...(images ?? []), ...saved.images];
-			prompt += `\n\n[files attached by your owner, saved in your workspace: ${saved.files.join(", ")}${saved.images.length ? (seen ? "; the images are also shown to you" : "; your model cannot look at images, so work with the files") : ""}]`;
+			prompt += `${prompt ? "\n\n" : ""}[files attached by your owner, saved in your workspace: ${saved.files.join(", ")}${saved.images.length ? (seen ? "; the images are also shown to you" : "; your model cannot look at images, so work with the files") : ""}]`;
 		}
 
 		// A message for a conversation that is working goes into that work, at its next step, instead

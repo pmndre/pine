@@ -689,6 +689,13 @@ test("attached files land in the workspace inbox and nowhere else", async () => 
 	assert.throws(() => h.pine.agents.submit({ agent: "main", prompt: "x", trust: "owner", attachments: Array.from({ length: 11 }, (_, i) => ({ name: `f${i}`, data })) }), /at most 10 files/);
 	const res = await fetch(`http://127.0.0.1:${h.pine.http!.port}/agents/main/prompt`, { method: "POST", headers: { authorization: `Bearer ${h.pine.token}`, "content-type": "application/json" }, body: JSON.stringify({ prompt: "big", attachments: [{ name: "big.bin", data: Buffer.alloc(3 * 1024 * 1024, 1).toString("base64") }] }) });
 	assert.equal(res.status, 200, "a message with a few megabytes attached is accepted");
+
+	// A file with nothing written beside it is a message; nothing at all is not.
+	const post = (body: object) => fetch(`http://127.0.0.1:${h.pine.http!.port}/agents/main/prompt`, { method: "POST", headers: { authorization: `Bearer ${h.pine.token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+	const alone = await post({ prompt: "", attachments: [{ name: "alone.txt", data }] });
+	assert.equal(alone.status, 200, "files without a word are sent");
+	assert.match(textOf(h.mock.state.requests.at(-1).body.messages.at(-1).content), /^\[files attached by your owner, saved in your workspace: inbox\/[^\]]*alone\.txt/);
+	assert.equal((await post({ prompt: "", attachments: [] })).status, 400, "an empty message is still refused");
 	await h.close();
 });
 

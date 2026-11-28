@@ -286,32 +286,35 @@ export function OwnerTurn({ text, from, files, menu, skeleton, footer, quotes, o
 		<Message align="end" data-item="user" data-from={from} data-quote-task={quoteTask} data-quote-part={quoteTask === undefined ? undefined : "prompt"} onContextMenu={menu ? (e) => (e.preventDefault(), menu()) : undefined}>
 			<MessageContent>
 				{from ? <MessageHeader>{from}</MessageHeader> : null}
-				<Bubble align="end" variant="muted">
-					<BubbleContent className="whitespace-pre-wrap select-text">
-						{quotes?.length && quotes.some((q) => q.reply?.trim()) ? (
-							<div className={cn("flex flex-col gap-3", body.trim() && "mb-3")}>
-								{quotes.map((q, i) => (
-									<div key={i} data-slot="quote-with-reply" className="flex min-w-0 flex-col items-start gap-1">
-										<QuoteChip text={q.text} className="bg-background whitespace-normal" onOpen={onQuote ? () => onQuote(q) : undefined} />
-										{q.reply?.trim() ? (
-											<div data-slot="quote-reply-text" className="flex min-w-0 gap-1.5 self-stretch border-l-2 border-border pl-2">
-												<ReplyIcon className="mt-1 size-3.5 shrink-0 text-muted-foreground" />
-												<span className="min-w-0 break-words">{q.reply.trim()}</span>
-											</div>
-										) : null}
-									</div>
-								))}
-							</div>
-						) : quotes?.length ? (
-							<div className={cn("flex flex-wrap gap-1.5 whitespace-normal", body.trim() && "mb-2")}>
-								{quotes.map((q, i) => (
-									<QuoteChip key={i} text={q.text} className="bg-background" onOpen={onQuote ? () => onQuote(q) : undefined} />
-								))}
-							</div>
-						) : null}
-						{body}
-					</BubbleContent>
-				</Bubble>
+				{/* Files sent without a word: no empty bubble above them. */}
+				{body.trim() || quotes?.length ? (
+					<Bubble align="end" variant="muted">
+						<BubbleContent className="whitespace-pre-wrap select-text">
+							{quotes?.length && quotes.some((q) => q.reply?.trim()) ? (
+								<div className={cn("flex flex-col gap-3", body.trim() && "mb-3")}>
+									{quotes.map((q, i) => (
+										<div key={i} data-slot="quote-with-reply" className="flex min-w-0 flex-col items-start gap-1">
+											<QuoteChip text={q.text} className="bg-background whitespace-normal" onOpen={onQuote ? () => onQuote(q) : undefined} />
+											{q.reply?.trim() ? (
+												<div data-slot="quote-reply-text" className="flex min-w-0 gap-1.5 self-stretch border-l-2 border-border pl-2">
+													<ReplyIcon className="mt-1 size-3.5 shrink-0 text-muted-foreground" />
+													<span className="min-w-0 break-words">{q.reply.trim()}</span>
+												</div>
+											) : null}
+										</div>
+									))}
+								</div>
+							) : quotes?.length ? (
+								<div className={cn("flex flex-wrap gap-1.5 whitespace-normal", body.trim() && "mb-2")}>
+									{quotes.map((q, i) => (
+										<QuoteChip key={i} text={q.text} className="bg-background" onOpen={onQuote ? () => onQuote(q) : undefined} />
+									))}
+								</div>
+							) : null}
+							{body}
+						</BubbleContent>
+					</Bubble>
+				) : null}
 				{files?.length ? (
 					<AttachmentGroup>
 						{files.map((f) => (

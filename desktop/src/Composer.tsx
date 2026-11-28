@@ -217,7 +217,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 	const send = async (whenBusy: "steer" | "queue") => {
 		const value = text.trim();
 		const command = value.startsWith("/") && !value.startsWith("//");
-		if (!value && !tab.quotes.length) return;
+		if (!value && !tab.quotes.length && !tab.attachments.length) return;
 		recall.current = -1;
 		close();
 		const above = host?.card;
@@ -564,7 +564,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 								</TooltipContent>
 							</HoverTooltip>
 						) : null}
-						{tab.busy && !text.trim() && !tab.quotes.length ? (
+						{tab.busy && !text.trim() && !tab.quotes.length && !tab.attachments.length ? (
 							<HoverTooltip>
 								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full" onClick={() => void store.stop(tab)} data-action="stop" aria-label="Stop" />}><SquareIcon /></TooltipTrigger>
 								<TooltipContent>
@@ -576,7 +576,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 							<HoverTooltip>
 								{/* Said as disabled, not disabled: a disabled button inside an InputGroup dims the whole
 								    composer (`has-disabled:`). With nothing to send, `send` does nothing. */}
-								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} data-action="send" aria-disabled={(!text.trim() && !tab.quotes.length) || undefined} aria-label={tab.busy ? `Send to the agent while it works · ${shortcut("⌥↩")} queues it until the agent is done` : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
+								<TooltipTrigger render={<InputGroupButton size="icon-sm" variant="default" className="rounded-full aria-disabled:opacity-50" onClick={() => void send("steer")} data-action="send" aria-disabled={(!text.trim() && !tab.quotes.length && !tab.attachments.length) || undefined} aria-label={tab.busy ? `Send to the agent while it works · ${shortcut("⌥↩")} queues it until the agent is done` : "Send"} />}><ArrowUpIcon /></TooltipTrigger>
 								<TooltipContent>
 									{tab.busy ? `Send to the agent while it works · ${shortcut("⌥↩")} queues it until the agent is done` : "Send"}
 									<Kbd>{shortcut("↩")}</Kbd>
