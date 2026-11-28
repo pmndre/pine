@@ -183,13 +183,14 @@ again.
 |---|---|---|
 | `token` | | From @BotFather (`/newbot`). Kept in `.env`. |
 | `allow` | pairing | Telegram user ids that may talk to it, instead of pairing. Unasked messages and approvals go to the first. |
-| `approvals` | `true` | Approval requests, and questions of runs started outside a UI, also go there. Approvals come with Allow, Deny and (where it can be kept) Always buttons, or `/allow` and `/deny`. An agent's own bot carries only its requests, a bot for all agents everyone's. Never a request that needs a secret typed. |
+| `approvals` | `true` | Approval requests, and questions of runs started outside a UI, also go there. Approvals come with Allow, Deny and (where it can be kept) Always buttons, or `/allow` and `/deny`; a question with a button for each option. An agent's own bot carries only its requests, a bot for all agents everyone's. Never a request that needs a secret typed. |
 | `apiBase` | Telegram's | A Bot API server of your own: https, or on this machine. |
 
 An agent's `question` from a run that started outside a UI (a schedule, an event, a Telegram
-message) arrives too, with its options numbered: reply to that message to answer. A number picks
-that option; anything else goes as you wrote it. Your reply is your message in the conversation
-that asked, and its answer comes back to the chat. A message that is not a reply to the question
+message) arrives too, with its options numbered and a button for each: tap one, or reply to that
+message to answer. In a reply a number picks that option; anything else goes as you wrote it. A
+question where several options may be picked has no buttons: reply to it. Your tap or reply is your
+message in the conversation that asked, and its answer comes back to the chat. A message that is not a reply to the question
 goes where your Telegram messages always go. A question asked in a conversation you started in the
 terminal UI or the Pine app stays there. Like approvals, questions come with `approvals` on, and an agent's own bot carries
 only its own.

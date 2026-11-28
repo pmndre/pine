@@ -62,7 +62,9 @@ async function fakeTelegram() {
 		state,
 		sent: () => calls.filter((c) => c.method === "sendMessage").map((c) => c.body),
 		message: (userId: number, text: string, extra: any = {}) => queue.push({ update_id: updateId++, message: { message_id: messageId++, from: from(userId), chat: { id: userId, type: "private" }, text, ...extra } }),
-		callback: (userId: number, data: string) => queue.push({ update_id: updateId++, callback_query: { id: `cb${updateId}`, from: from(userId), data } }),
+		/** A tap on a button. `message` is the bot's message the button hangs on, as Telegram hands it along. */
+		callback: (userId: number, data: string, message?: { id?: number; body: any }) =>
+			queue.push({ update_id: updateId++, callback_query: { id: `cb${updateId}`, from: from(userId), data, ...(message ? { message: { message_id: message.id, chat: { id: userId, type: "private" }, reply_markup: message.body.reply_markup } } : {}) } }),
 		close: () => new Promise<void>((r) => (server.closeAllConnections(), server.close(() => r()))),
 	};
 }
@@ -321,7 +323,7 @@ test("telegram: what an agent writes in Markdown arrives formatted; pine's own q
 	await h.close();
 });
 
-test("telegram: a question of a run started from outside is sent with its options numbered, and the owner's reply to it is their message in the conversation that asked", async (t) => {
+test("telegram: a question of a run started from outside is sent with a button for each option, and the owner's tap or reply is their message in the conversation that asked", async (t) => {
 	const tg = await fakeTelegram();
 	t.after(() => tg.close());
 	const phone = { type: "telegram", token: TOKEN, allow: [1001], apiBase: tg.apiBase, trust: "owner", description: "my Telegram" };
@@ -339,41 +341,62 @@ test("telegram: a question of a run started from outside is sent with its option
 	// A one-off run (a conversation nobody writes in, where no reply could land) asks nobody: nothing is sent.
 	await h.pine.agents.run({ agent: "main", session: "new", kind: "event", prompt: mockMsg([{ tools: [call("question", { question: "Which database? (one-off)" })] }, { text: "went on" }]), ...owner });
 
-	// A run started from outside (a schedule, an event): the question is sent, without buttons, and says how to answer.
+	// A run started from outside (a schedule, an event): the question is sent, with a button for each option, and says how to answer.
 	const run = await h.pine.agents.run({ agent: "main", prompt: asking, kind: "event", ...owner });
 	await until(() => questions().length === 1, 5000, "the question on Telegram");
 	const question = questions()[0];
-	assert.deepEqual(question.body, { chat_id: 1001, text: "main asks (Storage):\nWhich database?\n\n1. sqlite: one file\n2. postgres\n\nReply to this message to answer: with a number for an option, or in your own words." });
+	assert.deepEqual(question.body, {
+		chat_id: 1001,
+		text: "main asks (Storage):\nWhich database?\n\n1. sqlite: one file\n2. postgres\n\nTap an option, or reply to this message to answer in your own words.",
+		reply_markup: { inline_keyboard: [[{ text: "sqlite", callback_data: "q:1" }], [{ text: "postgres", callback_data: "q:2" }]] },
+	});
+	const [[sqlite], [postgres]] = question.body.reply_markup.inline_keyboard;
 
 	const replies = () => h.pine.tasks.list({ limit: 100 }).filter((x) => x.kind === "event" && x.id > run.id).sort((a, b) => a.id - b.id);
-	// Nobody else answers it: a stranger's reply reaches nothing.
+	// Nobody else answers it: a stranger's reply and a stranger's tap reach nothing.
 	tg.message(2002, "2", { reply_to_message: { message_id: question.id } });
+	tg.callback(2002, postgres.callback_data, question);
 	await sleep(150);
-	assert.equal(replies().length, 0, "a stranger's reply does nothing");
+	assert.equal(replies().length, 0, "a stranger's reply or tap does nothing");
 	assert.equal(questions().length, 1, "the one-off run's question was not sent");
 
-	// The owner's reply "2" is option 2, as the owner's message in the conversation that asked, and the answer comes back to the chat.
+	// The owner's tap on an option is that option, as the owner's message in the conversation that asked, and the answer comes back to the chat.
 	const sentBefore = tg.sent().length;
-	tg.message(1001, "2", { reply_to_message: { message_id: question.id } });
-	await until(() => replies().length === 1 && replies()[0].status === "done", 5000, "the reply's turn");
+	tg.callback(1001, postgres.callback_data, question);
+	await until(() => replies().length === 1 && replies()[0].status === "done", 5000, "the tap's turn");
 	const reply = replies()[0];
 	assert.deepEqual([reply.agent, reply.session, reply.meta.trust, reply.meta.tainted, reply.meta.body], ["main", "main", "owner", undefined, "postgres"]);
 	assert.match(reply.prompt, /^\[Your owner answers your question "Which database\?" through "phone" \(telegram: my Telegram\)\. Your answer is sent back there, so write it for that reader\.\]\n\npostgres$/);
 	await until(() => tg.sent().length > sentBefore, 5000, "the answer in Telegram");
 	assert.ok(tg.sent().slice(sentBefore).every((m) => m.chat_id === 1001) && tg.sent().slice(sentBefore).some((m) => m.text.includes("postgres")));
+	// The buttons give way to what was picked, and a second tap says nothing again.
+	const markup = () => tg.calls.filter((c) => c.method === "editMessageReplyMarkup" && c.body.message_id === question.id).map((c) => c.body.reply_markup.inline_keyboard);
+	await until(() => markup().length === 1, 5000, "the buttons to go");
+	assert.deepEqual(markup()[0], [[{ text: "Answered: postgres", callback_data: "noop" }]]);
+	tg.callback(1001, sqlite.callback_data, question);
+	await sleep(150);
+	assert.equal(replies().length, 1, "a tap on a question answered here answers nothing");
 
-	// A reply in words goes as written, also once the question is no longer the latest.
+	// A reply still answers it: a number is that option, words go as written, also once the question is no longer the latest.
+	tg.message(1001, "1", { reply_to_message: { message_id: question.id } });
+	await until(() => replies().length === 2 && replies()[1].status === "done", 5000, "the reply's turn");
+	assert.equal(replies()[1].meta.body, "sqlite");
 	tg.message(1001, "sqlite, but ask me again next week", { reply_to_message: { message_id: question.id } });
-	await until(() => replies().length === 2 && replies()[1].status === "done", 5000, "the second reply's turn");
-	assert.match(replies()[1].prompt, /\n\nsqlite, but ask me again next week$/);
+	await until(() => replies().length === 3 && replies()[2].status === "done", 5000, "the second reply's turn");
+	assert.match(replies()[2].prompt, /\n\nsqlite, but ask me again next week$/);
 
 	// An ordinary message, or a reply to anything else, goes where it went before: to the subscribed conversation, as a Telegram message.
 	tg.message(1001, "is it raining?");
-	await until(() => replies().length === 3 && replies()[2].status === "done", 5000, "the ordinary message");
+	await until(() => replies().length === 4 && replies()[3].status === "done", 5000, "the ordinary message");
 	tg.message(1001, "1", { reply_to_message: { message_id: tg.calls.findLast((c) => c.method === "sendMessage")!.id } });
-	await until(() => replies().length === 4, 5000, "the reply to the bot's answer");
-	for (const m of replies().slice(2)) assert.match(m.prompt, /^\[Your owner wrote this to you through "phone"/);
-	assert.match(replies()[3].prompt, /\n\n1$/, "a digit that answers no question is a digit");
+	await until(() => replies().length === 5 && replies()[4].status === "done", 5000, "the reply to the bot's answer");
+	for (const m of replies().slice(3)) assert.match(m.prompt, /^\[Your owner wrote this to you through "phone"/);
+	assert.match(replies()[4].prompt, /\n\n1$/, "a digit that answers no question is a digit");
+
+	// Where several options may be picked, a tap would pick only one: that question comes without buttons and is answered by a reply.
+	await h.pine.agents.run({ agent: "main", prompt: mockMsg([{ tools: [call("question", { question: "Which backups?", options, multiSelect: true })] }, { text: "I asked." }]), kind: "event", ...owner });
+	await until(() => tg.sent().some((m) => /Which backups\?/.test(m.text)), 5000, "the second question on Telegram");
+	assert.deepEqual(tg.sent().find((m) => /Which backups\?/.test(m.text)), { chat_id: 1001, text: "main asks:\nWhich backups?\n\n1. sqlite: one file\n2. postgres\n\nReply to this message to answer: with a number for an option, or in your own words." });
 	await h.close();
 });
 

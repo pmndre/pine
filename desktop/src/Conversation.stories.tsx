@@ -56,11 +56,12 @@ const conversation: Made[] = [
 ];
 
 const approval: Approval = { id: "a1", agent: "main", task: 1, tool: "bash", summary: "echo hello", why: "You listed bash under approve: it asks in every mode.", expires: 0, remember: "bash" };
-const question: Approval = { id: "q1", agent: "main", task: 1, tool: "question", summary: "Which database?", why: "", expires: 0, choices: ["the old one", "the new one"] };
+// A sign-in's choice: the one request that is picked from a list. An agent's question is no request (components/question-card).
+const choice: Approval = { id: "q1", agent: "main", task: 1, tool: "sign_in", summary: "How do you want to sign in?", why: "", expires: 0, choices: ["With a subscription", "With an API key"] };
 const asks: Made[] = [
 	{ t: "approval", req: approval, state: "open" },
 	{ t: "approval", req: { ...approval, id: "a2" }, state: "allowed", by: "you" },
-	{ t: "approval", req: { ...question, id: "q2" }, state: "allowed", by: "you", answer: "the new one" },
+	{ t: "approval", req: { ...choice, id: "q2" }, state: "allowed", by: "you", answer: "With an API key" },
 	{ t: "approval", req: { ...approval, id: "a3", summary: "rm -rf build" }, state: "denied", by: "you" },
 	{ t: "approval", req: { ...approval, id: "a4" }, state: "gone" },
 ];
@@ -71,7 +72,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Conversation: Story = { args: { items: conversation } };
 
-/** What the agent asks: an approval open, then an approval and a question as they were answered. (An open question is a card above the input: components/question-card.) */
+/** What the agent asks: an approval open, then an approval and a sign-in's choice as they were answered. (An agent's open question is a card above the input: components/question-card.) */
 export const Ask: Story = { args: { items: asks } };
 
 /** The questions a turn asked, by where they stand: open (one line: the card above the input shows them), folded away (in full), answered (one line, and the owner's message). */

@@ -335,8 +335,18 @@ export default async function telegram(source: SourceApi): Promise<void> {
 	 * message is their answer. Kept in the source's storage, so that a reply after a restart still
 	 * finds its question; the latest few only.
 	 */
-	const relayed = () => source.kv.get<Array<{ message: number; task: number; at: number }>>("questions") ?? [];
+	type Relayed = { message: number; task: number; at: number; buttons?: true };
+	const relayed = () => source.kv.get<Relayed[]>("questions") ?? [];
 	const questionOf = (message: number | undefined) => (message === undefined ? undefined : relayed().find((q) => q.message === message));
+	/**
+	 * A question was answered here: its buttons go, so that a second tap does not say the same again.
+	 * A reply still answers it. `shown` is what stands in their place (the option that was tapped).
+	 */
+	const settle = (q: Relayed, shown?: string) => {
+		if (!q.buttons) return;
+		source.kv.set("questions", relayed().map(({ buttons, ...x }) => (x.message === q.message || !buttons ? x : { ...x, buttons })));
+		void api("editMessageReplyMarkup", { chat_id: ownerChat(), message_id: q.message, reply_markup: { inline_keyboard: shown ? [[{ text: shown, callback_data: "noop" }]] : [] } }).catch(() => {});
+	};
 	if (o.approvals !== false) {
 		const asked = new Map<string, number>();
 		// A question of a run started from outside (a schedule, an event): the owner may be away from pine's
@@ -351,9 +361,13 @@ export default async function telegram(source: SourceApi): Promise<void> {
 			const options: Array<{ label: string; description?: string }> = Array.isArray(q.options) ? q.options.slice(0, 6) : [];
 			const head = `${q.agent} asks${q.header ? ` (${truncate(String(q.header), 12)})` : ""}:\n${truncate(String(q.question), 1200)}`;
 			const list = options.map((x, i) => `${i + 1}. ${truncate(String(x.label), 80)}${x.description ? `: ${truncate(String(x.description), 200)}` : ""}`).join("\n");
-			const how = options.length ? "Reply to this message to answer: with a number for an option, or in your own words." : "Reply to this message to answer.";
-			const msg = await send(chat, `${head}\n\n${list ? `${list}\n\n` : ""}${how}`);
-			if (msg?.message_id) source.kv.set("questions", [...relayed(), { message: msg.message_id, task: Number(q.task), at: Number(q.at) }].slice(-50));
+			// One option is picked with a tap. Where several may be picked, a tap would answer with the first: those are written.
+			const buttons = options.length > 0 && q.multiSelect !== true;
+			const how = buttons ? "Tap an option, or reply to this message to answer in your own words." : options.length ? "Reply to this message to answer: with a number for an option, or in your own words." : "Reply to this message to answer.";
+			// A button says which option by its number, never which question: that is the message it hangs on (`questionOf`).
+			const keyboard = { reply_markup: { inline_keyboard: options.map((x, i) => [{ text: truncate(String(x.label), 60), callback_data: `q:${i + 1}` }]) } };
+			const msg = await send(chat, `${head}\n\n${list ? `${list}\n\n` : ""}${how}`, buttons ? keyboard : {});
+			if (msg?.message_id) source.kv.set("questions", [...relayed(), { message: msg.message_id, task: Number(q.task), at: Number(q.at), ...(buttons ? { buttons: true as const } : {}) }].slice(-50));
 		});
 		source.on("approval/requested", async (e) => {
 			const r = e.payload as any;
@@ -447,12 +461,21 @@ export default async function telegram(source: SourceApi): Promise<void> {
 		// A reply to the very message that asked is the answer, in the conversation that asked. Nothing
 		// else is: an ordinary message, or a reply to anything else, goes where the owner's messages go.
 		const question = text ? questionOf(Number(m.reply_to_message?.message_id)) : undefined;
-		if (question && source.answerQuestion(question, text, { chatId })) return;
+		if (question && source.answerQuestion(question, text, { chatId })) return settle(question);
 		source.emit("message", { text: text || "(a picture)", name, username: m.from?.username, chatId, messageId: m.message_id, images: images.length ? images : undefined }, { reply: { chatId } });
 	};
 
 	const onCallback = async (c: any) => {
 		const userId = Number(c.from?.id);
+		// A tap on a question's option: the answer a reply with that number would be, to the question of the message the button hangs on.
+		const picked = String(c.data ?? "").match(/^q:([1-6])$/);
+		if (picked && heard(userId) && o.approvals !== false) {
+			const question = questionOf(Number(c.message?.message_id));
+			const label = String(c.message?.reply_markup?.inline_keyboard?.[Number(picked[1]) - 1]?.[0]?.text ?? picked[1]);
+			const ok = question?.buttons ? source.answerQuestion(question, picked[1], { chatId: Number(c.message?.chat?.id ?? userId) }) : false;
+			if (ok) settle(question!, `Answered: ${label}`);
+			return void api("answerCallbackQuery", { callback_query_id: c.id, text: ok ? "Answered" : "Already answered or gone" }).catch(() => {});
+		}
 		const m = String(c.data ?? "").match(/^ap:(\w+):([012])$/);
 		if (!heard(userId) || !m) return void api("answerCallbackQuery", { callback_query_id: c.id }).catch(() => {});
 		const ok = source.approvals.decide(m[1], m[2] !== "0", `telegram:${userId}`, m[2] === "2");
