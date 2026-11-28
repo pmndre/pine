@@ -1259,7 +1259,7 @@ function FollowSent({ sent }: { sent?: number }) {
  * work, the notes and the requests keep. The stock Message and Bubble Content set their own size, so it is
  * said to them by their slot.
  */
-const TRANSCRIPT = "mx-auto max-w-3xl px-7 pt-7 pb-6 [&_[data-slot=bubble-content]]:text-read [&_[data-slot=message]]:text-read";
+const TRANSCRIPT = "mx-auto max-w-3xl px-7 pt-7 pb-12 [&_[data-slot=bubble-content]]:text-read [&_[data-slot=message]]:text-read";
 
 export function Conversation({ tab }: { tab: Tab }) {
 	useModel(tab);
