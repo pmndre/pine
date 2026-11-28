@@ -381,7 +381,7 @@ export function Composer({ tab, host }: { tab: Tab; host?: ComposerCardSlot }) {
 									text={q.text}
 									reply={q.reply}
 									replying={q.id === tab.replying}
-									onOpen={() => store.showQuote(q.tab, q.source)}
+									onOpen={q.source ? store.showQuote.bind(store, q.tab, q.source) : undefined}
 									onReply={() => openReply(q.id)}
 									onRemove={() => {
 										tab.quotes.splice(i, 1);

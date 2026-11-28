@@ -294,7 +294,7 @@ export function OwnerTurn({ text, from, files, menu, skeleton, footer, quotes, o
 								<div className={cn("flex flex-col gap-3", body.trim() && "mb-3")}>
 									{quotes.map((q, i) => (
 										<div key={i} data-slot="quote-with-reply" className="flex min-w-0 flex-col items-start gap-1">
-											<QuoteChip text={q.text} className="bg-background whitespace-normal" onOpen={onQuote ? () => onQuote(q) : undefined} />
+											<QuoteChip text={q.text} className="bg-background whitespace-normal" onOpen={onQuote && q.source ? () => onQuote(q) : undefined} />
 											{q.reply?.trim() ? (
 												<div data-slot="quote-reply-text" className="flex min-w-0 gap-1.5 self-stretch border-l-2 border-border pl-2">
 													<ReplyIcon className="mt-1 size-3.5 shrink-0 text-muted-foreground" />
@@ -307,7 +307,7 @@ export function OwnerTurn({ text, from, files, menu, skeleton, footer, quotes, o
 							) : quotes?.length ? (
 								<div className={cn("flex flex-wrap gap-1.5 whitespace-normal", body.trim() && "mb-2")}>
 									{quotes.map((q, i) => (
-										<QuoteChip key={i} text={q.text} className="bg-background" onOpen={onQuote ? () => onQuote(q) : undefined} />
+										<QuoteChip key={i} text={q.text} className="bg-background" onOpen={onQuote && q.source ? () => onQuote(q) : undefined} />
 									))}
 								</div>
 							) : null}
@@ -610,7 +610,7 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 		case "user": {
 			const task = tab.kind === "chat" ? item.task : undefined;
 			const steer = tab.kind === "chat" ? item.steer : undefined;
-			return <OwnerTurn text={item.text} from={item.from} files={item.files} quotes={item.quotes} quoteTask={task ?? steer?.task} onQuote={tab.kind === "chat" ? (q) => store.showQuote(tab.key, q.source) : undefined} menu={task === undefined ? undefined : () => void branchMenu(tab, task)} footer={steer ? <SteerLine tab={tab} steer={steer} /> : undefined} />;
+			return <OwnerTurn text={item.text} from={item.from} files={item.files} quotes={item.quotes} quoteTask={task ?? steer?.task} onQuote={tab.kind === "chat" ? (q) => q.source && store.showQuote(tab.key, q.source) : undefined} menu={task === undefined ? undefined : () => void branchMenu(tab, task)} footer={steer ? <SteerLine tab={tab} steer={steer} /> : undefined} />;
 		}
 		case "answer":
 			return (
@@ -1283,11 +1283,11 @@ export function Conversation({ tab }: { tab: Tab }) {
 	const [selected, unselect] = useTextSelection(scroller);
 	const source = selected ? selectionSource(scroller.current) : undefined;
 	const quote = (reply: boolean) => {
-		if (!selected || !source) return;
+		if (!selected) return;
 		const text = selected.text.trim();
 		if (!text) return;
 		let it = tab.quotes.find((q) => q.text === text && sameSource(q.source, source));
-		if (!it) tab.quotes.push((it = { id: quoteId(), text, tab: tab.key, source }));
+		if (!it) tab.quotes.push((it = { id: quoteId(), text, tab: tab.key, ...(source ? { source } : {}) }));
 		if (reply) tab.replying = it.id;
 		tab.touch();
 		window.getSelection()?.removeAllRanges();
@@ -1297,7 +1297,8 @@ export function Conversation({ tab }: { tab: Tab }) {
 	const streaming = Boolean(source && typeof source !== "string" && source.part === "answer" && tab.items.some((it) => it.t === "answer" && it.task === source.task && it.live));
 	// A turn's questions change form (one line each, in full, split by a steered message) as they are folded
 	// and answered: a bookmark's place in them would not be found again. They are quoted, not bookmarked.
-	const bookmarkable = !(source && typeof source !== "string" && source.part === "questions");
+	// Text that is not in a source (a note of pine's, a line of work) is quoted without a way back, and not bookmarked.
+	const bookmarkable = Boolean(source) && !(source && typeof source !== "string" && source.part === "questions");
 	const bookmark = () => {
 		if (!selected || !source || streaming || !bookmarkable) return;
 		const el = quoteTarget(scroller.current, source);
@@ -1347,7 +1348,7 @@ export function Conversation({ tab }: { tab: Tab }) {
 	return (
 		<div data-slot="conversation" className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background text-sm">
 			<ConvHead tab={tab} />
-			{selected && chat && source ? (
+			{selected && chat ? (
 				<SelectionToolbar rect={selected.rect}>
 					<SelectionToolbarButton icon={QuoteIcon} label="Quote" data-action="quote" onClick={() => quote(false)} />
 					<SelectionToolbarButton icon={ReplyIcon} label="Reply" data-action="reply" hint="Quote the selected text and reply to it" onClick={() => quote(true)} />
