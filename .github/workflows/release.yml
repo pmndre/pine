@@ -94,6 +94,13 @@ permissions:
 
 # Whether an upload replaces a file the release has already. A push makes a new release, which has
 # none yet, and uploads as it always did; a run by hand replaces nothing unless "replace" says so.
+# One release of a branch at a time: two pushes shortly after each other otherwise both work out the same version,
+# and npm refuses the second. A run waits for the one before it; of several that wait, the newest is kept, which
+# holds every commit of the others.
+concurrency:
+  group: release-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CLOBBER: ${{ github.event_name == 'push' || inputs.replace }}
 
