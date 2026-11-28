@@ -798,7 +798,7 @@ function AgentPage({ id, back }: { id: string; back: () => void }) {
 }
 
 /**
- * The dialog that makes a new agent, over whatever is in front (`store.newAgent`): the side bar's + and
+ * The dialog that makes a new agent, over whatever is in front (`store.newAgent`): the side bar's agent switcher and
  * Settings > Agents open it. Once it is made, the agent's conversation opens in a tab: that is where
  * its owner meets it, and the card at its top leads on to its settings.
  */
@@ -853,7 +853,7 @@ function Agents() {
 	// Which agent's page is open is the app's to say: the side bar and an agent's card open one too.
 	const open = s.settingsAgent;
 	const setOpen = (id?: string) => ((s.settingsAgent = id), s.touch());
-	// The dialog that makes one is the app's (App.tsx), the same one the side bar's + opens.
+	// The dialog that makes one is the app's (App.tsx), the same one the side bar's agent switcher opens.
 	const setAdding = (on: boolean) => ((s.newAgent = on), s.touch());
 	if (open && s.agents.some((a) => a.id === open)) return <AgentPage id={open} back={() => setOpen(undefined)} />;
 	return (

@@ -85,6 +85,10 @@ after(async () => {
 });
 
 test("an agent without a color has the stock avatar: no color of its own", async () => {
+	// The side bar shows one agent: books, picked in its switcher, whose conversation comes to the front.
+	await page.click("[data-slot=sidebar] [data-slot=agent-switcher]");
+	await page.click("[data-slot=dropdown-menu-content] [data-slot=agent-option][data-agent=books]");
+	await page.waitForSelector("[data-slot=sidebar] [data-slot=agent-switcher][data-agent=books]");
 	await avatarsAre("", "no color, the stock avatar");
 });
 
@@ -123,13 +127,10 @@ test("any other color can be set, and none takes it away again", async () => {
 	await avatarsAre("", "back to the stock avatar");
 });
 
-test("Color in the side bar's menu opens the same colors over the agent's avatar there", async () => {
-	// The menu is the system's, which the driver cannot click in: the test says what is picked.
-	await app.evaluate(({ ipcMain }: any) => {
-		ipcMain.removeHandler("pine:context-menu");
-		ipcMain.handle("pine:context-menu", () => "color");
-	});
-	await page.locator("[data-slot=sidebar-menu-item]:has([data-slot=agent-label])", { hasText: "books" }).click({ button: "right" });
+test("Color in the side bar's switcher opens the same colors over the agent's avatar there", async () => {
+	await page.waitForSelector("[data-slot=sidebar] [data-slot=agent-switcher][data-agent=books]");
+	await page.click("[data-slot=sidebar] [data-slot=agent-switcher]");
+	await page.click("[data-slot=dropdown-menu-content] [data-agent-action=color]");
 	await page.locator('[data-slot=agent-color][data-open] [data-color="#4caf50"]').click();
 	await keeps("#4caf50", "the preset, picked from the side bar");
 	await page.keyboard.press("Escape");

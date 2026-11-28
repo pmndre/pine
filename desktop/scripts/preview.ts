@@ -1,8 +1,9 @@
 // The app's page in an ordinary browser (an editor's preview pane), reloading as you edit, on a
-// throwaway pine: a home in a temp folder with two agents and the scripted model server of pine's
-// tests, removed when the preview stops. With --home, on that pine home instead: the daemon that
-// runs there, or one started for it that goes on after the preview; neither the home nor its
-// daemon is ever stopped or removed by the preview.
+// throwaway pine: a home in a temp folder with a few agents and their conversations, on the scripted
+// model server of pine's tests, removed when the preview stops (PINE_PREVIEW_BARE=1: two agents and
+// no conversations). With --home, on that pine home instead: the daemon that runs there, or one
+// started for it that goes on after the preview; neither the home nor its daemon is ever stopped or
+// removed by the preview.
 //   npm run dev:preview                     (the port from $PORT, this checkout's own by default)
 //   npm run dev:preview -- --home ~/.pine
 //   npm run dev:preview:home                (the same, at the next port: beside the throwaway one)
@@ -41,17 +42,139 @@ const write = (file: string, content: string) => {
 	fs.writeFileSync(file, content);
 };
 
-/** A pine home on the scripted model server, as desktop/test/app.test.ts writes its own: a main agent and a second one. */
-function throwawayHome(modelServer: string): string {
+/**
+ * The agents of the throwaway pine: what each is for (the first paragraph of its instructions) and
+ * its color. Enough of them, with names a developer would give, for the side bar to be judged as it
+ * looks after some months of use rather than on its first day.
+ */
+const AGENTS: Array<{ id: string; purpose: string; color: string }> = [
+	{ id: "main", purpose: "The main agent: it administers pine and hands work to the others.", color: "#e0805a" },
+	{ id: "scout", purpose: "Looks things up on the web and says what it found, with its sources.", color: "#5a9be0" },
+	{ id: "coder", purpose: "Works in my repositories: fixes, reviews, refactors and benches.", color: "#7cc46a" },
+	{ id: "mail", purpose: "Reads my mail, drafts replies and keeps the inbox short.", color: "#d6b44a" },
+	{ id: "home", purpose: "Runs the house: heating, lights, the plants and the alarms.", color: "#4ac0b0" },
+	{ id: "finance", purpose: "Keeps track of bills, subscriptions and the tax paperwork.", color: "#a77ce0" },
+	{ id: "writer", purpose: "Drafts and edits posts, talks and longer texts with me.", color: "#e06a9b" },
+];
+
+/**
+ * A pine home on the scripted model server, as desktop/test/app.test.ts writes its own. `bare`: a
+ * main agent and a second one, nothing more (what desktop/test/preview.test.ts counts on).
+ */
+function throwawayHome(modelServer: string, bare: boolean): string {
 	const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "pine-preview-")));
 	write(path.join(home, "models.json"), JSON.stringify({ providers: { mock: { name: "Mock", baseUrl: modelServer, api: "openai-completions", apiKey: "sk-mock", models: [{ id: "m", name: "Mock", contextWindow: 128000, maxTokens: 4096, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } }));
 	// Port 0: the system picks one, so that a pine the developer has running is left alone.
 	write(path.join(home, "pine.json"), JSON.stringify({ http: { host: "127.0.0.1", port: 0 }, main: "main", defaults: { model: "mock/m", mode: "safe", introduce: false }, security: { askAccess: false } }, null, 2));
-	write(path.join(home, "agents", "main", "agent.json"), JSON.stringify({ delegates: ["scout"] }));
-	write(path.join(home, "agents", "main", "workspace", "AGENTS.md"), "The main agent: it administers pine.\n\nYou are the main agent.\n");
-	write(path.join(home, "agents", "scout", "agent.json"), JSON.stringify({}));
-	write(path.join(home, "agents", "scout", "workspace", "AGENTS.md"), "Looks things up on the web.\n\nYou are scout.\n");
+	const agents = bare ? AGENTS.slice(0, 2) : AGENTS;
+	for (const a of agents) {
+		const config = a.id === "main" ? { delegates: agents.filter((o) => o.id !== "main").map((o) => o.id) } : {};
+		write(path.join(home, "agents", a.id, "agent.json"), JSON.stringify(bare ? config : { ...config, color: a.color }));
+		write(path.join(home, "agents", a.id, "workspace", "AGENTS.md"), `${a.purpose}\n\nYou are ${a.id}.\n`);
+	}
 	return home;
+}
+
+/**
+ * The conversations of the throwaway pine, by agent: unevenly many, in groups or not, a few pinned.
+ * Each is the owner's messages in it; the first is its title, as for a conversation the owner starts
+ * in the app. `name` gives one a name of its own instead, as a renamed one has.
+ */
+type Seeded = { said: string[]; group?: string; pinned?: boolean; name?: string };
+const CONVERSATIONS: Record<string, Seeded[]> = {
+	main: [
+		{ name: "main", said: ["Good morning: what is on today?"] },
+		{ said: ["Plan the week with everyone", "Put the dentist on Thursday"], pinned: true },
+		{ said: ["Weekly summary of what all agents did"] },
+		{ said: ["Set up the Telegram bot for alerts", "Only for things that need me today"], group: "setup" },
+		{ said: ["Connect my Google calendar"], group: "setup" },
+		{ said: ["Add the Mac mini as a model server"], group: "setup" },
+		{ said: ["Give coder the pine repository as its folder"], group: "admin" },
+		{ said: ["Why did scout's schedule not run last night?"], group: "admin" },
+	],
+	coder: [
+		{ said: ["Fix the flaky login test on CI", "It fails on Windows only, look at the timeout"], group: "pine", pinned: true },
+		{ said: ["Review PR #133: undo to any message"], group: "pine" },
+		{ said: ["Why does the side bar draw again on every event?", "Measure it first"], group: "pine" },
+		{ said: ["Build the Swift helpers with Xcode 27"], group: "pine" },
+		{ name: "nightly-bench", said: [], group: "pine" },
+		{ said: ["Move the docs site to Vite 7"], group: "website" },
+		{ said: ["The dark mode toggle flickers on load", "Only in Safari"], group: "website" },
+		{ said: ["Write the changelog page"], group: "website" },
+		{ said: ["Try WebGPU for the office view"], group: "experiments" },
+		{ said: ["Bench llama.cpp slots against Ollama"], group: "experiments" },
+		{ said: ["Clean up the old branches in dotagents"] },
+		{ said: ["A good name for the --keep flag?"] },
+	],
+	scout: [
+		{ said: ["The best mechanical keyboards under 150 EUR", "Quiet ones, for an open office"] },
+		{ said: ["Flights from Lyon to Lisbon in March"], group: "travel" },
+		{ said: ["Where to stay in Lisbon for a week"], group: "travel" },
+		{ said: ["What changed in Node 24?"] },
+		{ said: ["Summarize the latest react-three-fiber release"] },
+	],
+	mail: [
+		{ said: ["Draft a reply to the landlord about the heating", "Firmer, but polite"], pinned: true },
+		{ said: ["Unsubscribe me from newsletters I never open"] },
+		{ said: ["Find the invoice from the dentist"] },
+		{ said: ["A digest of the important mail every morning"] },
+	],
+	home: [
+		{ said: ["Turn the heating down when nobody is home"] },
+		{ said: ["Why did the hallway light stay on all night?"] },
+		{ said: ["Remind me to water the plants on Sundays"] },
+	],
+	finance: [
+		{ said: ["Sort the October expenses into categories"] },
+		{ said: ["How much did subscriptions cost me this year?", "Which ones did I not use?"] },
+		{ said: ["What do I need for the tax return?"], group: "taxes" },
+	],
+	writer: [
+		{ said: ["Blog post: a year with an agent daemon at home", "Shorter intro, and no jargon"], group: "blog" },
+		{ said: ["Tighten the opening of the meetup talk"] },
+	],
+};
+
+/**
+ * Fills the throwaway pine through the control API, as the owner's own hand would in the app: the
+ * messages are sent, the conversations grouped and pinned, so that what the page draws is what a
+ * real pine holds (session files, titles, groups) and not a mock of it. The scripted model server
+ * echoes each message. One conversation stays working for ten minutes (its answer streams slowly),
+ * so that a working conversation can be looked at too. Says what it made, for the terminal.
+ */
+async function seedThrowaway(daemon: Service, model: { state: { scripts: Record<string, unknown[]> } }): Promise<string> {
+	const call = async (url: string, body: unknown) => {
+		const res = await callDaemon(daemon, "POST", url, body);
+		if (!res.ok) throw new Error(`${url}: ${JSON.stringify(res.data)}`);
+		return res.data;
+	};
+	// Names like the app's own for a conversation that was only started ("s" and a time in base 36),
+	// a little apart, so that each is called by its first message.
+	let stamp = Date.now() - 60_000;
+	const named = Object.entries(CONVERSATIONS).flatMap(([agent, list]) => list.map((c) => ({ agent, ...c, session: c.name ?? `s${(stamp -= 1000).toString(36)}` })));
+	try {
+		// Each conversation's messages in order (a second one waits behind the first anyway); the conversations side by side.
+		await Promise.all(named.map(async (c) => {
+			for (const prompt of c.said) await call(`/agents/${c.agent}/prompt`, { prompt, session: c.session, wait: false });
+		}));
+		// The one that works on: a long answer that comes 24 letters every two seconds.
+		model.state.scripts.bench = [{ text: "Running the bench on mm against next. ".repeat(160), chunkDelayMs: 2000 }];
+		await call("/agents/coder/prompt", { prompt: "Run the whole bench on mm and tell me if anything got slower @@REF:bench@@", session: "nightly-bench", wait: false });
+		// Groups in the order the side bar should show them, then the conversations into them.
+		const groups = [...new Set(named.filter((c) => c.group).map((c) => `${c.agent}\n${c.group}`))];
+		for (const g of groups) {
+			const [agent, name] = g.split("\n");
+			await call(`/agents/${agent}/groups`, { action: "add", name });
+		}
+		for (const c of named) {
+			if (c.group) await call(`/agents/${c.agent}/group`, { session: c.session, group: c.group });
+			if (c.pinned) await call(`/agents/${c.agent}/pin`, { session: c.session, pinned: true });
+		}
+		return `${named.length} conversations of ${Object.keys(CONVERSATIONS).length} agents, ${groups.length} groups`;
+	} catch (e) {
+		// A preview without its conversations is still a preview.
+		return `only in part: ${e instanceof Error ? e.message : e}`;
+	}
 }
 
 // ---- the routes the page's stand-in calls ------------------------------------------------------
@@ -173,7 +296,9 @@ function chosenHome(): string | undefined {
 const chosen = chosenHome();
 // Only the throwaway pine needs the scripted model server: a chosen home has its own models.
 const mock = chosen ? undefined : await startMock({ strip: /<pine-note>[\s\S]*?<\/pine-note>\s*/g });
-const home = chosen ?? throwawayHome(mock!.baseUrl);
+// PINE_PREVIEW_BARE=1: the throwaway pine with two agents and no conversations, as desktop/test/preview.test.ts wants it.
+const bare = process.env.PINE_PREVIEW_BARE === "1";
+const home = chosen ?? throwawayHome(mock!.baseUrl, bare);
 let service: Service | undefined;
 let server: Awaited<ReturnType<typeof createServer>> | undefined;
 let stopping = false;
@@ -227,6 +352,8 @@ try {
 	await server.listen();
 	console.log(`preview  ${server.resolvedUrls?.local[0]}`);
 	if (!chosen) console.log(`pine     ${service.base} on a throwaway home in ${home} (removed when the preview stops)`);
+	// After the page is served: the page shows the conversations as they come.
+	if (!chosen && !bare) void seedThrowaway(service, mock!).then((said) => console.log(`seeded   ${said}`));
 	else console.log(`pine     ${service.base} on ${home} (${service.started ? "started for the preview, left running after it" : "the daemon that runs there, left running"})`);
 } catch (e) {
 	const message = e instanceof Error ? e.message : String(e);

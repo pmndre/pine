@@ -70,11 +70,29 @@ const CLOSE_WINDOW = "CmdOrCtrl+Shift+W";
 /** What a window shows first: a conversation, or that it has no tab. */
 const FIRST = "[data-slot=no-tab], [data-slot=tab][data-active]";
 
-/** The agents a window's side bar lists, in its order. */
-const agentsIn = (p: Page) => p.$$eval("[data-slot=sidebar] [data-slot=agent-label]", (els: Element[]) => els.map((e) => e.getAttribute("data-agent")).join());
+/** The agents a window's side bar switcher lists, in its order: its menu opened and closed again, none while there is no switcher. */
+const agentsIn = async (p: Page): Promise<string> => {
+	const option = "[data-slot=dropdown-menu-content] [data-slot=agent-option]";
+	try {
+		await p.click("[data-slot=sidebar] [data-slot=agent-switcher]", { timeout: 2000 });
+		await p.waitForSelector(option, { timeout: 2000 });
+		const ids = await p.$$eval(option, (els: Element[]) => els.map((e) => e.getAttribute("data-agent")).join());
+		await p.keyboard.press("Escape");
+		await p.waitForSelector(option, { state: "detached", timeout: 2000 });
+		return ids;
+	} catch {
+		await p.keyboard.press("Escape").catch(() => {});
+		return "";
+	}
+};
 /** Waits until a window's side bar lists exactly these agents: which pine the window is on. */
-const listsAgents = (p: Page, agents: string) =>
-	p.waitForFunction((want: string) => [...document.querySelectorAll("[data-slot=sidebar] [data-slot=agent-label]")].map((e) => e.getAttribute("data-agent")).join() === want, agents, { timeout: patient(60_000) });
+const listsAgents = async (p: Page, agents: string) => {
+	const end = Date.now() + patient(60_000);
+	for (let got = await agentsIn(p); got !== agents; got = await agentsIn(p)) {
+		if (Date.now() > end) throw new Error(`the side bar lists ${got || "no agents"}, not ${agents}`);
+		await new Promise((r) => setTimeout(r, 200));
+	}
+};
 /** Adds a machine in Settings > Environments, as the owner types it. */
 async function addMachine(p: Page, host: string): Promise<void> {
 	await p.waitForSelector("[data-slot=settings-page] [data-environment=local]");
