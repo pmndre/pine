@@ -279,8 +279,9 @@ function cleanQuote(raw: unknown): WindowQuote | undefined {
 			source = { task: s.task as number, part: s.part };
 		}
 	}
-	if (!source) return undefined;
-	return { id: q.id, tab: q.tab, text: q.text, source };
+	// No source is a quote of text alone; one that is not a source is not a quote of ours.
+	if (src !== undefined && !source) return undefined;
+	return { id: q.id, tab: q.tab, text: q.text, ...(source ? { source } : {}) };
 }
 
 /** Sanitizes a transferred unsent draft from IPC. */

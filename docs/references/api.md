@@ -70,7 +70,7 @@ errors are `{ "error": "..." }`. `session` names a conversation and defaults to 
 |---|---|
 | `whenBusy: "steer"` | Goes into running work instead of waiting; the answer carries `steered` |
 | `mentions` | Files of the folder the message points at with `@` (`"src/a.ts#20-45"`); the agent is told to read them |
-| `quotes` | Up to 20 `{ text, source, reply? }` of 10,000 characters, put before `prompt` as Markdown quotes, each followed by its `reply` (`prompt` may then be empty). `source` is `{ task, part }` (`part`: `"prompt"`, `"answer"`), `"letter"` or `"welcome"`. Kept in `meta.quotes` and `meta.body` |
+| `quotes` | Up to 20 `{ text, source, reply? }` of 10,000 characters, put before `prompt` as Markdown quotes, each followed by its `reply` (`prompt` may then be empty). `source` is `{ task, part }` (`part`: `"prompt"`, `"answer"`), `"letter"` or `"welcome"`, and is left out for text quoted from anywhere else. Kept in `meta.quotes` and `meta.body` |
 | `attachments` | `{ name, data }` in base64, at most 10 files of up to 20 MB each, saved to `inbox/` in the workspace |
 | `via: "app"` | The answer is read in the Pine app, where `bash` blocks get a Run button |
 | `cancelOnDisconnect: true` | Cancels the task if the caller hangs up |

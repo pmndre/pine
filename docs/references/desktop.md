@@ -264,7 +264,7 @@ Select text, a sentence of an answer for example, and a small bar offers **Quote
 place, `×` removes it); quote several pieces, with or without text of your own. **Reply** adds a
 field under the badge for your reply to that quote (`↩` or `esc` closes it). The agent reads each
 quote as markdown (`> `) before your text, followed by its reply. Long quotes are cut (`…`), never
-your own text. `/undo` gives quotes back. A question's line ("Q1 · ...") is quoted the same way, but has no **Bookmark**: the lines change as the questions are folded and answered.
+your own text. `/undo` gives quotes back. A question's line ("Q1 · ...") is quoted the same way, but has no **Bookmark**: the lines change as the questions are folded and answered. Text anywhere else in the conversation (a note of pine's, a line of work, an event) is quoted too, without a way back to it and without **Bookmark**: pine does not find those places again.
 
 ### Bookmarks
 

@@ -250,6 +250,7 @@ test("cleanNewWindowOptions validates host, tab, moveFrom, and bounded draft", (
 		{ id: 2, tab: "main:main", text: "from letter", source: "letter" },
 		{ id: 3, tab: "main:main", text: "from task", source: { task: 4, part: "answer" } },
 		{ id: 4, tab: "main:main", text: "bad source", source: { task: 0, part: "answer" } },
+		{ id: 5, tab: "main:main", text: "from a note" },
 		...Array.from({ length: 25 }, (_, i) => ({
 			id: i + 10,
 			tab: "main:main",
@@ -272,6 +273,7 @@ test("cleanNewWindowOptions validates host, tab, moveFrom, and bounded draft", (
 	assert.deepEqual(res.draft.quotes?.[0], { id: 1, tab: "main:main", text: "from welcome", source: "welcome" });
 	assert.deepEqual(res.draft.quotes?.[2], { id: 3, tab: "main:main", text: "from task", source: { task: 4, part: "answer" } });
 	assert.ok(!res.draft.quotes?.some((q) => q.text === "bad source"));
+	assert.deepEqual(res.draft.quotes?.[3], { id: 5, tab: "main:main", text: "from a note" }, "a quote of text alone keeps no source");
 
 	// Invalid draft (missing string draft field) is dropped.
 	assert.equal(cleanNewWindowOptions({ draft: { draft: 42, attachments: [] } }), undefined);

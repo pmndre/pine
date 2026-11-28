@@ -17,11 +17,13 @@ test("quotes: what comes in is checked piece by piece", () => {
 		{ text: "an answer's words", source: { task: 3, part: "answer" }, extra: "dropped" },
 		{ text: "the letter's", source: "letter" },
 		{ text: "Q2 · Which end?", source: { task: 3, part: "questions" } },
+		{ text: "a note of pine's" },
 	]);
 	assert.deepEqual(ok, [
 		{ text: "an answer's words", source: { task: 3, part: "answer" } },
 		{ text: "the letter's", source: "letter" },
 		{ text: "Q2 · Which end?", source: { task: 3, part: "questions" } },
+		{ text: "a note of pine's" },
 	]);
 	assert.equal(typeof readQuotes("nope"), "string");
 	assert.equal(typeof readQuotes([{ text: "", source: "letter" }]), "string");
@@ -87,7 +89,7 @@ test("quotes: the control API takes them from the owner, the agent reads them be
 test("quotes: a branch carries them with the numbers its copies got, and only the owner's messages have any", async () => {
 	const h = await harness({ agents: { main: {} } });
 	const first = await h.pine.agents.run({ agent: "main", session: "s", trust: "owner", prompt: `start ${mockMsg([{ text: "ANSWER-ONE" }])}` });
-	const quoted = await h.pine.agents.run({ agent: "main", session: "s", trust: "owner", prompt: `and? ${mockMsg([{ text: "ANSWER-TWO" }])}`, quotes: [{ text: "ANSWER-ONE", source: { task: first.id, part: "answer" } }, { text: "hello", source: "letter" }] });
+	const quoted = await h.pine.agents.run({ agent: "main", session: "s", trust: "owner", prompt: `and? ${mockMsg([{ text: "ANSWER-TWO" }])}`, quotes: [{ text: "ANSWER-ONE", source: { task: first.id, part: "answer" } }, { text: "hello", source: "letter" }, { text: "a note" }] });
 	const r = await h.pine.agents.branchSession("main", "s");
 	const copies = h.pine.tasks.list({ agent: "main", session: r.session });
 	const copyOfFirst = copies.find((t) => t.prompt.startsWith("start"))!;
@@ -96,6 +98,7 @@ test("quotes: a branch carries them with the numbers its copies got, and only th
 	assert.deepEqual(copyOfQuoted.meta.quotes, [
 		{ text: "ANSWER-ONE", source: { task: copyOfFirst.id, part: "answer" } },
 		{ text: "hello", source: "letter" },
+		{ text: "a note" },
 	]);
 	assert.deepEqual(h.pine.tasks.get(quoted.id)!.meta.quotes?.[0].source, { task: first.id, part: "answer" }, "the original keeps its own");
 

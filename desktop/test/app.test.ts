@@ -603,6 +603,44 @@ test("text selected in an answer is quoted: a badge above the input, a markdown 
 	await page.fill("[data-slot=composer] textarea", "");
 });
 
+test("text selected anywhere else in the conversation, a note of pine's, is quoted too, without a way back to it and without a bookmark", async () => {
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ text: "NOTE-SOURCE" }], "say something to take back "));
+	await page.keyboard.press("Enter");
+	await sees("[data-slot=markdown] >> text=NOTE-SOURCE");
+	await menu("undo");
+	const marker = "[data-slot=marker][data-kind=undo]";
+	await sees(marker);
+	await settled();
+	// One word of the note: the whole of it quotes the message taken back, whose script the mock would follow.
+	const words = "Undone";
+	await page.evaluate(
+		([sel, word]: string[]) => {
+			const note = [...document.querySelectorAll(sel)].at(-1)!;
+			const walk = document.createTreeWalker(note, NodeFilter.SHOW_TEXT);
+			let node: Node | null;
+			while ((node = walk.nextNode()) && !node.textContent!.includes(word));
+			const at = node!.textContent!.indexOf(word);
+			const range = document.createRange();
+			range.setStart(node!, at);
+			range.setEnd(node!, at + word.length);
+			window.getSelection()!.removeAllRanges();
+			window.getSelection()!.addRange(range);
+		},
+		[marker, words],
+	);
+	await sees("[data-slot=selection-toolbar] [data-action=quote]");
+	assert.equal(await page.locator("[data-slot=selection-toolbar] [data-action=bookmark]").count(), 0, "pine does not find a note again: no bookmark");
+	await page.click("[data-slot=selection-toolbar] [data-action=quote]");
+	const chip = `[data-slot=composer] [data-slot=quote-chip]:has-text("${words}")`;
+	await sees(chip);
+	assert.match((await page.getAttribute(`${chip} [data-action=open]`, "aria-label")) ?? "", /^Quoted text:/, "the badge does not offer to go back");
+	await page.fill("[data-slot=composer] textarea", mockMsg([{ text: "NOTE-ANSWER" }], "about that "));
+	await page.press("[data-slot=composer] textarea", "Enter");
+	await sees("[data-slot=markdown] >> text=NOTE-ANSWER");
+	const said = JSON.stringify(mock.state.requests.at(-1)?.body.messages.filter((m: any) => m.role === "user").at(-1) ?? "");
+	assert.ok(said.includes(`> ${words}`), said);
+});
+
 test("a long quote given to work that runs is known as the owner's own message: shown once, with its badge and whether the work read it", async () => {
 	const long = `LONG-QUOTE ${"every word of this answer is quoted ".repeat(75).trim()}`;
 	await page.fill("[data-slot=composer] textarea", mockMsg([{ text: long }], "say something long "));
