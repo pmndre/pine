@@ -125,9 +125,25 @@ function ThoughtText({ text, live }: { text: string; live: boolean }) {
 	);
 }
 
+/**
+ * A command as a collapsed call line shows it: its start, up to a boundary near the cap — a space, a
+ * path step, a pipe — ending in an ellipsis, so a long command never fills the line and pushes how the
+ * call ended and how long it took out of view. The whole command stays the line's tooltip, and is the
+ * first thing the opened line shows when it was cut.
+ */
+const COMMAND_LINE = 56;
+function cutCommand(command: string, max = COMMAND_LINE): string {
+	if (command.length <= max) return command;
+	const head = command.slice(0, max);
+	const at = Math.max(...[" ", "/", ";", ",", "&", "|"].map((mark) => head.lastIndexOf(mark)));
+	return `${at >= max - 16 ? head.slice(0, at) : head}…`;
+}
+
 /** One tool call (Tool): a line with what it did, which opens on what it returned or why it failed. */
 function Call({ tool, subject, status, ms, depth = 0, output, error, images }: { tool: string; subject?: string; status: "run" | "ok" | "fail"; ms?: number; depth?: number; output?: string; error?: string; images?: string[] }) {
-	const more = Boolean(output || error || images?.length);
+	const shown = subject ? cutCommand(subject) : undefined;
+	const cut = shown !== subject;
+	const more = Boolean(output || error || images?.length || cut);
 	// A call made inside another one is drawn under it, by how deep it is.
 	const root = { "data-part": "tool", style: depth ? { paddingLeft: `calc(var(--spacing) * ${depth * 3.5})` } : undefined };
 	const line = (
@@ -138,7 +154,7 @@ function Call({ tool, subject, status, ms, depth = 0, output, error, images }: {
 			{/* Font family only: a tool's name and its subject are code. */}
 			<TraceTitle className={cn("font-mono", STEPPED)} title={subject}>
 				<span data-tool>{tool}</span>
-				{subject ? ` ${subject}` : null}
+				{shown ? ` ${shown}` : null}
 			</TraceTitle>
 			{ms !== undefined ? <TraceDescription>{took(ms)}</TraceDescription> : null}
 		</TraceLine>
@@ -149,6 +165,14 @@ function Call({ tool, subject, status, ms, depth = 0, output, error, images }: {
 		<TraceCollapsible {...root}>
 			<TraceCollapsibleTrigger>{line}</TraceCollapsibleTrigger>
 			<TraceCollapsibleContent className="flex flex-col gap-2">
+				{/* The line above holds the command's start; opened, it is here in full. */}
+				{cut && subject ? (
+					<CodeBlock size="sm">
+						<CodeBlockContent wrap className="max-h-64 select-text">
+							{subject}
+						</CodeBlockContent>
+					</CodeBlock>
+				) : null}
 				{output || error ? (
 					<CodeBlock size="sm" variant={error ? "destructive" : "default"}>
 						<CodeBlockContent wrap className="max-h-64 select-text">
