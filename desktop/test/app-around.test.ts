@@ -570,6 +570,16 @@ test("a message further back is gone back to from its own actions: it and every 
 	await sees("[data-slot=marker][data-kind=undo]");
 	assert.match(await page.inputValue("[data-slot=composer] textarea"), /^REWIND-ONE /);
 	assert.equal(await page.locator("[data-slot=markdown]:has-text('answer to REWIND')").count(), 0);
+	// The text is back to be edited: the input has the focus.
+	await page.waitForFunction(() => document.activeElement?.matches("[data-slot=composer] textarea"), undefined, { timeout: patient(5_000) });
+	// A redo brings the message back into the conversation, and takes its text out of the input.
+	await menu("redo");
+	await sees("[data-slot=markdown] >> text=answer to REWIND-ONE");
+	await page.waitForFunction(() => (document.querySelector("[data-slot=composer] textarea") as HTMLTextAreaElement | null)?.value === "", undefined, { timeout: patient(5_000) });
+	// Back to where the test began: the three messages taken back again.
+	await first.hover();
+	await first.locator("[data-action=rewind]").click();
+	await page.waitForFunction((n: number) => document.querySelectorAll("[data-item=user]").length === n, had, { timeout: patient(20_000) });
 	await page.fill("[data-slot=composer] textarea", "");
 });
 

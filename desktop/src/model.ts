@@ -2784,6 +2784,12 @@ export class Store extends Model {
 			tab.draft = r.quotes?.length ? (r.body ?? "") : r.prompt;
 			tab.quotes = (r.quotes ?? []).map((q) => ({ id: quoteId(), text: q.text, tab: tab.key, source: q.source, ...(q.reply ? { reply: q.reply } : {}) }));
 			tab.replying = undefined;
+			// The text is back to be edited: the input takes the focus, as it does after a click on a message.
+			this.ask_("focus-input");
+		} else if (tab.draft === (r.quotes?.length ? (r.body ?? "") : r.prompt)) {
+			// The message is in the conversation again: what its undo put into the input goes, unless it was edited.
+			tab.draft = "";
+			tab.quotes = [];
 		}
 		tab.codeTick++;
 		tab.touch();
