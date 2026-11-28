@@ -27,7 +27,7 @@ const previews: Preview[] = [];
 
 /** `npm run dev:preview` with these arguments, on a port the system picks, once it has said where it answers. */
 function startPreview(args: string[] = []): Promise<Preview> {
-	const child = spawn(process.execPath, [path.join(root, "scripts", "preview.ts"), ...args], { cwd: root, env: { ...process.env, PORT: "0" }, stdio: ["ignore", "pipe", "pipe"] });
+	const child = spawn(process.execPath, [path.join(root, "scripts", "preview.ts"), ...args], { cwd: root, env: { ...process.env, PORT: "0", PINE_PREVIEW_BARE: "1" }, stdio: ["ignore", "pipe", "pipe"] });
 	let said = "";
 	child.stderr!.on("data", (d: Buffer) => (said += d.toString("utf8")));
 	return new Promise((resolve, reject) => {
@@ -162,7 +162,7 @@ test("stopping the preview removes the throwaway home and ends the daemon", asyn
 
 test("a preview whose starter is gone stops by itself, with its throwaway pine", async (t) => {
 	// The starter is a shell (as npm would be) that leaves the preview behind when it is killed.
-	const starter = spawn("/bin/sh", ["-c", `"${process.execPath}" "${path.join(root, "scripts", "preview.ts")}" & wait`], { cwd: root, env: { ...process.env, PORT: "0" }, stdio: ["ignore", "pipe", "ignore"] });
+	const starter = spawn("/bin/sh", ["-c", `"${process.execPath}" "${path.join(root, "scripts", "preview.ts")}" & wait`], { cwd: root, env: { ...process.env, PORT: "0", PINE_PREVIEW_BARE: "1" }, stdio: ["ignore", "pipe", "ignore"] });
 	t.after(() => void (starter.exitCode === null && starter.kill("SIGKILL")));
 	let said = "";
 	const where = await new Promise<RegExpExecArray>((resolve, reject) => {
