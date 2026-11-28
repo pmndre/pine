@@ -188,7 +188,11 @@ after their line. An agent's `+` always shows.
 **A conversation.** An empty one shows its agent: purpose, model, mode, whom it delegates to, and
 its skills, sources, schedules and MCP servers. Each turn's work (tool calls, thoughts, sub-tasks)
 is one line that a click opens; `↳ … ↗` opens a sub-agent's or delegated task's work in a tab.
-**Undo** (`/undo`) stands above your last message. Scrolled up, the view holds still, and a
+Under each of your messages, when the pointer or the focus is on it (always on a touch screen):
+how long ago you sent it, **Go back to before this message** (it and everything after it are taken back,
+its text returns to the input: [coding.md](coding.md), "Taking a message back"), **Branch from here** (as a
+right click on the message offers it) and **Copy**.
+`⇧⌘Z` undoes your last message. Scrolled up, the view holds still, and a
 button brings you back to the end. The top line shows the conversation (`main / notes`), its folder and how full
 its context is (hover: cache share, speed). Your sent message moves to the top with the answer
 below it, unless the agent follows the answer ("When you send a message" in Settings > Agents):

@@ -94,8 +94,6 @@
 	--term-select: #717cb425;
 }
 
-/* The waves of SwirlMarker (src/components/swirl-marker.tsx) flowing in to where they rest, once: each rule says
-   from where (`--swirl-from`), so that both flow toward the label. */
 /* The reading size (`text-read`): what the owner reads at length in a conversation is 15px, the size Claude and
    the apps beside pine read at; the browser's 16px (text-base) reads a size larger there. One step of the type
    scale, next to Tailwind's own, so that the root and every stock part stay as they are. Its line height is
@@ -104,15 +102,6 @@
 @theme {
 	--text-read: 0.9375rem;
 	--text-read--line-height: 1.625;
-}
-
-@theme {
-	--animate-swirl: swirl 1.4s cubic-bezier(0.22, 1, 0.36, 1);
-	@keyframes swirl {
-		from {
-			mask-position: var(--swirl-from) 50%;
-		}
-	}
 }
 
 /* The system's own fonts. Static, so that they are on the root for script too: the code editor and the terminal

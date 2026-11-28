@@ -97,6 +97,11 @@ export interface UndoResult {
 	/** How many messages a redo can bring back, and whether there is another one to take back. */
 	redo: number;
 	more: boolean;
+	/**
+	 * With `to`: how many of the owner's messages were taken back, the one named and every later one.
+	 * `stopped` and `restored` then count over all of them (a file that two of them changed counts twice).
+	 */
+	taken?: number;
 }
 
 export interface TurnView {
@@ -465,6 +470,44 @@ export async function undoMessage(h: UndoHost, agentId: string, key: string): Pr
 		h.bus.publish(`agent/${agentId}/undone`, { agent: agentId, session: key, message: msg.id, tasks: taken.length, files: files.restored ? files.restored.changed + files.restored.removed + files.restored.back : undefined }, { source: "pine" });
 		return { task: msg.id, prompt: wrote(now), ...quotesOf(now), stopped, restored: files.restored, note: files.note, redo, more: mine().some(ownerMessage) };
 	});
+}
+
+/**
+ * Take back the owner's messages in a conversation down to message `to`, which goes too: one by
+ * one with `undoMessage`, newest first, so that each keeps all it promises and the marks and rights
+ * end at what they were before `to`. A redo brings them back one at a time, `to` first.
+ */
+export async function undoTo(h: UndoHost, agentId: string, key: string, to: number): Promise<UndoResult> {
+	const mine = () => h.tasks.list({ agent: agentId, session: key, limit: 1000 });
+	const target = mine().find((t) => t.id === to);
+	if (!target) {
+		if (h.turns.undone(agentId, key).some((u) => u.task === to)) throw new Error(`message #${to} was taken back already: /redo brings it back`);
+		throw new Error(`message #${to} is not in this conversation: name one of your messages there`);
+	}
+	if (!ownerMessage(target)) throw new Error(`message #${to} is not one of your own messages in this conversation, so it cannot be taken back: name one you typed`);
+	let taken = 0;
+	let stopped = 0;
+	let restored: Restored | undefined;
+	const notes = new Set<string>();
+	for (;;) {
+		let r: UndoResult;
+		try {
+			r = await undoMessage(h, agentId, key);
+		} catch (e) {
+			if (!taken) throw e;
+			throw new Error(`${taken} message${taken === 1 ? " was" : "s were"} taken back, then it stopped before message #${to}: ${errText(e)}. What was taken back stays so; /undo goes on from there`);
+		}
+		taken++;
+		stopped += r.stopped;
+		if (r.note) notes.add(r.note);
+		if (r.restored) {
+			const files = [...new Set([...(restored?.files ?? []), ...r.restored.files])].slice(0, 20);
+			const left = [...new Set([...(restored?.left ?? []), ...r.restored.left])];
+			restored = restored ? { root: restored.root, changed: restored.changed + r.restored.changed, removed: restored.removed + r.restored.removed, back: restored.back + r.restored.back, files, left } : r.restored;
+		}
+		// The newest message is taken first, so `to` comes last; one older than it would be a step too far.
+		if (r.task <= to) return { ...r, stopped, restored, note: notes.size ? [...notes].join("; ") : undefined, taken };
+	}
 }
 
 /** Bring back the message that was taken back last: its files, its place in the conversation, its tasks, and what was allowed. */

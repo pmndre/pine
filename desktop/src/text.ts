@@ -122,33 +122,36 @@ const quoted = (text: string) => `“${short(oneLine(text), 80)}”`;
 const files = (n: number) => plural(n, "file");
 
 /**
- * What is said after a message was taken back or brought back: which message, which files, and
- * what could not be taken back. Said every time: an undo that is believed to have undone more
- * than it did is worse than none.
+ * What is said after a message was taken back or brought back. One short line says that it was; what has to be
+ * seen at once (a file left as it was, the daemon's note) is a warning of its own below it; the rest (which
+ * message, how many, which files where, what an undo never takes back) is behind the line, said every time all
+ * the same: an undo that is believed to have undone more than it did is worse than none. `what` names the
+ * message, for the button that undoes or redoes it.
  */
-export function undoLines(r: UndoResult, redo: boolean): { head: string; lines: Array<{ text: string; tone?: "good" | "warn" }> } {
-	if (!redo && r.waiting) return { head: `Withdrawn before the agent started on it: ${quoted(r.prompt)}`, lines: [{ text: "Your message is back in the message box. Edit it and send it again." }] };
+export function undoLines(r: UndoResult, redo: boolean): { head: string; lines: Array<{ text: string; tone?: "good" | "warn" }>; more: string[]; what: string } {
+	const what = quoted(r.prompt);
+	if (!redo && r.waiting) return { head: "Withdrawn before the agent started on it", lines: [], more: [`Withdrawn: ${what}`, "Nothing had been done yet. Your message is back in the message box."], what };
 	const lines: Array<{ text: string; tone?: "good" | "warn" }> = [];
-	if (!redo && r.stopped) lines.push({ text: `Running work was stopped first (${plural(r.stopped, "task")}).` });
+	const more: string[] = [];
+	// A redo shows what it brought back in the conversation itself: details only for the files it changed.
+	if (!redo) more.push(`Taken back: ${what}${r.taken && r.taken > 1 ? `, and ${plural(r.taken - 1, "later message")} with it` : ""}`);
+	if (!redo && r.stopped) more.push(`Running work was stopped first (${plural(r.stopped, "task")}).`);
 	const f = r.restored;
 	if (f) {
 		const n = f.changed + f.removed + f.back;
 		const where = tilde(f.root);
-		if (!n) lines.push({ text: redo ? `No file had to be changed in ${where}.` : `No file had to be restored in ${where}. The message changed no files that pine tracks.` });
+		if (!n) {
+			if (!redo) more.push(`No file had to be restored in ${where}.`);
+		}
 		else {
 			const parts = [f.changed ? `${f.changed} changed back` : "", f.removed ? `${f.removed} removed` : "", f.back ? `${f.back} brought back` : ""].filter(Boolean).join(", ");
-			const names = `${f.files.join(", ")}${n > f.files.length ? `, and ${n - f.files.length} more` : ""}`;
-			lines.push({ tone: "good", text: redo ? `${files(n)} in ${where} ${n === 1 ? "is" : "are"} back to how the message left ${n === 1 ? "it" : "them"} (${parts}): ${names}` : `${files(n)} restored in ${where} (${parts}): ${names}` });
+			more.push(`${files(n)} ${redo ? "redone" : "restored"} in ${where} (${parts}): ${f.files.join(", ")}${n > f.files.length ? `, and ${n - f.files.length} more` : ""}`);
 		}
 		if (f.left.length) lines.push({ tone: "warn", text: `Left unchanged, too large to track: ${f.left.slice(0, 8).join(", ")}` });
 	}
 	if (r.note) lines.push({ tone: "warn", text: r.note });
-	if (redo) lines.push({ text: `Undo takes this back again${r.redo ? `. Redo restores ${r.redo === 1 ? "one more message" : `${r.redo} more messages`}` : ""}.` });
-	else {
-		lines.push({ text: "Not undone: changes made outside this folder, files git ignores, files over 2 MB, and anything that was sent out." });
-		lines.push({ text: `Your message is back in the message box. Edit it and send it again. Redo restores it until you send something new${r.more ? ". Undo again to take back the message before it as well" : ""}.` });
-	}
-	return { head: `${redo ? "Redone" : "Undone"}: ${quoted(r.prompt)}`, lines };
+	if (!redo) more.push("Not undone: changes outside this folder, files git ignores or over 2 MB, anything sent out.");
+	return { head: "Went back to here", lines, more, what };
 }
 
 /** Letters in order, with anything between them: "agts" finds "src/agents.ts". Lower is better; -1 does not fit. */

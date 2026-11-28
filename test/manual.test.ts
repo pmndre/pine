@@ -315,6 +315,7 @@ test("manual: questions in an agent's own words find the part of pine's manual t
 		["open a project folder for a conversation", /^coding#a-folder-for-a-conversation/],
 		["the agent messed up my files with its last change, how do I get them back the way they were", /^coding#(taking-a-message-back|what-is-restored)/],
 		["revert what the agent just did and ask again differently", /^(coding#(taking-a-message-back|what-is-restored)|tui#commands\/undo)/],
+		["go back to an earlier message of mine and undo everything after it", /^coding#taking-a-message-back/],
 		["/redo", /redo$/],
 		["can I fork a chat to try something else without losing the original", /^(agents#branching-a-conversation|tui#.*branch|desktop#)/],
 		["try a second way from an earlier point of the conversation without losing the first", /^agents#branching-a-conversation/],

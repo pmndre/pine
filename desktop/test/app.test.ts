@@ -612,7 +612,7 @@ test("text selected anywhere else in the conversation, a note of pine's, is quot
 	await sees(marker);
 	await settled();
 	// One word of the note: the whole of it quotes the message taken back, whose script the mock would follow.
-	const words = "Undone";
+	const words = "Went back";
 	await page.evaluate(
 		([sel, word]: string[]) => {
 			const note = [...document.querySelectorAll(sel)].at(-1)!;

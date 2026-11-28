@@ -50,7 +50,7 @@ import { INTRODUCE, introducedKey } from "./hatch.ts";
 import { BACKGROUND_HELP, BACKGROUND_NOT_HERE, BACKGROUND_PARAM, backgroundRefused, endedLabel, endedNotice, endedReport, startedText, tailOf, terminalNotice, terminalReport, type TerminalRun, TIMEOUT_HINT } from "./background.ts";
 import { Snapshots } from "./snapshots.ts";
 import * as worktrees from "./worktrees.ts";
-import { branchFile, onBranch, ownerMessage, redoMessage, sessionFile, standingBefore, Turns, type TurnView, type UndoHost, undoMessage, type UndoResult } from "./undo.ts";
+import { branchFile, onBranch, ownerMessage, redoMessage, sessionFile, standingBefore, Turns, type TurnView, type UndoHost, undoMessage, type UndoResult, undoTo } from "./undo.ts";
 import { maybeSilent, silent } from "./silent.ts";
 import { classify, LOOK_TOOLS, pineOwn, pineOwnRefusal, PLAN_REFUSAL, SETUP_TOOLS, ROUTERS } from "./actions.ts";
 import { Type } from "typebox";
@@ -1269,8 +1269,10 @@ export class AgentManager {
 	// these are reached from the control API only: no agent has a tool for them, and a run that
 	// outside content started (its conversation is the "~u" one) is never taken back this way.
 
-	async undo(agentId: string, session = "main"): Promise<UndoResult> {
+	/** `to`: the owner's message to go back to before, taken back with every later one; else the last one alone. */
+	async undo(agentId: string, session = "main", to?: number): Promise<UndoResult> {
 		if (!this.cfg.agents[agentId]) throw new Error(`unknown agent "${agentId}"`);
+		if (to !== undefined) return undoTo(this.undoHost(), agentId, sessionKey(session), to);
 		return undoMessage(this.undoHost(), agentId, sessionKey(session));
 	}
 

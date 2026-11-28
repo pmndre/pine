@@ -3,7 +3,7 @@
 // The parts are shadcn's chat components, composed the way its AI Elements pages show: the thread
 // is Message Scroller, a turn is Message (and Bubble for the owner's), the work of a turn is Trace
 // (Task, Tool, Reasoning, Subagent and Plan), a request is an Item (Confirmation), a note is a Marker.
-import { ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
+import { ArrowUpRightIcon, BookmarkIcon, BrainIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon, CircleCheckIcon, CircleDotIcon, CircleIcon, ClockIcon, FolderIcon, GitBranchIcon, InfoIcon, ListChecksIcon, type LucideIcon, MessageCircleQuestionIcon, PaperclipIcon, PlayIcon, QuoteIcon, ReplyIcon, SearchIcon, SettingsIcon, SquareIcon, StarIcon, TargetIcon, TriangleAlertIcon, CopyIcon, Undo2Icon, UsersIcon, XIcon, ZapIcon } from "lucide-react";
 import { Fragment, memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { Sound } from "@/components/sound";
 import { contextMenu } from "@/components/page-menu";
@@ -26,6 +26,7 @@ import { Item as Card, ItemActions, ItemContent, ItemDescription, ItemMedia, Ite
 import { AskedInFull, AskedLines, COMPOSER_QUESTION, ComposerCardSlot, QuestionCard, QuestionCardHost, questionNumbers, QuestionsCard, QuestionTrace } from "@/components/question-card";
 import { Kbd } from "@/components/ui/kbd";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message";
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport, useMessageScroller } from "@/components/ui/message-scroller";
 import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
@@ -33,7 +34,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Toggle } from "@/components/ui/toggle";
 import { HoverTooltip } from "@/components/hover-tooltip";
 import { QuoteChip } from "@/components/quote-chip";
-import { SwirlMarker } from "@/components/swirl-marker";
 import { BookmarkList } from "@/components/bookmark-list";
 import { SelectionToolbar, SelectionToolbarButton, useTextSelection } from "@/components/selection-toolbar";
 import { TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -47,7 +47,7 @@ import { Markdown, MEDIA } from "./markdown.tsx";
 import { runs } from "./work-runs.ts";
 import { type Bookmark, isPick, type Item, type Part, type QuoteSource, quoteId, type SentQuote, type Steer, store, type Tab, type Tone, useModel, useSignal } from "./model.ts";
 import { SetupCard, SetupScript } from "./setup/engine.tsx";
-import { childKind, clock, count, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
+import { ago, childKind, clock, count, oneLine, plural, short, shortcut, speedText, tilde, took } from "./text.ts";
 import { Pulse } from "@/components/pulse";
 import { isQuotePart, sameSource } from "../../src/quotes.ts";
 
@@ -272,7 +272,7 @@ function Work({ item }: { item: Extract<Item, { t: "work" }> }) {
 
 /** The owner's turn (or a task's prompt): a bubble on the owner's side, with the files it brought. */
 /** A message of the owner's. With `menu`, a right click on it offers to branch from it. */
-export function OwnerTurn({ text, from, files, menu, skeleton, footer, quotes, onQuote, quoteTask }: { text?: string; from?: string; files?: string[]; menu?: () => void; quotes?: SentQuote[]; onQuote?: (quote: SentQuote) => void; quoteTask?: number; /** While the conversation loads: a bubble's shape on the owner's side, from stock Skeleton. */ skeleton?: boolean; /** A line under the bubble (whether running work read it). */ footer?: ReactNode }) {
+export function OwnerTurn({ text, from, files, menu, skeleton, footer, actions, quotes, onQuote, quoteTask }: { text?: string; from?: string; files?: string[]; menu?: () => void; quotes?: SentQuote[]; onQuote?: (quote: SentQuote) => void; quoteTask?: number; /** While the conversation loads: a bubble's shape on the owner's side, from stock Skeleton. */ skeleton?: boolean; /** A line under the bubble (whether running work read it). */ footer?: ReactNode; /** What can be done with the message (`OwnerActions`): shown while the pointer or the focus is on it, and always on a touch screen. */ actions?: ReactNode }) {
 	if (skeleton)
 		return (
 			<Message align="end" data-item="user-skeleton">
@@ -330,8 +330,69 @@ export function OwnerTurn({ text, from, files, menu, skeleton, footer, quotes, o
 					</AttachmentGroup>
 				) : null}
 				{footer ? <MessageFooter>{footer}</MessageFooter> : null}
+				{actions ? (
+					<MessageFooter data-part="actions" className="gap-2 opacity-0 transition-opacity group-focus-within/message:opacity-100 group-hover/message:opacity-100 [@media(hover:none)]:opacity-100">
+						{actions}
+					</MessageFooter>
+				) : null}
 			</MessageContent>
 		</Message>
+	);
+}
+
+/**
+ * Under a message of the owner's that the daemon can take back: when it was sent, going back to before it (it and
+ * everything after it are taken back, and it returns to the message box), and copying it. `last`: the owner's last
+ * message, which the shortcut takes back.
+ */
+export function OwnerActions({ at, text, last, onRewind, onBranch }: { at?: number; text?: string; last?: boolean; onRewind: () => void; onBranch?: () => void }) {
+	// How long ago, said again each minute: "just now" must not stay so.
+	const [, tick] = useState(0);
+	useEffect(() => {
+		if (!at) return;
+		const t = window.setInterval(() => tick((n) => n + 1), 60_000);
+		return () => window.clearInterval(t);
+	}, [at]);
+	const [copied, setCopied] = useState(false);
+	// "Copied" stands for two seconds, as stock's copy button does.
+	useEffect(() => {
+		if (!copied) return;
+		const t = setTimeout(() => setCopied(false), 2000);
+		return () => clearTimeout(t);
+	}, [copied]);
+	// As stock's Message footer: a value in font-normal beside ghost icon buttons, the footer's gap-2 between them.
+	return (
+		<>
+			{at ? <time dateTime={new Date(at).toISOString()} title={new Date(at).toLocaleString()} className="font-normal">{ago(at)}</time> : null}
+			{/* The three buttons together, tighter than the time is to them: no gap of their own. */}
+			<div className="flex">
+				<HoverTooltip>
+					<TooltipTrigger render={<Button variant="ghost" size="icon-xs" data-action="rewind" aria-label="Go back to before this message" onClick={onRewind} />}>
+						<Undo2Icon />
+					</TooltipTrigger>
+					<TooltipContent>
+						Go back to before this message. It and everything after it are undone: files the agent changed are restored, the answers are removed, and this message returns to the message box.
+						{last ? <Kbd>{shortcut("⇧⌘Z")}</Kbd> : null}
+					</TooltipContent>
+				</HoverTooltip>
+				{onBranch ? (
+					<HoverTooltip>
+						<TooltipTrigger render={<Button variant="ghost" size="icon-xs" data-action="branch" aria-label="Branch from here" onClick={onBranch} />}>
+							<GitBranchIcon />
+						</TooltipTrigger>
+						<TooltipContent>Branch from here: a new conversation with what was said up to this message. This one stays as it is.</TooltipContent>
+					</HoverTooltip>
+				) : null}
+				{text?.trim() ? (
+					<HoverTooltip>
+						<TooltipTrigger render={<Button variant="ghost" size="icon-xs" data-action="copy" data-state={copied ? "copied" : undefined} aria-label={copied ? "Copied" : "Copy the message"} onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true), () => store.flash("Could not copy the message.", "warn"))} />}>
+							{copied ? <CheckIcon /> : <CopyIcon />}
+						</TooltipTrigger>
+						<TooltipContent>{copied ? "Copied" : "Copy"}</TooltipContent>
+					</HoverTooltip>
+				) : null}
+			</div>
+		</>
 	);
 }
 
@@ -598,6 +659,52 @@ export function Steps({ items, live }: { items: Array<{ text: string; status: st
 	);
 }
 
+/**
+ * What came of taking a message back or bringing one back, in one quiet line like a checkpoint's: what was done,
+ * its details behind a button (which message, how many, which files where, what an undo never takes back: said
+ * every time), and the way back beside it. What has to be seen at once (a file left as it was, the daemon's note)
+ * is a warning of its own below.
+ */
+function UndoNote({ item }: { item: Extract<Item, { t: "note" }> }) {
+	const warnings = item.lines?.filter((l) => l.text) ?? [];
+	return (
+		// One scroller item holds the note and its warnings: they stack a stock step apart.
+		<div className="flex flex-col gap-2">
+			{/* The tone and the kind are said as data: the tests find the note by them. As stock's Checkpoint: the
+			    label and its buttons in the MarkerContent, inline-flex with a gap-2. */}
+			<Marker data-tone={item.tone} data-kind={item.kind} className="select-text">
+				<MarkerIcon>
+					<Undo2Icon />
+				</MarkerIcon>
+				<MarkerContent className="inline-flex items-center gap-2">
+					{item.text}
+					{item.more?.length ? (
+						<Popover>
+							<PopoverTrigger render={<Button variant="ghost" size="icon-xs" data-action="more" aria-label="Details" />}>
+								<InfoIcon />
+							</PopoverTrigger>
+							<PopoverContent align="start" className="wrap-anywhere">
+								{item.more.map((m, i) => (
+									<p key={i}>{m}</p>
+								))}
+							</PopoverContent>
+						</Popover>
+					) : null}
+					{item.action ? <Button variant="outline" size="xs" data-action="redo" aria-label={item.action.aria} onClick={item.action.run}>{item.action.label}</Button> : null}
+				</MarkerContent>
+			</Marker>
+			{warnings.map((l, i) => (
+				<Marker key={i} data-tone={l.tone ?? "warn"} className="select-text">
+					<MarkerIcon className={NOTE_TONE.warn}>
+						<TriangleAlertIcon />
+					</MarkerIcon>
+					<MarkerContent>{l.text}</MarkerContent>
+				</Marker>
+			))}
+		</div>
+	);
+}
+
 /** The menu of a message of the owner's: what can be done from it. */
 async function branchMenu(tab: Tab, task: number): Promise<void> {
 	const picked = await contextMenu([{ id: "branch", label: "Branch from here" }, ...(tab.folder ? [{ id: "worktree", label: "Branch from here into a worktree" }] : [])]);
@@ -605,12 +712,12 @@ async function branchMenu(tab: Tab, task: number): Promise<void> {
 }
 
 /** One item of a conversation, drawn as what it is. */
-export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab: Tab }) {
+export const Row = memo(function Row({ item, tab, last }: { item: Item; v: number; tab: Tab; /** The owner's last message that can be taken back: the one the shortcut takes back. */ last?: boolean }) {
 	switch (item.t) {
 		case "user": {
 			const task = tab.kind === "chat" ? item.task : undefined;
 			const steer = tab.kind === "chat" ? item.steer : undefined;
-			return <OwnerTurn text={item.text} from={item.from} files={item.files} quotes={item.quotes} quoteTask={task ?? steer?.task} onQuote={tab.kind === "chat" ? (q) => q.source && store.showQuote(tab.key, q.source) : undefined} menu={task === undefined ? undefined : () => void branchMenu(tab, task)} footer={steer ? <SteerLine tab={tab} steer={steer} /> : undefined} />;
+			return <OwnerTurn text={item.text} from={item.from} files={item.files} quotes={item.quotes} quoteTask={task ?? steer?.task} onQuote={tab.kind === "chat" ? (q) => q.source && store.showQuote(tab.key, q.source) : undefined} menu={task === undefined ? undefined : () => void branchMenu(tab, task)} footer={steer ? <SteerLine tab={tab} steer={steer} /> : undefined} actions={task === undefined ? undefined : <OwnerActions at={item.at} text={item.text} last={last} onRewind={() => void store.undo(tab, false, task)} onBranch={() => void (tab.folder ? branchMenu(tab, task) : store.branch(tab.agent, tab.session, task))} />} />;
 		}
 		case "answer":
 			return (
@@ -623,6 +730,7 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 		case "work":
 			return <Work item={item} />;
 		case "note": {
+			if (item.kind === "undo") return <UndoNote item={item} />;
 			const ToneIcon = TONE_ICON[item.tone];
 			return (
 				// The tone is said as data too: the tests find a note by it.
@@ -632,7 +740,7 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 					</MarkerIcon>
 					<MarkerContent>
 						{item.text}
-						{item.action ? <Button variant="link" size="xs" onClick={item.action.run}>{item.action.label}</Button> : null}
+						{item.action ? <Button variant="link" size="xs" aria-label={item.action.aria} onClick={item.action.run}>{item.action.label}</Button> : null}
 						{item.lines?.filter((l) => l.text).map((l, i) => (
 							<span key={i} className={cn("block", l.tone && NOTE_TONE[l.tone])}>{l.text}</span>
 						))}
@@ -710,27 +818,6 @@ export const Row = memo(function Row({ item, tab }: { item: Item; v: number; tab
 			return <Entry entry={item.entry} agent={tab.agent} />;
 	}
 });
-
-/**
- * The point the conversation goes back to (Checkpoint), drawn before the owner's last message:
- * the daemon takes back that message, one at a time, so this is the one place it can return to.
- */
-function Checkpoint({ tab }: { tab: Tab }) {
-	return (
-		<SwirlMarker>
-			<MarkerContent className="inline-flex items-center gap-2">
-				before your last message
-				<HoverTooltip>
-					<TooltipTrigger render={<Button size="xs" variant="outline" onClick={() => void store.undo(tab, false)} />}>Undo</TooltipTrigger>
-					<TooltipContent>
-						Undo your last message. Files the agent changed are restored, the agent's answer is removed, and your message returns to the message box so you can edit it and send it again.
-						<Kbd>{shortcut("⇧⌘Z")}</Kbd>
-					</TooltipContent>
-				</HoverTooltip>
-			</MarkerContent>
-		</SwirlMarker>
-	);
-}
 
 /** pine's welcome letter, bound to the app: what it links to, and words put into this conversation's input. */
 function Letter({ tab }: { tab: Tab }) {
@@ -1326,6 +1413,8 @@ export function Conversation({ tab }: { tab: Tab }) {
 	// "follow", to the end below it) the viewport scrolls smoothly: Message Scroller scrolls at once, and the
 	// viewport's own smooth scrolling turns that scroll into an animation without taking its place.
 	const owner = lastOwnerMessage(tab.items);
+	// The owner's last message that can be taken back: the one ⇧⌘Z takes back, whose tooltip says so.
+	const lastOwner = tab.items.findLast((it) => it.t === "user" && it.task !== undefined)?.id;
 	const sent = owner >= 0 && before.current && !before.current.has(tab.items[owner].id) ? tab.items[owner].id : undefined;
 	const [seen, setSeen] = useState(sent);
 	const [glide, setGlide] = useState(false);
@@ -1344,7 +1433,6 @@ export function Conversation({ tab }: { tab: Tab }) {
 	const above = store.cardAbove(tab);
 	// What the card above the composer tells the composer (`HostedCard`): one for this view of the conversation.
 	const [slot] = useState(() => new ComposerCardSlot());
-	const checkpoint = chat && !tab.busy ? lastOwnerMessage(tab.items) : -1;
 	return (
 		<div data-slot="conversation" className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background text-sm">
 			<ConvHead tab={tab} />
@@ -1399,13 +1487,8 @@ export function Conversation({ tab }: { tab: Tab }) {
 								) : (
 									tab.items.map((item, i) => (
 										<Fragment key={item.id}>
-											{i === checkpoint ? (
-												<MessageScrollerItem>
-													<Checkpoint tab={tab} />
-												</MessageScrollerItem>
-											) : null}
 											<MessageScrollerItem messageId={String(item.id)} scrollAnchor={scroll === "top" && item.t === "user" && !before.current?.has(item.id)}>
-												<Row item={item} v={item.v} tab={tab} />
+												<Row item={item} v={item.v} tab={tab} last={item.id === lastOwner} />
 											</MessageScrollerItem>
 										</Fragment>
 									))
