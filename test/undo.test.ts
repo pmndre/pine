@@ -315,6 +315,57 @@ test("undo: only the owner's own messages are taken back, and what was allowed w
 	await h.close();
 });
 
+test("undo: going back to an earlier message takes it back with every later one, and redo brings them back one by one", mac, async (t) => {
+	const dir = project(t);
+	const feed = { command: process.execPath, args: [MCP_STUB], env: { MCP_LABEL: "feed" }, taints: true };
+	const h = await harness({ pine: { http: { port: 0 } }, agents: { main: { agent: { mcp: { feed } } } } });
+	await h.pine.agents.setFolder("main", "s", dir);
+	h.pine.bus.subscribe("approval/requested", (e) => void h.pine.approvals.decide((e.payload as any).id, true, "test", true));
+	const say = (text: string, steps: any[], trust: "owner" | "untrusted" = "owner") => h.pine.agents.run({ agent: "main", session: "s", trust, prompt: `${text} ${mockMsg(steps)}` });
+	const tainted = () => h.pine.agents.kv.get<string>("taint:main:s") ?? undefined;
+	const api = (body: unknown) => fetch(`http://127.0.0.1:${h.pine.http!.port}/agents/main/undo`, { method: "POST", headers: { authorization: `Bearer ${h.pine.token}`, "content-type": "application/json" }, body: JSON.stringify(body) });
+
+	await say("ZERO stays", [{ text: "ok" }]);
+	const first = await say("FIRST writes a", [{ tools: [bash("echo a > a.txt")] }]);
+	await say("SECOND reads outside", [{ tools: [call("mcp__feed__echo", { text: "from outside" }), bash("echo b > b.txt")] }]);
+	await say("THIRD writes c", [{ tools: [bash("echo c > c.txt; echo NOTES-2 > notes.txt")] }]);
+	const outside = await say("FROM outside", [{ text: "noted" }], "untrusted");
+	assert.ok(tainted(), "the conversation is marked");
+	assert.deepEqual(said(h, "s"), ["ZERO stays", "FIRST writes a", "SECOND reads outside", "THIRD writes c"]);
+
+	// Only a message of the owner's in that conversation, given as a number.
+	assert.equal((await api({ session: "s", to: "first" })).status, 400);
+	const refused = await api({ session: "s", to: outside.id });
+	assert.equal(refused.status, 409);
+	assert.match((await refused.json()).error, /not in this conversation/);
+	assert.deepEqual(said(h, "s").length, 4, "a refusal takes nothing back");
+
+	const r = await api({ session: "s", to: first.id });
+	assert.equal(r.status, 200);
+	const back = await r.json();
+	assert.ok(back.prompt.startsWith("FIRST writes a"), back.prompt);
+	assert.deepEqual([back.task, back.taken, back.redo, back.more], [first.id, 3, 3, true]);
+	assert.deepEqual([read(dir, "a.txt"), read(dir, "b.txt"), read(dir, "c.txt"), read(dir, "notes.txt")], [undefined, undefined, undefined, "NOTES-1\n"]);
+	assert.deepEqual(said(h, "s"), ["ZERO stays"]);
+	assert.equal(tainted(), undefined, "the mark is what it was before the first of them");
+	assert.equal(h.pine.tasks.list({ agent: "main", session: "s~u" }).length, 1, "what outside content started is not the owner's to take back");
+	assert.match((await (await api({ session: "s", to: first.id })).json()).error, /taken back already/);
+
+	// Redo: the one gone back to first, then the later ones, each with its files and its mark.
+	assert.ok((await h.pine.agents.redo("main", "s")).prompt.startsWith("FIRST"));
+	assert.equal(read(dir, "a.txt"), "a\n");
+	assert.equal(read(dir, "b.txt"), undefined);
+	assert.equal(tainted(), undefined);
+	assert.ok((await h.pine.agents.redo("main", "s")).prompt.startsWith("SECOND"));
+	assert.ok(tainted(), "the message that read outside content brings its mark back");
+	const last = await h.pine.agents.redo("main", "s");
+	assert.ok(last.prompt.startsWith("THIRD"));
+	assert.equal(last.redo, 0);
+	assert.deepEqual([read(dir, "a.txt"), read(dir, "b.txt"), read(dir, "c.txt"), read(dir, "notes.txt")], ["a\n", "b\n", "c\n", "NOTES-2\n"]);
+	assert.deepEqual(said(h, "s"), ["ZERO stays", "FIRST writes a", "SECOND reads outside", "THIRD writes c"]);
+	await h.close();
+});
+
 test("undo: work handed to another agent belongs to the message that started it, and a message that changed nothing still leaves the conversation", mac, async (t) => {
 	const dir = project(t);
 	const h = await harness({ pine: { main: "main" }, agents: { main: { agent: { delegates: ["helper"] } }, helper: {} } });

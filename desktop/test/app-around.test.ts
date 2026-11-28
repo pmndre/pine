@@ -554,6 +554,25 @@ test("the last message is taken back, and its text is in the input again", async
 	await page.fill("[data-slot=composer] textarea", "");
 });
 
+test("a message further back is gone back to from its own actions: it and every later one are taken back, and its text is in the input", async () => {
+	await page.click(`${TAB} >> nth=0`);
+	const had = await page.$$eval("[data-item=user]", (els: Element[]) => els.length);
+	for (const word of ["REWIND-ONE", "REWIND-TWO", "REWIND-THREE"]) {
+		await page.fill("[data-slot=composer] textarea", mockMsg([{ text: `answer to ${word}` }], `${word} `));
+		await page.keyboard.press("Enter");
+		await sees(`[data-slot=markdown] >> text=answer to ${word}`);
+	}
+	const first = page.locator("[data-item=user]:has-text('REWIND-ONE')");
+	// Its actions show while the pointer is on it.
+	await first.hover();
+	await first.locator("[data-action=rewind]").click();
+	await page.waitForFunction((n: number) => document.querySelectorAll("[data-item=user]").length === n, had, { timeout: patient(20_000) });
+	await sees("[data-slot=marker][data-kind=undo]");
+	assert.match(await page.inputValue("[data-slot=composer] textarea"), /^REWIND-ONE /);
+	assert.equal(await page.locator("[data-slot=markdown]:has-text('answer to REWIND')").count(), 0);
+	await page.fill("[data-slot=composer] textarea", "");
+});
+
 test("a message is branched from: a new conversation with what was said up to it, under the original in the side bar", async () => {
 	await page.click(`${TAB} >> nth=0`);
 	await menu("new");

@@ -536,11 +536,14 @@ export class HttpServer {
 				if (!this.cfg.agents[parts[1]]) throw new HttpError(404, "no such agent");
 				return send(200, { stopped: this.manager.stopProgram(parts[1], String(body.session ?? "main"), Number(body.id)) });
 			}
-			// The owner takes back their last message in a conversation, or brings it back. Only here: no agent has a tool for it.
+			// The owner takes back their last message in a conversation (or, with `to`, an earlier one with
+			// everything after it), or brings one back. Only here: no agent has a tool for it.
 			if (parts[0] === "agents" && (parts[2] === "undo" || parts[2] === "redo") && parts.length === 3) {
 				if (!this.cfg.agents[parts[1]]) throw new HttpError(404, "no such agent");
+				if (parts[2] === "undo" && body.to !== undefined && !Number.isInteger(body.to)) throw new HttpError(400, "to: the number of your message to go back to before");
 				try {
-					return send(200, await this.manager[parts[2]](parts[1], String(body.session ?? "main")));
+					if (parts[2] === "undo") return send(200, await this.manager.undo(parts[1], String(body.session ?? "main"), body.to as number | undefined));
+					return send(200, await this.manager.redo(parts[1], String(body.session ?? "main")));
 				} catch (e) {
 					throw new HttpError(409, errText(e));
 				}

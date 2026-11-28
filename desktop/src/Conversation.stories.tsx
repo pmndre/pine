@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller";
 import type { Approval } from "./api.ts";
-import { ConversationSkeleton as ConversationSkeletonView, OwnerTurn, Row, Welcome } from "./Conversation.tsx";
+import { ConversationSkeleton as ConversationSkeletonView, OwnerActions, OwnerTurn, Row, Welcome } from "./Conversation.tsx";
 import { type Item, Tab } from "./model.ts";
 
 // A conversation as the app draws it: each item is a Row, the way the transcript lists them.
@@ -36,7 +36,7 @@ function Items({ items, running, turns, folded }: { items: Made[]; /** Tasks at 
 
 const now = Date.now();
 const conversation: Made[] = [
-	{ t: "user", text: "What do the notes say?", files: ["notes.md"], task: 1 },
+	{ t: "user", text: "What do the notes say?", files: ["notes.md"], task: 1, at: now },
 	{
 		t: "work",
 		done: true,
@@ -136,7 +136,8 @@ const notes: Made[] = [
 	{ t: "note", tone: "muted", text: "The model changed to mock/m." },
 	{ t: "note", tone: "warn", text: "The answer was cut: the model ran out of room." },
 	{ t: "note", tone: "bad", text: "The model server did not answer.", action: { label: "Settings", run: () => {} } },
-	{ t: "note", tone: "accent", text: "↶ Taken back: your last message", lines: [{ text: "2 files restored" }, { text: "notes.md was changed since", tone: "warn" }] },
+	{ t: "note", tone: "muted", kind: "undo", text: "Went back to here", action: { label: "Redo", aria: "Redo “fix the header”", run: () => {} }, more: ["Taken back: “fix the header”, and 1 later message with it", "2 files restored in ~/site (2 changed back): header.tsx, styles.css", "Not undone: changes outside this folder, files git ignores or over 2 MB, anything sent out."], lines: [{ text: "Left unchanged, too large to track: hero.mp4", tone: "warn" }] },
+	{ t: "note", tone: "muted", kind: "undo", text: "Withdrawn before the agent started on it", more: ["Withdrawn: “fix the header”", "Nothing had been done yet. Your message is back in the message box."] },
 	{ t: "event", label: "folder · changed", body: "~/notes/today.md was written" },
 	{ t: "event", label: "terminal: ended", body: "Command: gh secret set TOKEN\nHow it went: it finished without an error after 2 s (exit code 0).\nThe last lines:\n| ✓ Set Actions secret TOKEN", pine: true },
 	{ t: "goal", goal: { agent: "main", session: "main", objective: "Every link in the notes works", status: "met", note: "met after 2 rounds", round: 2, until: 5, reason: "All twelve links answer." } },
@@ -189,6 +190,9 @@ export const Quoted: Story = { args: { items: quoted } };
 
 /** A conversation that has not loaded yet: its shape, from stock Skeleton blocks. */
 export const ConversationSkeleton: Story = { args: { items: [] }, render: () => <ConversationSkeletonView /> };
+
+/** A message of the owner's with what can be done with it: shown while the pointer or the focus is on it, and always on a touch screen. */
+export const OwnerMessageActions: Story = { args: { items: [] }, render: () => <OwnerTurn text="Rename the config file and update the imports" actions={<OwnerActions at={now} text="Rename the config file and update the imports" last onRewind={() => {}} onBranch={() => {}} />} /> };
 
 /** The owner's turn while it loads. */
 export const OwnerTurnSkeleton: Story = { args: { items: [] }, render: () => <OwnerTurn skeleton /> };

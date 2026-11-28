@@ -293,6 +293,8 @@ export interface UndoResult {
 	note?: string;
 	redo: number;
 	more: boolean;
+	/** Going back to an earlier message (`to`): how many messages were taken back, it and every later one. */
+	taken?: number;
 }
 
 export interface SourceInfo {
@@ -638,7 +640,8 @@ export const api = {
 	sendNow: (task: number) => post<{ sent: boolean }>(`/tasks/${task}/now`),
 	reset: (agent: string, session: string) => post<{ reset: boolean }>(`${a(agent)}/reset`, { session }),
 	compact: (agent: string, session: string) => post<{ task: number }>(`${a(agent)}/compact`, { session }),
-	undo: (agent: string, session: string) => post<UndoResult>(`${a(agent)}/undo`, { session }),
+	/** Take back the last message of the owner's; with `to`, that message of theirs and every later one. */
+	undo: (agent: string, session: string, to?: number) => post<UndoResult>(`${a(agent)}/undo`, { session, ...(to !== undefined ? { to } : {}) }),
 	redo: (agent: string, session: string) => post<UndoResult>(`${a(agent)}/redo`, { session }),
 	/** A new conversation that goes on from message `at` of this one (without it: from all of it). */
 	branch: (agent: string, session: string, at?: number, worktree = false) => post<{ session: string; tasks: number; outside?: string; worktree?: WorktreeMade }>(`${a(agent)}/branch`, { session, ...(at !== undefined ? { at } : {}), ...(worktree ? { worktree } : {}) }),

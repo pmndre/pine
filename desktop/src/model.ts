@@ -60,10 +60,10 @@ interface Base {
 
 export type Item = Base &
 	(
-		| { t: "user"; text: string; from?: string; files?: string[]; quotes?: SentQuote[]; /** The owner's message as a task, to branch from. */ task?: number; /** It was given to work that was running (`into`), as task `task`: when that work read it. */ steer?: Steer }
+		| { t: "user"; text: string; from?: string; files?: string[]; quotes?: SentQuote[]; /** The owner's message as a task, to branch from and to go back to. */ task?: number; /** When it was sent. */ at?: number; /** It was given to work that was running (`into`), as task `task`: when that work read it. */ steer?: Steer }
 		| { t: "answer"; task: number; agent: string; text: string; live: boolean; /** It arrived while the owner was looking at its conversation: its first sound plays by itself, once. */ arrived?: { heard: boolean } }
 		| { t: "work"; parts: Part[]; done: boolean; open: boolean; startedAt: number; ms?: number }
-		| { t: "note"; tone: Tone; text: string; kind?: string; lines?: Array<{ text: string; tone?: Tone }>; action?: { label: string; run: () => void } }
+		| { t: "note"; tone: Tone; text: string; kind?: string; lines?: Array<{ text: string; tone?: Tone }>; /** What is behind the line, shown on a click (an undo's details). */ more?: string[]; action?: { label: string; /** What the button does, when its label alone does not say it. */ aria?: string; run: () => void } }
 		| { t: "event"; label: string; body: string; /** A note of pine's to the agent (`notify`): what it reports, never the owner's words. */ pine?: boolean }
 		/** A message was not answered because the agent has no model that answers (`ModelNotice`). */
 		| { t: "model"; agent: string }
@@ -2110,7 +2110,7 @@ export class Store extends Model {
 		if (t.kind === "event" && t.meta?.label) tab.add({ t: "event", label: t.meta.label, body: eventBody(t.prompt) });
 		else if (isGoalRound(t.kind, t.meta?.label)) tab.note(`↻ ${t.meta.label}`);
 		else if (t.kind === "notify") tab.add(pineNote(t.meta?.label, t.meta?.body));
-		else tab.add({ t: "user", ...ownerText({ prompt: t.prompt, quotes: t.meta?.quotes, body: t.meta?.body }), from: t.kind === "prompt" ? undefined : t.kind, task: t.kind === "prompt" && t.meta?.trust === "owner" && t.meta?.steered === undefined ? t.id : undefined, steer: t.meta?.steered === undefined ? undefined : { task: t.id, into: t.meta.steered, read: t.meta.read, at: t.created } });
+		else tab.add({ t: "user", ...ownerText({ prompt: t.prompt, quotes: t.meta?.quotes, body: t.meta?.body }), from: t.kind === "prompt" ? undefined : t.kind, task: t.kind === "prompt" && t.meta?.trust === "owner" && t.meta?.steered === undefined ? t.id : undefined, at: t.created, steer: t.meta?.steered === undefined ? undefined : { task: t.id, into: t.meta.steered, read: t.meta.read, at: t.created } });
 		(t.meta?.images ?? []).forEach((_, i) => tab.add({ t: "media", kind: "image", name: `attached picture ${i + 1}`, url: media.task(t.id, i) }));
 		// It was read by work that was already running; the answer is that work's.
 		if (t.meta?.steered !== undefined) return;
@@ -2710,7 +2710,7 @@ export class Store extends Model {
 		const text = withQuotes(sent ?? [], typed);
 		const files = alone ? [] : tab.attachments.splice(0);
 		if (!alone) tab.draft = "";
-		const mine = tab.add({ t: "user", text: typed, files: files.map((f) => f.name), quotes: sent });
+		const mine = tab.add({ t: "user", text: typed, files: files.map((f) => f.name), quotes: sent, at: Date.now() });
 		for (const f of files) if (f.preview) tab.add({ t: "media", kind: "image", name: f.name, url: f.preview });
 		tab.awaiting.push(text);
 		tab.touch();
@@ -2767,15 +2767,19 @@ export class Store extends Model {
 		tab.touch();
 	}
 
-	async undo(tab: Tab, redo: boolean): Promise<void> {
+	/** Take back the owner's last message, or bring one back; `to`: go back to before that message of theirs, taking back every later one with it. */
+	async undo(tab: Tab, redo: boolean, to?: number): Promise<void> {
 		if (tab.kind !== "chat") return;
-		const r = await this.attempt(() => (redo ? api.redo(tab.agent, tab.session) : api.undo(tab.agent, tab.session)));
+		const r = await this.attempt(() => (redo ? api.redo(tab.agent, tab.session) : api.undo(tab.agent, tab.session, to)));
 		if (!r) return;
 		tab.clear();
 		const history = (await api.history(tab.agent, tab.session).catch(() => [] as Task[])).filter((t) => t.depth === 0).reverse();
 		for (const t of history) (this.past(tab, t), tab.roots.add(t.id));
 		const said = undoLines(r, redo);
-		tab.note(`${redo ? "↷" : "↶"} ${said.head}`, "accent", { lines: said.lines, kind: redo ? "redo" : "undo" });
+		// A redo puts the conversation back as it was, which says it by itself: only what it could not do is said
+		// (a warning). An undo says that it went back, with the way forward again beside it.
+		if (redo) for (const l of said.lines) tab.note(l.text, l.tone ?? "warn");
+		else tab.note(said.head, "muted", { lines: said.lines, more: said.more, kind: "undo", action: r.redo ? { label: "Redo", aria: `Redo ${said.what}`, run: () => void this.undo(tab, true) } : undefined });
 		if (!redo) {
 			tab.draft = r.quotes?.length ? (r.body ?? "") : r.prompt;
 			tab.quotes = (r.quotes ?? []).map((q) => ({ id: quoteId(), text: q.text, tab: tab.key, source: q.source, ...(q.reply ? { reply: q.reply } : {}) }));

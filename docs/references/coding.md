@@ -160,6 +160,12 @@ holds for the conversation), or `sandbox.network: true` in `agent.json` gives it
 puts the folder's files (or the workspace's) back as they were, the conversation forgets the
 message and what came after, and its text is back in the input.
 
+To go further back at once, rewind to an earlier message of yours: in the Pine app, the rewind
+button under that message (shown when the pointer or the focus is on it). That message and every
+later one are taken back together, newest first, as that many undos would: files, answers, and
+what each brought (the outside-content mark, approvals, access) are as they were before it, and
+its text is back in the input. `/redo` then brings them back one at a time, that message first.
+
 | Command | What it does |
 |---|---|
 | `/undo` | Take back your last message, its work and its file changes. Again: the one before |
@@ -216,4 +222,4 @@ The routes are in [api.md](api.md). Details of three:
 |---|---|
 | `POST /agents/<id>/view/write` `{ session?, path, text }` | Saves a file of the conversation's folder, as an editor does: at most 2 MB, into a folder that exists, keeping the file's rights. A sandbox lets it write only that folder, so a link changes nothing outside. Refused for a path that leads out, and on a system without a sandbox |
 | `POST /agents/<id>/view/files` `{ session?, op, path?, to?, paths?, into? }` | The Pine app's file tree: make (`folder`, `file`: `path`), rename (`path` to `to`), copy or move (`paths` into `into`, `""` for the top), delete (`paths`). A copy never overwrites; it gets a free name. A link is acted on as itself. An agent's `AGENTS.md`, `SOUL.md`, `TOOLS.md` and `MEMORY.md` can't be deleted, moved or renamed |
-| `POST /agents/<id>/undo` `{ session }`, `POST /agents/<id>/redo` `{ session }` | Answers with the message's text (`prompt`; with quotes also `quotes` of `{ text, source, reply? }` and `body`), `restored` (`root`, `changed`, `removed`, `back`, the first `files`, `left` for files too large), a `note` when no file was restored, `stopped`, `redo` (how many can come back) and `more` |
+| `POST /agents/<id>/undo` `{ session, to? }`, `POST /agents/<id>/redo` `{ session }` | `to`: the number of one of your messages, to take it back with every later one (`taken` says how many; `stopped` and `restored` count over all of them). Answers with the message's text (`prompt`; with quotes also `quotes` of `{ text, source, reply? }` and `body`), `restored` (`root`, `changed`, `removed`, `back`, the first `files`, `left` for files too large), a `note` when no file was restored, `stopped`, `redo` (how many can come back) and `more` |
